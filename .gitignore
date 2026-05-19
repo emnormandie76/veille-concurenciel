@@ -1,0 +1,45 @@
+# Dépendances
+node_modules/
+.pnp
+.pnp.js
+
+# Build Next.js
+.next/
+out/
+
+# Variables d'environnement — NE JAMAIS COMMITTER
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+backend/venv/
+backend/.venv/
+backend/*.egg-info/
+backend/dist/
+backend/build/
+*.egg
+
+# Prisma
+prisma/dev.db
+prisma/dev.db-journal

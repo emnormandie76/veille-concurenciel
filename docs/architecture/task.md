@@ -1,0 +1,435 @@
+# Task List — School Data Pipeline
+
+> **Contexte :** Lire `architecture.md`, `bdd.md`, `cahier-des-charges-school-pipeline.md`, `edgecase.md`, `API-rest.md`,`gemma-python-guide.md` avant de commencer.
+> **Règle absolue :** Ne JAMAIS passer à l'étape suivante sans avoir validé TOUS les tests de l'étape courante.
+
+---
+
+## Étape 0 : Initialisation du Projet
+
+### 0.1 — Scaffolding Next.js
+- [x] Initialiser un projet Next.js (App Router, TypeScript) dans le dossier racine
+- [x] Installer les dépendances : `prisma`, `@prisma/client`, `next-auth`, `bcrypt`
+- [x] Créer le fichier `.env.local` avec les variables : `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `FASTAPI_INTERNAL_TOKEN`
+- [x] Configurer le `tsconfig.json` avec les alias `@/`
+
+### 0.2 — Scaffolding FastAPI
+- [x] Créer un dossier `backend/` à la racine
+- [x] Initialiser un projet Python avec `requirements.txt` : `fastapi`, `uvicorn`, `psycopg2-binary`, `apscheduler`, `tavily-python`, `google-genai`, `bcrypt`
+- [x] Créer `backend/main.py` avec un endpoint `/health` retournant `{"status": "ok"}`
+- [x] Créer `backend/.env` avec : `DATABASE_URL`, `GEMINI_API_KEY`, `TAVILY_API_KEYS` (liste séparée par virgules), `INTERNAL_TOKEN`, `CRON_PHASE1_INTERVAL_HOURS=168`, `CRON_PHASE2_INTERVAL_HOURS=24`
+
+### ✅ Tests Étape 0
+```
+- [x] `npm run dev` démarre Next.js sans erreur sur http://localhost:3000
+- [x] `uvicorn backend.main:app --reload` démarre FastAPI sans erreur
+- [x] GET http://localhost:8000/health retourne {"status": "ok"}
+```
+
+---
+
+## Étape 1 : Base de Données et Authentification
+
+### 1.1 — Prisma Schema
+- [ ] Créer `prisma/schema.prisma` avec TOUS les modèles définis dans `bdd.md` : `User`, `School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ContributionInbox`, `CronTarget`
+- [ ] Exécuter `npx prisma migrate dev --name init` — migration réussie
+- [ ] Exécuter `npx prisma generate` — client généré
+
+### 1.2 — Script de Seed (Premier Admin)
+- [ ] Créer `prisma/seed.ts` qui insère un User Admin par défaut (username: `admin`, password hashé avec bcrypt, role: `ADMIN`)
+- [ ] Configurer `package.json` pour `npx prisma db seed`
+
+### 1.3 — NextAuth Configuration
+- [ ] Configurer NextAuth avec Credentials Provider dans `app/api/auth/[...nextauth]/route.ts`
+- [ ] Vérifier le username/password contre la table `User` (bcrypt compare)
+- [ ] Inclure `role` dans le token JWT et la session
+- [ ] Créer un middleware `middleware.ts` protégeant toutes les routes `/admin/*` (sauf `/admin/login`)
+
+### ✅ Tests Étape 1
+```
+- [ ] La migration crée toutes les tables dans Neon (vérifier via Prisma Studio : `npx prisma studio`)
+- [ ] Le seed crée le compte admin en BDD
+- [ ] POST /api/auth/signin avec les bons identifiants retourne un token valide
+- [ ] POST /api/auth/signin avec de mauvais identifiants retourne une erreur
+- [ ] Accéder à /admin/inbox sans session redirige vers /admin/login
+- [ ] Accéder à /admin/inbox avec session valide affiche la page
+```
+
+---
+
+## Étape 2 : Dashboard Admin — CRUD Écoles et Campus
+
+### 2.1 — API Routes Admin (Next.js)
+- [ ] `GET /api/admin/schools` — Liste toutes les écoles
+- [ ] `POST /api/admin/schools` — Créer une école (name + official_domain)
+- [ ] `PUT /api/admin/schools/[id]` — Modifier une école
+- [ ] `DELETE /api/admin/schools/[id]` — Supprimer une école (vérifier le token de double confirmation)
+- [ ] `GET /api/admin/schools/[id]/campuses` — Liste les campus d'une école
+- [ ] `POST /api/admin/schools/[id]/campuses` — Créer un campus
+- [ ] `PUT /api/admin/campuses/[id]` — Modifier un campus
+- [ ] `DELETE /api/admin/campuses/[id]` — Supprimer un campus
+
+### 2.2 — Pages Admin
+- [ ] Page `/admin/schools` — Tableau listant les écoles avec boutons Ajouter/Modifier/Supprimer
+- [ ] Modale de création/édition d'école (champs: name, official_domain)
+- [ ] Modale de suppression avec **double confirmation** ("Tapez le nom de l'école pour confirmer")
+- [ ] Page `/admin/schools/[id]/campuses` — Gestion des campus de l'école
+
+### 2.3 — Gestion des Modérateurs (Admin uniquement)
+- [ ] Page `/admin/users` — Liste des modérateurs (visible uniquement si role=ADMIN)
+- [ ] `POST /api/admin/users` — Créer un modérateur (username + password)
+- [ ] `DELETE /api/admin/users/[id]` — Supprimer un modérateur
+- [ ] Interdire la suppression de son propre compte
+- [ ] Interdire l'accès à cette page pour les Modérateurs (role check)
+
+### ✅ Tests Étape 2
+```
+- [ ] Créer une école "EMLV" avec domaine "emlv.fr" → apparaît dans la liste
+- [ ] Créer un campus "Paris La Défense" pour EMLV → apparaît dans la liste campus
+- [ ] Modifier le nom du campus → changement persisté en BDD
+- [ ] Supprimer le campus → disparaît de la liste
+- [ ] Supprimer l'école avec double confirmation → école et campus supprimés (cascade)
+- [ ] Créer un modérateur → peut se connecter et accéder au dashboard
+- [ ] Le modérateur ne voit PAS la page /admin/users
+- [ ] L'admin voit et peut gérer la page /admin/users
+```
+
+---
+
+## Étape 3 : Dashboard Admin — ContributionInbox
+
+### 3.1 — API Routes Inbox
+- [ ] `GET /api/admin/inbox` — Liste les tickets (filtres: status, ai_category, schoolId) avec pagination
+- [ ] `GET /api/admin/inbox/[id]` — Détail d'un ticket
+- [ ] `PUT /api/admin/inbox/[id]/validate` — Valider un ticket (transfère les données vers les tables rigides via upsert Prisma)
+- [ ] `PUT /api/admin/inbox/[id]/reject` — Rejeter un ticket
+
+### 3.2 — Validation Program_Discovery (Super Ticket)
+- [ ] Quand `ai_category = "Program_Discovery"` : le frontend génère un formulaire répéteur pré-rempli avec les campus et programmes du JSON
+- [ ] L'Admin peut modifier/supprimer/ajouter des campus et programmes dans le formulaire
+- [ ] Au clic "Valider" : transaction Prisma qui crée les Campus + Programs en une passe atomique
+- [ ] En cas d'erreur : rollback complet, message d'erreur affiché
+
+### 3.3 — Validation des données (Pricing, Ranking, etc.)
+- [ ] Quand `ai_category = "Pricing"` : formulaire pré-rempli avec les champs de PricingRecord
+- [ ] Idem pour Ranking, Capacity, SchoolStats, Accreditation
+- [ ] Au clic "Valider" : upsert Prisma dans la table rigide correspondante
+- [ ] Les flags `year_assumed`, `data_conflict_warning`, `program_name_mismatch` sont affichés comme alertes visuelles
+
+### ✅ Tests Étape 3
+```
+- [ ] Insérer manuellement un ticket Program_Discovery en BDD → il apparaît dans l'inbox
+- [ ] Ouvrir le ticket → formulaire pré-rempli avec campus/programmes du JSON
+- [ ] Modifier un nom de programme, valider → Campus et Program créés en BDD avec le nom modifié
+- [ ] Insérer un ticket Pricing → formulaire pré-rempli avec les champs tarifs
+- [ ] Valider le ticket Pricing → PricingRecord créé/mis à jour en BDD
+- [ ] Rejeter un ticket → status passe à "Rejected", pas de données en production
+- [ ] Ticket avec year_assumed=true → badge d'alerte visible dans l'interface
+- [ ] Ticket avec data_conflict_warning=true → badge d'alerte visible
+```
+
+---
+
+## Étape 4 : Backend FastAPI — Core et API Interne
+
+### 4.1 — Connexion DB
+- [ ] Configurer la connexion PostgreSQL (psycopg2 ou SQLAlchemy) avec `DATABASE_URL`
+- [ ] Créer un module `backend/db.py` avec un pool de connexions
+
+### 4.2 — API Interne (sécurisée)
+- [ ] Middleware de vérification du token (`Authorization: Bearer {INTERNAL_TOKEN}`)
+- [ ] `POST /internal/trigger-scan/{school_id}` — Déclenche Phase 1 pour une école
+- [ ] `POST /internal/trigger-enrichment/{school_id}` — Déclenche Phase 2 pour une école
+- [ ] `GET /internal/pipeline-status` — Retourne l'état du pipeline (crédits restants, tâches en cours)
+
+### 4.3 — Key Cycling Tavily
+- [ ] Implémenter `TavilyKeyManager` (voir architecture.md section 4.3)
+- [ ] Rotation automatique quand une clé atteint 950 crédits
+- [ ] Exception `QuotaExhaustedError` si toutes les clés sont épuisées
+
+### 4.4 — Module Gemma
+- [ ] Reprendre et adapter `call_gemma_with_retry` depuis `gemma-python-guide.md` (template production)
+- [ ] Intégrer : retry backoff, nettoyage JSON, validation des clés, gestion finish_reason
+- [ ] Créer `clean_gemma_json()` et `validate_json_structure()`
+
+### ✅ Tests Étape 4
+```
+- [ ] FastAPI démarre et se connecte à la BDD Neon sans erreur
+- [ ] GET /internal/pipeline-status sans token → 401 Unauthorized
+- [ ] GET /internal/pipeline-status avec token → 200 + JSON status
+- [ ] TavilyKeyManager avec 2 clés : la première est utilisée, puis bascule à la seconde après 950
+- [ ] TavilyKeyManager avec toutes les clés épuisées → lève QuotaExhaustedError
+- [ ] call_gemma_with_retry avec un prompt simple → retourne un dict JSON valide
+- [ ] call_gemma_with_retry avec un JSON invalide simulé → retry puis retourne None après max_retries
+```
+
+---
+
+## Étape 5 : Pipeline Phase 1 — Cartographie (Program Discovery)
+
+### 5.1 — Module Tavily Crawl
+- [ ] Fonction `crawl_school_website(official_domain: str) -> str` qui appelle Tavily crawl avec `select_paths` et `instructions` appropriés
+- [ ] Gestion du timeout (15s) et des réponses vides (Edge Case 14)
+
+### 5.2 — Extraction Phase 1
+- [ ] Fonction `extract_programs(raw_content: str) -> dict | None` qui envoie le contenu à Gemma 31B avec le prompt Phase 1 (voir architecture.md section 5.1)
+- [ ] Validation du JSON retourné (clés obligatoires: `discovered_campuses`)
+
+### 5.3 — Orchestrateur Phase 1
+- [ ] Fonction `run_phase1(school_id: str)` :
+  1. Lire l'école en BDD
+  2. Vérifier CronTarget (pas blacklisté)
+  3. Appeler `crawl_school_website`
+  4. Appeler `extract_programs`
+  5. Insérer dans ContributionInbox (category=Program_Discovery, status=Pending_Admin)
+  6. En cas d'échec : incrémenter `failed_attempts_count` dans CronTarget
+
+### 5.4 — Intégration APScheduler
+- [ ] Job `phase1_scanner` : toutes les `CRON_PHASE1_INTERVAL_HOURS` heures, lire les écoles ACTIVE sans Campus et lancer `run_phase1` pour chacune
+- [ ] Respecter les rate limits (max 1 école traitée à la fois, pause entre chaque)
+
+### ✅ Tests Étape 5
+```
+- [ ] crawl_school_website("emlv.fr") retourne du contenu Markdown non vide (test réel API)
+- [ ] extract_programs avec un contenu Markdown réel → JSON avec discovered_campuses non vide
+- [ ] run_phase1 pour une école sans campus → ticket Program_Discovery créé dans ContributionInbox
+- [ ] run_phase1 pour une école déjà blacklistée → skip (pas d'appel API)
+- [ ] Après 3 échecs consécutifs → CronTarget.is_blacklisted = true
+- [ ] Le scheduler lance bien phase1_scanner à l'intervalle configuré
+```
+
+---
+
+## Étape 6 : Pipeline Phase 2 — Enrichissement
+
+### 6.1 — Routeur Dynamique (Strategy Pattern)
+- [ ] Implémenter le dictionnaire `PIPELINE_STRATEGIES` (voir architecture.md section 4.2)
+- [ ] Chaque stratégie contient : config Tavily, modèle Gemma, clés JSON requises, prompt
+
+### 6.2 — Module de Diff
+- [ ] Fonction `has_data_changed(new_data: dict, existing_record: dict) -> bool` qui compare le JSON extrait avec les données de production
+- [ ] Si rien n'a changé → retourner False (Edge Case 10)
+
+### 6.3 — Tri rapide (Gemma 26B)
+- [ ] Fonction `is_content_relevant(raw_content: str, category: str) -> bool` via Gemma 26B
+- [ ] Détection des paywalls/cookies (Edge Case 11)
+
+### 6.4 — Orchestrateur Phase 2
+- [ ] Fonction `run_phase2(school_id: str)` :
+  1. Lire tous les Programs validés de l'école
+  2. Pour chaque (Program, Catégorie) non blacklisté :
+     - Charger la stratégie
+     - Tavily search avec les bons paramètres
+     - Tri rapide Gemma 26B → skip si non pertinent
+     - Extraction Gemma 31B
+     - Diff vs production → skip si identique
+     - Insérer dans ContributionInbox
+
+### 6.5 — Intégration APScheduler
+- [ ] Job `phase2_enricher` : toutes les `CRON_PHASE2_INTERVAL_HOURS` heures
+
+### ✅ Tests Étape 6
+```
+- [ ] PIPELINE_STRATEGIES["Pricing"] retourne la bonne config avec les bons include_domains
+- [ ] has_data_changed avec données identiques → False
+- [ ] has_data_changed avec prix modifié → True
+- [ ] is_content_relevant avec un texte de tarifs → True
+- [ ] is_content_relevant avec un texte de cookies/paywall → False
+- [ ] run_phase2 pour une école avec programmes validés → tickets Pricing/Ranking créés dans l'Inbox
+- [ ] run_phase2 quand les données n'ont pas changé → aucun ticket créé (skip silencieux)
+- [ ] run_phase2 pour un programme blacklisté → skip
+```
+
+---
+
+## Étape 7 : Workflow A — Crowdsourcing
+
+### 7.1 — Page publique `/contribute`
+- [ ] Dropdown École avec autocomplete (données depuis `GET /api/schools`)
+- [ ] Dropdown Campus (chargé dynamiquement selon l'école sélectionnée) — optionnel
+- [ ] Dropdown Programme (chargé dynamiquement selon le campus) — optionnel
+- [ ] Multi-select catégories : Tarifs, Classement, Capacité, Stats école, Accréditation
+- [ ] Champ texte libre (revendication)
+- [ ] Champ URL(s) source(s)
+- [ ] Bouton Soumettre
+
+### 7.2 — API Route de soumission
+- [ ] `POST /api/contribute` — Crée 1 ticket Inbox par catégorie sélectionnée
+- [ ] Rate limiting par IP (middleware Vercel ou custom)
+- [ ] Validation : URL format `https://`, école existante, au moins 1 catégorie
+
+### 7.3 — Traitement Backend (FastAPI)
+- [ ] Endpoint ou job qui traite les tickets `Pending_AI` de type `User_Submission` :
+  1. Tavily extract(urls) pour récupérer le contenu
+  2. Gemma 26B : fact-checking (le texte confirme-t-il la revendication ?)
+  3. Gemma 31B : extraction JSON selon la catégorie
+  4. Mise à jour status → Pending_Admin
+
+### ✅ Tests Étape 7
+```
+- [ ] La page /contribute affiche le formulaire avec les dropdowns
+- [ ] Sélectionner EMLV → les campus EMLV apparaissent
+- [ ] Sélectionner un campus → les programmes apparaissent
+- [ ] Soumettre avec 2 catégories cochées → 2 tickets créés dans l'Inbox
+- [ ] Soumettre sans école → erreur de validation
+- [ ] Soumettre sans URL → erreur de validation
+- [ ] Le traitement backend extrait le contenu et met à jour le status à Pending_Admin
+- [ ] 10 soumissions rapides depuis la même IP → rate limit déclenché
+```
+
+---
+
+## Étape 8 : Frontend Public — Consultation
+
+### 8.1 — Pages publiques
+- [ ] Page `/` — Accueil avec recherche d'écoles (liste des écoles ACTIVE)
+- [ ] Page `/schools/[id]` — Fiche école (infos, campus, stats, accréditations)
+- [ ] Page `/schools/[id]/programs/[pid]` — Détail programme (tarifs, classements, capacité)
+
+### 8.2 — API Routes publiques (utilisées par le frontend)
+- [ ] `GET /api/schools` — Écoles actives avec recherche/pagination
+- [ ] `GET /api/schools/[id]` — Détail école + relations
+- [ ] `GET /api/schools/[id]/programs/[pid]` — Détail programme + records
+
+### 8.3 — Caching ISR
+- [ ] `export const revalidate = 3600` sur toutes les pages publiques
+
+### ✅ Tests Étape 8
+```
+- [ ] La page d'accueil affiche la liste des écoles actives
+- [ ] Cliquer sur une école → fiche avec campus, stats, accréditations
+- [ ] Cliquer sur un programme → tarifs par année, classements, capacité
+- [ ] Les écoles avec status != ACTIVE ne sont PAS affichées
+- [ ] Deux requêtes consécutives sur la même page → la 2ème est servie depuis le cache (vérifier via headers)
+```
+
+---
+
+## Étape 9 : API REST Publique (v1)
+
+> **Réf. détaillée : `API-rest.md`**
+
+### 9.1 — Schools (4 endpoints)
+- [ ] `GET /api/v1/schools` — Liste paginée des écoles actives (`?search=emlv&page=1&limit=20`)
+- [ ] `GET /api/v1/schools/[id]` — Détail d'une école (infos de base)
+- [ ] `GET /api/v1/schools/[id]/stats` — Stats de l'école (`?year=2025`, dernier par défaut)
+- [ ] `GET /api/v1/schools/[id]/accreditations` — Accréditations (EQUIS, AACSB…)
+
+### 9.2 — Campuses (2 endpoints)
+- [ ] `GET /api/v1/schools/[id]/campuses` — Liste des campus d'une école
+- [ ] `GET /api/v1/campuses/[id]` — Détail d'un campus + ses programmes
+
+### 9.3 — Programs (3 endpoints)
+- [ ] `GET /api/v1/schools/[id]/programs` — Programmes de l'école (`?campus_id=xxx`)
+- [ ] `GET /api/v1/programs/[id]` — Détail d'un programme
+- [ ] `GET /api/v1/programs` — Recherche globale (`?search=pge&admission_exam=sesame&alternance=true`)
+
+### 9.4 — Pricing (2 endpoints)
+- [ ] `GET /api/v1/programs/[id]/pricing` — Historique tarifaire d'un programme (`?year=2025`)
+- [ ] `GET /api/v1/schools/[id]/pricing` — Tous les tarifs de l'école (`?year=2025`)
+
+### 9.5 — Rankings (2 endpoints)
+- [ ] `GET /api/v1/programs/[id]/rankings` — Classements d'un programme (`?year=2025&ranking_name=Figaro`)
+- [ ] `GET /api/v1/rankings` — Tableau global de classements (`?ranking_name=Figaro&year=2025&page=1&limit=50`)
+
+### 9.6 — Capacity (1 endpoint)
+- [ ] `GET /api/v1/programs/[id]/capacity` — Historique des places (`?year=2025`)
+
+### 9.7 — Comparaison (1 endpoint)
+- [ ] `GET /api/v1/compare/programs` — Comparer N programmes côte à côte (`?ids=uuid1,uuid2,uuid3`, max 5)
+
+### 9.8 — Configuration transversale
+- [ ] CORS headers : `Access-Control-Allow-Origin: *`
+- [ ] Cache ISR 1h sur chaque route (`export const revalidate = 3600`)
+- [ ] Format d'erreur standardisé : `{"error": "description"}`
+- [ ] `400 Bad Request` pour paramètres invalides (ex: compare avec > 5 IDs)
+- [ ] `404 Not Found` pour ID inexistant ou école non ACTIVE
+- [ ] Exclure ContributionInbox, CronTarget, User de toute réponse
+
+### ✅ Tests Étape 9
+```
+- [ ] GET /api/v1/schools retourne un JSON paginé avec les écoles actives
+- [ ] GET /api/v1/schools?search=emlv retourne uniquement les écoles matchant "emlv"
+- [ ] GET /api/v1/schools/[id_invalide] retourne 404 {"error": "..."}
+- [ ] GET /api/v1/schools/[id] retourne les infos de base de l'école
+- [ ] GET /api/v1/schools/[id]/stats retourne les stats (dernière année par défaut)
+- [ ] GET /api/v1/schools/[id]/stats?year=2025 retourne les stats de 2025
+- [ ] GET /api/v1/schools/[id]/accreditations retourne la liste des accréditations
+- [ ] GET /api/v1/schools/[id]/campuses retourne les campus avec programmes
+- [ ] GET /api/v1/campuses/[id] retourne le détail du campus + programmes
+- [ ] GET /api/v1/schools/[id]/programs retourne tous les programmes
+- [ ] GET /api/v1/schools/[id]/programs?campus_id=xxx filtre par campus
+- [ ] GET /api/v1/programs?search=pge retourne les programmes matchant
+- [ ] GET /api/v1/programs/[id] retourne le détail du programme
+- [ ] GET /api/v1/programs/[id]/pricing retourne l'historique tarifaire
+- [ ] GET /api/v1/schools/[id]/pricing retourne les tarifs de tous les programmes
+- [ ] GET /api/v1/programs/[id]/rankings retourne les classements
+- [ ] GET /api/v1/rankings?ranking_name=Figaro&year=2025 retourne le tableau global
+- [ ] GET /api/v1/programs/[id]/capacity retourne l'historique des places
+- [ ] GET /api/v1/compare/programs?ids=uuid1,uuid2 retourne les données côte à côte
+- [ ] GET /api/v1/compare/programs?ids=1,2,3,4,5,6 retourne 400 (max 5)
+- [ ] Les headers CORS sont présents dans toutes les réponses
+- [ ] Aucun champ de ContributionInbox ou CronTarget n'apparaît dans les réponses
+- [ ] Deux requêtes consécutives → la 2ème est servie depuis le cache
+```
+
+---
+
+## Étape 10 : Page Documentation API
+
+### 10.1 — Page `/api-docs`
+- [ ] Page publique listant tous les endpoints v1 avec descriptions, paramètres et exemples de réponse
+- [ ] Exemples de code (curl, JavaScript, Python)
+
+### ✅ Tests Étape 10
+```
+- [ ] La page /api-docs est accessible publiquement
+- [ ] Tous les endpoints v1 sont documentés avec paramètres et exemples
+```
+
+---
+
+## Étape 11 : Sécurité et Edge Cases Finaux
+
+### 11.1 — Rate Limiting Crowdsourcing
+- [ ] Middleware Vercel limitant les soumissions par IP (Edge Case 1)
+- [ ] Validation format URL (`https://` obligatoire)
+
+### 11.2 — Healthcheck Koyeb
+- [ ] Endpoint `GET /health` configuré comme healthcheck Koyeb (Edge Case 15)
+- [ ] Frontend : retry automatique avec message UX si le backend est indisponible
+
+### 11.3 — Quota Guard Tavily
+- [ ] Vérification des crédits restants avant chaque appel Tavily
+- [ ] Arrêt automatique du pipeline si quota atteint (Edge Case 1)
+
+### 11.4 — Monitoring Admin
+- [ ] Page `/admin/cron` affichant : dernières exécutions, CronTargets blacklistés, crédits Tavily restants
+- [ ] Bouton pour débloquer un CronTarget blacklisté
+
+### ✅ Tests Étape 11
+```
+- [ ] Soumissions crowdsourcing rapides → rate limit actif
+- [ ] Healthcheck retourne 200 quand FastAPI est prêt
+- [ ] Pipeline s'arrête proprement quand le quota Tavily est atteint
+- [ ] La page /admin/cron affiche les CronTargets et permet le déblocage
+```
+
+---
+
+## Récapitulatif des Étapes
+
+| Étape | Description | Dépend de |
+|---|---|---|
+| 0 | Initialisation projet (Next.js + FastAPI) | — |
+| 1 | BDD Prisma + Auth NextAuth | 0 |
+| 2 | Dashboard Admin CRUD (Écoles, Campus, Users) | 1 |
+| 3 | Dashboard Admin Inbox (validation, Super Ticket) | 2 |
+| 4 | FastAPI Core (DB, API interne, Tavily KeyCycling, Module Gemma) | 0 |
+| 5 | Pipeline Phase 1 (Crawl + Extraction + Inbox) | 4 |
+| 6 | Pipeline Phase 2 (Strategy Router + Enrichissement + Diff) | 5 |
+| 7 | Workflow A Crowdsourcing (Frontend + Backend) | 3, 4 |
+| 8 | Frontend Public Consultation | 2 |
+| 9 | API REST Publique v1 | 1 |
+| 10 | Page Documentation API | 9 |
+| 11 | Sécurité et Edge Cases finaux | Tout |

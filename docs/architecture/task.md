@@ -33,7 +33,7 @@
 ### 1.1 — Prisma Schema
 - [x] Créer `prisma/schema.prisma` avec TOUS les modèles définis dans `bdd.md` : `User`, `School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ContributionInbox`, `CronTarget`
 - [x] Exécuter `npx prisma migrate dev --name init` — migration réussie
-- [ ] Exécuter `npx prisma generate` — client généré
+- [x] Exécuter `npx prisma generate` — client généré
 
 ### 1.2 — Script de Seed (Premier Admin)
 - [x] Créer `prisma/seed.ts` qui insère un User Admin par défaut (username: `admin`, password hashé avec bcrypt, role: `ADMIN`)

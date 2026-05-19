@@ -31,28 +31,28 @@
 ## Étape 1 : Base de Données et Authentification
 
 ### 1.1 — Prisma Schema
-- [ ] Créer `prisma/schema.prisma` avec TOUS les modèles définis dans `bdd.md` : `User`, `School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ContributionInbox`, `CronTarget`
-- [ ] Exécuter `npx prisma migrate dev --name init` — migration réussie
-- [ ] Exécuter `npx prisma generate` — client généré
+- [x] Créer `prisma/schema.prisma` avec TOUS les modèles définis dans `bdd.md` : `User`, `School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ContributionInbox`, `CronTarget`
+- [x] Exécuter `npx prisma migrate dev --name init` — migration réussie
+- [x] Exécuter `npx prisma generate` — client généré
 
 ### 1.2 — Script de Seed (Premier Admin)
-- [ ] Créer `prisma/seed.ts` qui insère un User Admin par défaut (username: `admin`, password hashé avec bcrypt, role: `ADMIN`)
-- [ ] Configurer `package.json` pour `npx prisma db seed`
+- [x] Créer `prisma/seed.ts` qui insère un User Admin par défaut (username: `admin`, password hashé avec bcrypt, role: `ADMIN`)
+- [x] Configurer `package.json` pour `npx prisma db seed`
 
 ### 1.3 — NextAuth Configuration
-- [ ] Configurer NextAuth avec Credentials Provider dans `app/api/auth/[...nextauth]/route.ts`
-- [ ] Vérifier le username/password contre la table `User` (bcrypt compare)
-- [ ] Inclure `role` dans le token JWT et la session
-- [ ] Créer un middleware `middleware.ts` protégeant toutes les routes `/admin/*` (sauf `/admin/login`)
+- [x] Configurer NextAuth avec Credentials Provider dans `app/api/auth/[...nextauth]/route.ts`
+- [x] Vérifier le username/password contre la table `User` (bcrypt compare)
+- [x] Inclure `role` dans le token JWT et la session
+- [x] Créer un middleware `middleware.ts` protégeant toutes les routes `/admin/*` (sauf `/admin/login`)
 
 ### ✅ Tests Étape 1
 ```
-- [ ] La migration crée toutes les tables dans Neon (vérifier via Prisma Studio : `npx prisma studio`)
-- [ ] Le seed crée le compte admin en BDD
-- [ ] POST /api/auth/signin avec les bons identifiants retourne un token valide
-- [ ] POST /api/auth/signin avec de mauvais identifiants retourne une erreur
-- [ ] Accéder à /admin/inbox sans session redirige vers /admin/login
-- [ ] Accéder à /admin/inbox avec session valide affiche la page
+- [x] La migration crée toutes les tables dans Neon (vérifier via Prisma Studio : `npx prisma studio`)
+- [x] Le seed crée le compte admin en BDD
+- [x] POST /api/auth/signin avec les bons identifiants retourne un token valide
+- [x] POST /api/auth/signin avec de mauvais identifiants retourne une erreur
+- [x] Accéder à /admin/inbox sans session redirige vers /admin/login
+- [x] Accéder à /admin/inbox avec session valide affiche la page
 ```
 
 ---

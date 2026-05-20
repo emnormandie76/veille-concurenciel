@@ -193,7 +193,7 @@ async def pipeline_status(_token: str = Depends(verify_internal_token)):
         "pipeline_jobs": active_jobs[:10],  # Limiter à 10 pour la lisibilité
         "tavily": tavily_status,
         "ai_model_primary": "models/gemma-4-31b-it",
-        "ai_model_triage": "models/gemma-4-26b-it",
+        "ai_model_triage": "models/gemma-4-26b-a4b-it",
         "ai_model_fallback": "gemini-3-flash-preview",
     }
 

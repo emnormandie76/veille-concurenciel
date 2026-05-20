@@ -14,7 +14,7 @@ pip install -U google-genai
 
 | Modèle | Identifiant API | Usage | JSON natif ? |
 |---|---|---|---|
-| **Gemma 4 26B** | `models/gemma-4-26b-it` | Tri rapide, fact-checking | ❌ Non |
+| **Gemma 4 26B** | `models/gemma-4-26b-a4b-it` | Tri rapide, fact-checking | ❌ Non |
 | **Gemma 4 31B** | `models/gemma-4-31b-it` | Extraction JSON complexe | ❌ Non |
 | Gemini 3 Flash (fallback) | `gemini-3-flash-preview` | Fallback si Gemma échoue | ✅ Oui |
 
@@ -267,7 +267,7 @@ Critères de NON-pertinence :
     user_content = f"<TEXTE_SOURCE>\n{raw_content[:3000]}\n</TEXTE_SOURCE>"
     
     result = call_gemma(
-        model="models/gemma-4-26b-it",
+        model="models/gemma-4-26b-a4b-it",
         system_prompt=system_prompt,
         user_content=user_content,
         required_keys=["relevant"],
@@ -391,7 +391,7 @@ def fact_check(user_claim: str, source_content: str) -> dict | None:
         f"<TEXTE_SOURCE>\n{source_content}\n</TEXTE_SOURCE>"
     )
     return call_gemma(
-        model="models/gemma-4-26b-it",
+        model="models/gemma-4-26b-a4b-it",
         system_prompt=FACTCHECK_SYSTEM_PROMPT,
         user_content=user_content,
         required_keys=["confirmed", "confidence"],

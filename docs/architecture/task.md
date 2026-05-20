@@ -203,19 +203,19 @@
 ## Étape 6 : Pipeline Phase 2 — Enrichissement
 
 ### 6.1 — Routeur Dynamique (Strategy Pattern)
-- [ ] Implémenter le dictionnaire `PIPELINE_STRATEGIES` (voir architecture.md section 4.2)
-- [ ] Chaque stratégie contient : config Tavily, modèle Gemma, clés JSON requises, prompt
+- [x] Implémenter le dictionnaire `PIPELINE_STRATEGIES` (voir architecture.md section 4.2)
+- [x] Chaque stratégie contient : config Tavily, modèle Gemma, clés JSON requises, prompt
 
 ### 6.2 — Module de Diff
-- [ ] Fonction `has_data_changed(new_data: dict, existing_record: dict) -> bool` qui compare le JSON extrait avec les données de production
-- [ ] Si rien n'a changé → retourner False (Edge Case 10)
+- [x] Fonction `has_data_changed(new_data: dict, existing_record: dict) -> bool` qui compare le JSON extrait avec les données de production
+- [x] Si rien n'a changé → retourner False (Edge Case 10)
 
 ### 6.3 — Tri rapide (Gemma 26B)
-- [ ] Fonction `is_content_relevant(raw_content: str, category: str) -> bool` via Gemma 26B
-- [ ] Détection des paywalls/cookies (Edge Case 11)
+- [x] Fonction `is_content_relevant(raw_content: str, category: str) -> bool` via Gemma 26B
+- [x] Détection des paywalls/cookies (Edge Case 11)
 
 ### 6.4 — Orchestrateur Phase 2
-- [ ] Fonction `run_phase2(school_id: str)` :
+- [x] Fonction `run_phase2(school_id: str)` :
   1. Lire tous les Programs validés de l'école
   2. Pour chaque (Program, Catégorie) non blacklisté :
      - Charger la stratégie
@@ -226,18 +226,18 @@
      - Insérer dans ContributionInbox
 
 ### 6.5 — Intégration APScheduler
-- [ ] Job `phase2_enricher` : toutes les `CRON_PHASE2_INTERVAL_HOURS` heures
+- [x] Job `phase2_enricher` : toutes les `CRON_PHASE2_INTERVAL_HOURS` heures
 
 ### ✅ Tests Étape 6
 ```
-- [ ] PIPELINE_STRATEGIES["Pricing"] retourne la bonne config avec les bons include_domains
-- [ ] has_data_changed avec données identiques → False
-- [ ] has_data_changed avec prix modifié → True
-- [ ] is_content_relevant avec un texte de tarifs → True
-- [ ] is_content_relevant avec un texte de cookies/paywall → False
-- [ ] run_phase2 pour une école avec programmes validés → tickets Pricing/Ranking créés dans l'Inbox
-- [ ] run_phase2 quand les données n'ont pas changé → aucun ticket créé (skip silencieux)
-- [ ] run_phase2 pour un programme blacklisté → skip
+- [x] PIPELINE_STRATEGIES["Pricing"] retourne la bonne config avec les bons include_domains
+- [x] has_data_changed avec données identiques → False
+- [x] has_data_changed avec prix modifié → True
+- [x] is_content_relevant avec un texte de tarifs → True
+- [x] is_content_relevant avec un texte de cookies/paywall → False
+- [x] run_phase2 pour une école avec programmes validés → tickets Pricing/Ranking créés dans l'Inbox
+- [x] run_phase2 quand les données n'ont pas changé → aucun ticket créé (skip silencieux)
+- [x] run_phase2 pour un programme blacklisté → skip
 ```
 
 ---

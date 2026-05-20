@@ -158,22 +158,22 @@ export async function PUT(
     // ── Dispatch par catégorie ──────────────────
     switch (category) {
       case "Program_Discovery":
-        return await validateProgramDiscovery(ticket, rawJson as ProgramDiscoveryJson);
+        return await validateProgramDiscovery(ticket, rawJson as unknown as ProgramDiscoveryJson);
 
       case "Pricing":
-        return await validatePricing(ticket, rawJson as PricingJson);
+        return await validatePricing(ticket, rawJson as unknown as PricingJson);
 
       case "Ranking":
-        return await validateRanking(ticket, rawJson as RankingJson);
+        return await validateRanking(ticket, rawJson as unknown as RankingJson);
 
       case "Capacity":
-        return await validateCapacity(ticket, rawJson as CapacityJson);
+        return await validateCapacity(ticket, rawJson as unknown as CapacityJson);
 
       case "SchoolStats":
-        return await validateSchoolStats(ticket, rawJson as SchoolStatsJson);
+        return await validateSchoolStats(ticket, rawJson as unknown as SchoolStatsJson);
 
       case "Accreditation":
-        return await validateAccreditation(ticket, rawJson as AccreditationJson);
+        return await validateAccreditation(ticket, rawJson as unknown as AccreditationJson);
 
       default:
         return NextResponse.json(

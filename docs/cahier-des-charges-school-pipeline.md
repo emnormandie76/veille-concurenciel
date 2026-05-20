@@ -18,7 +18,7 @@ Le système extrait, vérifie et structure les informations issues des sites off
   - `search` : Recherche web ciblée avec `include_domains` et `include_raw_content` (Phase 2 — Enrichissement). 1-2 crédits/requête.
   - `extract` : Extraction d'URLs spécifiques fournies par les utilisateurs (Workflow A — Crowdsourcing). 1 crédit/5 URLs.
 - **Modèles IA (via google-genai) :**
-  - *Gemma 4 26B (`models/gemma-4-26b-it`) :* Utilisé pour le routage sémantique rapide, la validation et le fact-checking ("Ce texte confirme-t-il la déclaration de l'utilisateur ?").
+  - *Gemma 4 26B (`models/gemma-4-26b-a4b-it`) :* Utilisé pour le routage sémantique rapide, la validation et le fact-checking ("Ce texte confirme-t-il la déclaration de l'utilisateur ?").
   - *Gemma 4 31B (`models/gemma-4-31b-it`) :* Utilisé pour l'extraction complexe de données JSON avec des instructions strictes anti-hallucination.
 - **Rotation de Clés API (Key Cycling) :** Bascule automatique entre plusieurs clés API Tavily gratuites pour pallier les limites du Free Tier lors de recherches massives.
 

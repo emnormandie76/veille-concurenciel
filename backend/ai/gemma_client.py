@@ -109,7 +109,7 @@ def call_gemma(
     Appelle un modèle Gemma avec retry, nettoyage JSON et validation structurelle.
 
     Args:
-        model: Identifiant du modèle ('models/gemma-4-31b-it' ou 'models/gemma-4-26b-it').
+        model: Identifiant du modèle ('models/gemma-4-31b-it' ou 'models/gemma-4-26b-a4b-it').
         system_prompt: Instructions système (rôle, règles, structure JSON attendue).
         user_content: Contenu à analyser, encadré par <TEXTE_SOURCE>...</TEXTE_SOURCE>.
         required_keys: Clés JSON obligatoires dans la réponse.
@@ -237,7 +237,7 @@ def is_content_relevant(raw_content: str, category: str) -> bool:
     user_content = f"<TEXTE_SOURCE>\n{raw_content[:3000]}\n</TEXTE_SOURCE>"
 
     result = call_gemma(
-        model="models/gemma-4-26b-it",
+        model="models/gemma-4-26b-a4b-it",
         system_prompt=system_prompt,
         user_content=user_content,
         required_keys=["relevant"],
@@ -282,7 +282,7 @@ def fact_check(user_claim: str, source_content: str) -> dict | None:
     )
 
     return call_gemma(
-        model="models/gemma-4-26b-it",
+        model="models/gemma-4-26b-a4b-it",
         system_prompt=system_prompt,
         user_content=user_content,
         required_keys=["confirmed", "confidence"],

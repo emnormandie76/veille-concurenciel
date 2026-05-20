@@ -210,13 +210,8 @@ def phase2_enricher(key_manager):
 
 def start_scheduler(key_manager):
     """
-    Démarre le scheduler avec les deux jobs.
+    Démarre le scheduler avec les deux jobs et le traitement Crowdsourcing.
     Appelé depuis le lifespan FastAPI (main.py) au startup.
-
-    Args:
-        key_manager: Instance de TavilyKeyManager à passer aux jobs
-
-    Référence : task.md §5.4
     """
     scheduler = get_scheduler()
 
@@ -244,11 +239,21 @@ def start_scheduler(key_manager):
         replace_existing=True,
     )
 
+    # ── Job Crowdsourcing ────────────────────────────────────────
+    from backend.crowdsourcing.processor import process_pending_submissions
+    scheduler.add_job(
+        func=process_pending_submissions,
+        trigger=IntervalTrigger(minutes=5),
+        args=[key_manager],
+        id="crowdsourcing_processor",
+        name="Process Crowdsourcing Submissions (toutes les 5m)",
+        replace_existing=True,
+    )
+
     scheduler.start()
     logger.info(
         f"✅ Scheduler démarré: "
-        f"Phase1 toutes les {PHASE1_INTERVAL_HOURS}h, "
-        f"Phase2 toutes les {PHASE2_INTERVAL_HOURS}h"
+        f"Phase1({PHASE1_INTERVAL_HOURS}h), Phase2({PHASE2_INTERVAL_HOURS}h), Crowdsourcing(5m)"
     )
 
 

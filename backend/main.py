@@ -1,15 +1,16 @@
 """
-School Data Pipeline — FastAPI Backend (Étape 4)
+School Data Pipeline — FastAPI Backend (Étape 5)
 
 Point d'entrée du pipeline IA. Intègre :
   - db.py : Pool de connexions PostgreSQL (Neon)
   - TavilyKeyManager : Rotation automatique des clés Tavily
   - gemma_client.py : Module Gemma (retry, nettoyage JSON, validation)
   - routers/internal.py : API Interne (trigger-scan, trigger-enrichment, pipeline-status)
+  - scheduler/jobs.py : APScheduler (phase1_scanner, phase2_enricher)
+  - pipeline/phase1.py : Phase 1 Cartographie (Étape 5)
 
 Étapes suivantes :
-  - Étape 5 : Phase 1 (Cartographie) — _run_scan()
-  - Étape 6 : Phase 2 (Enrichissement) — _run_enrichment()
+  - Étape 6 : Phase 2 (Enrichissement) — run_phase2()
   - Étape 7 : Traitement Crowdsourcing
 """
 
@@ -53,12 +54,24 @@ async def lifespan(app: FastAPI):
         logger.warning(f"⚠️ TavilyKeyManager non initialisé: {e}")
         app.state.tavily_manager = None
 
+    # Démarrer APScheduler (Phase 1 + Phase 2)
+    try:
+        from backend.scheduler.jobs import start_scheduler
+        start_scheduler(app.state.tavily_manager)
+    except Exception as e:
+        logger.warning(f"⚠️ Scheduler non démarré: {e}")
+
     logger.info("✅ Backend prêt")
 
     yield  # L'application tourne ici
 
     # ── Shutdown ──────────────────────────────────────────────────
     logger.info("🛑 Arrêt du backend...")
+    try:
+        from backend.scheduler.jobs import stop_scheduler
+        stop_scheduler()
+    except Exception:
+        pass
     try:
         from backend.db import close_pool
         close_pool()
@@ -75,7 +88,7 @@ app = FastAPI(
         "Pipeline IA automatisé pour la centralisation des données "
         "de l'enseignement supérieur français."
     ),
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",

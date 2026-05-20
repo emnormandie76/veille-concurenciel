@@ -199,16 +199,47 @@ async def pipeline_status(_token: str = Depends(verify_internal_token)):
 
 
 # ── Fonctions de pipeline asynchrones ────────────────────────────
-# Ces stubs seront complétés à l'Étape 5 (Phase 1) et Étape 6 (Phase 2)
 
 async def _run_scan(school_id: str, job_id: str):
-    """Stub Phase 1 — sera implémenté à l'Étape 5."""
+    """
+    Phase 1 réelle (Étape 5) — Tavily crawl + Gemma 31B + ContributionInbox INSERT.
+    Tourne en arrière-plan via asyncio.create_task().
+    """
+    from backend.pipeline.phase1 import run_phase1
+    import asyncio
+
     _pipeline_jobs[school_id]["status"] = "running"
     logger.info(f"[job={job_id}] Phase 1 (scan) démarrée pour school_id={school_id}")
-    # TODO Étape 5 : Tavily crawl + Gemma extract + Prisma insert
-    await asyncio.sleep(0)  # Cède le contrôle
-    _pipeline_jobs[school_id]["status"] = "completed"
-    logger.info(f"[job={job_id}] Phase 1 terminée (stub)")
+
+    try:
+        # Récupérer le TavilyKeyManager depuis app.state
+        # (run_in_executor car run_phase1 est synchrone et bloquant)
+        loop = asyncio.get_event_loop()
+
+        # Importer app ici pour accéder à app.state.tavily_manager
+        from backend.main import app
+        key_manager = getattr(app.state, "tavily_manager", None)
+
+        if key_manager is None:
+            raise RuntimeError("TavilyKeyManager non initialisé")
+
+        result = await loop.run_in_executor(
+            None,
+            run_phase1,
+            school_id,
+            key_manager,
+        )
+
+        _pipeline_jobs[school_id].update({
+            "status": "completed" if result.get("success") else "failed",
+            "result": result,
+        })
+        logger.info(f"[job={job_id}] Phase 1 terminée: {result.get('message')}")
+
+    except Exception as e:
+        _pipeline_jobs[school_id]["status"] = "failed"
+        _pipeline_jobs[school_id]["error"] = str(e)
+        logger.error(f"[job={job_id}] Phase 1 erreur: {e}")
 
 
 async def _run_enrichment(school_id: str, job_id: str, categories: list[str]):
@@ -220,6 +251,7 @@ async def _run_enrichment(school_id: str, job_id: str, categories: list[str]):
         f"school_id={school_id}, catégories={categories}"
     )
     # TODO Étape 6 : Tavily search + Gemma extract par catégorie + Prisma insert
+    import asyncio
     await asyncio.sleep(0)
     _pipeline_jobs[job_key]["status"] = "completed"
     logger.info(f"[job={job_id}] Phase 2 terminée (stub)")

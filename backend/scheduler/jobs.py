@@ -136,11 +136,74 @@ def phase2_enricher(key_manager):
     """
     Job APScheduler : Phase 2 — Enrichissement
 
-    Stub — sera implémenté à l'Étape 6.
+    Détecte les écoles ACTIVE avec au moins un Campus et lance run_phase2() pour chacune.
+    Traitement séquentiel avec pause entre chaque école.
+
     Référence : task.md §6.5, architecture.md §5.3
     """
-    logger.info("⏰ [CRON] phase2_enricher démarré (stub — Étape 6 à implémenter)")
-    # TODO Étape 6 : from backend.pipeline.phase2 import run_phase2
+    from backend.db import get_db_connection
+    from backend.pipeline.phase2 import run_phase2
+
+    logger.info(f"⏰ [CRON] phase2_enricher démarré")
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                # Écoles ACTIVE avec au moins un Campus
+                cur.execute(
+                    """
+                    SELECT DISTINCT s.id, s.name
+                    FROM "School" s
+                    JOIN "Campus" c ON c."schoolId" = s.id
+                    WHERE s.status = 'ACTIVE'
+                    ORDER BY s.name ASC
+                    """
+                )
+                schools_with_campus = cur.fetchall()
+
+    except Exception as e:
+        logger.error(f"❌ [CRON] Erreur lecture BDD dans phase2_enricher: {e}")
+        return
+
+    if not schools_with_campus:
+        logger.info("✅ [CRON] phase2_enricher: aucune école à traiter")
+        return
+
+    logger.info(
+        f"📋 [CRON] phase2_enricher: {len(schools_with_campus)} école(s) à enrichir"
+    )
+
+    for i, school in enumerate(schools_with_campus):
+        school_id = school["id"]
+        school_name = school["name"]
+
+        logger.info(
+            f"🏫 [CRON] Traitement {i+1}/{len(schools_with_campus)}: {school_name}"
+        )
+
+        try:
+            result = run_phase2(school_id, key_manager)
+
+            if result.get("success"):
+                logger.info(
+                    f"✅ [CRON] {school_name}: {result.get('tickets_created')} ticket(s) créé(s)"
+                )
+            else:
+                msg = result.get("message", "Échec inconnu")
+                logger.warning(f"⚠️ [CRON] {school_name}: {msg}")
+
+                if "quota" in msg.lower() or "épuisé" in msg.lower():
+                    logger.error("🛑 [CRON] Quota Tavily épuisé — arrêt de l'enricher")
+                    break
+
+        except Exception as e:
+            logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
+
+        if i < len(schools_with_campus) - 1:
+            logger.info(f"⏸️ [CRON] Pause {PAUSE_BETWEEN_SCHOOLS}s avant la prochaine école...")
+            time.sleep(PAUSE_BETWEEN_SCHOOLS)
+
+    logger.info("✅ [CRON] phase2_enricher terminé")
 
 
 # ── Démarrage / Arrêt ─────────────────────────────────────────────

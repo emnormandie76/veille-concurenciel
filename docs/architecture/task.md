@@ -245,21 +245,21 @@
 ## Étape 7 : Workflow A — Crowdsourcing
 
 ### 7.1 — Page publique `/contribute`
-- [ ] Dropdown École avec autocomplete (données depuis `GET /api/schools`)
-- [ ] Dropdown Campus (chargé dynamiquement selon l'école sélectionnée) — optionnel
-- [ ] Dropdown Programme (chargé dynamiquement selon le campus) — optionnel
-- [ ] Multi-select catégories : Tarifs, Classement, Capacité, Stats école, Accréditation
-- [ ] Champ texte libre (revendication)
-- [ ] Champ URL(s) source(s)
-- [ ] Bouton Soumettre
+- [x] Dropdown École avec autocomplete (données depuis `GET /api/schools`)
+- [x] Dropdown Campus (chargé dynamiquement selon l'école sélectionnée) — optionnel
+- [x] Dropdown Programme (chargé dynamiquement selon le campus) — optionnel
+- [x] Multi-select catégories : Tarifs, Classement, Capacité, Stats école, Accréditation
+- [x] Champ texte libre (revendication)
+- [x] Champ URL(s) source(s)
+- [x] Bouton Soumettre
 
 ### 7.2 — API Route de soumission
-- [ ] `POST /api/contribute` — Crée 1 ticket Inbox par catégorie sélectionnée
-- [ ] Rate limiting par IP (middleware Vercel ou custom)
-- [ ] Validation : URL format `https://`, école existante, au moins 1 catégorie
+- [x] `POST /api/contribute` — Crée 1 ticket Inbox par catégorie sélectionnée
+- [x] Rate limiting par IP (middleware Vercel ou custom)
+- [x] Validation : URL format `https://`, école existante, au moins 1 catégorie
 
 ### 7.3 — Traitement Backend (FastAPI)
-- [ ] Endpoint ou job qui traite les tickets `Pending_AI` de type `User_Submission` :
+- [x] Endpoint ou job qui traite les tickets `Pending_AI` de type `User_Submission` :
   1. Tavily extract(urls) pour récupérer le contenu
   2. Gemma 26B : fact-checking (le texte confirme-t-il la revendication ?)
   3. Gemma 31B : extraction JSON selon la catégorie
@@ -267,14 +267,14 @@
 
 ### ✅ Tests Étape 7
 ```
-- [ ] La page /contribute affiche le formulaire avec les dropdowns
-- [ ] Sélectionner EMLV → les campus EMLV apparaissent
-- [ ] Sélectionner un campus → les programmes apparaissent
-- [ ] Soumettre avec 2 catégories cochées → 2 tickets créés dans l'Inbox
-- [ ] Soumettre sans école → erreur de validation
-- [ ] Soumettre sans URL → erreur de validation
-- [ ] Le traitement backend extrait le contenu et met à jour le status à Pending_Admin
-- [ ] 10 soumissions rapides depuis la même IP → rate limit déclenché
+- [x] La page /contribute affiche le formulaire avec les dropdowns
+- [x] Sélectionner EMLV → les campus EMLV apparaissent
+- [x] Sélectionner un campus → les programmes apparaissent
+- [x] Soumettre avec 2 catégories cochées → 2 tickets créés dans l'Inbox
+- [x] Soumettre sans école → erreur de validation
+- [x] Soumettre sans URL → erreur de validation
+- [x] Le traitement backend extrait le contenu et met à jour le status à Pending_Admin
+- [x] 10 soumissions rapides depuis la même IP → rate limit déclenché
 ```
 
 ---

@@ -1,39 +1,116 @@
 """
-School Data Pipeline — FastAPI Backend
-Étape 0 : Scaffolding initial
+School Data Pipeline — FastAPI Backend (Étape 4)
 
-Ce module est le point d'entrée du backend IA.
-Les modules suivants seront ajoutés lors des étapes ultérieures :
-  - Étape 4 : db.py, TavilyKeyManager, Module Gemma
-  - Étape 5 : Phase 1 (Cartographie)
-  - Étape 6 : Phase 2 (Enrichissement)
+Point d'entrée du pipeline IA. Intègre :
+  - db.py : Pool de connexions PostgreSQL (Neon)
+  - TavilyKeyManager : Rotation automatique des clés Tavily
+  - gemma_client.py : Module Gemma (retry, nettoyage JSON, validation)
+  - routers/internal.py : API Interne (trigger-scan, trigger-enrichment, pipeline-status)
+
+Étapes suivantes :
+  - Étape 5 : Phase 1 (Cartographie) — _run_scan()
+  - Étape 6 : Phase 2 (Enrichissement) — _run_enrichment()
   - Étape 7 : Traitement Crowdsourcing
 """
 
+import os
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# ── Configuration du logging ──────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("pipeline.main")
+
+# ── Singleton TavilyKeyManager ─────────────────────────────────────
+# Accessible par tous les modules via app.state.tavily_manager
+from backend.tavily.key_manager import TavilyKeyManager, QuotaExhaustedError
+
+
+# ── Lifespan (startup / shutdown) ─────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialise les ressources au démarrage, les libère à l'arrêt."""
+    # ── Startup ───────────────────────────────────────────────────
+    logger.info("🚀 Démarrage du backend School Data Pipeline...")
+
+    # Le pool BDD est lazy — il s'initialise à la première requête
+    # (évite le blocage au démarrage si Neon est lent)
+    logger.info("✅ Pool PostgreSQL (Neon) : mode lazy init")
+
+    # Initialiser TavilyKeyManager
+    try:
+        app.state.tavily_manager = TavilyKeyManager()
+        logger.info(
+            f"✅ TavilyKeyManager prêt ({app.state.tavily_manager.total_keys} clé(s))"
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ TavilyKeyManager non initialisé: {e}")
+        app.state.tavily_manager = None
+
+    logger.info("✅ Backend prêt")
+
+    yield  # L'application tourne ici
+
+    # ── Shutdown ──────────────────────────────────────────────────
+    logger.info("🛑 Arrêt du backend...")
+    try:
+        from backend.db import close_pool
+        close_pool()
+    except Exception:
+        pass
+    logger.info("✅ Arrêt propre")
+
+
+# ── Application FastAPI ───────────────────────────────────────────
+
 app = FastAPI(
     title="School Data Pipeline — Backend IA",
-    description="Pipeline IA automatisé pour la centralisation des données de l'enseignement supérieur français.",
-    version="0.1.0",
+    description=(
+        "Pipeline IA automatisé pour la centralisation des données "
+        "de l'enseignement supérieur français."
+    ),
+    version="0.4.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
-# CORS — autorise les appels depuis Next.js (localhost:3000 en dev)
+# ── CORS ──────────────────────────────────────────────────────────
+# En production, remplacer par l'URL Vercel/Koyeb
+ALLOWED_ORIGINS = os.environ.get(
+    "ALLOWED_ORIGINS", "http://localhost:3000"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ── Routers ───────────────────────────────────────────────────────
+from backend.routers.internal import router as internal_router
+app.include_router(internal_router)
+
+
+# ── Endpoints publics ─────────────────────────────────────────────
 
 @app.get("/health", tags=["Système"])
 async def health_check():
     """
     Healthcheck endpoint.
     Utilisé par Koyeb pour vérifier que le backend est opérationnel (Edge Case 15).
-    Retourne toujours 200 quand le serveur est prêt.
+    Retourne toujours 200 même si la BDD est temporairement indisponible.
+    Ne fait PAS de check BDD (évite le timeout au démarrage).
     """
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "version": "0.4.0",
+    }

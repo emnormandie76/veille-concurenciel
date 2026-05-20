@@ -1,5 +1,6 @@
 /**
- * middleware.ts — Protection des routes /admin/* (Étape 1.3)
+ * proxy.ts — Protection des routes /admin/* (Étape 1.3)
+ * Renommé depuis middleware.ts → proxy.ts (Next.js 16 convention)
  *
  * - Protège TOUTES les routes /admin/* SAUF /admin/login
  * - Redirige vers /admin/login si pas de session valide

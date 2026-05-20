@@ -1,0 +1,142 @@
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  try {
+    const school = await prisma.school.findUnique({
+      where: { id },
+    });
+
+    if (!school) {
+      return NextResponse.json({ error: "École introuvable" }, { status: 404 });
+    }
+
+    return NextResponse.json(school);
+  } catch (error) {
+    console.error(`GET /api/admin/schools/${id} error:`, error);
+    return NextResponse.json({ error: "Erreur serveur lors de la récupération" }, { status: 500 });
+  }
+}
+
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  try {
+    const body = await request.json();
+    const { name, official_domain } = body;
+
+    if (!name && !official_domain) {
+      return NextResponse.json(
+        { error: "Au moins un champ (nom ou domaine officiel) doit être fourni" },
+        { status: 400 }
+      );
+    }
+
+    // Récupérer l'école existante
+    const school = await prisma.school.findUnique({
+      where: { id },
+    });
+
+    if (!school) {
+      return NextResponse.json({ error: "École introuvable" }, { status: 404 });
+    }
+
+    const data: Record<string, string> = {};
+    if (name) data.name = name.trim();
+    if (official_domain) data.official_domain = official_domain.trim().toLowerCase();
+
+    // Vérifier l'unicité si le nom ou le domaine change
+    if (name || official_domain) {
+      const existing = await prisma.school.findFirst({
+        where: {
+          id: { not: id },
+          OR: [
+            name ? { name: data.name } : {},
+            official_domain ? { official_domain: data.official_domain } : {}
+          ].filter(cond => Object.keys(cond).length > 0)
+        }
+      });
+
+      if (existing) {
+        return NextResponse.json(
+          { error: "Une autre école possède déjà ce nom ou ce domaine officiel" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const updatedSchool = await prisma.school.update({
+      where: { id },
+      data,
+    });
+
+    return NextResponse.json(updatedSchool);
+  } catch (error) {
+    console.error(`PUT /api/admin/schools/${id} error:`, error);
+    return NextResponse.json({ error: "Erreur serveur lors de la modification" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const confirmName = searchParams.get("confirmName");
+
+    // Trouver l'école
+    const school = await prisma.school.findUnique({
+      where: { id },
+    });
+
+    if (!school) {
+      return NextResponse.json({ error: "École introuvable" }, { status: 404 });
+    }
+
+    // Double confirmation
+    if (!confirmName || confirmName.trim() !== school.name) {
+      return NextResponse.json(
+        { error: `Confirmation échouée. Vous devez entrer le nom exact de l'école: "${school.name}".` },
+        { status: 400 }
+      );
+    }
+
+    // Suppression en cascade (gérée au niveau Prisma/DB onDelete: Cascade)
+    await prisma.school.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ message: "École supprimée avec succès" });
+  } catch (error) {
+    console.error(`DELETE /api/admin/schools/${id} error:`, error);
+    return NextResponse.json({ error: "Erreur serveur lors de la suppression" }, { status: 500 });
+  }
+}

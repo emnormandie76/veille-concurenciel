@@ -60,38 +60,38 @@
 ## Étape 2 : Dashboard Admin — CRUD Écoles et Campus
 
 ### 2.1 — API Routes Admin (Next.js)
-- [ ] `GET /api/admin/schools` — Liste toutes les écoles
-- [ ] `POST /api/admin/schools` — Créer une école (name + official_domain)
-- [ ] `PUT /api/admin/schools/[id]` — Modifier une école
-- [ ] `DELETE /api/admin/schools/[id]` — Supprimer une école (vérifier le token de double confirmation)
-- [ ] `GET /api/admin/schools/[id]/campuses` — Liste les campus d'une école
-- [ ] `POST /api/admin/schools/[id]/campuses` — Créer un campus
-- [ ] `PUT /api/admin/campuses/[id]` — Modifier un campus
-- [ ] `DELETE /api/admin/campuses/[id]` — Supprimer un campus
+- [x] `GET /api/admin/schools` — Liste toutes les écoles
+- [x] `POST /api/admin/schools` — Créer une école (name + official_domain)
+- [x] `PUT /api/admin/schools/[id]` — Modifier une école
+- [x] `DELETE /api/admin/schools/[id]` — Supprimer une école (vérifier le token de double confirmation)
+- [x] `GET /api/admin/schools/[id]/campuses` — Liste les campus d'une école
+- [x] `POST /api/admin/schools/[id]/campuses` — Créer un campus
+- [x] `PUT /api/admin/campuses/[id]` — Modifier un campus
+- [x] `DELETE /api/admin/campuses/[id]` — Supprimer un campus
 
 ### 2.2 — Pages Admin
-- [ ] Page `/admin/schools` — Tableau listant les écoles avec boutons Ajouter/Modifier/Supprimer
-- [ ] Modale de création/édition d'école (champs: name, official_domain)
-- [ ] Modale de suppression avec **double confirmation** ("Tapez le nom de l'école pour confirmer")
-- [ ] Page `/admin/schools/[id]/campuses` — Gestion des campus de l'école
+- [x] Page `/admin/schools` — Tableau listant les écoles avec boutons Ajouter/Modifier/Supprimer
+- [x] Modale de création/édition d'école (champs: name, official_domain)
+- [x] Modale de suppression avec **double confirmation** ("Tapez le nom de l'école pour confirmer")
+- [x] Page `/admin/schools/[id]/campuses` — Gestion des campus de l'école
 
 ### 2.3 — Gestion des Modérateurs (Admin uniquement)
-- [ ] Page `/admin/users` — Liste des modérateurs (visible uniquement si role=ADMIN)
-- [ ] `POST /api/admin/users` — Créer un modérateur (username + password)
-- [ ] `DELETE /api/admin/users/[id]` — Supprimer un modérateur
-- [ ] Interdire la suppression de son propre compte
-- [ ] Interdire l'accès à cette page pour les Modérateurs (role check)
+- [x] Page `/admin/users` — Liste des modérateurs (visible uniquement si role=ADMIN)
+- [x] `POST /api/admin/users` — Créer un modérateur (username + password)
+- [x] `DELETE /api/admin/users/[id]` — Supprimer un modérateur
+- [x] Interdire la suppression de son propre compte
+- [x] Interdire l'accès à cette page pour les Modérateurs (role check)
 
 ### ✅ Tests Étape 2
 ```
-- [ ] Créer une école "EMLV" avec domaine "emlv.fr" → apparaît dans la liste
-- [ ] Créer un campus "Paris La Défense" pour EMLV → apparaît dans la liste campus
-- [ ] Modifier le nom du campus → changement persisté en BDD
-- [ ] Supprimer le campus → disparaît de la liste
-- [ ] Supprimer l'école avec double confirmation → école et campus supprimés (cascade)
-- [ ] Créer un modérateur → peut se connecter et accéder au dashboard
-- [ ] Le modérateur ne voit PAS la page /admin/users
-- [ ] L'admin voit et peut gérer la page /admin/users
+- [x] Créer une école "EMLV" avec domaine "emlv.fr" → apparaît dans la liste
+- [x] Créer un campus "Paris La Défense" pour EMLV → apparaît dans la liste campus
+- [x] Modifier le nom du campus → changement persisté en BDD
+- [x] Supprimer le campus → disparaît de la liste
+- [x] Supprimer l'école avec double confirmation → école et campus supprimés (cascade)
+- [x] Créer un modérateur → peut se connecter et accéder au dashboard
+- [x] Le modérateur ne voit PAS la page /admin/users
+- [x] L'admin voit et peut gérer la page /admin/users
 ```
 
 ---

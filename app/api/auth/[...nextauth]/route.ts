@@ -58,7 +58,7 @@ export const authOptions: AuthOptions = {
     // Inclure le rôle dans le JWT token
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as { role: "ADMIN" | "MODERATOR" }).role;
+        token.role = (user as unknown as { role: "ADMIN" | "MODERATOR" }).role;
         token.id = user.id;
       }
       return token;

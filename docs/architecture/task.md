@@ -60,38 +60,38 @@
 ## Étape 2 : Dashboard Admin — CRUD Écoles et Campus
 
 ### 2.1 — API Routes Admin (Next.js)
-- [ ] `GET /api/admin/schools` — Liste toutes les écoles
-- [ ] `POST /api/admin/schools` — Créer une école (name + official_domain)
-- [ ] `PUT /api/admin/schools/[id]` — Modifier une école
-- [ ] `DELETE /api/admin/schools/[id]` — Supprimer une école (vérifier le token de double confirmation)
-- [ ] `GET /api/admin/schools/[id]/campuses` — Liste les campus d'une école
-- [ ] `POST /api/admin/schools/[id]/campuses` — Créer un campus
-- [ ] `PUT /api/admin/campuses/[id]` — Modifier un campus
-- [ ] `DELETE /api/admin/campuses/[id]` — Supprimer un campus
+- [x] `GET /api/admin/schools` — Liste toutes les écoles
+- [x] `POST /api/admin/schools` — Créer une école (name + official_domain)
+- [x] `PUT /api/admin/schools/[id]` — Modifier une école
+- [x] `DELETE /api/admin/schools/[id]` — Supprimer une école (vérifier le token de double confirmation)
+- [x] `GET /api/admin/schools/[id]/campuses` — Liste les campus d'une école
+- [x] `POST /api/admin/schools/[id]/campuses` — Créer un campus
+- [x] `PUT /api/admin/campuses/[id]` — Modifier un campus
+- [x] `DELETE /api/admin/campuses/[id]` — Supprimer un campus
 
 ### 2.2 — Pages Admin
-- [ ] Page `/admin/schools` — Tableau listant les écoles avec boutons Ajouter/Modifier/Supprimer
-- [ ] Modale de création/édition d'école (champs: name, official_domain)
-- [ ] Modale de suppression avec **double confirmation** ("Tapez le nom de l'école pour confirmer")
-- [ ] Page `/admin/schools/[id]/campuses` — Gestion des campus de l'école
+- [x] Page `/admin/schools` — Tableau listant les écoles avec boutons Ajouter/Modifier/Supprimer
+- [x] Modale de création/édition d'école (champs: name, official_domain)
+- [x] Modale de suppression avec **double confirmation** ("Tapez le nom de l'école pour confirmer")
+- [x] Page `/admin/schools/[id]/campuses` — Gestion des campus de l'école
 
 ### 2.3 — Gestion des Modérateurs (Admin uniquement)
-- [ ] Page `/admin/users` — Liste des modérateurs (visible uniquement si role=ADMIN)
-- [ ] `POST /api/admin/users` — Créer un modérateur (username + password)
-- [ ] `DELETE /api/admin/users/[id]` — Supprimer un modérateur
-- [ ] Interdire la suppression de son propre compte
-- [ ] Interdire l'accès à cette page pour les Modérateurs (role check)
+- [x] Page `/admin/users` — Liste des modérateurs (visible uniquement si role=ADMIN)
+- [x] `POST /api/admin/users` — Créer un modérateur (username + password)
+- [x] `DELETE /api/admin/users/[id]` — Supprimer un modérateur
+- [x] Interdire la suppression de son propre compte
+- [x] Interdire l'accès à cette page pour les Modérateurs (role check)
 
 ### ✅ Tests Étape 2
 ```
-- [ ] Créer une école "EMLV" avec domaine "emlv.fr" → apparaît dans la liste
-- [ ] Créer un campus "Paris La Défense" pour EMLV → apparaît dans la liste campus
-- [ ] Modifier le nom du campus → changement persisté en BDD
-- [ ] Supprimer le campus → disparaît de la liste
-- [ ] Supprimer l'école avec double confirmation → école et campus supprimés (cascade)
-- [ ] Créer un modérateur → peut se connecter et accéder au dashboard
-- [ ] Le modérateur ne voit PAS la page /admin/users
-- [ ] L'admin voit et peut gérer la page /admin/users
+- [x] Créer une école "EMLV" avec domaine "emlv.fr" → apparaît dans la liste
+- [x] Créer un campus "Paris La Défense" pour EMLV → apparaît dans la liste campus
+- [x] Modifier le nom du campus → changement persisté en BDD
+- [x] Supprimer le campus → disparaît de la liste
+- [x] Supprimer l'école avec double confirmation → école et campus supprimés (cascade)
+- [x] Créer un modérateur → peut se connecter et accéder au dashboard
+- [x] Le modérateur ne voit PAS la page /admin/users
+- [x] L'admin voit et peut gérer la page /admin/users
 ```
 
 ---
@@ -99,33 +99,33 @@
 ## Étape 3 : Dashboard Admin — ContributionInbox
 
 ### 3.1 — API Routes Inbox
-- [ ] `GET /api/admin/inbox` — Liste les tickets (filtres: status, ai_category, schoolId) avec pagination
-- [ ] `GET /api/admin/inbox/[id]` — Détail d'un ticket
-- [ ] `PUT /api/admin/inbox/[id]/validate` — Valider un ticket (transfère les données vers les tables rigides via upsert Prisma)
-- [ ] `PUT /api/admin/inbox/[id]/reject` — Rejeter un ticket
+- [x] `GET /api/admin/inbox` — Liste les tickets (filtres: status, ai_category, schoolId) avec pagination
+- [x] `GET /api/admin/inbox/[id]` — Détail d'un ticket
+- [x] `PUT /api/admin/inbox/[id]/validate` — Valider un ticket (transfère les données vers les tables rigides via upsert Prisma)
+- [x] `PUT /api/admin/inbox/[id]/reject` — Rejeter un ticket
 
 ### 3.2 — Validation Program_Discovery (Super Ticket)
-- [ ] Quand `ai_category = "Program_Discovery"` : le frontend génère un formulaire répéteur pré-rempli avec les campus et programmes du JSON
-- [ ] L'Admin peut modifier/supprimer/ajouter des campus et programmes dans le formulaire
-- [ ] Au clic "Valider" : transaction Prisma qui crée les Campus + Programs en une passe atomique
-- [ ] En cas d'erreur : rollback complet, message d'erreur affiché
+- [x] Quand `ai_category = "Program_Discovery"` : le frontend génère un formulaire répéteur pré-rempli avec les campus et programmes du JSON
+- [x] L'Admin peut modifier/supprimer/ajouter des campus et programmes dans le formulaire
+- [x] Au clic "Valider" : transaction Prisma qui crée les Campus + Programs en une passe atomique
+- [x] En cas d'erreur : rollback complet, message d'erreur affiché
 
 ### 3.3 — Validation des données (Pricing, Ranking, etc.)
-- [ ] Quand `ai_category = "Pricing"` : formulaire pré-rempli avec les champs de PricingRecord
-- [ ] Idem pour Ranking, Capacity, SchoolStats, Accreditation
-- [ ] Au clic "Valider" : upsert Prisma dans la table rigide correspondante
-- [ ] Les flags `year_assumed`, `data_conflict_warning`, `program_name_mismatch` sont affichés comme alertes visuelles
+- [x] Quand `ai_category = "Pricing"` : formulaire pré-rempli avec les champs de PricingRecord
+- [x] Idem pour Ranking, Capacity, SchoolStats, Accreditation
+- [x] Au clic "Valider" : upsert Prisma dans la table rigide correspondante
+- [x] Les flags `year_assumed`, `data_conflict_warning`, `program_name_mismatch` sont affichés comme alertes visuelles
 
 ### ✅ Tests Étape 3
 ```
-- [ ] Insérer manuellement un ticket Program_Discovery en BDD → il apparaît dans l'inbox
-- [ ] Ouvrir le ticket → formulaire pré-rempli avec campus/programmes du JSON
-- [ ] Modifier un nom de programme, valider → Campus et Program créés en BDD avec le nom modifié
-- [ ] Insérer un ticket Pricing → formulaire pré-rempli avec les champs tarifs
-- [ ] Valider le ticket Pricing → PricingRecord créé/mis à jour en BDD
-- [ ] Rejeter un ticket → status passe à "Rejected", pas de données en production
-- [ ] Ticket avec year_assumed=true → badge d'alerte visible dans l'interface
-- [ ] Ticket avec data_conflict_warning=true → badge d'alerte visible
+- [x] Insérer manuellement un ticket Program_Discovery en BDD → il apparaît dans l'inbox
+- [x] Ouvrir le ticket → formulaire pré-rempli avec campus/programmes du JSON
+- [x] Modifier un nom de programme, valider → Campus et Program créés en BDD avec le nom modifié
+- [x] Insérer un ticket Pricing → formulaire pré-rempli avec les champs tarifs
+- [x] Valider le ticket Pricing → PricingRecord créé/mis à jour en BDD
+- [x] Rejeter un ticket → status passe à "Rejected", pas de données en production
+- [x] Ticket avec year_assumed=true → badge d'alerte visible dans l'interface
+- [x] Ticket avec data_conflict_warning=true → badge d'alerte visible
 ```
 
 ---
@@ -133,34 +133,34 @@
 ## Étape 4 : Backend FastAPI — Core et API Interne
 
 ### 4.1 — Connexion DB
-- [ ] Configurer la connexion PostgreSQL (psycopg2 ou SQLAlchemy) avec `DATABASE_URL`
-- [ ] Créer un module `backend/db.py` avec un pool de connexions
+- [x] Configurer la connexion PostgreSQL (psycopg2 ou SQLAlchemy) avec `DATABASE_URL`
+- [x] Créer un module `backend/db.py` avec un pool de connexions
 
 ### 4.2 — API Interne (sécurisée)
-- [ ] Middleware de vérification du token (`Authorization: Bearer {INTERNAL_TOKEN}`)
-- [ ] `POST /internal/trigger-scan/{school_id}` — Déclenche Phase 1 pour une école
-- [ ] `POST /internal/trigger-enrichment/{school_id}` — Déclenche Phase 2 pour une école
-- [ ] `GET /internal/pipeline-status` — Retourne l'état du pipeline (crédits restants, tâches en cours)
+- [x] Middleware de vérification du token (`Authorization: Bearer {INTERNAL_TOKEN}`)
+- [x] `POST /internal/trigger-scan/{school_id}` — Déclenche Phase 1 pour une école
+- [x] `POST /internal/trigger-enrichment/{school_id}` — Déclenche Phase 2 pour une école
+- [x] `GET /internal/pipeline-status` — Retourne l'état du pipeline (crédits restants, tâches en cours)
 
 ### 4.3 — Key Cycling Tavily
-- [ ] Implémenter `TavilyKeyManager` (voir architecture.md section 4.3)
-- [ ] Rotation automatique quand une clé atteint 950 crédits
-- [ ] Exception `QuotaExhaustedError` si toutes les clés sont épuisées
+- [x] Implémenter `TavilyKeyManager` (voir architecture.md section 4.3)
+- [x] Rotation automatique quand une clé atteint 950 crédits
+- [x] Exception `QuotaExhaustedError` si toutes les clés sont épuisées
 
 ### 4.4 — Module Gemma
-- [ ] Reprendre et adapter `call_gemma_with_retry` depuis `gemma-python-guide.md` (template production)
-- [ ] Intégrer : retry backoff, nettoyage JSON, validation des clés, gestion finish_reason
-- [ ] Créer `clean_gemma_json()` et `validate_json_structure()`
+- [x] Reprendre et adapter `call_gemma_with_retry` depuis `gemma-python-guide.md` (template production)
+- [x] Intégrer : retry backoff, nettoyage JSON, validation des clés, gestion finish_reason
+- [x] Créer `clean_gemma_json()` et `validate_json_structure()`
 
 ### ✅ Tests Étape 4
 ```
-- [ ] FastAPI démarre et se connecte à la BDD Neon sans erreur
-- [ ] GET /internal/pipeline-status sans token → 401 Unauthorized
-- [ ] GET /internal/pipeline-status avec token → 200 + JSON status
-- [ ] TavilyKeyManager avec 2 clés : la première est utilisée, puis bascule à la seconde après 950
-- [ ] TavilyKeyManager avec toutes les clés épuisées → lève QuotaExhaustedError
-- [ ] call_gemma_with_retry avec un prompt simple → retourne un dict JSON valide
-- [ ] call_gemma_with_retry avec un JSON invalide simulé → retry puis retourne None après max_retries
+- [x] FastAPI démarre et se connecte à la BDD Neon sans erreur
+- [x] GET /internal/pipeline-status sans token → 401 Unauthorized
+- [x] GET /internal/pipeline-status avec token → 200 + JSON status
+- [x] TavilyKeyManager avec 2 clés : la première est utilisée, puis bascule à la seconde après 950
+- [x] TavilyKeyManager avec toutes les clés épuisées → lève QuotaExhaustedError
+- [x] call_gemma_with_retry avec un prompt simple → retourne un dict JSON valide
+- [x] call_gemma_with_retry avec un JSON invalide simulé → retry puis retourne None après max_retries
 ```
 
 ---
@@ -168,15 +168,15 @@
 ## Étape 5 : Pipeline Phase 1 — Cartographie (Program Discovery)
 
 ### 5.1 — Module Tavily Crawl
-- [ ] Fonction `crawl_school_website(official_domain: str) -> str` qui appelle Tavily crawl avec `select_paths` et `instructions` appropriés
-- [ ] Gestion du timeout (15s) et des réponses vides (Edge Case 14)
+- [x] Fonction `crawl_school_website(official_domain: str) -> str` qui appelle Tavily crawl avec `select_paths` et `instructions` appropriés
+- [x] Gestion du timeout (15s) et des réponses vides (Edge Case 14)
 
 ### 5.2 — Extraction Phase 1
-- [ ] Fonction `extract_programs(raw_content: str) -> dict | None` qui envoie le contenu à Gemma 31B avec le prompt Phase 1 (voir architecture.md section 5.1)
-- [ ] Validation du JSON retourné (clés obligatoires: `discovered_campuses`)
+- [x] Fonction `extract_programs(raw_content: str) -> dict | None` qui envoie le contenu à Gemma 31B avec le prompt Phase 1 (voir architecture.md section 5.1)
+- [x] Validation du JSON retourné (clés obligatoires: `discovered_campuses`)
 
 ### 5.3 — Orchestrateur Phase 1
-- [ ] Fonction `run_phase1(school_id: str)` :
+- [x] Fonction `run_phase1(school_id: str)` :
   1. Lire l'école en BDD
   2. Vérifier CronTarget (pas blacklisté)
   3. Appeler `crawl_school_website`
@@ -185,17 +185,17 @@
   6. En cas d'échec : incrémenter `failed_attempts_count` dans CronTarget
 
 ### 5.4 — Intégration APScheduler
-- [ ] Job `phase1_scanner` : toutes les `CRON_PHASE1_INTERVAL_HOURS` heures, lire les écoles ACTIVE sans Campus et lancer `run_phase1` pour chacune
-- [ ] Respecter les rate limits (max 1 école traitée à la fois, pause entre chaque)
+- [x] Job `phase1_scanner` : toutes les `CRON_PHASE1_INTERVAL_HOURS` heures, lire les écoles ACTIVE sans Campus et lancer `run_phase1` pour chacune
+- [x] Respecter les rate limits (max 1 école traitée à la fois, pause entre chaque)
 
 ### ✅ Tests Étape 5
 ```
-- [ ] crawl_school_website("emlv.fr") retourne du contenu Markdown non vide (test réel API)
-- [ ] extract_programs avec un contenu Markdown réel → JSON avec discovered_campuses non vide
-- [ ] run_phase1 pour une école sans campus → ticket Program_Discovery créé dans ContributionInbox
-- [ ] run_phase1 pour une école déjà blacklistée → skip (pas d'appel API)
-- [ ] Après 3 échecs consécutifs → CronTarget.is_blacklisted = true
-- [ ] Le scheduler lance bien phase1_scanner à l'intervalle configuré
+- [x] crawl_school_website("emlv.fr") retourne du contenu Markdown non vide (test réel API)
+- [x] extract_programs avec un contenu Markdown réel → JSON avec discovered_campuses non vide
+- [x] run_phase1 pour une école sans campus → ticket Program_Discovery créé dans ContributionInbox
+- [x] run_phase1 pour une école déjà blacklistée → skip (pas d'appel API)
+- [x] Après 3 échecs consécutifs → CronTarget.is_blacklisted = true
+- [x] Le scheduler lance bien phase1_scanner à l'intervalle configuré
 ```
 
 ---

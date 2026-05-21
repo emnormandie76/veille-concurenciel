@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/scheduler/jobs.py — APScheduler Jobs (Étape 5.4)
 
 Deux jobs récurrents :
@@ -23,6 +23,7 @@ import psycopg2.extras
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from backend.tavily_service.key_manager import QuotaExhaustedError
 
 logger = logging.getLogger("pipeline.scheduler")
 
@@ -119,6 +120,9 @@ def phase1_scanner(key_manager):
                     logger.error("🛑 [CRON] Quota Tavily épuisé — arrêt du scanner")
                     break
 
+        except QuotaExhaustedError as e:
+            logger.error(f"🛑 [CRON] Quota Tavily épuisé — arrêt immédiat du scanner: {e}")
+            break
         except Exception as e:
             logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
 
@@ -196,6 +200,9 @@ def phase2_enricher(key_manager):
                     logger.error("🛑 [CRON] Quota Tavily épuisé — arrêt de l'enricher")
                     break
 
+        except QuotaExhaustedError as e:
+            logger.error(f"🛑 [CRON] Quota Tavily épuisé — arrêt immédiat de l'enricher: {e}")
+            break
         except Exception as e:
             logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
 

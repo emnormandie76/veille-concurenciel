@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { isValidHttpsUrl } from '@/lib/utils';
 
 export async function POST(request: Request) {
     try {
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
         }
 
         for (const url of urls) {
-            if (!url.startsWith("https://")) {
+            if (!isValidHttpsUrl(url)) {
                 return NextResponse.json({ error: "URL doit commencer par https://" }, { status: 400 });
             }
         }

@@ -392,27 +392,27 @@
 ## Étape 11 : Sécurité et Edge Cases Finaux
 
 ### 11.1 — Rate Limiting Crowdsourcing
-- [ ] Middleware Vercel limitant les soumissions par IP (Edge Case 1)
-- [ ] Validation format URL (`https://` obligatoire)
+- [x] Middleware Vercel limitant les soumissions par IP (Edge Case 1)
+- [x] Validation format URL (`https://` obligatoire)
 
 ### 11.2 — Healthcheck Koyeb
-- [ ] Endpoint `GET /health` configuré comme healthcheck Koyeb (Edge Case 15)
-- [ ] Frontend : retry automatique avec message UX si le backend est indisponible
+- [x] Endpoint `GET /health` configuré comme healthcheck Koyeb (Edge Case 15)
+- [x] Frontend : retry automatique avec message UX si le backend est indisponible
 
 ### 11.3 — Quota Guard Tavily
-- [ ] Vérification des crédits restants avant chaque appel Tavily
-- [ ] Arrêt automatique du pipeline si quota atteint (Edge Case 1)
+- [x] Vérification des crédits restants avant chaque appel Tavily
+- [x] Arrêt automatique du pipeline si quota atteint (Edge Case 1)
 
 ### 11.4 — Monitoring Admin
-- [ ] Page `/admin/cron` affichant : dernières exécutions, CronTargets blacklistés, crédits Tavily restants
-- [ ] Bouton pour débloquer un CronTarget blacklisté
+- [x] Page `/admin/cron` affichant : dernières exécutions, CronTargets blacklistés, crédits Tavily restants
+- [x] Bouton pour débloquer un CronTarget blacklisté
 
 ### ✅ Tests Étape 11
 ```
-- [ ] Soumissions crowdsourcing rapides → rate limit actif
-- [ ] Healthcheck retourne 200 quand FastAPI est prêt
-- [ ] Pipeline s'arrête proprement quand le quota Tavily est atteint
-- [ ] La page /admin/cron affiche les CronTargets et permet le déblocage
+- [x] Soumissions crowdsourcing rapides → rate limit actif
+- [x] Healthcheck retourne 200 quand FastAPI est prêt
+- [x] Pipeline s'arrête proprement quand le quota Tavily est atteint
+- [x] La page /admin/cron affiche les CronTargets et permet le déblocage
 ```
 
 ---

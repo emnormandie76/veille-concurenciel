@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/tavily/strategies.py — Dictionnaire PIPELINE_STRATEGIES (Étape 6.1)
 
 Ce module définit la configuration par catégorie pour la recherche Tavily 

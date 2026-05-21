@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/ai/prompts.py — Tous les prompts système Gemma (Étape 5)
 
 Référence : architecture.md §5.1 (Phase 1), §5.3 (Phase 2)

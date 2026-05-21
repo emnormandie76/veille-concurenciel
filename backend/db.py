@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/db.py — Connexion PostgreSQL avec pool de connexions (Étape 4.1)
 
 Utilise psycopg2 avec un SimpleConnectionPool pour éviter d'ouvrir une

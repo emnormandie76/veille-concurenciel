@@ -1,4 +1,4 @@
-"""
+﻿"""
 School Data Pipeline — FastAPI Backend (Étape 5)
 
 Point d'entrée du pipeline IA. Intègre :
@@ -19,6 +19,15 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement (cherche backend/.env relatif à ce fichier)
+backend_env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(backend_env_path):
+    load_dotenv(backend_env_path)
+else:
+    load_dotenv()
+
 
 # ── Configuration du logging ──────────────────────────────────────
 logging.basicConfig(
@@ -29,7 +38,7 @@ logger = logging.getLogger("pipeline.main")
 
 # ── Singleton TavilyKeyManager ─────────────────────────────────────
 # Accessible par tous les modules via app.state.tavily_manager
-from backend.tavily.key_manager import TavilyKeyManager, QuotaExhaustedError
+from backend.tavily_service.key_manager import TavilyKeyManager, QuotaExhaustedError
 
 
 # ── Lifespan (startup / shutdown) ─────────────────────────────────

@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/crowdsourcing/processor.py — Traitement Backend Workflow A (Étape 7.3)
 
 Traite les tickets Submission de l'utilisateur :
@@ -13,9 +13,10 @@ import json
 import logging
 import psycopg2
 import psycopg2.extras
-from backend.tavily.client import extract_from_urls
+from backend.tavily_service.client import extract_from_urls
 from backend.ai.gemma_client import fact_check, call_gemma
-from backend.tavily.strategies import PIPELINE_STRATEGIES
+from backend.tavily_service.strategies import PIPELINE_STRATEGIES
+from backend.tavily_service.key_manager import QuotaExhaustedError
 import backend.ai.prompts as prompts
 
 logger = logging.getLogger("pipeline.processor")
@@ -54,7 +55,12 @@ def process_pending_submissions(key_manager):
                     _update_ticket_status(conn, ticket_id, "Rejected")
                     continue
 
-                raw_content = extract_from_urls(urls, key_manager)
+                try:
+                    raw_content = extract_from_urls(urls, key_manager)
+                except QuotaExhaustedError as e:
+                    logger.error(f"🛑 [Crowdsourcing] Quota Tavily épuisé — arrêt du traitement: {e}")
+                    break
+
                 if not raw_content:
                     _update_ticket_status(conn, ticket_id, "Rejected", {"error": "Extraction Tavily échouée"})
                     continue

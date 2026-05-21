@@ -47,6 +47,13 @@ export default function SidebarClient({ user }: SidebarClientProps) {
           <span>🏫</span> Écoles & Campus
         </Link>
 
+        <Link
+          href="/admin/cron"
+          className={`nav-link ${pathname.startsWith("/admin/cron") ? "active" : ""}`}
+        >
+          <span>⚙️</span> Monitoring & Cron
+        </Link>
+
         {user.role === "ADMIN" && (
           <Link
             href="/admin/users"

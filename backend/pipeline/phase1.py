@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/pipeline/phase1.py — Phase 1 : Cartographie (Program Discovery) — Étape 5
 
 Implémente :
@@ -107,7 +107,7 @@ def run_phase1(school_id: str, key_manager) -> dict:
     Référence : task.md §5.3, architecture.md §5.1
     """
     from backend.db import get_db_connection
-    from backend.tavily.client import crawl_school_website
+    from backend.tavily_service.client import crawl_school_website
 
     logger.info(f"🚀 Phase 1 démarrée pour school_id={school_id}")
 

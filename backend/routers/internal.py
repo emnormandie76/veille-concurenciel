@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/routers/internal.py — API Interne Pipeline (Étape 4.2)
 
 Endpoints accessibles uniquement au backend Next.js (token statique).
@@ -12,7 +12,7 @@ Référence : task.md §4.2, architecture.md §6 (API Interne)
 import os
 import logging
 import asyncio
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
@@ -30,11 +30,11 @@ _pipeline_jobs: dict[str, dict] = {}
 
 def verify_internal_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Vérifie le token Bearer de l'API interne."""
-    expected_token = os.environ.get("INTERNAL_API_TOKEN")
+    expected_token = os.environ.get("INTERNAL_API_TOKEN") or os.environ.get("INTERNAL_TOKEN")
     if not expected_token:
         raise HTTPException(
             status_code=500,
-            detail="INTERNAL_API_TOKEN non configuré côté serveur"
+            detail="INTERNAL_API_TOKEN ou INTERNAL_TOKEN non configuré côté serveur"
         )
     if credentials.credentials != expected_token:
         raise HTTPException(
@@ -152,7 +152,7 @@ async def trigger_enrichment(
 
 
 @router.get("/pipeline-status")
-async def pipeline_status(_token: str = Depends(verify_internal_token)):
+async def pipeline_status(request: Request, _token: str = Depends(verify_internal_token)):
     """
     GET /internal/pipeline-status
 
@@ -170,16 +170,18 @@ async def pipeline_status(_token: str = Depends(verify_internal_token)):
     # Statut Tavily (si initialisé)
     tavily_status = []
     try:
-        from backend.tavily.key_manager import TavilyKeyManager
-        # Note: en production, le manager est un singleton dans main.py
-        # Ici on retourne juste les variables d'environnement trouvées
-        keys_count = sum(
-            1 for i in range(1, 11)
-            if os.environ.get(f"TAVILY_API_KEY_{i}")
-        ) or (1 if os.environ.get("TAVILY_API_KEY") else 0)
-        tavily_status = {"keys_configured": keys_count}
-    except Exception:
-        tavily_status = {"keys_configured": 0, "error": "non initialisé"}
+        tavily_manager = getattr(request.app.state, "tavily_manager", None)
+        if tavily_manager:
+            tavily_status = tavily_manager.get_status()
+        else:
+            # Fallback en cas d'absence du manager dans state
+            keys_count = sum(
+                1 for i in range(1, 11)
+                if os.environ.get(f"TAVILY_API_KEY_{i}")
+            ) or (1 if os.environ.get("TAVILY_API_KEY") else 0)
+            tavily_status = [{"key_suffix": "...", "credits_used": 0, "credits_remaining": 950, "exhausted": False, "keys_configured": keys_count}]
+    except Exception as e:
+        tavily_status = {"error": f"non initialisé: {e}"}
 
     active_jobs = [
         job for job in _pipeline_jobs.values()
@@ -243,15 +245,39 @@ async def _run_scan(school_id: str, job_id: str):
 
 
 async def _run_enrichment(school_id: str, job_id: str, categories: list[str]):
-    """Stub Phase 2 — sera implémenté à l'Étape 6."""
+    """Phase 2 réelle (Étape 6) — Tavily search + Gemma extract par catégorie + Prisma insert."""
+    from backend.pipeline.phase2 import run_phase2
+    import asyncio
+
     job_key = f"{school_id}:enrichment"
     _pipeline_jobs[job_key]["status"] = "running"
     logger.info(
         f"[job={job_id}] Phase 2 (enrichissement) démarrée pour "
         f"school_id={school_id}, catégories={categories}"
     )
-    # TODO Étape 6 : Tavily search + Gemma extract par catégorie + Prisma insert
-    import asyncio
-    await asyncio.sleep(0)
-    _pipeline_jobs[job_key]["status"] = "completed"
-    logger.info(f"[job={job_id}] Phase 2 terminée (stub)")
+
+    try:
+        loop = asyncio.get_event_loop()
+        from backend.main import app
+        key_manager = getattr(app.state, "tavily_manager", None)
+
+        if key_manager is None:
+            raise RuntimeError("TavilyKeyManager non initialisé")
+
+        result = await loop.run_in_executor(
+            None,
+            run_phase2,
+            school_id,
+            key_manager,
+        )
+
+        _pipeline_jobs[job_key].update({
+            "status": "completed" if result.get("success") else "failed",
+            "result": result,
+        })
+        logger.info(f"[job={job_id}] Phase 2 terminée: {result.get('message') or 'Succès'}")
+
+    except Exception as e:
+        _pipeline_jobs[job_key]["status"] = "failed"
+        _pipeline_jobs[job_key]["error"] = str(e)
+        logger.error(f"[job={job_id}] Phase 2 erreur: {e}")

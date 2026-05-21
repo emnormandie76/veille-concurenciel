@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/ai/gemma_client.py — Module Gemma (Étape 4.4)
 
 Implémentation production conforme au guide gemma-python-guide.md :

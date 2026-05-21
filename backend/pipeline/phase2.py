@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/pipeline/phase2.py — Phase 2 : Enrichissement — Étape 6.4
 
 Orchestrateur de la Phase 2 :
@@ -18,10 +18,10 @@ import psycopg2.extras
 import uuid
 from typing import Any
 
-from backend.tavily.strategies import PIPELINE_STRATEGIES
+from backend.tavily_service.strategies import PIPELINE_STRATEGIES
 from backend.ai.gemma_client import call_gemma, is_content_relevant
 from backend.pipeline.diff import has_data_changed
-from backend.tavily.client import search_web
+from backend.tavily_service.client import search_web
 import backend.ai.prompts as prompts
 
 logger = logging.getLogger("pipeline.phase2")

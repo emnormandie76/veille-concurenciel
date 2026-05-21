@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/tavily/key_manager.py — TavilyKeyManager (Étape 4.3)
 
 Gestion de la rotation des clés API Tavily avec :
@@ -15,12 +15,13 @@ import os
 import time
 import logging
 import threading
+import json
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 logger = logging.getLogger("pipeline.tavily")
 
-CREDIT_ROTATION_THRESHOLD = 950   # Rotation avant d'atteindre 1000 crédits
 CREDITS_PER_SEARCH = 1            # 1 crédit par requête de recherche
 
 
@@ -34,24 +35,19 @@ class TavilyKeyState:
     """État d'une clé API Tavily."""
     api_key: str
     credits_used: int = 0
+    credits_limit: int = 1000  # Limite de crédits dynamique, par défaut 1000
     exhausted: bool = False
     last_used_at: float = field(default_factory=time.time)
     reset_month: int = field(default_factory=lambda: datetime.now(timezone.utc).month)
+    last_fetched_at: float = 0.0  # Timestamp Unix de la dernière actualisation API
 
 
 class TavilyKeyManager:
     """
-    Gestionnaire de rotation des clés API Tavily.
+    Gestionnaire de rotation des clés API Tavily avec suivi de quota dynamique.
 
-    Charge les clés depuis les variables d'environnement :
-    - TAVILY_API_KEY_1, TAVILY_API_KEY_2, ... jusqu'à TAVILY_API_KEY_10
-
-    Usage:
-        manager = TavilyKeyManager()
-        key = manager.get_active_key()
-        manager.record_usage(key, credits=1)
-
-    Référence : architecture.md §4.3 (Tavily key rotation strategy)
+    Charge les clés depuis les variables d'environnement et interroge
+    périodiquement l'API Tavily pour connaître l'utilisation réelle.
     """
 
     def __init__(self):
@@ -59,15 +55,13 @@ class TavilyKeyManager:
         self._keys: list[TavilyKeyState] = []
         self._current_index = 0
         self._load_keys()
+        
+        # Lancer la synchro initiale des quotas en arrière-plan pour toutes les clés
+        for key_state in self._keys:
+            self._fetch_quota_in_background(key_state)
 
     def _load_keys(self):
-        """Charge les clés depuis les variables d'environnement.
-
-        Supporte deux formats :
-        - TAVILY_API_KEYS="key1,key2,key3" (liste séparée par virgules)
-        - TAVILY_API_KEY_1, TAVILY_API_KEY_2... (variables numérotées)
-        - TAVILY_API_KEY (singulier, fallback)
-        """
+        """Charge les clés depuis les variables d'environnement."""
         keys_found = []
 
         # Format 1 : TAVILY_API_KEYS="key1,key2,key3"
@@ -82,7 +76,6 @@ class TavilyKeyManager:
         for i in range(1, 11):
             key = os.environ.get(f"TAVILY_API_KEY_{i}")
             if key and key.strip():
-                # Éviter les doublons
                 if not any(ks.api_key == key.strip() for ks in keys_found):
                     keys_found.append(TavilyKeyState(api_key=key.strip()))
 
@@ -101,6 +94,61 @@ class TavilyKeyManager:
         self._keys = keys_found
         logger.info(f"✅ TavilyKeyManager initialisé avec {len(self._keys)} clé(s)")
 
+    def _fetch_quota_in_background(self, key_state: TavilyKeyState):
+        """Met à jour le quota de la clé via l'API en arrière-plan (sans bloquer)."""
+        # On définit temporairement la date de synchro pour éviter de spawner plusieurs threads
+        now = time.time()
+        key_state.last_fetched_at = now
+
+        def run():
+            url = "https://api.tavily.com/usage"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "Authorization": f"Bearer {key_state.api_key}",
+                    "User-Agent": "FastAPI-Backend-Agent"
+                }
+            )
+            try:
+                # 5s timeout
+                with urllib.request.urlopen(req, timeout=5.0) as response:
+                    if response.status == 200:
+                        data = json.loads(response.read().decode("utf-8"))
+                        if "key" in data:
+                            usage = data["key"].get("usage")
+                            if usage is None:
+                                usage = 0
+                            
+                            limit = data["key"].get("limit")
+                            if limit is None:
+                                if "account" in data:
+                                    limit = data["account"].get("plan_limit")
+                            if limit is None:
+                                limit = 1000
+                            
+                            with self._lock:
+                                key_state.credits_used = usage
+                                key_state.credits_limit = limit
+                                key_state.last_fetched_at = time.time()
+                                
+                                # Seuil de sécurité : rotation s'il reste 50 crédits ou moins
+                                rotation_threshold = limit - 50
+                                if usage >= rotation_threshold:
+                                    key_state.exhausted = True
+                                else:
+                                    key_state.exhausted = False
+                            
+                            logger.info(
+                                f"📊 Synchro Quota Tavily (...{key_state.api_key[-6:]}) réussie : "
+                                f"{usage}/{limit} crédits (restant: {limit - usage})"
+                            )
+            except Exception as e:
+                # Réinitialiser pour retenter au prochain cycle si erreur
+                with self._lock:
+                    key_state.last_fetched_at = 0.0
+                logger.error(f"❌ Échec de la synchro de quota Tavily (...{key_state.api_key[-6:]}) : {e}")
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _reset_if_new_month(self, key_state: TavilyKeyState):
         """Remet les compteurs à zéro si on est dans un nouveau mois."""
@@ -114,76 +162,69 @@ class TavilyKeyManager:
             key_state.credits_used = 0
             key_state.exhausted = False
             key_state.reset_month = current_month
+            # Forcer une nouvelle synchro API
+            key_state.last_fetched_at = 0.0
 
     def get_active_key(self) -> str:
         """
         Retourne la clé API active (avec suffisamment de crédits restants).
-
-        Effectue la rotation si la clé courante dépasse le seuil.
-        Lève QuotaExhaustedError si toutes les clés sont épuisées.
-
         Thread-safe.
         """
         with self._lock:
-            # Réinitialisation mensuelle de toutes les clés
             for key_state in self._keys:
                 self._reset_if_new_month(key_state)
 
-            # Chercher une clé disponible à partir de l'index courant
             for _ in range(len(self._keys)):
                 key_state = self._keys[self._current_index]
+                rotation_threshold = key_state.credits_limit - 50
 
-                if not key_state.exhausted and key_state.credits_used < CREDIT_ROTATION_THRESHOLD:
+                if not key_state.exhausted and key_state.credits_used < rotation_threshold:
                     return key_state.api_key
 
                 # Passer à la clé suivante
                 self._current_index = (self._current_index + 1) % len(self._keys)
 
-            # Aucune clé disponible
             total_used = sum(k.credits_used for k in self._keys)
             raise QuotaExhaustedError(
                 f"Toutes les clés Tavily sont épuisées "
-                f"({len(self._keys)} clé(s), {total_used} crédits totaux utilisés). "
-                f"Les crédits se réinitialisent en début de mois."
+                f"({len(self._keys)} clé(s), {total_used} crédits totaux utilisés)."
             )
 
     def record_usage(self, api_key: str, credits: int = CREDITS_PER_SEARCH):
-        """
-        Enregistre la consommation de crédits pour une clé.
-
-        Marque la clé comme épuisée si le seuil est atteint.
-        Déclenche la rotation vers la prochaine clé disponible.
-
-        Thread-safe.
-        """
+        """Enregistre la consommation de crédits locaux."""
         with self._lock:
             for key_state in self._keys:
                 if key_state.api_key == api_key:
                     key_state.credits_used += credits
                     key_state.last_used_at = time.time()
 
-                    if key_state.credits_used >= CREDIT_ROTATION_THRESHOLD:
+                    rotation_threshold = key_state.credits_limit - 50
+                    if key_state.credits_used >= rotation_threshold:
                         if not key_state.exhausted:
                             logger.warning(
                                 f"⚡ Clé Tavily ...{api_key[-6:]} atteint "
-                                f"{key_state.credits_used}/{CREDIT_ROTATION_THRESHOLD} crédits. "
-                                f"Rotation vers la clé suivante."
+                                f"{key_state.credits_used}/{rotation_threshold} crédits. "
+                                f"Rotation active."
                             )
                             key_state.exhausted = True
-                            # Avancer l'index vers la prochaine clé
-                            self._current_index = (
-                                (self._current_index + 1) % len(self._keys)
-                            )
+                            self._current_index = (self._current_index + 1) % len(self._keys)
                     break
 
     def get_status(self) -> list[dict]:
-        """Retourne le statut de toutes les clés (pour l'endpoint pipeline-status)."""
+        """Retourne le statut de toutes les clés (déclenche une synchro asynchrone si cache > 5 min)."""
+        now = time.time()
         with self._lock:
+            for ks in self._keys:
+                # Si le cache a plus de 5 minutes (300 secondes), relancer une mise à jour en tâche de fond
+                if now - ks.last_fetched_at > 300:
+                    self._fetch_quota_in_background(ks)
+
             return [
                 {
                     "key_suffix": f"...{ks.api_key[-6:]}",
                     "credits_used": ks.credits_used,
-                    "credits_remaining": max(0, CREDIT_ROTATION_THRESHOLD - ks.credits_used),
+                    "credits_limit": ks.credits_limit,
+                    "credits_remaining": max(0, ks.credits_limit - ks.credits_used),
                     "exhausted": ks.exhausted,
                     "reset_month": ks.reset_month,
                 }
@@ -199,5 +240,6 @@ class TavilyKeyManager:
         with self._lock:
             return sum(
                 1 for ks in self._keys
-                if not ks.exhausted and ks.credits_used < CREDIT_ROTATION_THRESHOLD
+                if not ks.exhausted and ks.credits_used < (ks.credits_limit - 50)
             )
+

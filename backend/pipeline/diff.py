@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/pipeline/diff.py — Module de Diff (Étape 6.2)
 
 Compare les données extraites par l'IA avec les données existantes en base de production 

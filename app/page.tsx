@@ -115,6 +115,7 @@ export default function HomePage() {
         </Link>
         <div className="public-nav-links">
           <Link href="/" className="public-nav-link">Écoles</Link>
+          <Link href="/api-docs" className="public-nav-link">API</Link>
           <Link href="/contribute" className="public-nav-cta">Contribuer</Link>
         </div>
       </nav>

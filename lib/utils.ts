@@ -89,3 +89,34 @@ export function confirmationMatches(
 ): boolean {
   return input.trim().toLowerCase() === expected.trim().toLowerCase();
 }
+
+// ──────────────────────────────────────────────
+// Utilitaires CORS pour API v1
+// ──────────────────────────────────────────────
+
+export const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export function corsResponse(data: any, init?: ResponseInit) {
+  return Response.json(data, {
+    ...init,
+    headers: {
+      ...corsHeaders,
+      ...init?.headers,
+    },
+  });
+}
+
+export function corsErrorResponse(message: string, status: number = 400) {
+  return Response.json(
+    { error: message },
+    {
+      status,
+      headers: corsHeaders,
+    }
+  );
+}
+

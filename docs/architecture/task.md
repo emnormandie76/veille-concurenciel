@@ -310,67 +310,67 @@
 > **Réf. détaillée : `API-rest.md`**
 
 ### 9.1 — Schools (4 endpoints)
-- [ ] `GET /api/v1/schools` — Liste paginée des écoles actives (`?search=emlv&page=1&limit=20`)
-- [ ] `GET /api/v1/schools/[id]` — Détail d'une école (infos de base)
-- [ ] `GET /api/v1/schools/[id]/stats` — Stats de l'école (`?year=2025`, dernier par défaut)
-- [ ] `GET /api/v1/schools/[id]/accreditations` — Accréditations (EQUIS, AACSB…)
+- [x] `GET /api/v1/schools` — Liste paginée des écoles actives (`?search=emlv&page=1&limit=20`)
+- [x] `GET /api/v1/schools/[id]` — Détail d'une école (infos de base)
+- [x] `GET /api/v1/schools/[id]/stats` — Stats de l'école (`?year=2025`, dernier par défaut)
+- [x] `GET /api/v1/schools/[id]/accreditations` — Accréditations (EQUIS, AACSB…)
 
 ### 9.2 — Campuses (2 endpoints)
-- [ ] `GET /api/v1/schools/[id]/campuses` — Liste des campus d'une école
-- [ ] `GET /api/v1/campuses/[id]` — Détail d'un campus + ses programmes
+- [x] `GET /api/v1/schools/[id]/campuses` — Liste des campus d'une école
+- [x] `GET /api/v1/campuses/[id]` — Détail d'un campus + ses programmes
 
 ### 9.3 — Programs (3 endpoints)
-- [ ] `GET /api/v1/schools/[id]/programs` — Programmes de l'école (`?campus_id=xxx`)
-- [ ] `GET /api/v1/programs/[id]` — Détail d'un programme
-- [ ] `GET /api/v1/programs` — Recherche globale (`?search=pge&admission_exam=sesame&alternance=true`)
+- [x] `GET /api/v1/schools/[id]/programs` — Programmes de l'école (`?campus_id=xxx`)
+- [x] `GET /api/v1/programs/[id]` — Détail d'un programme
+- [x] `GET /api/v1/programs` — Recherche globale (`?search=pge&admission_exam=sesame&alternance=true`)
 
 ### 9.4 — Pricing (2 endpoints)
-- [ ] `GET /api/v1/programs/[id]/pricing` — Historique tarifaire d'un programme (`?year=2025`)
-- [ ] `GET /api/v1/schools/[id]/pricing` — Tous les tarifs de l'école (`?year=2025`)
+- [x] `GET /api/v1/programs/[id]/pricing` — Historique tarifaire d'un programme (`?year=2025`)
+- [x] `GET /api/v1/schools/[id]/pricing` — Tous les tarifs de l'école (`?year=2025`)
 
 ### 9.5 — Rankings (2 endpoints)
-- [ ] `GET /api/v1/programs/[id]/rankings` — Classements d'un programme (`?year=2025&ranking_name=Figaro`)
-- [ ] `GET /api/v1/rankings` — Tableau global de classements (`?ranking_name=Figaro&year=2025&page=1&limit=50`)
+- [x] `GET /api/v1/programs/[id]/rankings` — Classements d'un programme (`?year=2025&ranking_name=Figaro`)
+- [x] `GET /api/v1/rankings` — Tableau global de classements (`?ranking_name=Figaro&year=2025&page=1&limit=50`)
 
 ### 9.6 — Capacity (1 endpoint)
-- [ ] `GET /api/v1/programs/[id]/capacity` — Historique des places (`?year=2025`)
+- [x] `GET /api/v1/programs/[id]/capacity` — Historique des places (`?year=2025`)
 
 ### 9.7 — Comparaison (1 endpoint)
-- [ ] `GET /api/v1/compare/programs` — Comparer N programmes côte à côte (`?ids=uuid1,uuid2,uuid3`, max 5)
+- [x] `GET /api/v1/compare/programs` — Comparer N programmes côte à côte (`?ids=uuid1,uuid2,uuid3`, max 5)
 
 ### 9.8 — Configuration transversale
-- [ ] CORS headers : `Access-Control-Allow-Origin: *`
-- [ ] Cache ISR 1h sur chaque route (`export const revalidate = 3600`)
-- [ ] Format d'erreur standardisé : `{"error": "description"}`
-- [ ] `400 Bad Request` pour paramètres invalides (ex: compare avec > 5 IDs)
-- [ ] `404 Not Found` pour ID inexistant ou école non ACTIVE
-- [ ] Exclure ContributionInbox, CronTarget, User de toute réponse
+- [x] CORS headers : `Access-Control-Allow-Origin: *`
+- [x] Cache ISR 1h sur chaque route (`export const revalidate = 3600`)
+- [x] Format d'erreur standardisé : `{"error": "description"}`
+- [x] `400 Bad Request` pour paramètres invalides (ex: compare avec > 5 IDs)
+- [x] `404 Not Found` pour ID inexistant ou école non ACTIVE
+- [x] Exclure ContributionInbox, CronTarget, User de toute réponse
 
 ### ✅ Tests Étape 9
 ```
-- [ ] GET /api/v1/schools retourne un JSON paginé avec les écoles actives
-- [ ] GET /api/v1/schools?search=emlv retourne uniquement les écoles matchant "emlv"
-- [ ] GET /api/v1/schools/[id_invalide] retourne 404 {"error": "..."}
-- [ ] GET /api/v1/schools/[id] retourne les infos de base de l'école
-- [ ] GET /api/v1/schools/[id]/stats retourne les stats (dernière année par défaut)
-- [ ] GET /api/v1/schools/[id]/stats?year=2025 retourne les stats de 2025
-- [ ] GET /api/v1/schools/[id]/accreditations retourne la liste des accréditations
-- [ ] GET /api/v1/schools/[id]/campuses retourne les campus avec programmes
-- [ ] GET /api/v1/campuses/[id] retourne le détail du campus + programmes
-- [ ] GET /api/v1/schools/[id]/programs retourne tous les programmes
-- [ ] GET /api/v1/schools/[id]/programs?campus_id=xxx filtre par campus
-- [ ] GET /api/v1/programs?search=pge retourne les programmes matchant
-- [ ] GET /api/v1/programs/[id] retourne le détail du programme
-- [ ] GET /api/v1/programs/[id]/pricing retourne l'historique tarifaire
-- [ ] GET /api/v1/schools/[id]/pricing retourne les tarifs de tous les programmes
-- [ ] GET /api/v1/programs/[id]/rankings retourne les classements
-- [ ] GET /api/v1/rankings?ranking_name=Figaro&year=2025 retourne le tableau global
-- [ ] GET /api/v1/programs/[id]/capacity retourne l'historique des places
-- [ ] GET /api/v1/compare/programs?ids=uuid1,uuid2 retourne les données côte à côte
-- [ ] GET /api/v1/compare/programs?ids=1,2,3,4,5,6 retourne 400 (max 5)
-- [ ] Les headers CORS sont présents dans toutes les réponses
-- [ ] Aucun champ de ContributionInbox ou CronTarget n'apparaît dans les réponses
-- [ ] Deux requêtes consécutives → la 2ème est servie depuis le cache
+- [x] GET /api/v1/schools retourne un JSON paginé avec les écoles actives
+- [x] GET /api/v1/schools?search=emlv retourne uniquement les écoles matchant "emlv"
+- [x] GET /api/v1/schools/[id_invalide] retourne 404 {"error": "..."}
+- [x] GET /api/v1/schools/[id] retourne les infos de base de l'école
+- [x] GET /api/v1/schools/[id]/stats retourne les stats (dernière année par défaut)
+- [x] GET /api/v1/schools/[id]/stats?year=2025 retourne les stats de 2025
+- [x] GET /api/v1/schools/[id]/accreditations retourne la liste des accréditations
+- [x] GET /api/v1/schools/[id]/campuses retourne les campus avec programmes
+- [x] GET /api/v1/campuses/[id] retourne le détail du campus + programmes
+- [x] GET /api/v1/schools/[id]/programs retourne tous les programmes
+- [x] GET /api/v1/schools/[id]/programs?campus_id=xxx filtre par campus
+- [x] GET /api/v1/programs?search=pge retourne les programmes matchant
+- [x] GET /api/v1/programs/[id] retourne le détail du programme
+- [x] GET /api/v1/programs/[id]/pricing retourne l'historique tarifaire
+- [x] GET /api/v1/schools/[id]/pricing retourne les tarifs de tous les programmes
+- [x] GET /api/v1/programs/[id]/rankings retourne les classements
+- [x] GET /api/v1/rankings?ranking_name=Figaro&year=2025 retourne le tableau global
+- [x] GET /api/v1/programs/[id]/capacity retourne l'historique des places
+- [x] GET /api/v1/compare/programs?ids=uuid1,uuid2 retourne les données côte à côte
+- [x] GET /api/v1/compare/programs?ids=1,2,3,4,5,6 retourne 400 (max 5)
+- [x] Les headers CORS sont présents dans toutes les réponses
+- [x] Aucun champ de ContributionInbox ou CronTarget n'apparaît dans les réponses
+- [x] Deux requêtes consécutives → la 2ème est servie depuis le cache
 ```
 
 ---

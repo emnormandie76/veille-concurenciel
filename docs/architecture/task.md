@@ -378,13 +378,13 @@
 ## Étape 10 : Page Documentation API
 
 ### 10.1 — Page `/api-docs`
-- [ ] Page publique listant tous les endpoints v1 avec descriptions, paramètres et exemples de réponse
-- [ ] Exemples de code (curl, JavaScript, Python)
+- [x] Page publique listant tous les endpoints v1 avec descriptions, paramètres et exemples de réponse
+- [x] Exemples de code (curl, JavaScript, Python)
 
 ### ✅ Tests Étape 10
 ```
-- [ ] La page /api-docs est accessible publiquement
-- [ ] Tous les endpoints v1 sont documentés avec paramètres et exemples
+- [x] La page /api-docs est accessible publiquement
+- [x] Tous les endpoints v1 sont documentés avec paramètres et exemples
 ```
 
 ---

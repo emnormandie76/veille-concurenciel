@@ -282,25 +282,25 @@
 ## Étape 8 : Frontend Public — Consultation
 
 ### 8.1 — Pages publiques
-- [ ] Page `/` — Accueil avec recherche d'écoles (liste des écoles ACTIVE)
-- [ ] Page `/schools/[id]` — Fiche école (infos, campus, stats, accréditations)
-- [ ] Page `/schools/[id]/programs/[pid]` — Détail programme (tarifs, classements, capacité)
+- [x] Page `/` — Accueil avec recherche d'écoles (liste des écoles ACTIVE)
+- [x] Page `/schools/[id]` — Fiche école (infos, campus, stats, accréditations)
+- [x] Page `/schools/[id]/programs/[pid]` — Détail programme (tarifs, classements, capacité)
 
 ### 8.2 — API Routes publiques (utilisées par le frontend)
-- [ ] `GET /api/schools` — Écoles actives avec recherche/pagination
-- [ ] `GET /api/schools/[id]` — Détail école + relations
-- [ ] `GET /api/schools/[id]/programs/[pid]` — Détail programme + records
+- [x] `GET /api/schools` — Écoles actives avec recherche/pagination
+- [x] `GET /api/schools/[id]` — Détail école + relations
+- [x] `GET /api/schools/[id]/programs/[pid]` — Détail programme + records
 
 ### 8.3 — Caching ISR
-- [ ] `export const revalidate = 3600` sur toutes les pages publiques
+- [x] `export const revalidate = 3600` sur toutes les pages publiques
 
 ### ✅ Tests Étape 8
 ```
-- [ ] La page d'accueil affiche la liste des écoles actives
-- [ ] Cliquer sur une école → fiche avec campus, stats, accréditations
-- [ ] Cliquer sur un programme → tarifs par année, classements, capacité
-- [ ] Les écoles avec status != ACTIVE ne sont PAS affichées
-- [ ] Deux requêtes consécutives sur la même page → la 2ème est servie depuis le cache (vérifier via headers)
+- [x] La page d'accueil affiche la liste des écoles actives
+- [x] Cliquer sur une école → fiche avec campus, stats, accréditations
+- [x] Cliquer sur un programme → tarifs par année, classements, capacité
+- [x] Les écoles avec status != ACTIVE ne sont PAS affichées
+- [x] Deux requêtes consécutives sur la même page → la 2ème est servie depuis le cache (vérifier via headers)
 ```
 
 ---

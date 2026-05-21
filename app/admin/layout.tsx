@@ -8,9 +8,18 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getServerSession(authOptions);
+  // /admin/login est dans app/(admin-auth)/admin/login/ (route group séparé)
+  // → ce layout ne s'applique JAMAIS à /admin/login → aucune boucle possible.
 
-  // Redirection côté serveur si aucune session active n'existe
+  let session = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    // JWEDecryptionFailed ou autre erreur JWT : cookie corrompu
+    // Rediriger vers login (les cookies seront effacés par NextAuth au signIn)
+    redirect("/admin/login");
+  }
+
   if (!session) {
     redirect("/admin/login");
   }

@@ -1,39 +1,190 @@
-﻿"""
+"""
 backend/crowdsourcing/processor.py — Traitement Backend Workflow A (Étape 7.3)
 
 Traite les tickets Submission de l'utilisateur :
 - Lit les ContributionInbox `Pending_AI` (source User_Submission).
 - Extrait la source (Tavily extract).
-- Fact check via Gemma 26B.
-- Extract complet via Gemma 31B.
+- Vérifie d'abord la compatibilité de la page via Gemma 26B (sans user_text).
+- Extrait les données structurées via Gemma 31B (sans user_text).
 - Met à jour le status vers `Pending_Admin`.
 """
 
 import json
 import logging
+import asyncio
 import psycopg2
 import psycopg2.extras
 from backend.tavily_service.client import extract_from_urls
-from backend.ai.gemma_client import fact_check, call_gemma
+from backend.ai.gemma_client import call_gemma, GemmaError, GemmaAPIError, GemmaParsingError
 from backend.tavily_service.strategies import PIPELINE_STRATEGIES
 from backend.tavily_service.key_manager import QuotaExhaustedError
 import backend.ai.prompts as prompts
 
 logger = logging.getLogger("pipeline.processor")
 
+SUPPORTED_CROWDSOURCING_CATEGORIES = [
+    "Pricing",
+    "Ranking",
+    "Capacity",
+    "SchoolStats",
+    "Accreditation",
+]
+
+class TicketNotFoundError(Exception):
+    pass
+
+class TavilyExtractionError(Exception):
+    pass
+
+_key_manager = None
+
+async def process_crowdsourcing_ticket(ticket_id: str) -> None:
+    """
+    Traite un ticket ContributionInbox de type User_Submission.
+    
+    Règle stricte : user_text n'est jamais passé aux modèles IA.
+    Il est stocké en base et affiché uniquement dans le dashboard Admin.
+    
+    Args:
+        ticket_id: UUID du ticket ContributionInbox à traiter
+        
+    Raises:
+        TicketNotFoundError: Si le ticket n'existe pas en base
+        TavilyExtractionError: Si Tavily échoue sur toutes les URLs
+        GemmaError: Si Gemma retourne un JSON invalide après les retries
+    """
+    global _key_manager
+    if _key_manager is None:
+        from backend.tavily_service.key_manager import TavilyKeyManager
+        _key_manager = TavilyKeyManager()
+
+    from backend.db import get_db_connection
+
+    # 1. RÉCEPTION
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT ti.id, ti.user_text, ti.urls, ti.ai_category, ti."schoolId" AS school_id, s.name AS school_name
+                FROM "ContributionInbox" ti
+                JOIN "School" s ON s.id = ti."schoolId"
+                WHERE ti.id = %s AND ti.source_type = 'User_Submission'
+                """,
+                (ticket_id,)
+            )
+            ticket = cur.fetchone()
+
+    if not ticket:
+        raise TicketNotFoundError(f"Ticket {ticket_id} non trouvé dans ContributionInbox")
+
+    urls = ticket["urls"]
+    category = ticket["ai_category"]
+    school_name = ticket["school_name"]
+
+    try:
+        # 2. EXTRACTION PAGE (Tavily)
+        try:
+            raw_content = extract_from_urls(urls, _key_manager)
+        except QuotaExhaustedError:
+            raise
+        except Exception as e:
+            raise TavilyExtractionError(f"Erreur lors de l'extraction Tavily: {e}")
+
+        if not raw_content or len(raw_content.strip()) < 50:
+            raise TavilyExtractionError("Le contenu extrait par Tavily est vide ou trop court (< 50 chars)")
+
+        # 3. VÉRIFICATION COMPATIBILITÉ (Gemma 26B)
+        compatibility_prompt = prompts.CROWDSOURCING_COMPATIBILITY_CHECK.format(
+            categories=category,
+            school_name=school_name,
+            page_content=raw_content[:8000]
+        )
+
+        compatibility_res = call_gemma(
+            model="models/gemma-4-26b-a4b-it",
+            system_prompt="Tu es un assistant d'analyse de compatibilité.",
+            user_content=compatibility_prompt,
+            required_keys=["compatible"],
+            max_retries=4,
+            temperature=0.1,
+        )
+
+        compatible = compatibility_res.get("compatible", False)
+        reason = compatibility_res.get("reason", "Page incompatible")
+
+        if not compatible:
+            with get_db_connection() as conn:
+                _update_ticket_status(conn, ticket_id, "Rejected", {"reason": reason})
+            return
+
+        # 4. EXTRACTION JSON (Gemma 31B)
+        strategy = PIPELINE_STRATEGIES.get(category)
+        system_prompt = getattr(prompts, f"{category.upper()}_SYSTEM_PROMPT", "")
+        req_keys = strategy["required_json_keys"] if strategy else prompts.PHASE1_REQUIRED_KEYS
+        gemma_model = strategy["gemma_model"] if strategy else "models/gemma-4-31b-it"
+
+        extracted = call_gemma(
+            model=gemma_model,
+            system_prompt=system_prompt,
+            user_content=f"<TEXTE_SOURCE>\n{raw_content[:80000]}\n</TEXTE_SOURCE>",
+            required_keys=req_keys,
+            max_retries=4,
+            temperature=0.1,
+        )
+
+        # 5. MISE À JOUR INBOX
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE "ContributionInbox"
+                    SET status = 'Pending_Admin',
+                        ai_extracted_json = %s,
+                        year_assumed = %s,
+                        data_conflict_warning = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        json.dumps(extracted),
+                        extracted.get("year_assumed", False),
+                        extracted.get("data_conflict_warning", False),
+                        ticket_id,
+                    )
+                )
+            conn.commit()
+            logger.info(f"✅ [Crowdsourcing] Ticket {ticket_id} validé par l'IA -> Pending_Admin")
+
+    except QuotaExhaustedError:
+        raise
+    except GemmaAPIError as e:
+        logger.error(f"🛑 [Crowdsourcing] Erreur API temporaire réseau/Google. Ticket {ticket_id} conservé en Pending_AI. Détails: {e}")
+        raise
+    except (GemmaParsingError, TavilyExtractionError) as e:
+        logger.error(f"❌ [Crowdsourcing] Erreur permanente de parsing/données. Ticket {ticket_id} rejeté. Détails: {e}")
+        with get_db_connection() as conn:
+            _update_ticket_status(conn, ticket_id, "Rejected", {"parsing_error": str(e)})
+        raise
+    except Exception as e:
+        logger.error(f"❌ [Crowdsourcing] Erreur inattendue. Ticket {ticket_id} rejeté. Détails: {e}")
+        with get_db_connection() as conn:
+            _update_ticket_status(conn, ticket_id, "Rejected", {"error": f"Exception inattendue: {str(e)}"})
+        raise
+
 def process_pending_submissions(key_manager):
     from backend.db import get_db_connection
     logger.info("🔄 [Crowdsourcing] Démarrage du traitement des soumissions utilisateurs")
+    global _key_manager
+    _key_manager = key_manager
 
     try:
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     """
-                    SELECT id, user_text, urls, ai_category
-                    FROM "ContributionInbox"
-                    WHERE status = 'Pending_AI' AND source_type = 'User_Submission'
-                    ORDER BY "createdAt" ASC
+                    SELECT ti.id, ti.ai_category
+                    FROM "ContributionInbox" ti
+                    WHERE ti.status = 'Pending_AI' AND ti.source_type = 'User_Submission'
+                    ORDER BY ti."createdAt" ASC
                     LIMIT 20
                     """
                 )
@@ -43,75 +194,46 @@ def process_pending_submissions(key_manager):
                 logger.info("✅ [Crowdsourcing] Aucune soumission en attente.")
                 return
 
+            success_tickets = []
+            api_error_tickets = []
+            parsing_error_tickets = []
+
             for ticket in tickets:
                 ticket_id = ticket["id"]
                 category = ticket["ai_category"]
-                urls = ticket["urls"]
-                user_text = ticket["user_text"] or "Information signalée par l'utilisateur."
 
-                # Ne traiter que les catégories connues
-                if category not in PIPELINE_STRATEGIES and category != "Program_Discovery":
+                if category not in SUPPORTED_CROWDSOURCING_CATEGORIES:
                     logger.warning(f"⚠️ Catégorie inconnue {category} pour le ticket {ticket_id}")
-                    _update_ticket_status(conn, ticket_id, "Rejected")
+                    _update_ticket_status(conn, ticket_id, "Rejected", {"error": f"Catégorie inconnue: {category}"})
+                    parsing_error_tickets.append(ticket_id)
                     continue
 
+                logger.info(f"⚙️ Traitement du ticket {ticket_id} (Catégorie: {category})")
                 try:
-                    raw_content = extract_from_urls(urls, key_manager)
+                    asyncio.run(process_crowdsourcing_ticket(ticket_id))
+                    success_tickets.append(ticket_id)
                 except QuotaExhaustedError as e:
                     logger.error(f"🛑 [Crowdsourcing] Quota Tavily épuisé — arrêt du traitement: {e}")
                     break
-
-                if not raw_content:
-                    _update_ticket_status(conn, ticket_id, "Rejected", {"error": "Extraction Tavily échouée"})
+                except GemmaAPIError as e:
+                    logger.error(f"🛑 [Crowdsourcing] Erreur API sur le ticket {ticket_id}: {e}")
+                    api_error_tickets.append(ticket_id)
+                    continue
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors du traitement du ticket {ticket_id}: {e}")
+                    parsing_error_tickets.append(ticket_id)
                     continue
 
-                # 2. Fact checking Gemma 26B
-                check = fact_check(user_text, raw_content)
-                if not check or not check.get("confirmed"):
-                    logger.info(f"🚫 [Crowdsourcing] Revendication non confirmée pour le ticket {ticket_id}: {check}")
-                    _update_ticket_status(conn, ticket_id, "Rejected", {"error": "Fact Check échoué", "details": check})
-                    continue
-
-                # 3. Extraction de la donnée Gemma 31B
-                strategy = PIPELINE_STRATEGIES.get(category)
-                system_prompt = getattr(prompts, f"{category.upper()}_SYSTEM_PROMPT", "") if category != "Program_Discovery" else prompts.PHASE1_SYSTEM_PROMPT
-                req_keys = strategy["required_json_keys"] if strategy else prompts.PHASE1_REQUIRED_KEYS
-                
-                extracted = call_gemma(
-                    model=strategy["gemma_model"] if strategy else "models/gemma-4-31b-it",
-                    system_prompt=system_prompt,
-                    user_content=f"<TEXTE_SOURCE>\\n{raw_content[:80000]}\\n</TEXTE_SOURCE>",
-                    required_keys=req_keys
-                )
-
-                if extracted:
-                    with conn.cursor() as update_cur:
-                        update_cur.execute(
-                            """
-                            UPDATE "ContributionInbox"
-                            SET status = 'Pending_Admin',
-                                ai_extracted_json = %s,
-                                year_assumed = %s,
-                                data_conflict_warning = %s
-                            WHERE id = %s
-                            """,
-                            (
-                                json.dumps(extracted),
-                                extracted.get("year_assumed", False),
-                                extracted.get("data_conflict_warning", False),
-                                ticket_id
-                            )
-                        )
-                    conn.commit()
-                    logger.info(f"✅ [Crowdsourcing] Ticket {ticket_id} validé par l'IA -> Pending_Admin")
-                else:
-                    _update_ticket_status(conn, ticket_id, "Rejected", {"error": "Extraction JSON échouée"})
-
+            # Rapport de fin de traitement
+            logger.info("=== 📊 RAPPORT DE CROWDSOURCING ===")
+            logger.info(f"✅ Validés (Pending_Admin)  : {len(success_tickets)} ticket(s) -> {success_tickets}")
+            logger.info(f"⏳ Erreurs API (Pending_AI) : {len(api_error_tickets)} ticket(s) -> {api_error_tickets}")
+            logger.info(f"❌ Rejetés (Rejected)       : {len(parsing_error_tickets)} ticket(s) -> {parsing_error_tickets}")
+            logger.info("==================================")
     except Exception as e:
         logger.error(f"❌ [Crowdsourcing] Erreur générale: {e}")
 
 def _update_ticket_status(conn, ticket_id, status, error_details=None):
-    import json
     with conn.cursor() as cur:
         if error_details:
              cur.execute('UPDATE "ContributionInbox" SET status = %s, ai_extracted_json = %s WHERE id = %s', (status, json.dumps(error_details), ticket_id))

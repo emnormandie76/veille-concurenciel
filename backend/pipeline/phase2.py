@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/pipeline/phase2.py — Phase 2 : Enrichissement — Étape 6.4
 
 Orchestrateur de la Phase 2 :
@@ -13,13 +13,14 @@ Orchestrateur de la Phase 2 :
 """
 
 import logging
+import os
 import psycopg2
 import psycopg2.extras
 import uuid
 from typing import Any
 
 from backend.tavily_service.strategies import PIPELINE_STRATEGIES
-from backend.ai.gemma_client import call_gemma, is_content_relevant
+from backend.ai.gemma_client import call_gemma, is_content_relevant, GemmaError
 from backend.pipeline.diff import has_data_changed
 from backend.tavily_service.client import search_web
 import backend.ai.prompts as prompts
@@ -87,8 +88,23 @@ def run_phase2(school_id: str, key_manager: Any) -> dict:
             if not school or school["status"] != "ACTIVE":
                 return {"success": False, "message": "École non trouvée ou inactive"}
                 
-            cur.execute('SELECT p.id, p.name, p."campusId", c.name as campus_name FROM "Program" p JOIN "Campus" c ON p."campusId" = c.id WHERE c."schoolId" = %s', (school_id,))
+            cur.execute('SELECT p.id, p.name, p."campusId", c.name as campus_name FROM "Program" p JOIN "Campus" c ON p."campusId" = c.id WHERE c."schoolId" = %s ORDER BY p.name ASC', (school_id,))
             programs = cur.fetchall()
+ 
+            # Test helper: limit the number of programs to process to reduce API calls.
+            max_programs = os.environ.get("PHASE2_MAX_PROGRAMS")
+            if max_programs:
+                try:
+                    max_programs_int = int(max_programs)
+                    if max_programs_int > 0:
+                        programs = programs[:max_programs_int]
+                        logger.info(
+                            f"🧪 PHASE2_MAX_PROGRAMS actif: {max_programs_int} programme(s) max"
+                        )
+                except ValueError:
+                    logger.warning(
+                        f"⚠️ PHASE2_MAX_PROGRAMS invalide ('{max_programs}'), ignoré"
+                    )
 
             categories_scanned = 0
             tickets_created = 0
@@ -106,17 +122,21 @@ def run_phase2(school_id: str, key_manager: Any) -> dict:
                 
                 raw_content = search_web(t_query, key_manager, include_domains=[school["official_domain"]] if "{official_domain}" in strategy["tavily"]["include_domains"] else strategy["tavily"]["include_domains"], search_depth=strategy["tavily"]["search_depth"], max_results=strategy["tavily"]["max_results"])
                 
-                if not is_content_relevant(raw_content, category):
-                    _record_failure(cur, school_id, None, category)
-                    continue
+                try:
+                    if not is_content_relevant(raw_content, category):
+                        _record_failure(cur, school_id, None, category)
+                        continue
 
-                prompt = _get_prompt_for_category(category)
-                extracted = call_gemma(
-                    model=strategy["gemma_model"],
-                    system_prompt=prompt,
-                    user_content=f"<TEXTE_SOURCE>\\n{raw_content[:80000]}\\n</TEXTE_SOURCE>",
-                    required_keys=strategy["required_json_keys"]
-                )
+                    prompt = _get_prompt_for_category(category)
+                    extracted = call_gemma(
+                        model=strategy["gemma_model"],
+                        system_prompt=prompt,
+                        user_content=f"<TEXTE_SOURCE>\\n{raw_content[:80000]}\\n</TEXTE_SOURCE>",
+                        required_keys=strategy["required_json_keys"]
+                    )
+                except GemmaError as e:
+                    logger.error(f"❌ Erreur Gemma Phase 2 (École - {category}): {e}")
+                    extracted = None
                 
                 if extracted:
                     existing = _get_existing_record(cur, category, school_id, None)
@@ -147,17 +167,22 @@ def run_phase2(school_id: str, key_manager: Any) -> dict:
                         domains.append(school["official_domain"] if d == "{official_domain}" else d)
                     
                     raw_content = search_web(t_query, key_manager, include_domains=domains, search_depth=strategy["tavily"]["search_depth"], max_results=strategy["tavily"]["max_results"])
-                    if not is_content_relevant(raw_content, category):
-                        _record_failure(cur, school_id, program["id"], category)
-                        continue
+                    
+                    try:
+                        if not is_content_relevant(raw_content, category):
+                            _record_failure(cur, school_id, program["id"], category)
+                            continue
 
-                    prompt = _get_prompt_for_category(category)
-                    extracted = call_gemma(
-                        model=strategy["gemma_model"],
-                        system_prompt=prompt,
-                        user_content=f"<TEXTE_SOURCE>\\n{raw_content[:80000]}\\n</TEXTE_SOURCE>",
-                        required_keys=strategy["required_json_keys"]
-                    )
+                        prompt = _get_prompt_for_category(category)
+                        extracted = call_gemma(
+                            model=strategy["gemma_model"],
+                            system_prompt=prompt,
+                            user_content=f"<TEXTE_SOURCE>\\n{raw_content[:80000]}\\n</TEXTE_SOURCE>",
+                            required_keys=strategy["required_json_keys"]
+                        )
+                    except GemmaError as e:
+                        logger.error(f"❌ Erreur Gemma Phase 2 (Programme - {category} - {program['name']}): {e}")
+                        extracted = None
                     
                     if extracted:
                         existing = _get_existing_record(cur, category, school_id, program["id"])

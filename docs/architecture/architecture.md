@@ -248,7 +248,8 @@ appVC/
 │       └── task.md                     # Plan de tâches séquentiel (12 étapes)
 │
 └── test/
-    └── test_pipeline.py                # POC initial du pipeline (Tavily + Gemma)
+    ├── test_pipeline.py                # POC initial du pipeline (Tavily + Gemma)
+    └── test_crowdsourcing_processor.py # Tests unitaires du crowdsourcing et du client Gemma robustifié
 ```
 
 ---
@@ -707,14 +708,17 @@ Utilisateur (non connecté)
 - Chaque catégorie cochée crée UN ticket Inbox séparé
 - Rate limiting par IP (Middleware Vercel) pour contrer l'Edge Case 1
 
-### 6.2. Traitement Backend
+### 6.2. Traitement Backend (Flux de Traitement et Sécurisation)
 
-```
-Pour chaque ticket créé :
-    ──► Tavily extract(urls=[url_utilisateur], extract_depth="advanced")
-    ──► Gemma 26B : Fact-checking ("Le texte confirme-t-il la revendication ?")
-    ──► Gemma 31B : Extraction JSON selon la catégorie
-    ──► Mise à jour status → "Pending_Admin"
+Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière suivante :
+1. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Timeout de 15s maximum. Si le contenu extrait est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et le ticket est immédiatement basculé à `Rejected`.
+2. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_CHECK` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué `Rejected` avec la raison écrite dans `ai_extracted_json`.
+3. **Extraction Structurée (Gemma 31B) :** Si compatible, Gemma 31B extrait les données structurées selon la catégorie concernée. Le champ `user_text` est à nouveau exclu.
+4. **Statut & Triage des Erreurs :**
+   - **Succès :** Mise à jour du statut en `Pending_Admin` avec le JSON extrait (upsert temporaire), prêt pour la validation humaine.
+   - **Erreurs API Temporaires (`GemmaAPIError`) :** Si le service API Google GenAI ou le réseau échoue (ex: 429, 500, timeout temporaire), le ticket reste en `Pending_AI` afin d'être re-tenté lors du prochain run du scheduler. Le nombre d'essais LLM par ticket est étendu à 4 tentatives.
+   - **Erreurs Permanentes (`GemmaParsingError`, `TavilyExtractionError`) :** Si le format JSON ou les clés obligatoires échouent continuellement, le ticket est rejeté (`Rejected`) avec les détails de l'erreur enregistrés sous la clé `"parsing_error"` dans `ai_extracted_json`.
+5. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés.
 ```
 
 ---
@@ -838,14 +842,14 @@ Format : `{ "error": "Description" }`
 | 4 | Boucle infinie données inaccessibles | `CronTarget.failed_attempts_count` → blacklist après 3 | `edgecase.md` |
 | 5 | Sources contradictoires | `data_conflict_warning = true` + domaines d'autorité | `edgecase.md` |
 | 6 | Renommage de programme | `program_name_mismatch = true` + recherche sémantique | `edgecase.md` |
-| 7 | Rate limit Google/Gemma (429) | Retry avec backoff exponentiel + throttling APScheduler | `edgecase.md` |
+| 7 | Rate limit Google/Gemma (429) | Retry avec backoff exponentiel (`base_delay * (1.5 ** (attempt - 1))`) + distinction `GemmaAPIError` (Pending_AI) vs `GemmaParsingError` (Rejected) | `edgecase.md` |
 | 8 | Frais cachés | `additional_fees_notes` (texte libre) | `edgecase.md` |
 | 9 | Tableaux Markdown cassés | Ignorer la source, passer à la suivante | `edgecase.md` |
 | 10 | Inbox inondée (doublons) | Diff vs production avant insertion | `edgecase.md` |
 | 11 | Paywalls / Modales cookies | Gemma détecte le blocage → skip silencieux | `edgecase.md` |
 | 12 | Ambiguïté devise (UE vs intl) | Colonnes `intl_*` séparées | `edgecase.md` |
-| 13 | Prompt Injection / Fake News | Délimiteurs `<TEXTE_SOURCE>`, whitelist domaines | `edgecase.md` |
-| 14 | Timeout / réponse vide Tavily | Timeout 15s, body < 50 chars = échec | `edgecase.md` |
+| 13 | Prompt Injection / Fake News | Délimiteurs `<TEXTE_SOURCE>`, whitelist domaines, isolation totale du commentaire utilisateur `user_text` des invites de l'IA | `edgecase.md` |
+| 14 | Timeout / réponse vide Tavily | Timeout 15s, body < 50 chars = échec (`TavilyExtractionError`) → statut `Rejected` immédiat | `edgecase.md` |
 | 15 | Cold Start Koyeb | Retry frontend + healthcheck `/health` | `edgecase.md` |
 
 ---
@@ -872,12 +876,15 @@ Le system prompt interdit formellement d'obéir à toute instruction trouvée da
 - Dashboard Admin : NextAuth session obligatoire
 - Suppression école : double confirmation frontend
 
-### 10.4. Contraintes Gemma
+### 10.4. Contraintes Gemma et Gestion d'Erreurs Robuste
 - **Pydantic interdit** avec les modèles Gemma (erreur 500)
 - JSON forcé via prompt strict "100% Prompting"
 - Nettoyage manuel des balises Markdown (````json`)
 - Validation structurelle des clés JSON côté Python
 - `temperature = 0.1` pour limiter les hallucinations
+- **Gestion d'exceptions typées :** Implémentation d'une hiérarchie d'exceptions dans `gemma_client.py` (`GemmaError`, `GemmaAPIError` pour les échecs réseau/API temporaires, `GemmaParsingError` pour les erreurs structurelles de réponse ou JSON invalide).
+- **Décodage tolérant :** Détection automatique et extraction du premier dictionnaire si Gemma encapsule sa réponse dans une liste JSON (`[ { ... } ]`), évitant un échec de parsing erroné.
+- **Sécurisation des boucles de scan :** Dans `phase1.py` et `phase2.py`, les appels LLM sont encadrés par des blocs `try...except GemmaError` au niveau de chaque école et programme pour éviter qu'une défaillance temporaire sur une entité ne fasse crasher l'ensemble du run périodique.
 
 ---
 
@@ -897,3 +904,6 @@ Le system prompt interdit formellement d'obéir à toute instruction trouvée da
 | Communication services | DB partagée + API interne minimale | Simple, chaque service fait ce qu'il sait faire |
 | Auth | NextAuth Credentials, 2 rôles | Admin crée les modérateurs, pas d'auto-inscription |
 | Frontend | 4 zones (consultation, crowdsourcing, API docs, admin) | Séparation claire des responsabilités |
+| Isolation du `user_text` | Affichage uniquement passif sur le Dashboard Admin | Sécurité absolue face aux injections de prompts indirectes |
+| Traitement Crowdsourcing asynchrone | Triage des erreurs (`Pending_AI` vs `Rejected`) | Évite de bloquer ou perdre les contributions utilisateurs en cas de pannes d'API ou de réseau |
+| Unwrapping des Listes JSON | Retrait automatique du conteneur `[ { ... } ]` | Résout les anomalies de formatage mineures générées par le modèle |

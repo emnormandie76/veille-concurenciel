@@ -48,6 +48,9 @@ interface Ticket {
   data_conflict_warning: boolean;
   program_name_mismatch: boolean;
   createdAt: string;
+  schoolName?: string | null;
+  campusName?: string | null;
+  programName?: string | null;
 }
 
 const STATUS_OPTIONS = ["", "Pending_AI", "Pending_Admin", "Validated", "Rejected"];
@@ -249,7 +252,7 @@ export default function InboxPage() {
               <tr>
                 <th>Catégorie</th>
                 <th>Source</th>
-                <th>École</th>
+                <th>École / Campus / Parcours</th>
                 <th>Alertes</th>
                 <th>Statut</th>
                 <th>Date</th>
@@ -274,9 +277,25 @@ export default function InboxPage() {
                     </span>
                   </td>
                   <td>
-                    <code style={{ fontSize: "0.8rem", color: "var(--accent)" }}>
-                      {t.schoolId ? t.schoolId.substring(0, 8) + "…" : "—"}
-                    </code>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                        {t.schoolName || (t.schoolId ? t.schoolId.substring(0, 8) + "…" : "—")}
+                      </span>
+                      {(t.campusName || t.programName) && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                          {t.campusName && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                              📍 {t.campusName}
+                            </span>
+                          )}
+                          {t.programName && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                              📚 {t.programName}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
@@ -349,6 +368,19 @@ export default function InboxPage() {
                 <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
                   ID: {selectedTicket.id}
                 </p>
+                {(selectedTicket.schoolName || selectedTicket.schoolId) && (
+                  <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--accent)" }}>
+                      🏫 {selectedTicket.schoolName || selectedTicket.schoolId}
+                    </span>
+                    {(selectedTicket.campusName || selectedTicket.programName) && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                        {selectedTicket.campusName && <span>📍 {selectedTicket.campusName}</span>}
+                        {selectedTicket.programName && <span>📚 {selectedTicket.programName}</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <button className="btn btn-secondary btn-sm" onClick={closePanel}>✕ Fermer</button>
             </div>
@@ -390,14 +422,22 @@ export default function InboxPage() {
               </div>
             )}
 
-            {/* Texte utilisateur (si crowdsourcing) */}
+            {/* Commentaire utilisateur — bloc secondaire, conditionnel */}
             {selectedTicket.user_text && (
-              <div className="user-text-box">
-                <p style={{ fontWeight: 600, marginBottom: "6px", fontSize: "0.9rem" }}>Message utilisateur :</p>
-                <p style={{ fontSize: "0.9rem", whiteSpace: "pre-wrap", margin: 0 }}>
-                  {selectedTicket.user_text}
+              <aside
+                style={{
+                  borderLeft: "3px solid var(--muted, #64748b)",
+                  paddingLeft: "12px",
+                  marginTop: "16px",
+                  marginBottom: "16px",
+                  opacity: 0.75,
+                }}
+              >
+                <p style={{ fontSize: "11px", textTransform: "uppercase", marginBottom: "4px", fontWeight: "bold", color: "var(--text-secondary)" }}>
+                  Note du contributeur
                 </p>
-              </div>
+                <p style={{ fontSize: "14px", margin: 0 }}>{selectedTicket.user_text}</p>
+              </aside>
             )}
 
             {/* ── Formulaire par catégorie ── */}

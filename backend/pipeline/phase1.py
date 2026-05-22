@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/pipeline/phase1.py — Phase 1 : Cartographie (Program Discovery) — Étape 5
 
 Implémente :
@@ -57,14 +57,19 @@ def extract_programs(raw_content: str) -> Optional[dict]:
     content_truncated = raw_content[:80000]
     user_content = f"<TEXTE_SOURCE>\n{content_truncated}\n</TEXTE_SOURCE>"
 
-    result = call_gemma(
-        model="models/gemma-4-31b-it",
-        system_prompt=PHASE1_SYSTEM_PROMPT,
-        user_content=user_content,
-        required_keys=PHASE1_REQUIRED_KEYS,
-        max_retries=3,
-        temperature=0.1,
-    )
+    from backend.ai.gemma_client import GemmaError
+    try:
+        result = call_gemma(
+            model="models/gemma-4-31b-it",
+            system_prompt=PHASE1_SYSTEM_PROMPT,
+            user_content=user_content,
+            required_keys=PHASE1_REQUIRED_KEYS,
+            max_retries=3,
+            temperature=0.1,
+        )
+    except GemmaError as e:
+        logger.error(f"❌ Erreur lors de l'appel Gemma (Phase 1): {e}")
+        return None
 
     if result is None:
         logger.error("❌ Gemma n'a pas pu extraire les programmes (Phase 1)")

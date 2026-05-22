@@ -250,7 +250,7 @@ def start_scheduler(key_manager):
     from backend.crowdsourcing.processor import process_pending_submissions
     scheduler.add_job(
         func=process_pending_submissions,
-        trigger=IntervalTrigger(minutes=5),
+        trigger=IntervalTrigger(minutes=1),
         args=[key_manager],
         id="crowdsourcing_processor",
         name="Process Crowdsourcing Submissions (toutes les 5m)",

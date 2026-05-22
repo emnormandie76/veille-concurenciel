@@ -65,7 +65,7 @@ async def process_crowdsourcing_ticket(ticket_id: str) -> None:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT ti.id, ti.user_text, ti.urls, ti.ai_category, ti."schoolId" AS school_id, s.name AS school_name
+                SELECT ti.id, ti.user_text, ti.urls, ti.ai_category, ti."schoolId" AS school_id, ti."programId" AS program_id, s.name AS school_name
                 FROM "ContributionInbox" ti
                 JOIN "School" s ON s.id = ti."schoolId"
                 WHERE ti.id = %s AND ti.source_type = 'User_Submission'
@@ -80,8 +80,14 @@ async def process_crowdsourcing_ticket(ticket_id: str) -> None:
     urls = ticket["urls"]
     category = ticket["ai_category"]
     school_name = ticket["school_name"]
+    program_id = ticket["program_id"]
 
     try:
+        # Validation du rattachement à un parcours pour les catégories concernées
+        if category in ["Pricing", "Ranking", "Capacity"] and not program_id:
+            raise GemmaParsingError(
+                f"Le ticket de catégorie {category} doit être rattaché à un parcours (programId manquant)."
+            )
         # 2. EXTRACTION PAGE (Tavily)
         try:
             raw_content = extract_from_urls(urls, _key_manager)
@@ -97,7 +103,7 @@ async def process_crowdsourcing_ticket(ticket_id: str) -> None:
         compatibility_prompt = prompts.CROWDSOURCING_COMPATIBILITY_CHECK.format(
             categories=category,
             school_name=school_name,
-            page_content=raw_content[:8000]
+            page_content=raw_content[:80000]
         )
 
         compatibility_res = call_gemma(
@@ -131,6 +137,41 @@ async def process_crowdsourcing_ticket(ticket_id: str) -> None:
             max_retries=4,
             temperature=0.1,
         )
+
+        # Validation des valeurs extraites obligatoires non-nulles
+        if category == "Capacity":
+            spots_available = extracted.get("spots_available")
+            academic_year = extracted.get("academic_year")
+            if spots_available is None or academic_year is None:
+                raise GemmaParsingError(
+                    f"Données Capacity incomplètes. spots_available={spots_available}, academic_year={academic_year}"
+                )
+        elif category == "Ranking":
+            ranking_name = extracted.get("ranking_name")
+            rank = extracted.get("rank")
+            academic_year = extracted.get("academic_year")
+            if not ranking_name or rank is None or academic_year is None:
+                raise GemmaParsingError(
+                    f"Données Ranking incomplètes. ranking_name={ranking_name}, rank={rank}, academic_year={academic_year}"
+                )
+        elif category == "Pricing":
+            academic_year = extracted.get("academic_year")
+            if academic_year is None:
+                raise GemmaParsingError("Données Pricing incomplètes. academic_year est requis.")
+            
+            # Vérifier qu'au moins un frais de scolarité est non null
+            pricing_keys = [
+                "year_1_fee",
+                "year_2_fee",
+                "year_3_fee",
+                "year_4_fee",
+                "year_5_fee",
+                "total_fee",
+                "intl_year_1_fee",
+                "intl_total_fee",
+            ]
+            if not any(extracted.get(k) is not None for k in pricing_keys):
+                raise GemmaParsingError("Données Pricing incomplètes. Aucun frais de scolarité valide n'a été extrait.")
 
         # 5. MISE À JOUR INBOX
         with get_db_connection() as conn:

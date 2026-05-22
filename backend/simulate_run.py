@@ -29,8 +29,8 @@ def simulate():
     print("🚀 DEMARRAGE DE LA SIMULATION DU PIPELINE (PHASE 1) 🚀")
     print("====================================================")
     
-    school_name = "Em Normandie"
-    school_domain = "www.em-normandie.com"
+    school_name = "EMLV"
+    school_domain = "www.emlv.fr"
     
     # 1. Insertion ou récupération de l'école dans la base de données
     school_id = None

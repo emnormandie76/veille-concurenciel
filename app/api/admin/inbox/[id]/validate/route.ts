@@ -283,6 +283,8 @@ async function validateProgramDiscovery(
       });
 
       return createdCampuses;
+    }, {
+      timeout: 25000, // 25s timeout pour les imports volumineux (ex: EMLV)
     });
 
     return NextResponse.json({

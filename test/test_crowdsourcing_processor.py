@@ -22,9 +22,10 @@ async def test_user_text_never_reaches_gemma():
     mock_ticket = {
         "id": "test-uuid-001",
         "user_text": provocateur_user_text,
-        "urls": ["https://www.emlv.fr/frais-scolarite/"],
+        "urls": ["https://www.emlv.fr/admissions/tarifs-et-financements/"],
         "ai_category": "Pricing",
         "school_id": "school-uuid-001",
+        "program_id": "program-uuid-001",
         "school_name": "EMLV",
     }
 
@@ -69,6 +70,7 @@ async def test_incompatible_page_is_rejected():
         "urls": ["https://www.emlv.fr/about/"],
         "ai_category": "Pricing",
         "school_id": "school-uuid-001",
+        "program_id": "program-uuid-001",
         "school_name": "EMLV",
     }
 
@@ -105,6 +107,7 @@ async def test_valid_ticket_produces_pending_admin():
         "urls": ["https://www.emlv.fr/frais-de-scolarite/"],
         "ai_category": "Pricing",
         "school_id": "school-uuid-001",
+        "program_id": "program-uuid-001",
         "school_name": "EMLV",
     }
 
@@ -157,6 +160,7 @@ async def test_api_error_keeps_pending_ai():
         "urls": ["https://www.emlv.fr/pricing/"],
         "ai_category": "Pricing",
         "school_id": "school-uuid-001",
+        "program_id": "program-uuid-001",
         "school_name": "EMLV",
     }
 
@@ -193,6 +197,7 @@ async def test_parsing_error_rejects_ticket():
         "urls": ["https://www.emlv.fr/pricing/"],
         "ai_category": "Pricing",
         "school_id": "school-uuid-001",
+        "program_id": "program-uuid-001",
         "school_name": "EMLV",
     }
 
@@ -245,3 +250,77 @@ async def test_gemma_client_list_parsing(mock_get_client):
     )
 
     assert res == {"key": "value"}
+
+
+@pytest.mark.asyncio
+async def test_ticket_without_program_id_is_rejected():
+    """
+    Vérifie qu'un ticket de catégorie Pricing/Ranking/Capacity sans program_id
+    est rejeté immédiatement avec une exception GemmaParsingError.
+    """
+    from backend.ai.gemma_client import GemmaParsingError
+    mock_ticket = {
+        "id": "test-uuid-006",
+        "user_text": None,
+        "urls": ["https://www.emlv.fr/pricing/"],
+        "ai_category": "Pricing",
+        "school_id": "school-uuid-001",
+        "program_id": None, # Manquant
+        "school_name": "EMLV",
+    }
+
+    with patch("backend.db.get_db_connection") as mock_get_db, \
+         patch("backend.crowdsourcing.processor._update_ticket_status") as mock_update:
+
+        # Mock database connection cursor
+        mock_conn = mock_get_db.return_value.__enter__.return_value
+        mock_cur = mock_conn.cursor.return_value.__enter__.return_value
+        mock_cur.fetchone.return_value = mock_ticket
+
+        with pytest.raises(GemmaParsingError) as exc_info:
+            await process_crowdsourcing_ticket("test-uuid-006")
+
+        assert "doit être rattaché à un parcours" in str(exc_info.value)
+        mock_update.assert_called_once_with(mock_conn, "test-uuid-006", "Rejected", {"parsing_error": str(exc_info.value)})
+
+
+@pytest.mark.asyncio
+async def test_ticket_with_null_required_fields_is_rejected():
+    """
+    Vérifie qu'un ticket (ici de catégorie Capacity) dont la valeur extraite
+    obligatoire est null (spots_available = null) est rejeté.
+    """
+    from backend.ai.gemma_client import GemmaParsingError
+    mock_ticket = {
+        "id": "test-uuid-007",
+        "user_text": None,
+        "urls": ["https://www.emlv.fr/capacity/"],
+        "ai_category": "Capacity",
+        "school_id": "school-uuid-001",
+        "program_id": "program-uuid-001",
+        "school_name": "EMLV",
+    }
+
+    with patch("backend.db.get_db_connection") as mock_get_db, \
+         patch("backend.crowdsourcing.processor.extract_from_urls") as mock_extract, \
+         patch("backend.crowdsourcing.processor.call_gemma") as mock_gemma, \
+         patch("backend.crowdsourcing.processor._update_ticket_status") as mock_update:
+
+        # Mock database connection cursor
+        mock_conn = mock_get_db.return_value.__enter__.return_value
+        mock_cur = mock_conn.cursor.return_value.__enter__.return_value
+        mock_cur.fetchone.return_value = mock_ticket
+
+        mock_extract.return_value = "Contenu de page pour la capacité de l'école. Cette page contient au moins 50 caractères pour passer la validation de longueur."
+        
+        # Simuler compatible=True et une extraction où spots_available est null (None)
+        mock_gemma.side_effect = [
+            {"compatible": True, "matched_categories": ["Capacity"], "reason": "Capacité trouvée"},
+            {"spots_available": None, "academic_year": 2025}
+        ]
+
+        with pytest.raises(GemmaParsingError) as exc_info:
+            await process_crowdsourcing_ticket("test-uuid-007")
+
+        assert "spots_available=None" in str(exc_info.value)
+        mock_update.assert_called_once_with(mock_conn, "test-uuid-007", "Rejected", {"parsing_error": str(exc_info.value)})

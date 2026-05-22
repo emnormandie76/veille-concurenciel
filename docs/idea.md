@@ -1,0 +1,2 @@
+Ajouté dans la page école / campus un bouton pour que l'admin déclanche si il veux la phase 1 ou la phase 2 si chaque école concerné et un bouton phase 2 pour lancer la recherche sur un campus concerné. (a pensé est ce que la phase 2 est fonctionnera pour des recherche spécialisé campus ???)
+Ensuite on verra la listes des écoles en attente de crawl dans la page admin/cron (d'ailleurs quand j'effectue des simulation je ne vois rien dans le champ tache en cours)

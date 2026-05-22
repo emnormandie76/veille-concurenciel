@@ -113,5 +113,11 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Impact :** L'utilisateur lambda voit une erreur incompréhensible en soumettant son information. L'Admin croit que le backend est en panne.
 - **Solution confirmée :** **Côté Next.js (frontend), implémenter un mécanisme de retry automatique avec un message UX explicite ("Le serveur redémarre, nouvelle tentative dans quelques secondes..."). Côté Koyeb, configurer un healthcheck HTTP sur `/health` pour que Koyeb ne route le trafic qu'une fois le backend prêt.**
 
+### Edge Case 17 : Timeout de transaction Prisma sur les imports volumineux (Phase 1)
+- **Contexte :** Lors de la validation par l'Admin d'un ticket de type `Program_Discovery` (Phase 1), le système doit insérer ou mettre à jour tous les campus et programmes découverts pour l'école concernée dans une seule transaction atomique.
+- **Problème :** Pour des écoles avec un grand nombre de campus et de programmes (ex: EMLV avec 5 campus et plus de 30 programmes, soit environ 38 opérations d'upserts séquentiels), l'exécution de ces requêtes successives via le driver Neon serverless prend plus de 5 secondes.
+- **Impact :** La transaction dépasse le timeout par défaut de Prisma (5000 ms), ce qui provoque l'annulation de la transaction par la base de données. Les requêtes subséquentes échouent alors avec une erreur de contrainte de clé étrangère (`ForeignKeyConstraintViolation` P2003) sur le modèle `Program` ou un timeout `P2028`, empêchant la validation du ticket.
+- **Solution confirmée :** **Configuration explicite d'un timeout de transaction allongé à 25 secondes (`{ timeout: 25000 }`) lors de l'appel `prisma.$transaction` dans la route de validation pour assurer le traitement complet des imports à fort volume.**
+
 
 

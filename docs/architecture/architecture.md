@@ -711,14 +711,20 @@ Utilisateur (non connecté)
 ### 6.2. Traitement Backend (Flux de Traitement et Sécurisation)
 
 Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière suivante :
-1. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Timeout de 15s maximum. Si le contenu extrait est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et le ticket est immédiatement basculé à `Rejected`.
-2. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_CHECK` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué `Rejected` avec la raison écrite dans `ai_extracted_json`.
-3. **Extraction Structurée (Gemma 31B) :** Si compatible, Gemma 31B extrait les données structurées selon la catégorie concernée. Le champ `user_text` est à nouveau exclu.
-4. **Statut & Triage des Erreurs :**
+1. **Validation Initiale du Parcours :** Si la catégorie du ticket est `Pricing`, `Ranking` ou `Capacity`, le système vérifie immédiatement qu'un `programId` est renseigné (ticket rattaché à un parcours spécifique). Si ce n'est pas le cas, le traitement lève directement une `GemmaParsingError` et le ticket est rejeté.
+2. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Timeout de 15s maximum. Si le contenu extrait est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et le ticket est immédiatement basculé à `Rejected`.
+3. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_CHECK` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le texte extrait est tronqué à 80 000 caractères (aligné sur l'extraction) afin d'inclure le contenu principal situé après les menus de navigation très longs. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué `Rejected` avec la raison écrite dans `ai_extracted_json`.
+4. **Extraction Structurée (Gemma 31B) :** Si compatible, Gemma 31B extrait les données structurées selon la catégorie concernée. Le champ `user_text` est à nouveau exclu.
+5. **Validation Post-Extraction des Données Obligatoires :**
+   - **`Capacity`** : validation que `spots_available` et `academic_year` ne sont pas `null`.
+   - **`Ranking`** : validation que `ranking_name`, `rank` et `academic_year` ne sont pas `null`.
+   - **`Pricing`** : validation que `academic_year` n'est pas `null` et qu'au moins un des frais de scolarité extraits est non nul.
+   - Si une donnée obligatoire manque ou est extraite en tant que `null`, une `GemmaParsingError` est levée.
+6. **Statut & Triage des Erreurs :**
    - **Succès :** Mise à jour du statut en `Pending_Admin` avec le JSON extrait (upsert temporaire), prêt pour la validation humaine.
    - **Erreurs API Temporaires (`GemmaAPIError`) :** Si le service API Google GenAI ou le réseau échoue (ex: 429, 500, timeout temporaire), le ticket reste en `Pending_AI` afin d'être re-tenté lors du prochain run du scheduler. Le nombre d'essais LLM par ticket est étendu à 4 tentatives.
-   - **Erreurs Permanentes (`GemmaParsingError`, `TavilyExtractionError`) :** Si le format JSON ou les clés obligatoires échouent continuellement, le ticket est rejeté (`Rejected`) avec les détails de l'erreur enregistrés sous la clé `"parsing_error"` dans `ai_extracted_json`.
-5. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés.
+   - **Erreurs Permanentes (`GemmaParsingError`, `TavilyExtractionError`) :** Si le format JSON, le lien de parcours ou les clés obligatoires échouent, le ticket est rejeté (`Rejected`) avec les détails de l'erreur enregistrés sous la clé `"parsing_error"` dans `ai_extracted_json`.
+7. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés.
 ```
 
 ---
@@ -851,6 +857,8 @@ Format : `{ "error": "Description" }`
 | 13 | Prompt Injection / Fake News | Délimiteurs `<TEXTE_SOURCE>`, whitelist domaines, isolation totale du commentaire utilisateur `user_text` des invites de l'IA | `edgecase.md` |
 | 14 | Timeout / réponse vide Tavily | Timeout 15s, body < 50 chars = échec (`TavilyExtractionError`) → statut `Rejected` immédiat | `edgecase.md` |
 | 15 | Cold Start Koyeb | Retry frontend + healthcheck `/health` | `edgecase.md` |
+| 16 | Faux-négatifs compatibilité (menus longs) | Augmentation de la limite de troncature à 80 000 caractères pour le tri de compatibilité afin de couvrir le contenu principal | `processor.py` |
+| 17 | Timeout transaction Prisma (validation) | Augmentation du timeout à 25s pour validateProgramDiscovery face aux gros volumes d'upserts séquentiels (ex: EMLV) | `app/api/admin/inbox/[id]/validate/route.ts` |
 
 ---
 

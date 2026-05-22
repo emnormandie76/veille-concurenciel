@@ -858,7 +858,7 @@ Format : `{ "error": "Description" }`
 | 14 | Timeout / réponse vide Tavily | Timeout 15s, body < 50 chars = échec (`TavilyExtractionError`) → statut `Rejected` immédiat | `edgecase.md` |
 | 15 | Cold Start Koyeb | Retry frontend + healthcheck `/health` | `edgecase.md` |
 | 16 | Faux-négatifs compatibilité (menus longs) | Augmentation de la limite de troncature à 80 000 caractères pour le tri de compatibilité afin de couvrir le contenu principal | `processor.py` |
-| 17 | Timeout transaction Prisma (validation) | Augmentation du timeout à 25s pour validateProgramDiscovery face aux gros volumes d'upserts séquentiels (ex: EMLV) | `app/api/admin/inbox/[id]/validate/route.ts` |
+| 17 | Timeout transaction Prisma (validation) | Exécution parallèle des upserts (Promise.all) + timeout de 60s pour gérer les imports très volumineux (ex: EDHEC avec 9 campus et 30+ programmes) | `app/api/admin/inbox/[id]/validate/route.ts` |
 
 ---
 

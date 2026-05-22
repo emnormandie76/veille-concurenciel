@@ -213,59 +213,67 @@ async function validateProgramDiscovery(
   // Transaction atomique : tout réussit ou tout rollback (bdd.md §4)
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const createdCampuses: Array<{ campusId: string; campusName: string; programsCreated: number }> = [];
-
-      for (const campusData of data.discovered_campuses) {
-        if (!campusData.name) continue;
-
-        // Upsert Campus (@@unique: [schoolId, name])
-        const campus = await tx.campus.upsert({
-          where: {
-            schoolId_name: {
+      // 1. Upsert de tous les campus en parallèle
+      const campusResults = await Promise.all(
+        data.discovered_campuses.map(async (campusData) => {
+          if (!campusData.name) return null;
+          const campus = await tx.campus.upsert({
+            where: {
+              schoolId_name: {
+                schoolId: ticket.schoolId!,
+                name: campusData.name,
+              },
+            },
+            create: {
               schoolId: ticket.schoolId!,
               name: campusData.name,
+              city: campusData.city ?? null,
             },
-          },
-          create: {
-            schoolId: ticket.schoolId!,
-            name: campusData.name,
-            city: campusData.city ?? null,
-          },
-          update: {
-            city: campusData.city ?? undefined,
-          },
-        });
+            update: {
+              city: campusData.city ?? undefined,
+            },
+          });
+          return { campusData, campus };
+        })
+      );
 
+      // 2. Préparation des upserts de programmes en parallèle
+      const programPromises: Promise<any>[] = [];
+      const createdCampuses: Array<{ campusId: string; campusName: string; programsCreated: number }> = [];
+
+      for (const item of campusResults) {
+        if (!item) continue;
+        const { campusData, campus } = item;
         let programsCreated = 0;
 
-        // Upsert Programs (@@unique: [campusId, name])
         if (Array.isArray(campusData.programs)) {
           for (const prog of campusData.programs) {
             if (!prog.name) continue;
-
-            await tx.program.upsert({
-              where: {
-                campusId_name: {
+            programsCreated++;
+            programPromises.push(
+              tx.program.upsert({
+                where: {
+                  campusId_name: {
+                    campusId: campus.id,
+                    name: prog.name,
+                  },
+                },
+                create: {
                   campusId: campus.id,
                   name: prog.name,
+                  admission_exam: prog.admission_exam ?? null,
+                  is_alternance_possible: prog.is_alternance_possible ?? false,
+                  is_expatriation_mandatory: prog.is_expatriation_mandatory ?? false,
+                  min_expatriation_months: prog.min_expatriation_months ?? null,
+                  max_internship_months: prog.max_internship_months ?? null,
                 },
-              },
-              create: {
-                campusId: campus.id,
-                name: prog.name,
-                admission_exam: prog.admission_exam ?? null,
-                is_alternance_possible: prog.is_alternance_possible ?? false,
-                is_expatriation_mandatory: prog.is_expatriation_mandatory ?? false,
-                min_expatriation_months: prog.min_expatriation_months ?? null,
-                max_internship_months: prog.max_internship_months ?? null,
-              },
-              update: {
-                admission_exam: prog.admission_exam ?? undefined,
-                is_alternance_possible: prog.is_alternance_possible ?? undefined,
-                is_expatriation_mandatory: prog.is_expatriation_mandatory ?? undefined,
-              },
-            });
-            programsCreated++;
+                update: {
+                  admission_exam: prog.admission_exam ?? undefined,
+                  is_alternance_possible: prog.is_alternance_possible ?? undefined,
+                  is_expatriation_mandatory: prog.is_expatriation_mandatory ?? undefined,
+                },
+              })
+            );
           }
         }
 
@@ -276,6 +284,9 @@ async function validateProgramDiscovery(
         });
       }
 
+      // Exécuter tous les upserts de programmes en parallèle
+      await Promise.all(programPromises);
+
       // Marquer le ticket comme validé
       await tx.contributionInbox.update({
         where: { id: ticket.id },
@@ -284,7 +295,7 @@ async function validateProgramDiscovery(
 
       return createdCampuses;
     }, {
-      timeout: 25000, // 25s timeout pour les imports volumineux (ex: EMLV)
+      timeout: 60000, // 60s timeout pour les imports volumineux (ex: EDHEC avec 9 campus et 30+ programmes)
     });
 
     return NextResponse.json({

@@ -115,9 +115,9 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 
 ### Edge Case 17 : Timeout de transaction Prisma sur les imports volumineux (Phase 1)
 - **Contexte :** Lors de la validation par l'Admin d'un ticket de type `Program_Discovery` (Phase 1), le système doit insérer ou mettre à jour tous les campus et programmes découverts pour l'école concernée dans une seule transaction atomique.
-- **Problème :** Pour des écoles avec un grand nombre de campus et de programmes (ex: EMLV avec 5 campus et plus de 30 programmes, soit environ 38 opérations d'upserts séquentiels), l'exécution de ces requêtes successives via le driver Neon serverless prend plus de 5 secondes.
-- **Impact :** La transaction dépasse le timeout par défaut de Prisma (5000 ms), ce qui provoque l'annulation de la transaction par la base de données. Les requêtes subséquentes échouent alors avec une erreur de contrainte de clé étrangère (`ForeignKeyConstraintViolation` P2003) sur le modèle `Program` ou un timeout `P2028`, empêchant la validation du ticket.
-- **Solution confirmée :** **Configuration explicite d'un timeout de transaction allongé à 25 secondes (`{ timeout: 25000 }`) lors de l'appel `prisma.$transaction` dans la route de validation pour assurer le traitement complet des imports à fort volume.**
+- **Problème :** Pour des écoles avec un grand nombre de campus et de programmes (ex: EMLV avec 5 campus et 30+ programmes, ou EDHEC avec 9 campus et 30+ programmes, soit environ 40 opérations d'upserts), l'exécution séquentielle de ces requêtes successives via le driver Neon serverless prend énormément de temps (jusqu'à 40 secondes pour l'EDHEC).
+- **Impact :** La transaction dépasse le timeout de Prisma (même configuré à 25s), ce qui provoque l'annulation de la transaction par la base de données. Les requêtes subséquentes échouent avec une erreur de transaction expirée `P2028` (ou `P2003`), empêchant la validation du ticket.
+- **Solution confirmée :** **Optimisation de la transaction en parallélisant les requêtes (upserts de tous les campus d'abord en parallèle via `Promise.all`, puis upserts de tous leurs programmes en parallèle via un second `Promise.all`). En outre, le timeout de la transaction est allongé à 60 secondes (`{ timeout: 60000 }`) pour garantir la robustesse face à des pics de latence sur le réseau de la base de données.**
 
 
 

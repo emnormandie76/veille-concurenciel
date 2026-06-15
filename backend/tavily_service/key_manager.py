@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/tavily/key_manager.py — TavilyKeyManager (Étape 4.3)
 
 Gestion de la rotation des clés API Tavily avec :
@@ -131,8 +131,8 @@ class TavilyKeyManager:
                                 key_state.credits_limit = limit
                                 key_state.last_fetched_at = time.time()
                                 
-                                # Seuil de sécurité : rotation s'il reste 50 crédits ou moins
-                                rotation_threshold = limit - 50
+                                # Seuil de sécurité : rotation s'il reste 100 crédits ou moins
+                                rotation_threshold = limit - 100
                                 if usage >= rotation_threshold:
                                     key_state.exhausted = True
                                 else:
@@ -176,7 +176,7 @@ class TavilyKeyManager:
 
             for _ in range(len(self._keys)):
                 key_state = self._keys[self._current_index]
-                rotation_threshold = key_state.credits_limit - 50
+                rotation_threshold = key_state.credits_limit - 100
 
                 if not key_state.exhausted and key_state.credits_used < rotation_threshold:
                     return key_state.api_key
@@ -198,7 +198,7 @@ class TavilyKeyManager:
                     key_state.credits_used += credits
                     key_state.last_used_at = time.time()
 
-                    rotation_threshold = key_state.credits_limit - 50
+                    rotation_threshold = key_state.credits_limit - 100
                     if key_state.credits_used >= rotation_threshold:
                         if not key_state.exhausted:
                             logger.warning(
@@ -240,6 +240,6 @@ class TavilyKeyManager:
         with self._lock:
             return sum(
                 1 for ks in self._keys
-                if not ks.exhausted and ks.credits_used < (ks.credits_limit - 50)
+                if not ks.exhausted and ks.credits_used < (ks.credits_limit - 100)
             )
 

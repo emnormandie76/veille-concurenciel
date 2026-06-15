@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+
+// ── Interfaces ─────────────────────────────────────────────────
 
 interface TavilyKeyStatus {
   key_suffix: string;
@@ -10,6 +12,16 @@ interface TavilyKeyStatus {
   exhausted: boolean;
 }
 
+interface ProgressDetails {
+  current_action: string;
+  school?: string;
+  program?: string;
+  category?: string;
+  progress?: string; // ex: "5/12"
+  tickets_created?: number;
+  updated_at?: number;
+}
+
 interface PipelineJob {
   job_id: string;
   school_id: string;
@@ -17,7 +29,10 @@ interface PipelineJob {
   status: string;
   priority?: string;
   categories?: string[];
+  program_id?: string;
   error?: string;
+  created_at?: number;
+  progress_details?: ProgressDetails;
 }
 
 interface PipelineStatus {
@@ -45,6 +60,56 @@ interface CronTarget {
   } | null;
 }
 
+interface ProgramInfo {
+  id: string;
+  name: string;
+}
+
+interface CampusInfo {
+  id: string;
+  name: string;
+  programs: ProgramInfo[];
+}
+
+interface SchoolWithPrograms {
+  id: string;
+  name: string;
+  official_domain: string;
+  campuses: CampusInfo[];
+}
+
+// ── Helper: format elapsed time ────────────────────────────────
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 0) return "0s";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+// ── Helper: parse progress fraction ────────────────────────────
+
+function parseProgress(progress?: string): { done: number; total: number } | null {
+  if (!progress) return null;
+  const match = progress.match(/^(\d+)\/(\d+)$/);
+  if (!match) return null;
+  return { done: parseInt(match[1]), total: parseInt(match[2]) };
+}
+
+// ── Category labels in French ──────────────────────────────────
+
+const CATEGORY_LABELS: Record<string, string> = {
+  Pricing: "💰 Tarifs",
+  Ranking: "🏆 Classements",
+  Capacity: "🎓 Places",
+  SchoolStats: "📊 Statistiques école",
+  Accreditation: "🏅 Accréditations",
+};
+
+const PROGRAM_CATEGORIES = ["Pricing", "Ranking", "Capacity"];
+const SCHOOL_CATEGORIES = ["SchoolStats", "Accreditation"];
+
 export default function CronMonitoringPage() {
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
   const [cronTargets, setCronTargets] = useState<CronTarget[]>([]);
@@ -58,6 +123,34 @@ export default function CronMonitoringPage() {
   const [errorTargets, setErrorTargets] = useState<string | null>(null);
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // ── Recherche manuelle ───────────────────────────────────────
+  const [schools, setSchools] = useState<SchoolWithPrograms[]>([]);
+  const [loadingSchools, setLoadingSchools] = useState(false);
+  const [selectedPhase, setSelectedPhase] = useState<"1" | "2">("1");
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
+  const [selectedProgramId, setSelectedProgramId] = useState<string>("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [launchingResearch, setLaunchingResearch] = useState(false);
+  const [launchMessage, setLaunchMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // ── Timer tick for elapsed time ──────────────────────────────
+  const [tick, setTick] = useState(0);
+
+  // ── Derived: selected school and its programs ────────────────
+  const selectedSchool = useMemo(
+    () => schools.find((s) => s.id === selectedSchoolId) || null,
+    [schools, selectedSchoolId]
+  );
+
+  const allPrograms = useMemo(() => {
+    if (!selectedSchool) return [];
+    return selectedSchool.campuses.flatMap((c) =>
+      c.programs.map((p) => ({ ...p, campusName: c.name }))
+    );
+  }, [selectedSchool]);
+
+  // ── Fetch functions ──────────────────────────────────────────
 
   const fetchPipelineStatus = async () => {
     try {
@@ -97,16 +190,40 @@ export default function CronMonitoringPage() {
     }
   };
 
-  // Poll status every 5 seconds for updates and cold start retry
+  const fetchSchools = async () => {
+    setLoadingSchools(true);
+    try {
+      const res = await fetch("/api/admin/schools-with-programs");
+      if (!res.ok) throw new Error("Impossible de charger les écoles");
+      const data = await res.json();
+      setSchools(data);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setLoadingSchools(false);
+    }
+  };
+
+  // ── Polling + init ───────────────────────────────────────────
+
   useEffect(() => {
     fetchPipelineStatus();
     fetchCronTargets();
+    fetchSchools();
 
     const statusInterval = setInterval(() => {
       fetchPipelineStatus();
     }, 5000);
 
-    return () => clearInterval(statusInterval);
+    // Tick every second for elapsed time display
+    const tickInterval = setInterval(() => {
+      setTick((t) => t + 1);
+    }, 1000);
+
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(tickInterval);
+    };
   }, []);
 
   // Countdown timer for user feedback when backend is down
@@ -121,6 +238,14 @@ export default function CronMonitoringPage() {
     return () => clearInterval(countdown);
   }, [backendDown]);
 
+  // Reset categories when phase or school changes
+  useEffect(() => {
+    setSelectedCategories([]);
+    setSelectedProgramId("");
+  }, [selectedPhase, selectedSchoolId]);
+
+  // ── Handlers ─────────────────────────────────────────────────
+
   const handleUnblock = async (id: string) => {
     setUnblockingId(id);
     try {
@@ -130,7 +255,6 @@ export default function CronMonitoringPage() {
       if (!res.ok) {
         throw new Error("Échec du déblocage");
       }
-      // Refresh cron targets
       await fetchCronTargets();
     } catch (err: any) {
       alert(err.message || "Une erreur est survenue lors du déblocage.");
@@ -139,7 +263,81 @@ export default function CronMonitoringPage() {
     }
   };
 
-  // Filter cron targets based on search query
+  const handleCategoryToggle = (cat: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const handleLaunchResearch = async () => {
+    if (!selectedSchoolId) return;
+
+    setLaunchingResearch(true);
+    setLaunchMessage(null);
+
+    try {
+      const body: any = {
+        school_id: selectedSchoolId,
+        phase: selectedPhase,
+      };
+
+      if (selectedPhase === "2") {
+        if (selectedProgramId) body.program_id = selectedProgramId;
+        if (selectedCategories.length > 0) body.categories = selectedCategories;
+      }
+
+      const res = await fetch("/api/admin/trigger-research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || `Erreur (${res.status})`);
+      }
+
+      if (data.already_running) {
+        setLaunchMessage({
+          type: "error",
+          text: `Une tâche est déjà en cours pour cette école (job #${data.job_id})`,
+        });
+      } else {
+        setLaunchMessage({
+          type: "success",
+          text: `✅ ${data.message} — Job #${data.job_id}`,
+        });
+        // Refresh status to show the new job
+        setTimeout(fetchPipelineStatus, 1000);
+      }
+    } catch (err: any) {
+      setLaunchMessage({
+        type: "error",
+        text: err.message || "Erreur lors du lancement de la recherche",
+      });
+    } finally {
+      setLaunchingResearch(false);
+    }
+  };
+
+  // ── Derived: check if a school already has a running job ─────
+  const schoolHasActiveJob = useMemo(() => {
+    if (!selectedSchoolId || !pipelineStatus) return false;
+    return pipelineStatus.pipeline_jobs.some(
+      (j) => j.school_id === selectedSchoolId && ["running", "queued"].includes(j.status)
+    );
+  }, [selectedSchoolId, pipelineStatus]);
+
+  // ── Derived: available categories based on selection ─────────
+  const availableCategories = useMemo(() => {
+    if (selectedPhase === "1") return [];
+    if (selectedProgramId) return PROGRAM_CATEGORIES;
+    // No program selected = all categories available
+    return [...SCHOOL_CATEGORIES, ...PROGRAM_CATEGORIES];
+  }, [selectedPhase, selectedProgramId]);
+
+  // ── Filter cron targets ──────────────────────────────────────
   const filteredTargets = cronTargets.filter((target) => {
     const schoolMatch = target.school.name.toLowerCase().includes(searchQuery.toLowerCase());
     const categoryMatch = target.data_category.toLowerCase().includes(searchQuery.toLowerCase());
@@ -147,13 +345,23 @@ export default function CronMonitoringPage() {
     return schoolMatch || categoryMatch || programMatch;
   });
 
+  // ── Can launch? ──────────────────────────────────────────────
+  const canLaunch = useMemo(() => {
+    if (!selectedSchoolId) return false;
+    if (schoolHasActiveJob) return false;
+    if (launchingResearch) return false;
+    if (backendDown) return false;
+    if (selectedPhase === "2" && selectedProgramId && selectedCategories.length === 0) return false;
+    return true;
+  }, [selectedSchoolId, schoolHasActiveJob, launchingResearch, backendDown, selectedPhase, selectedProgramId, selectedCategories]);
+
   return (
     <div className="monitoring-container">
       <div className="page-header">
         <div>
           <h1>⚙️ Monitoring & Cibles Cron</h1>
           <p className="page-title-desc">
-            Suivi des quotas Tavily, des tâches du pipeline d'enrichissement IA, et gestion des cibles bloquées.
+            Suivi des quotas Tavily, des tâches du pipeline d&apos;enrichissement IA, et gestion des cibles bloquées.
           </p>
         </div>
         <button 
@@ -181,8 +389,80 @@ export default function CronMonitoringPage() {
         </div>
       )}
 
+      {/* ── Section Tâches en cours (enrichie) ─────────────────── */}
+      <div className="card active-tasks-card">
+        <h2 className="section-title">⚡ Tâches en cours ({pipelineStatus?.pipeline_jobs_active || 0})</h2>
+
+        {pipelineStatus?.pipeline_jobs && pipelineStatus.pipeline_jobs.length > 0 ? (
+          <div className="tasks-grid">
+            {pipelineStatus.pipeline_jobs.map((job) => {
+              const elapsed = job.created_at
+                ? Math.floor(Date.now() / 1000 - job.created_at)
+                : 0;
+              const progress = parseProgress(job.progress_details?.progress);
+              const progressPct = progress
+                ? Math.min(100, (progress.done / progress.total) * 100)
+                : 0;
+
+              return (
+                <div key={job.job_id} className="task-card">
+                  <div className="task-card-header">
+                    <div className="task-card-title">
+                      <span className={`status-dot-sm ${job.status === "running" ? "dot-running" : "dot-queued"}`}></span>
+                      <span className="task-phase">{job.phase}</span>
+                      {job.progress_details?.school && (
+                        <span className="task-school">— {job.progress_details.school}</span>
+                      )}
+                    </div>
+                    <span className="task-timer">⏱ {formatElapsed(elapsed)}</span>
+                  </div>
+
+                  {/* Détail de l'action en cours */}
+                  {job.progress_details && (
+                    <div className="task-progress-details">
+                      <p className="task-action">
+                        🔍 {job.progress_details.current_action}
+                        {job.progress_details.program && (
+                          <> sur <strong>&quot;{job.progress_details.program}&quot;</strong></>
+                        )}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Barre de progression */}
+                  {progress && (
+                    <div className="task-progress-bar-container">
+                      <div className="progress-bar-bg">
+                        <div
+                          className="progress-bar-fill fill-accent"
+                          style={{ width: `${progressPct}%` }}
+                        ></div>
+                      </div>
+                      <span className="task-progress-text">
+                        {progress.done}/{progress.total} catégories
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="task-card-footer">
+                    <span className={`badge ${job.status === "running" ? "badge-active" : "badge-queued"}`}>
+                      {job.status === "running" ? "En cours" : "En file"}
+                    </span>
+                    <span className="job-id">Job #{job.job_id}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state-inline">
+            <span>💤</span> Aucune tâche en cours d&apos;exécution.
+          </div>
+        )}
+      </div>
+
       <div className="dashboard-grid">
-        {/* Section Pipeline & Tavily */}
+        {/* ── Section Pipeline & Tavily ─────────────────────────── */}
         <div className="grid-col card">
           <h2 className="section-title">📊 État du Pipeline IA</h2>
           
@@ -233,123 +513,225 @@ export default function CronMonitoringPage() {
                       <p className="no-data">Aucune clé Tavily active détectée par le backend.</p>
                     )}
                   </div>
-
-                  <div className="active-jobs-section">
-                    <h3>⚡ Tâches en cours ({pipelineStatus.pipeline_jobs_active || 0})</h3>
-                    {pipelineStatus.pipeline_jobs && pipelineStatus.pipeline_jobs.length > 0 ? (
-                      <div className="jobs-list">
-                        {pipelineStatus.pipeline_jobs.map((job) => (
-                          <div key={job.job_id} className="job-item">
-                            <div className="job-header">
-                              <span className="badge badge-active">{job.phase}</span>
-                              <span className="job-id">#{job.job_id}</span>
-                            </div>
-                            <p className="job-desc">Cible ID: <code>{job.school_id}</code></p>
-                            <span className="job-status-badge">Statut: {job.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="no-data">Aucun traitement en cours d'exécution.</p>
-                    )}
-                  </div>
                 </>
               )}
             </div>
           )}
         </div>
 
-        {/* Section Cibles Cron & Blacklist */}
+        {/* ── Section Recherche Manuelle ──────────────────────────── */}
         <div className="grid-col card">
-          <div className="section-header-row">
-            <h2 className="section-title">🛡️ Suivi des Cibles de Scan (Cron)</h2>
+          <h2 className="section-title">🚀 Lancer une Recherche Manuelle</h2>
+
+          {/* Phase toggle */}
+          <div className="phase-toggle">
+            <button
+              className={`phase-btn ${selectedPhase === "1" ? "phase-active" : ""}`}
+              onClick={() => setSelectedPhase("1")}
+            >
+              Phase 1 — Cartographie
+            </button>
+            <button
+              className={`phase-btn ${selectedPhase === "2" ? "phase-active" : ""}`}
+              onClick={() => setSelectedPhase("2")}
+            >
+              Phase 2 — Enrichissement
+            </button>
           </div>
 
-          <div className="search-bar-container" style={{ margin: "16px 0" }}>
-            <input
-              type="text"
+          <p className="phase-desc">
+            {selectedPhase === "1"
+              ? "Découvre les campus et programmes d'une école via Tavily Research."
+              : "Enrichit les données (tarifs, classements, places...) d'un programme ou de toute l'école."}
+          </p>
+
+          {/* School selector */}
+          <div className="form-group">
+            <label className="form-label">École</label>
+            <select
               className="form-control"
-              placeholder="Rechercher par école, programme, catégorie..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+              value={selectedSchoolId}
+              onChange={(e) => setSelectedSchoolId(e.target.value)}
+              disabled={loadingSchools}
+            >
+              <option value="">— Sélectionner une école —</option>
+              {schools.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.official_domain})
+                </option>
+              ))}
+            </select>
           </div>
 
-          {loadingTargets && cronTargets.length === 0 ? (
-            <div className="loading-placeholder">Chargement des cibles de scan...</div>
-          ) : filteredTargets.length === 0 ? (
-            <div className="empty-state">
-              <span>🛡️</span>
-              <p>Aucune cible de scan en échec ou blacklistée trouvée.</p>
-            </div>
-          ) : (
-            <div className="table-container scrollable-table">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>École / Programme</th>
-                    <th>Catégorie</th>
-                    <th>Échecs</th>
-                    <th>Statut</th>
-                    <th style={{ textAlign: "right" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTargets.map((target) => {
-                    const isRed = target.is_blacklisted || target.failed_attempts_count >= 3;
-                    const isOrange = !isRed && target.failed_attempts_count > 0;
-                    
-                    return (
-                      <tr key={target.id}>
-                        <td>
-                          <div className="school-prog-cell">
-                            <span className="school-name">{target.school.name}</span>
-                            {target.program ? (
-                              <span className="program-name">{target.program.name}</span>
-                            ) : (
-                              <span className="global-badge">Niveau École</span>
-                            )}
-                          </div>
-                        </td>
-                        <td>
-                          <code className="category-code">{target.data_category}</code>
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <span className={`failed-count ${isRed ? "count-red" : isOrange ? "count-orange" : "count-green"}`}>
-                            {target.failed_attempts_count}/3
-                          </span>
-                        </td>
-                        <td>
-                          {isRed ? (
-                            <span className="badge badge-blacklisted">⚠️ Bloqué</span>
-                          ) : isOrange ? (
-                            <span className="badge badge-warning">En échec</span>
-                          ) : (
-                            <span className="badge badge-active">Actif</span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {isRed ? (
-                            <button
-                              className="btn btn-secondary btn-sm"
-                              style={{ border: "1px solid var(--accent)" }}
-                              onClick={() => handleUnblock(target.id)}
-                              disabled={unblockingId === target.id}
-                            >
-                              {unblockingId === target.id ? "Déblocage..." : "Débloquer"}
-                            </button>
-                          ) : (
-                            <span className="text-muted">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {/* Phase 2: Program selector */}
+          {selectedPhase === "2" && selectedSchoolId && (
+            <>
+              <div className="form-group">
+                <label className="form-label">
+                  Programme <span className="form-hint">(optionnel — laisser vide pour toute l&apos;école)</span>
+                </label>
+                <select
+                  className="form-control"
+                  value={selectedProgramId}
+                  onChange={(e) => setSelectedProgramId(e.target.value)}
+                >
+                  <option value="">— Tous les programmes —</option>
+                  {selectedSchool?.campuses.map((campus) => (
+                    <optgroup key={campus.id} label={`📍 ${campus.name}`}>
+                      {campus.programs.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
+              {/* Category checkboxes */}
+              <div className="form-group">
+                <label className="form-label">
+                  Catégories à rechercher
+                  {!selectedProgramId && (
+                    <span className="form-hint"> (optionnel — laisser vide pour toutes)</span>
+                  )}
+                </label>
+                <div className="category-checkboxes">
+                  {availableCategories.map((cat) => (
+                    <label key={cat} className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={selectedCategories.includes(cat)}
+                        onChange={() => handleCategoryToggle(cat)}
+                      />
+                      <span className="checkbox-text">{CATEGORY_LABELS[cat] || cat}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Launch button */}
+          <div className="launch-section">
+            <button
+              className="btn btn-primary btn-launch"
+              onClick={handleLaunchResearch}
+              disabled={!canLaunch}
+            >
+              {launchingResearch
+                ? "⏳ Lancement en cours..."
+                : selectedPhase === "1"
+                ? "🔍 Lancer la cartographie"
+                : "🚀 Lancer la recherche"}
+            </button>
+
+            {schoolHasActiveJob && (
+              <p className="launch-warning">
+                ⚠️ Une tâche est déjà en cours pour cette école. Attendez qu&apos;elle se termine.
+              </p>
+            )}
+          </div>
+
+          {/* Launch message */}
+          {launchMessage && (
+            <div className={`launch-message ${launchMessage.type === "success" ? "msg-success" : "msg-error"}`}>
+              {launchMessage.text}
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Section Cibles Cron & Blacklist ───────────────────── */}
+      <div className="card" style={{ marginTop: 24 }}>
+        <div className="section-header-row">
+          <h2 className="section-title">🛡️ Suivi des Cibles de Scan (Cron)</h2>
+        </div>
+
+        <div className="search-bar-container" style={{ margin: "16px 0" }}>
+          <input
+            type="text"
+            className="form-control"
+            placeholder="Rechercher par école, programme, catégorie..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        {loadingTargets && cronTargets.length === 0 ? (
+          <div className="loading-placeholder">Chargement des cibles de scan...</div>
+        ) : filteredTargets.length === 0 ? (
+          <div className="empty-state">
+            <span>🛡️</span>
+            <p>Aucune cible de scan en échec ou blacklistée trouvée.</p>
+          </div>
+        ) : (
+          <div className="table-container scrollable-table">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>École / Programme</th>
+                  <th>Catégorie</th>
+                  <th>Échecs</th>
+                  <th>Statut</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTargets.map((target) => {
+                  const isRed = target.is_blacklisted || target.failed_attempts_count >= 3;
+                  const isOrange = !isRed && target.failed_attempts_count > 0;
+                  
+                  return (
+                    <tr key={target.id}>
+                      <td>
+                        <div className="school-prog-cell">
+                          <span className="school-name">{target.school.name}</span>
+                          {target.program ? (
+                            <span className="program-name">{target.program.name}</span>
+                          ) : (
+                            <span className="global-badge">Niveau École</span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <code className="category-code">{target.data_category}</code>
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <span className={`failed-count ${isRed ? "count-red" : isOrange ? "count-orange" : "count-green"}`}>
+                          {target.failed_attempts_count}/3
+                        </span>
+                      </td>
+                      <td>
+                        {isRed ? (
+                          <span className="badge badge-blacklisted">⚠️ Bloqué</span>
+                        ) : isOrange ? (
+                          <span className="badge badge-warning">En échec</span>
+                        ) : (
+                          <span className="badge badge-active">Actif</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {isRed ? (
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            style={{ border: "1px solid var(--accent)" }}
+                            onClick={() => handleUnblock(target.id)}
+                            disabled={unblockingId === target.id}
+                          >
+                            {unblockingId === target.id ? "Déblocage..." : "Débloquer"}
+                          </button>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <style jsx>{`
@@ -357,11 +739,159 @@ export default function CronMonitoringPage() {
           padding-bottom: 40px;
         }
 
+        /* ── Active Tasks Section ─────────────────────────────── */
+
+        .active-tasks-card {
+          margin-top: 24px;
+          margin-bottom: 24px;
+        }
+
+        .tasks-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+          gap: 16px;
+        }
+
+        .task-card {
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
+          border: 1px solid rgba(59, 130, 246, 0.2);
+          border-radius: var(--radius-lg);
+          padding: 16px 20px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .task-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, var(--accent), rgba(139, 92, 246, 0.8));
+          animation: shimmer 2s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+
+        .task-card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 12px;
+        }
+
+        .task-card-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 600;
+          font-size: 0.95rem;
+        }
+
+        .status-dot-sm {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+
+        .dot-running {
+          background-color: var(--success);
+          box-shadow: 0 0 8px var(--success);
+          animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+
+        .dot-queued {
+          background-color: var(--warning);
+          box-shadow: 0 0 6px var(--warning);
+        }
+
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.3); }
+        }
+
+        .task-phase {
+          color: var(--accent);
+        }
+
+        .task-school {
+          color: var(--text-primary);
+          font-weight: 500;
+        }
+
+        .task-timer {
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+          font-variant-numeric: tabular-nums;
+          background: rgba(255, 255, 255, 0.05);
+          padding: 4px 10px;
+          border-radius: var(--radius-md);
+        }
+
+        .task-progress-details {
+          margin-bottom: 12px;
+        }
+
+        .task-action {
+          font-size: 0.85rem;
+          color: var(--text-primary);
+          margin: 0;
+          line-height: 1.4;
+        }
+
+        .task-progress-bar-container {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 12px;
+        }
+
+        .task-progress-bar-container .progress-bar-bg {
+          flex: 1;
+        }
+
+        .task-progress-text {
+          font-size: 0.8rem;
+          color: var(--text-secondary);
+          white-space: nowrap;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .fill-accent {
+          background: linear-gradient(90deg, var(--accent), rgba(139, 92, 246, 0.8));
+          transition: width 0.6s ease;
+        }
+
+        .task-card-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .badge-queued {
+          background-color: rgba(245, 158, 11, 0.12);
+          color: var(--warning);
+          border: 1px solid rgba(245, 158, 11, 0.25);
+        }
+
+        .empty-state-inline {
+          text-align: center;
+          padding: 24px;
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+        }
+
+        /* ── Dashboard Grid ──────────────────────────────────── */
+
         .dashboard-grid {
           display: grid;
           grid-template-columns: 1fr;
           gap: 24px;
-          margin-top: 24px;
         }
 
         @media (min-width: 1024px) {
@@ -429,8 +959,7 @@ export default function CronMonitoringPage() {
           margin: 0;
         }
 
-        .tavily-quotas-section h3,
-        .active-jobs-section h3 {
+        .tavily-quotas-section h3 {
           font-size: 0.95rem;
           font-weight: 600;
           margin-bottom: 12px;
@@ -500,42 +1029,192 @@ export default function CronMonitoringPage() {
           font-style: italic;
         }
 
-        .jobs-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
+        /* ── Recherche Manuelle ────────────────────────────────── */
 
-        .job-item {
-          background-color: rgba(255, 255, 255, 0.02);
+        .phase-toggle {
+          display: flex;
+          gap: 0;
+          margin-bottom: 16px;
           border: 1px solid var(--border-color);
           border-radius: var(--radius-md);
-          padding: 10px 14px;
+          overflow: hidden;
         }
 
-        .job-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 6px;
-        }
-
-        .job-id {
-          font-size: 0.8rem;
+        .phase-btn {
+          flex: 1;
+          padding: 10px 16px;
+          background: transparent;
+          border: none;
           color: var(--text-secondary);
+          font-size: 0.85rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
         }
 
-        .job-desc {
-          font-size: 0.85rem;
-          margin: 4px 0;
+        .phase-btn:hover {
+          background: rgba(59, 130, 246, 0.05);
           color: var(--text-primary);
         }
 
-        .job-status-badge {
-          font-size: 0.75rem;
+        .phase-btn.phase-active {
+          background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.08) 100%);
+          color: var(--accent);
+          font-weight: 600;
+          box-shadow: inset 0 -2px 0 var(--accent);
+        }
+
+        .phase-desc {
+          font-size: 0.82rem;
+          color: var(--text-secondary);
+          margin: 0 0 20px 0;
+          line-height: 1.4;
+        }
+
+        .form-group {
+          margin-bottom: 16px;
+        }
+
+        .form-label {
+          display: block;
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin-bottom: 6px;
+        }
+
+        .form-hint {
+          font-weight: 400;
+          color: var(--text-secondary);
+          font-size: 0.78rem;
+        }
+
+        .form-control {
+          width: 100%;
+          padding: 10px 14px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-md);
+          color: var(--text-primary);
+          font-size: 0.9rem;
+          transition: border-color 0.2s ease;
+        }
+
+        .form-control:focus {
+          outline: none;
+          border-color: var(--accent);
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        select.form-control {
+          cursor: pointer;
+        }
+
+        select.form-control optgroup {
+          font-weight: 600;
+          font-style: normal;
+        }
+
+        .category-checkboxes {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: all 0.2s ease;
+          font-size: 0.82rem;
+        }
+
+        .checkbox-label:hover {
+          background: rgba(59, 130, 246, 0.06);
+          border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .checkbox-label input[type="checkbox"] {
+          accent-color: var(--accent);
+          width: 14px;
+          height: 14px;
+        }
+
+        .checkbox-label input[type="checkbox"]:checked + .checkbox-text {
           color: var(--accent);
           font-weight: 500;
         }
+
+        .checkbox-text {
+          color: var(--text-primary);
+        }
+
+        .launch-section {
+          margin-top: 20px;
+        }
+
+        .btn-launch {
+          width: 100%;
+          padding: 12px 20px;
+          font-size: 0.95rem;
+          font-weight: 600;
+          background: linear-gradient(135deg, var(--accent) 0%, rgba(139, 92, 246, 0.9) 100%);
+          border: none;
+          border-radius: var(--radius-md);
+          color: white;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .btn-launch:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-launch:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
+        }
+
+        .launch-warning {
+          font-size: 0.8rem;
+          color: var(--warning);
+          margin: 8px 0 0;
+        }
+
+        .launch-message {
+          margin-top: 12px;
+          padding: 10px 14px;
+          border-radius: var(--radius-md);
+          font-size: 0.85rem;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .msg-success {
+          background: rgba(16, 185, 129, 0.1);
+          border: 1px solid rgba(16, 185, 129, 0.25);
+          color: var(--success);
+        }
+
+        .msg-error {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.25);
+          color: var(--danger);
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Cron Targets Table ────────────────────────────────── */
 
         .loading-placeholder {
           text-align: center;

@@ -1,0 +1,69 @@
+{
+  "SchoolStats": {
+    "category": "SchoolStats",
+    "success": true,
+    "data": {
+      "academic_year": 2026,
+      "total_students": 6600,
+      "total_alumni": 30000,
+      "partner_companies": 5000,
+      "annual_internship_offers": 200000,
+      "abroad_campuses": 3,
+      "partner_universities": 230,
+      "permanent_professors": 134,
+      "international_professors_pct": 0.75,
+      "external_speakers_pct": null,
+      "source_url": "https://en.em-normandie.com/internationally-recognised-business-school/media-kit"
+    },
+    "sources": [
+      "https://www.em-normandie.com/actualites/5-800-etudiants-une-rentree-record-pour-lecole-de-commerce",
+      "https://www.em-normandie.com/experience-em-normandie/professionnalisation/pge",
+      "https://en.em-normandie.com/internationally-recognised-business-school/media-kit",
+      "https://en.em-normandie.com/internationally-recognised-business-school"
+    ]
+  },
+  "Accreditation": {
+    "category": "Accreditation",
+    "success": false,
+    "error": "La tâche f7b6d9d0-6402-4057-9741-d7f80a80a5ef a échoué: Unknown error"
+  },
+  "Pricing": {
+    "category": "Pricing",
+    "success": true,
+    "data": {
+      "academic_year": 2026,
+      "currency": "EUR",
+      "year_1_fee": 13750,
+      "year_2_fee": 13750,
+      "year_3_fee": 13750,
+      "year_4_fee": 13750,
+      "year_5_fee": 13750,
+      "additional_fees_notes": "CVEC (Contribution Vie Etudiante et de Campus): 105 €, alumni association fee included in tuition, optional additional year fee: 1 000 €, application fee for non‑French diploma holders: 50 €, dossier registration fee: 50 €, SESAME contest registration fee: 295 €.",
+      "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans",
+      "year_assumed": false,
+      "data_conflict_warning": false
+    },
+    "sources": [
+      "https://en.em-normandie.com/programmes/master-in-management/master-management-programme",
+      "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    ]
+  },
+  "Ranking": {
+    "category": "Ranking",
+    "success": false,
+    "error": "La tâche eea38365-276d-48f8-89b0-246c45333fcd a échoué: Unknown error"
+  },
+  "Capacity": {
+    "category": "Capacity",
+    "success": true,
+    "data": {
+      "spots_available": 70,
+      "academic_year": 2026,
+      "source_url": "https://dossierappel.parcoursup.fr/Candidats/public/fiches/afficherFicheFormation?g_ta_cod=256&typeBac=0&originePc=0",
+      "year_assumed": false
+    },
+    "sources": [
+      "https://dossierappel.parcoursup.fr/Candidats/public/fiches/afficherFicheFormation?g_ta_cod=256&typeBac=0&originePc=0"
+    ]
+  }
+}

@@ -1,0 +1,219 @@
+{
+  "discovered_campuses": [
+    {
+      "name": "Caen Campus",
+      "city": "Caen",
+      "programs": [
+        {
+          "name": "Bachelor in Management",
+          "admission_exam": "Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "MSc International Marketing and Business Development",
+          "admission_exam": null,
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "Post-master degree (MS) Territorial Strategies and Management of Transitions",
+          "admission_exam": null,
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "Master in Management (Programme Grande École)",
+          "admission_exam": "Concours SESAME / Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        }
+      ]
+    },
+    {
+      "name": "Le Havre Campus",
+      "city": "Le Havre",
+      "programs": [
+        {
+          "name": "Bachelor in Management",
+          "admission_exam": "Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "MSc Supply Chain Management – International Logistics & Port Management",
+          "admission_exam": null,
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "Master in Management (Programme Grande École)",
+          "admission_exam": "Concours SESAME / Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        }
+      ]
+    },
+    {
+      "name": "Paris Campus",
+      "city": "Clichy-La-Garenne",
+      "programs": [
+        {
+          "name": "Bachelor in Management",
+          "admission_exam": "Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "Bachelor’s in Business Administration (BBA)",
+          "admission_exam": "Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": true
+        },
+        {
+          "name": "International Bachelor in Business Administration (IBBA)",
+          "admission_exam": "Concours SESAME",
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": true
+        },
+        {
+          "name": "MSc Digital Marketing and Sales",
+          "admission_exam": null,
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "MSc Sustainable Business Strategy",
+          "admission_exam": null,
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "MSc Digital Strategy and Innovation",
+          "admission_exam": null,
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "MSc Marketing and Digital in Luxury and Lifestyle",
+          "admission_exam": null,
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "Master in Management (Programme Grande École)",
+          "admission_exam": "Concours SESAME / Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        }
+      ]
+    },
+    {
+      "name": "Dublin Campus",
+      "city": "Dublin",
+      "programs": [
+        {
+          "name": "Bachelor in Management",
+          "admission_exam": "Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "International Bachelor in Business Administration (IBBA)",
+          "admission_exam": "Concours SESAME",
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": true
+        },
+        {
+          "name": "Master in Management (Programme Grande École)",
+          "admission_exam": "Concours SESAME / Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        }
+      ]
+    },
+    {
+      "name": "Oxford Campus",
+      "city": "Oxford",
+      "programs": [
+        {
+          "name": "Bachelor’s in Business Administration (BBA)",
+          "admission_exam": "Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": true
+        },
+        {
+          "name": "International Bachelor in Business Administration (IBBA)",
+          "admission_exam": "Concours SESAME",
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": true
+        },
+        {
+          "name": "MSc Banking, Finance and FinTech",
+          "admission_exam": null,
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "Master in Management (Programme Grande École)",
+          "admission_exam": "Concours SESAME / Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        }
+      ]
+    },
+    {
+      "name": "Dubai Campus",
+      "city": "Dubai",
+      "programs": [
+        {
+          "name": "Bachelor in Management",
+          "admission_exam": "Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        },
+        {
+          "name": "Bachelor’s in Business Administration (BBA)",
+          "admission_exam": "Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": true
+        },
+        {
+          "name": "International Bachelor in Business Administration (IBBA)",
+          "admission_exam": "Concours SESAME",
+          "is_alternance_possible": null,
+          "is_expatriation_mandatory": true
+        },
+        {
+          "name": "Master in Management (Programme Grande École)",
+          "admission_exam": "Concours SESAME / Parcoursup",
+          "is_alternance_possible": true,
+          "is_expatriation_mandatory": null
+        }
+      ]
+    }
+  ],
+  "source_urls": [
+    "https://en.em-normandie.com/internationally-recognised-business-school/150-years-history-and-innovation",
+    "https://en.em-normandie.com/internationally-recognised-business-school",
+    "https://en.em-normandie.com/school-news/em-normandie-launching-bba-bachelors-business-administration-4-year-post-baccalaureate",
+    "https://en.em-normandie.com/master-management",
+    "https://en.em-normandie.com/programmes/logistics-degree/master-science-msc-supply-chain-management",
+    "https://en.em-normandie.com/internationally-recognised-business-school/le-havre-campus",
+    "https://en.em-normandie.com/internationally-recognised-business-school/caen-campus",
+    "https://en.em-normandie.com/internationally-recognised-business-school/oxford-campus",
+    "https://en.em-normandie.com/internationally-recognised-business-school/dubai-campus",
+    "https://em-normandie.com/grande-ecole-de-management/le-campus-de-paris",
+    "https://em-normandie.com/programmes/bachelor-management/alternance",
+    "https://etudiant.lefigaro.fr/annuaire/31878-bachelor-en-management-de-l-em-normandie-presentation-prix-debouches",
+    "https://thotismedia.com/ibba-em-normandie-sesame",
+    "https://en.em-normandie.com/programmes/post-master-degree",
+    "https://en.em-normandie.com/school-news/em-normandie-introduces-2-year-master-science-course-certified-5-year-post",
+    "https://em-normandie.ie/facilities",
+    "https://mondedesgrandesecoles.fr/lem-normandie-lance-un-bba-bachelor-in-business-administration-programme-post-bac-en-4-ans-en-anglais-international-et-multi-campus",
+    "https://monsieur-ecoles-de-commerce.com/e-campus-em-normandie-programme-grande-ecole-pge",
+    "https://iquesta.com/Formation-Em-Normandie-199.html",
+    "https://alumni.emnormandie.com/en/news/l-em-normandie-invente-le-programme-grande-ecole-integrant-un-bachelor-diplomant-411"
+  ],
+  "confidence_notes": "Toutes les informations ci‑dessous proviennent strictement des sources listées dans source_urls (pages officielles EM Normandie et articles officiels/complémentaires cités dans les recherches). Limites / incertitudes identifiées :\n- Le schéma fourni exigera les attributs demandés par campus. Certaines informations demandées dans le brief (URL officielle de chaque programme, ou liste complète des campus par programme) n'étaient pas toujours présentes explicitement dans les sources fournies ; par conséquent les champs correspondants ont été laissés null quand l'information n'apparaissait pas clairement dans les sources listées.\n- Nommage ambigu : la page alternance mentionne explicitement \"Bachelor in International Management\" tandis que d'autres sources parlent de \"Bachelor in Management\" ; il est possible qu'il s'agisse du même programme sous une appellation légèrement différente. J'ai conservé \"Bachelor in Management\" comme appellation principale utilisée dans plusieurs sources, mais la divergence est à noter.\n- Concours / modalités d'admission : pour le Master in Management / PGE les sources indiquent à la fois l'entrée via le \"Concours SESAME\" et via \"Parcoursup\" pour entrées post‑bac ; j'ai reporté \"Concours SESAME / Parcoursup\" lorsqu'il était mentionné explicitement. Pour des programmes où le concours ou la voie d'admission n'était pas précisée dans les sources, le champ a été mis à null conformément aux consignes.\n- Alternance et séjour à l'étranger : les mentions d'alternance et de séjours à l'étranger figurent de façon explicite pour certains programmes (ex. BBA, Bachelor, MIM/PGE). Lorsque la source indiquait clairement la possibilité d'alternance j'ai mis true ; si l'information n'était pas claire ou non mentionnée, j'ai mis null. Pour les programmes multi‑campus tournants (IBBA, BBA), les sources indiquent un déplacement/rotation inter‑campus et j'ai considéré le séjour à l'étranger comme obligatoire (true) sur la base des descriptions fournies dans les sources.\n- Si vous souhaitez que j'ajoute les URLs officielles programme par programme (ou que je sépare les appellations proches comme \"Bachelor in International Management\" vs \"Bachelor in Management\"), je peux relancer une vérification ciblée sur les pages programmes officielles et mettre à jour les champs actuellement null."
+}

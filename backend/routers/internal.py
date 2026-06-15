@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/routers/internal.py — API Interne Pipeline (Étape 4.2)
 
 Endpoints accessibles uniquement au backend Next.js (token statique).
@@ -12,6 +12,8 @@ Référence : task.md §4.2, architecture.md §6 (API Interne)
 import os
 import logging
 import asyncio
+import time as time_module
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -24,6 +26,23 @@ security = HTTPBearer()
 # ── État en mémoire du pipeline ───────────────────────────────────
 # En production, utiliser Redis ou une table BDD pour la persistance
 _pipeline_jobs: dict[str, dict] = {}
+
+# ── Progress tracking granulaire ──────────────────────────────────
+# Permet au frontend de voir l'étape en cours d'un job
+_pipeline_progress: dict[str, dict] = {}
+
+
+def update_progress(job_id: str, details: dict):
+    """Met à jour les détails de progression d'un job en cours."""
+    _pipeline_progress[job_id] = {
+        **details,
+        "updated_at": time_module.time(),
+    }
+
+
+def _cleanup_progress(job_id: str):
+    """Supprime les données de progression quand un job est terminé."""
+    _pipeline_progress.pop(job_id, None)
 
 
 # ── Authentification ──────────────────────────────────────────────
@@ -53,6 +72,13 @@ class ScanRequest(BaseModel):
 class EnrichmentRequest(BaseModel):
     categories: list[str] = ["Pricing", "Ranking", "Capacity"]
     force_refresh: bool = False
+
+
+class TargetedResearchRequest(BaseModel):
+    """Requête de recherche ciblée depuis le panneau admin."""
+    phase: str = "1"  # "1" ou "2"
+    program_id: str | None = None  # UUID du programme cible (Phase 2 uniquement)
+    categories: list[str] | None = None  # ["Pricing", "Ranking"] etc. (Phase 2 uniquement)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────
@@ -88,10 +114,10 @@ async def trigger_scan(
     _pipeline_jobs[school_id] = {
         "job_id": job_id,
         "school_id": school_id,
-        "phase": "scan",
+        "phase": "Phase 1 — Cartographie",
         "status": "queued",
         "priority": request.priority,
-        "created_at": asyncio.get_event_loop().time(),
+        "created_at": time_module.time(),
     }
 
     # Lancer en arrière-plan
@@ -130,10 +156,11 @@ async def trigger_enrichment(
     _pipeline_jobs[job_key] = {
         "job_id": job_id,
         "school_id": school_id,
-        "phase": "enrichment",
+        "phase": "Phase 2 — Enrichissement",
         "categories": request.categories,
         "status": "queued",
         "force_refresh": request.force_refresh,
+        "created_at": time_module.time(),
     }
 
     asyncio.create_task(_run_enrichment(school_id, job_id, request.categories))
@@ -151,6 +178,85 @@ async def trigger_enrichment(
     }
 
 
+@router.post("/trigger-targeted-research/{school_id}")
+async def trigger_targeted_research(
+    school_id: str,
+    request: TargetedResearchRequest,
+    _token: str = Depends(verify_internal_token),
+):
+    """
+    POST /internal/trigger-targeted-research/{school_id}
+
+    Lance une recherche Research ciblée depuis le panneau admin/cron.
+    Permet de cibler :
+      - Phase 1 : Cartographie complète d'une école
+      - Phase 2 : Un programme spécifique + catégories spécifiques
+
+    Différent de trigger-scan/trigger-enrichment qui sont pour le scheduler.
+    """
+    # Vérifier qu'aucun job n'est déjà en cours pour cette école
+    for key, job in _pipeline_jobs.items():
+        if job.get("school_id") == school_id and job.get("status") in ("running", "queued"):
+            return {
+                "message": "Une tâche est déjà en cours pour cette école",
+                "job_id": job.get("job_id"),
+                "status": job.get("status"),
+                "phase": job.get("phase"),
+                "already_running": True,
+            }
+
+    # Validation
+    if request.phase not in ("1", "2"):
+        raise HTTPException(status_code=400, detail="Phase invalide (doit être '1' ou '2')")
+
+    if request.phase == "2" and request.program_id and not request.categories:
+        raise HTTPException(
+            status_code=400,
+            detail="Les catégories sont requises quand un programme est spécifié en Phase 2"
+        )
+
+    import uuid
+    job_id = str(uuid.uuid4())[:8]
+
+    phase_label = "Phase 1 — Cartographie" if request.phase == "1" else "Phase 2 — Enrichissement ciblé"
+
+    job_key = f"{school_id}:targeted:{job_id}"
+    _pipeline_jobs[job_key] = {
+        "job_id": job_id,
+        "school_id": school_id,
+        "phase": phase_label,
+        "status": "queued",
+        "program_id": request.program_id,
+        "categories": request.categories,
+        "created_at": time_module.time(),
+    }
+
+    asyncio.create_task(
+        _run_targeted_research(
+            school_id=school_id,
+            job_id=job_id,
+            job_key=job_key,
+            phase=request.phase,
+            program_id=request.program_id,
+            categories=request.categories,
+        )
+    )
+
+    logger.info(
+        f"🚀 Recherche ciblée déclenchée pour school_id={school_id} "
+        f"(phase={request.phase}, program={request.program_id}, categories={request.categories})"
+    )
+    return {
+        "message": "Recherche ciblée déclenchée",
+        "job_id": job_id,
+        "school_id": school_id,
+        "phase": phase_label,
+        "program_id": request.program_id,
+        "categories": request.categories,
+        "status": "queued",
+    }
+
+
 @router.get("/pipeline-status")
 async def pipeline_status(request: Request, _token: str = Depends(verify_internal_token)):
     """
@@ -158,7 +264,7 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
 
     Retourne le statut global du pipeline :
     - BDD : connectée / déconnectée
-    - Jobs en cours
+    - Jobs en cours (avec progress_details granulaires)
     - Statut des clés Tavily
     - Version Gemma configurée
 
@@ -184,9 +290,15 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
         tavily_status = {"error": f"non initialisé: {e}"}
 
     active_jobs = [
-        job for job in _pipeline_jobs.values()
+        {**job} for job in _pipeline_jobs.values()
         if job.get("status") in ("running", "queued")
     ]
+
+    # Enrichir chaque job actif avec ses progress_details
+    for job in active_jobs:
+        job_id = job.get("job_id")
+        if job_id and job_id in _pipeline_progress:
+            job["progress_details"] = _pipeline_progress[job_id]
 
     return {
         "status": "ok" if db_ok else "degraded",
@@ -200,6 +312,52 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
     }
 
 
+@router.post("/research-test/{school_id}")
+async def research_test(
+    school_id: str,
+    phase: str = "1",
+    category: Optional[str] = None,
+    program_id: Optional[str] = None,
+    _token: str = Depends(verify_internal_token),
+):
+    """
+    Test dry-run du pipeline Research pour une école.
+    Phase 1 : Cartographie.
+    Phase 2 : Enrichissement (toutes les catégories en dry-run).
+    Retourne le rapport de recherche sans rien écrire en BDD.
+    """
+    from backend.main import app
+    key_manager = getattr(app.state, "tavily_manager", None)
+    if key_manager is None:
+        raise HTTPException(status_code=500, detail="TavilyKeyManager non initialisé")
+
+    import asyncio
+    loop = asyncio.get_event_loop()
+
+    if phase == "1":
+        from backend.pipeline.phase1_research import run_phase1_research
+        result = await loop.run_in_executor(
+            None,
+            run_phase1_research,
+            school_id,
+            key_manager,
+            True  # dry_run = True
+        )
+        return result
+    elif phase == "2":
+        from backend.pipeline.phase2_research import run_phase2_research
+        result = await loop.run_in_executor(
+            None,
+            run_phase2_research,
+            school_id,
+            key_manager,
+            True  # dry_run = True
+        )
+        return result
+    else:
+        raise HTTPException(status_code=400, detail="Phase invalide (doit être '1' ou '2')")
+
+
 # ── Fonctions de pipeline asynchrones ────────────────────────────
 
 async def _run_scan(school_id: str, job_id: str):
@@ -207,11 +365,21 @@ async def _run_scan(school_id: str, job_id: str):
     Phase 1 réelle (Étape 5) — Tavily crawl + Gemma 31B + ContributionInbox INSERT.
     Tourne en arrière-plan via asyncio.create_task().
     """
-    from backend.pipeline.phase1 import run_phase1
+    from backend.scheduler.jobs import USE_RESEARCH_PIPELINE
+    if USE_RESEARCH_PIPELINE:
+        from backend.pipeline.phase1_research import run_phase1_research as run_phase1
+    else:
+        from backend.pipeline.phase1 import run_phase1
     import asyncio
 
     _pipeline_jobs[school_id]["status"] = "running"
     logger.info(f"[job={job_id}] Phase 1 (scan) démarrée pour school_id={school_id}")
+
+    update_progress(job_id, {
+        "current_action": "Démarrage de la Phase 1",
+        "school": school_id,
+        "category": "Program_Discovery",
+    })
 
     try:
         # Récupérer le TavilyKeyManager depuis app.state
@@ -225,11 +393,13 @@ async def _run_scan(school_id: str, job_id: str):
         if key_manager is None:
             raise RuntimeError("TavilyKeyManager non initialisé")
 
+        # Créer le callback de progression
+        def progress_cb(details):
+            update_progress(job_id, details)
+
         result = await loop.run_in_executor(
             None,
-            run_phase1,
-            school_id,
-            key_manager,
+            lambda: run_phase1(school_id, key_manager, progress_callback=progress_cb),
         )
 
         _pipeline_jobs[school_id].update({
@@ -242,11 +412,17 @@ async def _run_scan(school_id: str, job_id: str):
         _pipeline_jobs[school_id]["status"] = "failed"
         _pipeline_jobs[school_id]["error"] = str(e)
         logger.error(f"[job={job_id}] Phase 1 erreur: {e}")
+    finally:
+        _cleanup_progress(job_id)
 
 
 async def _run_enrichment(school_id: str, job_id: str, categories: list[str]):
     """Phase 2 réelle (Étape 6) — Tavily search + Gemma extract par catégorie + Prisma insert."""
-    from backend.pipeline.phase2 import run_phase2
+    from backend.scheduler.jobs import USE_RESEARCH_PIPELINE
+    if USE_RESEARCH_PIPELINE:
+        from backend.pipeline.phase2_research import run_phase2_research as run_phase2
+    else:
+        from backend.pipeline.phase2 import run_phase2
     import asyncio
 
     job_key = f"{school_id}:enrichment"
@@ -256,6 +432,11 @@ async def _run_enrichment(school_id: str, job_id: str, categories: list[str]):
         f"school_id={school_id}, catégories={categories}"
     )
 
+    update_progress(job_id, {
+        "current_action": "Démarrage de la Phase 2",
+        "school": school_id,
+    })
+
     try:
         loop = asyncio.get_event_loop()
         from backend.main import app
@@ -264,11 +445,12 @@ async def _run_enrichment(school_id: str, job_id: str, categories: list[str]):
         if key_manager is None:
             raise RuntimeError("TavilyKeyManager non initialisé")
 
+        def progress_cb(details):
+            update_progress(job_id, details)
+
         result = await loop.run_in_executor(
             None,
-            run_phase2,
-            school_id,
-            key_manager,
+            lambda: run_phase2(school_id, key_manager, progress_callback=progress_cb),
         )
 
         _pipeline_jobs[job_key].update({
@@ -281,3 +463,76 @@ async def _run_enrichment(school_id: str, job_id: str, categories: list[str]):
         _pipeline_jobs[job_key]["status"] = "failed"
         _pipeline_jobs[job_key]["error"] = str(e)
         logger.error(f"[job={job_id}] Phase 2 erreur: {e}")
+    finally:
+        _cleanup_progress(job_id)
+
+
+async def _run_targeted_research(
+    school_id: str,
+    job_id: str,
+    job_key: str,
+    phase: str,
+    program_id: str | None,
+    categories: list[str] | None,
+):
+    """
+    Recherche ciblée depuis le panneau admin/cron.
+    Utilise toujours le pipeline Research (USE_RESEARCH_PIPELINE=true).
+    """
+    import asyncio
+
+    _pipeline_jobs[job_key]["status"] = "running"
+    logger.info(
+        f"[job={job_id}] Recherche ciblée démarrée — Phase {phase} "
+        f"school_id={school_id}, program_id={program_id}, categories={categories}"
+    )
+
+    update_progress(job_id, {
+        "current_action": f"Démarrage Phase {phase}",
+        "school": school_id,
+    })
+
+    try:
+        loop = asyncio.get_event_loop()
+        from backend.main import app
+        key_manager = getattr(app.state, "tavily_manager", None)
+
+        if key_manager is None:
+            raise RuntimeError("TavilyKeyManager non initialisé")
+
+        def progress_cb(details):
+            update_progress(job_id, details)
+
+        if phase == "1":
+            from backend.pipeline.phase1_research import run_phase1_research
+            result = await loop.run_in_executor(
+                None,
+                lambda: run_phase1_research(
+                    school_id, key_manager,
+                    progress_callback=progress_cb
+                ),
+            )
+        else:
+            from backend.pipeline.phase2_research import run_phase2_research
+            result = await loop.run_in_executor(
+                None,
+                lambda: run_phase2_research(
+                    school_id, key_manager,
+                    target_program_id=program_id,
+                    target_categories=categories,
+                    progress_callback=progress_cb,
+                ),
+            )
+
+        _pipeline_jobs[job_key].update({
+            "status": "completed" if result.get("success") else "failed",
+            "result": result,
+        })
+        logger.info(f"[job={job_id}] Recherche ciblée terminée: {result.get('message') or 'Succès'}")
+
+    except Exception as e:
+        _pipeline_jobs[job_key]["status"] = "failed"
+        _pipeline_jobs[job_key]["error"] = str(e)
+        logger.error(f"[job={job_id}] Recherche ciblée erreur: {e}")
+    finally:
+        _cleanup_progress(job_id)

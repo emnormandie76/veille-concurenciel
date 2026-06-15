@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/scheduler/jobs.py — APScheduler Jobs (Étape 5.4)
 
 Deux jobs récurrents :
@@ -32,6 +32,8 @@ PHASE1_INTERVAL_HOURS = int(os.environ.get("CRON_PHASE1_INTERVAL_HOURS", 168))  
 PHASE2_INTERVAL_HOURS = int(os.environ.get("CRON_PHASE2_INTERVAL_HOURS", 24))   # 1 jour
 PAUSE_BETWEEN_SCHOOLS = 30  # secondes entre chaque école (politesse + rate limits)
 
+USE_RESEARCH_PIPELINE = os.environ.get("USE_RESEARCH_PIPELINE", "true").lower() == "true"
+
 # ── Singleton scheduler ───────────────────────────────────────────
 _scheduler: BackgroundScheduler | None = None
 
@@ -62,7 +64,10 @@ def phase1_scanner(key_manager):
     Référence : task.md §5.4, architecture.md §5.1
     """
     from backend.db import get_db_connection
-    from backend.pipeline.phase1 import run_phase1
+    if USE_RESEARCH_PIPELINE:
+        from backend.pipeline.phase1_research import run_phase1_research as run_phase1
+    else:
+        from backend.pipeline.phase1 import run_phase1
 
     logger.info(f"⏰ [CRON] phase1_scanner démarré")
 
@@ -146,7 +151,10 @@ def phase2_enricher(key_manager):
     Référence : task.md §6.5, architecture.md §5.3
     """
     from backend.db import get_db_connection
-    from backend.pipeline.phase2 import run_phase2
+    if USE_RESEARCH_PIPELINE:
+        from backend.pipeline.phase2_research import run_phase2_research as run_phase2
+    else:
+        from backend.pipeline.phase2 import run_phase2
 
     logger.info(f"⏰ [CRON] phase2_enricher démarré")
 

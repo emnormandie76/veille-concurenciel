@@ -26,6 +26,9 @@ ESTIMATED_CREDITS = {
     "pro": 25,    # Moyenne estimée 15-50
 }
 
+REQUIRED_CREDITS_PRO = 250
+REQUIRED_CREDITS_MINI = 50
+
 
 class ResearchTimeoutError(Exception):
     """Levée quand le polling dépasse max_wait_seconds."""
@@ -86,8 +89,9 @@ def create_research_task(
             "request_id": "dry-run-000"
         }
 
-    # Obtenir une clé active via le key_manager
-    api_key = key_manager.get_active_key()
+    # Obtenir une clé active via le key_manager en spécifiant les crédits requis
+    req_credits = REQUIRED_CREDITS_PRO if model == "pro" else REQUIRED_CREDITS_MINI
+    api_key = key_manager.get_active_key(required_credits=req_credits)
     client = TavilyClient(api_key=api_key)
 
     logger.info(f"🔬 Tavily Research ({model}) : '{query[:100]}...'")

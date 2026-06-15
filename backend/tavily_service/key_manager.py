@@ -131,8 +131,8 @@ class TavilyKeyManager:
                                 key_state.credits_limit = limit
                                 key_state.last_fetched_at = time.time()
                                 
-                                # Seuil de sécurité : rotation s'il reste 100 crédits ou moins
-                                rotation_threshold = limit - 100
+                                # Seuil de sécurité : rotation s'il reste 10 crédits ou moins
+                                rotation_threshold = limit - 10
                                 if usage >= rotation_threshold:
                                     key_state.exhausted = True
                                 else:
@@ -165,28 +165,25 @@ class TavilyKeyManager:
             # Forcer une nouvelle synchro API
             key_state.last_fetched_at = 0.0
 
-    def get_active_key(self) -> str:
+    def get_active_key(self, required_credits: int = 50) -> str:
         """
-        Retourne la clé API active (avec suffisamment de crédits restants).
+        Retourne la clé API active avec suffisamment de crédits restants pour l'opération demandée.
+        Stratégie Greedy : Cherche une clé qui a au moins `required_credits` restants.
         Thread-safe.
         """
         with self._lock:
             for key_state in self._keys:
                 self._reset_if_new_month(key_state)
 
-            for _ in range(len(self._keys)):
-                key_state = self._keys[self._current_index]
-                rotation_threshold = key_state.credits_limit - 100
-
-                if not key_state.exhausted and key_state.credits_used < rotation_threshold:
+            # Recherche greedy de la première clé disponible ayant assez de crédits
+            for key_state in self._keys:
+                remaining = key_state.credits_limit - key_state.credits_used
+                if not key_state.exhausted and remaining >= 10 and remaining >= required_credits:
                     return key_state.api_key
-
-                # Passer à la clé suivante
-                self._current_index = (self._current_index + 1) % len(self._keys)
 
             total_used = sum(k.credits_used for k in self._keys)
             raise QuotaExhaustedError(
-                f"Toutes les clés Tavily sont épuisées "
+                f"Toutes les clés Tavily sont insuffisantes pour cette opération de {required_credits} crédits "
                 f"({len(self._keys)} clé(s), {total_used} crédits totaux utilisés)."
             )
 
@@ -198,16 +195,16 @@ class TavilyKeyManager:
                     key_state.credits_used += credits
                     key_state.last_used_at = time.time()
 
-                    rotation_threshold = key_state.credits_limit - 100
+                    # Seuil de sécurité : rotation s'il reste 10 crédits ou moins
+                    rotation_threshold = key_state.credits_limit - 10
                     if key_state.credits_used >= rotation_threshold:
                         if not key_state.exhausted:
                             logger.warning(
                                 f"⚡ Clé Tavily ...{api_key[-6:]} atteint "
                                 f"{key_state.credits_used}/{rotation_threshold} crédits. "
-                                f"Rotation active."
+                                f"Marquée comme épuisée."
                             )
                             key_state.exhausted = True
-                            self._current_index = (self._current_index + 1) % len(self._keys)
                     break
 
     def get_status(self) -> list[dict]:
@@ -240,6 +237,6 @@ class TavilyKeyManager:
         with self._lock:
             return sum(
                 1 for ks in self._keys
-                if not ks.exhausted and ks.credits_used < (ks.credits_limit - 100)
+                if not ks.exhausted and ks.credits_used < (ks.credits_limit - 10)
             )
 

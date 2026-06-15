@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/tavily/client.py — Client Tavily Unifié (Étape 5.1)
 
 Fonctions de crawl, search et extract via Tavily Python SDK.
@@ -47,7 +47,7 @@ def crawl_school_website(
 
     url = f"https://{official_domain}"
 
-    api_key = key_manager.get_active_key()
+    api_key = key_manager.get_active_key(required_credits=5)
     client = TavilyClient(api_key=api_key)
 
     logger.info(f"🔍 Tavily crawl: {url} (max_depth={max_depth})")
@@ -135,7 +135,7 @@ def search_web(
     from tavily import TavilyClient
     from backend.tavily_service.key_manager import QuotaExhaustedError
 
-    api_key = key_manager.get_active_key()
+    api_key = key_manager.get_active_key(required_credits=5)
     client = TavilyClient(api_key=api_key)
 
     logger.info(f"🔎 Tavily search: '{query[:80]}...' (depth={search_depth})")
@@ -207,7 +207,7 @@ def extract_from_urls(
     if not urls:
         return ""
 
-    api_key = key_manager.get_active_key()
+    api_key = key_manager.get_active_key(required_credits=5)
     client = TavilyClient(api_key=api_key)
 
     logger.info(f"📥 Tavily extract: {len(urls)} URL(s)")

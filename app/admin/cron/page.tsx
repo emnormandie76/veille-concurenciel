@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import QuotaTavilyPanel from "./QuotaTavilyPanel";
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -427,30 +428,13 @@ export default function CronMonitoringPage() {
                   <div className="tavily-quotas-section">
                     <h3>🔑 Quotas Tavily restants</h3>
                     {Array.isArray(pipelineStatus.tavily) && pipelineStatus.tavily.length > 0 ? (
-                      pipelineStatus.tavily.map((key, idx) => {
-                        const maxCredits = key.credits_limit || 1000;
-                        const percentage = Math.min(100, (key.credits_used / maxCredits) * 100);
-                        const isHighUsage = percentage > 85;
-                        const isExhausted = key.exhausted || percentage >= 100;
-                        
-                        return (
-                          <div key={idx} className="quota-bar-wrapper">
-                            <div className="quota-bar-header">
-                              <span>Clé {key.key_suffix}</span>
-                              <span className={isExhausted ? "text-red" : isHighUsage ? "text-orange" : "text-green"}>
-                                {key.credits_used} / {maxCredits} crédits utilisés ({key.credits_remaining} restants)
-                              </span>
-                            </div>
-                            <div className="progress-bar-bg">
-                              <div 
-                                className={`progress-bar-fill ${isExhausted ? "fill-red" : isHighUsage ? "fill-orange" : "fill-green"}`} 
-                                style={{ width: `${100 - percentage}%` }}
-                              ></div>
-                            </div>
-                            {isExhausted && <p className="quota-warning">🚫 Quota épuisé. Cycle de rotation actif.</p>}
-                          </div>
-                        );
-                      })
+                      <QuotaTavilyPanel
+                        keys={pipelineStatus.tavily.map((key) => ({
+                          id: key.key_suffix,
+                          used: key.credits_used,
+                          total: key.credits_limit || 1000,
+                        }))}
+                      />
                     ) : (
                       <p className="no-data">Aucune clé Tavily active détectée par le backend.</p>
                     )}
@@ -816,62 +800,7 @@ export default function CronMonitoringPage() {
           color: var(--text-primary);
         }
 
-        .quota-bar-wrapper {
-          margin-bottom: 16px;
-        }
 
-        .quota-bar-header {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.85rem;
-          margin-bottom: 6px;
-        }
-
-        .progress-bar-bg {
-          height: 8px;
-          background-color: rgba(255, 255, 255, 0.08);
-          border-radius: 4px;
-          overflow: hidden;
-        }
-
-        .progress-bar-fill {
-          height: 100%;
-          border-radius: 4px;
-          transition: width 0.4s ease;
-        }
-
-        .fill-green {
-          background-color: var(--success);
-        }
-
-        .fill-orange {
-          background-color: var(--warning);
-        }
-
-        .fill-red {
-          background-color: var(--danger);
-        }
-
-        .text-green {
-          color: var(--success);
-          font-weight: 500;
-        }
-
-        .text-orange {
-          color: var(--warning);
-          font-weight: 500;
-        }
-
-        .text-red {
-          color: var(--danger);
-          font-weight: 500;
-        }
-
-        .quota-warning {
-          font-size: 0.75rem;
-          color: var(--danger);
-          margin: 4px 0 0 0;
-        }
 
         .no-data {
           font-size: 0.85rem;
@@ -963,6 +892,13 @@ export default function CronMonitoringPage() {
         select.form-control optgroup {
           font-weight: 600;
           font-style: normal;
+          background-color: var(--bg-secondary, #161f30);
+          color: var(--text-primary, #f3f4f6);
+        }
+
+        select.form-control option {
+          background-color: var(--bg-secondary, #161f30);
+          color: var(--text-primary, #f3f4f6);
         }
 
         .category-checkboxes {

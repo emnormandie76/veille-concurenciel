@@ -39,6 +39,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+a, a:visited {
+  color: inherit;
+  text-decoration: none;
+}
+
 /* Typography & Titles */
 h1, h2, h3, h4 {
   font-weight: 600;
@@ -128,6 +133,12 @@ h1, h2, h3, h4 {
 }
 .form-control::placeholder {
   color: #64748b;
+}
+
+select.form-control option,
+select.form-control optgroup {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 /* Tables */

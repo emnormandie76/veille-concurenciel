@@ -44,22 +44,6 @@ interface PipelineStatus {
   ai_model_primary: string;
 }
 
-interface CronTarget {
-  id: string;
-  schoolId: string;
-  programId: string | null;
-  data_category: string;
-  failed_attempts_count: number;
-  is_blacklisted: boolean;
-  last_failed_attempt: string | null;
-  school: {
-    name: string;
-  };
-  program: {
-    name: string;
-  } | null;
-}
-
 interface ProgramInfo {
   id: string;
   name: string;
@@ -112,17 +96,12 @@ const SCHOOL_CATEGORIES = ["SchoolStats", "Accreditation"];
 
 export default function CronMonitoringPage() {
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
-  const [cronTargets, setCronTargets] = useState<CronTarget[]>([]);
   const [loadingStatus, setLoadingStatus] = useState(true);
-  const [loadingTargets, setLoadingTargets] = useState(true);
   
   // Cold start handling
   const [backendDown, setBackendDown] = useState(false);
   const [retrySeconds, setRetrySeconds] = useState(5);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
-  const [errorTargets, setErrorTargets] = useState<string | null>(null);
-  const [unblockingId, setUnblockingId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
 
   // ── Recherche manuelle ───────────────────────────────────────
   const [schools, setSchools] = useState<SchoolWithPrograms[]>([]);
@@ -174,21 +153,7 @@ export default function CronMonitoringPage() {
     }
   };
 
-  const fetchCronTargets = async () => {
-    try {
-      const res = await fetch("/api/admin/cron-targets");
-      if (!res.ok) {
-        throw new Error("Impossible de charger les cibles de monitoring BDD");
-      }
-      const data = await res.json();
-      setCronTargets(data);
-      setErrorTargets(null);
-    } catch (err: any) {
-      setErrorTargets(err.message || "Erreur de connexion BDD");
-    } finally {
-      setLoadingTargets(false);
-    }
-  };
+
 
   const fetchSchools = async () => {
     setLoadingSchools(true);
@@ -208,7 +173,6 @@ export default function CronMonitoringPage() {
 
   useEffect(() => {
     fetchPipelineStatus();
-    fetchCronTargets();
     fetchSchools();
 
     const statusInterval = setInterval(() => {
@@ -246,22 +210,7 @@ export default function CronMonitoringPage() {
 
   // ── Handlers ─────────────────────────────────────────────────
 
-  const handleUnblock = async (id: string) => {
-    setUnblockingId(id);
-    try {
-      const res = await fetch(`/api/admin/cron-targets/${id}/unblock`, {
-        method: "POST"
-      });
-      if (!res.ok) {
-        throw new Error("Échec du déblocage");
-      }
-      await fetchCronTargets();
-    } catch (err: any) {
-      alert(err.message || "Une erreur est survenue lors du déblocage.");
-    } finally {
-      setUnblockingId(null);
-    }
-  };
+
 
   const handleCategoryToggle = (cat: string) => {
     setSelectedCategories((prev) =>
@@ -337,13 +286,7 @@ export default function CronMonitoringPage() {
     return [...SCHOOL_CATEGORIES, ...PROGRAM_CATEGORIES];
   }, [selectedPhase, selectedProgramId]);
 
-  // ── Filter cron targets ──────────────────────────────────────
-  const filteredTargets = cronTargets.filter((target) => {
-    const schoolMatch = target.school.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const categoryMatch = target.data_category.toLowerCase().includes(searchQuery.toLowerCase());
-    const programMatch = target.program?.name.toLowerCase().includes(searchQuery.toLowerCase()) || false;
-    return schoolMatch || categoryMatch || programMatch;
-  });
+
 
   // ── Can launch? ──────────────────────────────────────────────
   const canLaunch = useMemo(() => {
@@ -368,9 +311,8 @@ export default function CronMonitoringPage() {
           className="btn btn-secondary" 
           onClick={() => {
             fetchPipelineStatus();
-            fetchCronTargets();
           }}
-          disabled={loadingStatus || loadingTargets}
+          disabled={loadingStatus}
         >
           🔄 Rafraîchir
         </button>
@@ -640,98 +582,6 @@ export default function CronMonitoringPage() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* ── Section Cibles Cron & Blacklist ───────────────────── */}
-      <div className="card" style={{ marginTop: 24 }}>
-        <div className="section-header-row">
-          <h2 className="section-title">🛡️ Suivi des Cibles de Scan (Cron)</h2>
-        </div>
-
-        <div className="search-bar-container" style={{ margin: "16px 0" }}>
-          <input
-            type="text"
-            className="form-control"
-            placeholder="Rechercher par école, programme, catégorie..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-
-        {loadingTargets && cronTargets.length === 0 ? (
-          <div className="loading-placeholder">Chargement des cibles de scan...</div>
-        ) : filteredTargets.length === 0 ? (
-          <div className="empty-state">
-            <span>🛡️</span>
-            <p>Aucune cible de scan en échec ou blacklistée trouvée.</p>
-          </div>
-        ) : (
-          <div className="table-container scrollable-table">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>École / Programme</th>
-                  <th>Catégorie</th>
-                  <th>Échecs</th>
-                  <th>Statut</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTargets.map((target) => {
-                  const isRed = target.is_blacklisted || target.failed_attempts_count >= 3;
-                  const isOrange = !isRed && target.failed_attempts_count > 0;
-                  
-                  return (
-                    <tr key={target.id}>
-                      <td>
-                        <div className="school-prog-cell">
-                          <span className="school-name">{target.school.name}</span>
-                          {target.program ? (
-                            <span className="program-name">{target.program.name}</span>
-                          ) : (
-                            <span className="global-badge">Niveau École</span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <code className="category-code">{target.data_category}</code>
-                      </td>
-                      <td style={{ textAlign: "center" }}>
-                        <span className={`failed-count ${isRed ? "count-red" : isOrange ? "count-orange" : "count-green"}`}>
-                          {target.failed_attempts_count}/3
-                        </span>
-                      </td>
-                      <td>
-                        {isRed ? (
-                          <span className="badge badge-blacklisted">⚠️ Bloqué</span>
-                        ) : isOrange ? (
-                          <span className="badge badge-warning">En échec</span>
-                        ) : (
-                          <span className="badge badge-active">Actif</span>
-                        )}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {isRed ? (
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            style={{ border: "1px solid var(--accent)" }}
-                            onClick={() => handleUnblock(target.id)}
-                            disabled={unblockingId === target.id}
-                          >
-                            {unblockingId === target.id ? "Déblocage..." : "Débloquer"}
-                          </button>
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       <style jsx>{`

@@ -365,11 +365,7 @@ async def _run_scan(school_id: str, job_id: str):
     Phase 1 réelle (Étape 5) — Tavily crawl + Gemma 31B + ContributionInbox INSERT.
     Tourne en arrière-plan via asyncio.create_task().
     """
-    from backend.scheduler.jobs import USE_RESEARCH_PIPELINE
-    if USE_RESEARCH_PIPELINE:
-        from backend.pipeline.phase1_research import run_phase1_research as run_phase1
-    else:
-        from backend.pipeline.phase1 import run_phase1
+    from backend.pipeline.phase1_research import run_phase1_research as run_phase1
     import asyncio
 
     _pipeline_jobs[school_id]["status"] = "running"
@@ -418,11 +414,7 @@ async def _run_scan(school_id: str, job_id: str):
 
 async def _run_enrichment(school_id: str, job_id: str, categories: list[str]):
     """Phase 2 réelle (Étape 6) — Tavily search + Gemma extract par catégorie + Prisma insert."""
-    from backend.scheduler.jobs import USE_RESEARCH_PIPELINE
-    if USE_RESEARCH_PIPELINE:
-        from backend.pipeline.phase2_research import run_phase2_research as run_phase2
-    else:
-        from backend.pipeline.phase2 import run_phase2
+    from backend.pipeline.phase2_research import run_phase2_research as run_phase2
     import asyncio
 
     job_key = f"{school_id}:enrichment"

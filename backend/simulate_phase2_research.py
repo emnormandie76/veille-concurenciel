@@ -40,13 +40,7 @@ class MockCursor:
 
     def fetchone(self):
         q = self.last_query.lower()
-        if "crontarget" in q:
-            return {
-                "id": "mock-cron-id",
-                "failed_attempts_count": 0,
-                "is_blacklisted": False
-            }
-        elif "school" in q:
+        if "school" in q:
             if "select distinct" in q or "count(" in q:
                 # Tuple for _find_school_for_phase2
                 return ("mock-school-id", self.school_name, self.domain, 2)

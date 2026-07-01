@@ -36,7 +36,6 @@ model School {
   campuses       Campus[]
   statsRecords   SchoolStatsRecord[]
   accreditations AccreditationRecord[]
-  cronTargets    CronTarget[]
 }
 
 model Campus {
@@ -65,7 +64,6 @@ model Program {
   pricingRecords  PricingRecord[]
   capacityRecords CapacityRecord[]
   rankingRecords  RankingRecord[]
-  cronTargets     CronTarget[]
 
   @@unique([campusId, name])
 }
@@ -174,19 +172,4 @@ model ContributionInbox {
   // Note FK : Pour "Program_Discovery" (Phase 1), seul schoolId est renseigné.
   // Pour SchoolStats/Accreditation : campusId/programId = null.
   // Pour Pricing/Ranking/Capacity : les 3 FK sont renseignées.
-}
-
-model CronTarget {
-  id                    String    @id @default(uuid())
-  schoolId              String
-  programId             String?
-  data_category         String    // "Program_Discovery" | "Pricing" | "Ranking" | "Capacity"
-  last_failed_attempt   DateTime?
-  failed_attempts_count Int       @default(0)  // Edge Case 4 : blacklist après 3 échecs
-  is_blacklisted        Boolean   @default(false)
-
-  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  program Program? @relation(fields: [programId], references: [id], onDelete: Cascade)
-
-  @@unique([schoolId, programId, data_category])
 }

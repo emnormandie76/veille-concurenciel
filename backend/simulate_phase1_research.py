@@ -37,22 +37,12 @@ class MockCursor:
         pass
 
     def fetchone(self):
-        self.call_count += 1
-        if self.call_count == 1:
-            # School query
-            return {
-                "id": "mock-school-id",
-                "name": self.school_name,
-                "official_domain": self.domain,
-                "status": "ACTIVE"
-            }
-        else:
-            # CronTarget query
-            return {
-                "id": "mock-cron-id",
-                "failed_attempts_count": 0,
-                "is_blacklisted": False
-            }
+        return {
+            "id": "mock-school-id",
+            "name": self.school_name,
+            "official_domain": self.domain,
+            "status": "ACTIVE"
+        }
 
 class MockConnection:
     def __init__(self, school_name, domain):

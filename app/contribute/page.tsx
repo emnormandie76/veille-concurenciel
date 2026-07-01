@@ -46,6 +46,30 @@ const CATEGORY_OPTIONS = [
   { id: "Accreditation", label: "🎓 Accréditation",         description: "EQUIS, AACSB, AMBA…" },
 ];
 
+const smoothScrollToTop = (duration: number = 500) => {
+  if (typeof window === "undefined") return;
+  const start = window.scrollY;
+  const startTime = performance.now();
+
+  const easeInOutCubic = (t: number) => {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  };
+
+  const animation = (currentTime: number) => {
+    const timeElapsed = currentTime - startTime;
+    const progress = Math.min(timeElapsed / duration, 1);
+    const ease = easeInOutCubic(progress);
+
+    window.scrollTo(0, start * (1 - ease));
+
+    if (timeElapsed < duration) {
+      requestAnimationFrame(animation);
+    }
+  };
+
+  requestAnimationFrame(animation);
+};
+
 export default function ContributePage() {
   const [schools, setSchools]                 = useState<School[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
@@ -97,9 +121,21 @@ export default function ContributePage() {
     setError("");
     setSuccess("");
 
-    if (!selectedSchoolId)        return setError("Veuillez sélectionner une école.");
-    if (categories.length === 0)  return setError("Sélectionnez au moins une catégorie.");
-    if (!urlInput.startsWith("https://")) return setError("L'URL doit commencer par https://");
+    if (!selectedSchoolId) {
+      setError("Veuillez sélectionner une école.");
+      smoothScrollToTop(500);
+      return;
+    }
+    if (categories.length === 0) {
+      setError("Sélectionnez au moins une catégorie.");
+      smoothScrollToTop(500);
+      return;
+    }
+    if (!urlInput.startsWith("https://")) {
+      setError("L'URL doit commencer par https://");
+      smoothScrollToTop(500);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -129,6 +165,7 @@ export default function ContributePage() {
       setError(err instanceof Error ? err.message : "Erreur de connexion.");
     } finally {
       setSubmitting(false);
+      smoothScrollToTop(500);
     }
   };
 

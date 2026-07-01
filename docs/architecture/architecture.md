@@ -1,7 +1,7 @@
 # Architecture Complète — School Data Pipeline (Partie 1 : Système)
 
-> **Version :** 1.0 — 19 mai 2026
-> **Statut :** Définitif — Validé lors du brainstorming architectural
+> **Version :** 1.1 — 1er juillet 2026
+> **Statut :** Mis à jour — Purge Inbox + Fix Contributions Invalides (voir §6.2, §9, §11)
 
 ---
 
@@ -141,6 +141,8 @@ appVC/
 │       │   │       └── route.ts        ← étape 2 (PUT modifier, DELETE supprimer)
 │       │   ├── inbox/
 │       │   │   ├── route.ts            ← étape 3 (GET liste paginée + filtres)
+│       │   │   ├── purge/
+│       │   │   │   └── route.ts        # DELETE — purge des tickets Validated/Rejected (protégé session)
 │       │   │   └── [id]/
 │       │   │       ├── route.ts        ← étape 3 (GET détail)
 │       │   │       ├── validate/
@@ -227,6 +229,9 @@ appVC/
 │   ├── crowdsourcing/                  ← étape 7
 │   │   ├── __init__.py
 │   │   └── processor.py               # Traitement tickets User_Submission (extract → fact-check → extraction)
+│   │                                  # ⚠️ Contient les constantes intégrées : PIPELINE_STRATEGIES, CROWDSOURCING_COMPATIBILITY_CHECK,
+│   │                                  #    et tous les system prompts par catégorie (anciennement dans backend/ai/prompts.py
+│   │                                  #    et backend/tavily_service/strategies.py, supprimés lors du refactoring)
 │   │
 │   ├── routers/                        ← étape 4
 │   │   ├── __init__.py
@@ -367,7 +372,11 @@ model ContributionInbox {
 | `Pending_AI` | En attente de traitement par le pipeline IA |
 | `Pending_Admin` | Traité par l'IA, en attente de validation humaine |
 | `Validated` | Validé et transféré dans les tables de production |
-| `Rejected` | Rejeté par l'Admin |
+| `Rejected` | Rejeté par l'Admin (manuellement) ou page incompatible (vérification compatibilité Gemma) |
+
+> **Important :** Les erreurs permanentes de traitement (`TavilyExtractionError`, `GemmaParsingError`, `Exception` générique) **ne créent plus** de ticket `Rejected`. Ces tickets sont **directement supprimés** de la BDD pour préserver l'espace disque (Neon 500 MB). Seules les pages détectées comme incompatibles par Gemma 26B restent marquées `Rejected`. Voir §6.2 pour le détail du triage.
+
+> **Purge manuelle :** Un bouton "🗑️ Purger" dans `admin/inbox` permet à l'Admin/Modérateur de supprimer en masse les tickets `Validated` et/ou `Rejected` via `DELETE /api/admin/inbox/purge`. Les tickets `Pending_AI` et `Pending_Admin` ne sont jamais supprimables via cette route.
 
 ### 3.5. ~~Suivi du Cron — CronTarget~~ *(Supprimé)*
 
@@ -554,9 +563,9 @@ Utilisateur (non connecté)
 ### 6.2. Traitement Backend (Flux de Traitement et Sécurisation)
 
 Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière suivante :
-1. **Validation Initiale du Parcours :** Si la catégorie du ticket est `Pricing`, `Ranking` ou `Capacity`, le système vérifie immédiatement qu'un `programId` est renseigné (ticket rattaché à un parcours spécifique). Si ce n'est pas le cas, le traitement lève directement une `GemmaParsingError` et le ticket est rejeté.
-2. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Timeout de 15s maximum. Si le contenu extrait est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et le ticket est immédiatement basculé à `Rejected`.
-3. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_CHECK` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le texte extrait est tronqué à 80 000 caractères (aligné sur l'extraction) afin d'inclure le contenu principal situé après les menus de navigation très longs. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué `Rejected` avec la raison écrite dans `ai_extracted_json`.
+1. **Validation Initiale du Parcours :** Si la catégorie du ticket est `Pricing`, `Ranking` ou `Capacity`, le système vérifie immédiatement qu'un `programId` est renseigné (ticket rattaché à un parcours spécifique). Si ce n'est pas le cas, le traitement lève directement une `GemmaParsingError` et **le ticket est supprimé** de la BDD.
+2. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Timeout de 15s maximum. Si le contenu extrait est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et **le ticket est supprimé** de la BDD (l'URL soumise est considérée définitivement invalide).
+3. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_CHECK` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le texte extrait est tronqué à 80 000 caractères (aligné sur l'extraction) afin d'inclure le contenu principal situé après les menus de navigation très longs. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué **`Rejected`** avec la raison écrite dans `ai_extracted_json` — c'est le seul cas où un ticket reste en `Rejected` après le traitement IA.
 4. **Extraction Structurée (Gemma 31B) :** Si compatible, Gemma 31B extrait les données structurées selon la catégorie concernée. Le champ `user_text` est à nouveau exclu.
 5. **Validation Post-Extraction des Données Obligatoires :**
    - **`Capacity`** : validation que `spots_available` et `academic_year` ne sont pas `null`.
@@ -566,8 +575,9 @@ Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière su
 6. **Statut & Triage des Erreurs :**
    - **Succès :** Mise à jour du statut en `Pending_Admin` avec le JSON extrait (upsert temporaire), prêt pour la validation humaine.
    - **Erreurs API Temporaires (`GemmaAPIError`) :** Si le service API Google GenAI ou le réseau échoue (ex: 429, 500, timeout temporaire), le ticket reste en `Pending_AI` afin d'être re-tenté lors du prochain run du scheduler. Le nombre d'essais LLM par ticket est étendu à 4 tentatives.
-   - **Erreurs Permanentes (`GemmaParsingError`, `TavilyExtractionError`) :** Si le format JSON, le lien de parcours ou les clés obligatoires échouent, le ticket est rejeté (`Rejected`) avec les détails de l'erreur enregistrés sous la clé `"parsing_error"` dans `ai_extracted_json`.
-7. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés.
+   - **Erreurs Permanentes (`GemmaParsingError`, `TavilyExtractionError`, `Exception` générique) :** Le ticket est **supprimé directement** de la BDD via `_delete_ticket()`. Cette décision protège le quota de 500 MB Neon en évitant l'accumulation de tickets `Rejected` inutiles pour des URL définitivement invalides.
+   - **Quota Epuisé (`QuotaExhaustedError`) :** Le traitement de l'ensemble du batch est interrompu immédiatement (le ticket reste en `Pending_AI`, aucune suppression).
+7. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés/supprimés.
 ```
 
 ---
@@ -698,10 +708,12 @@ Format : `{ "error": "Description" }`
 | 11 | Paywalls / Modales cookies | Gemma détecte le blocage → skip silencieux | `edgecase.md` |
 | 12 | Ambiguïté devise (UE vs intl) | Colonnes `intl_*` séparées | `edgecase.md` |
 | 13 | Prompt Injection / Fake News | Délimiteurs `<TEXTE_SOURCE>`, whitelist domaines, isolation totale du commentaire utilisateur `user_text` des invites de l'IA | `edgecase.md` |
-| 14 | Timeout / réponse vide Tavily | Timeout 15s, body < 50 chars = échec (`TavilyExtractionError`) → statut `Rejected` immédiat | `edgecase.md` |
+| 14 | Timeout / réponse vide Tavily | Timeout 15s, body < 50 chars = `TavilyExtractionError` → ticket **supprimé** de la BDD (URL définitivement invalide) | `processor.py` |
 | 15 | Cold Start Koyeb | Retry frontend + healthcheck `/health` | `edgecase.md` |
 | 16 | Faux-négatifs compatibilité (menus longs) | Augmentation de la limite de troncature à 80 000 caractères pour le tri de compatibilité afin de couvrir le contenu principal | `processor.py` |
 | 17 | Timeout transaction Prisma (validation) | Exécution parallèle des upserts (Promise.all) + timeout de 60s pour gérer les imports très volumineux (ex: EDHEC avec 9 campus et 30+ programmes) | `app/api/admin/inbox/[id]/validate/route.ts` |
+| 18 | URL invalide / faux lien utilisateur (ex: `http://localhost`, domaine inexistant) | Tavily retourne contenu vide → `TavilyExtractionError` → ticket **supprimé** (pas de `Rejected` parasite en BDD) | `processor.py` |
+| 19 | Accumulation de tickets `Validated`/`Rejected` en BDD (quota Neon 500 MB) | Bouton "🗑️ Purger" dans `admin/inbox` (`DELETE /api/admin/inbox/purge`) avec sélection des statuts + compteur avant confirmation | `app/api/admin/inbox/purge/route.ts` |
 
 ---
 
@@ -756,5 +768,7 @@ Le system prompt interdit formellement d'obéir à toute instruction trouvée da
 | Auth | NextAuth Credentials, 2 rôles | Admin crée les modérateurs, pas d'auto-inscription |
 | Frontend | 4 zones (consultation, crowdsourcing, API docs, admin) | Séparation claire des responsabilités |
 | Isolation du `user_text` | Affichage uniquement passif sur le Dashboard Admin | Sécurité absolue face aux injections de prompts indirectes |
-| Traitement Crowdsourcing asynchrone | Triage des erreurs (`Pending_AI` vs `Rejected`) | Évite de bloquer ou perdre les contributions utilisateurs en cas de pannes d'API ou de réseau |
+| Traitement Crowdsourcing asynchrone | Triage des erreurs (`Pending_AI` vs suppression directe vs `Rejected`) | `Pending_AI` : erreurs temporaires (retry) — Suppression : erreurs permanentes (URL invalide, parsing) — `Rejected` : page incompatible selon Gemma |
+| Suppression vs Rejection pour erreurs permanentes | `_delete_ticket()` au lieu de `_update_ticket_status("Rejected")` | Préserve le quota Neon 500 MB — les tickets `Rejected` pour parsing sont inutiles et ne seront jamais corrigeables |
+| Constantes de prompts intégrées dans `processor.py` | `PIPELINE_STRATEGIES`, `CROWDSOURCING_COMPATIBILITY_CHECK`, system prompts dans le fichier qui les utilise | Les modules `backend/ai/prompts.py` et `backend/tavily_service/strategies.py` ont été supprimés lors du refactoring — les constantes sont maintenant co-localisées avec leur unique utilisateur |
 | Unwrapping des Listes JSON | Retrait automatique du conteneur `[ { ... } ]` | Résout les anomalies de formatage mineures générées par le modèle |

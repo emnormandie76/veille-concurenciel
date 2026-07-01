@@ -84,7 +84,7 @@ export default function InboxPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filtres
-  const [filterStatus, setFilterStatus] = useState("");
+  const [filterStatus, setFilterStatus] = useState("Pending_Admin");
   const [filterCategory, setFilterCategory] = useState("");
 
   // Panneau de détail
@@ -92,6 +92,12 @@ export default function InboxPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Purge
+  const [purgeModalOpen, setPurgeModalOpen] = useState(false);
+  const [purgeStatuses, setPurgeStatuses] = useState<string[]>(["Validated", "Rejected"]);
+  const [purgeCount, setPurgeCount] = useState<number | null>(null);
+  const [purgeLoading, setPurgeLoading] = useState(false);
 
   const LIMIT = 20;
 
@@ -172,6 +178,41 @@ export default function InboxPage() {
     }
   };
 
+  const fetchPurgeCount = async (statuses: string[]) => {
+    try {
+      let totalCount = 0;
+      for (const status of statuses) {
+        const res = await fetch(`/api/admin/inbox?status=${status}&limit=1`);
+        if (res.ok) {
+          const data = await res.json();
+          totalCount += data.pagination.total;
+        }
+      }
+      setPurgeCount(totalCount);
+    } catch {
+      setPurgeCount(null);
+    }
+  };
+
+  const handlePurge = async () => {
+    setPurgeLoading(true);
+    try {
+      const res = await fetch("/api/admin/inbox/purge", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statuses: purgeStatuses }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur lors de la purge");
+      setPurgeModalOpen(false);
+      fetchTickets();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setPurgeLoading(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
@@ -188,6 +229,16 @@ export default function InboxPage() {
           <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
             {total} ticket{total !== 1 ? "s" : ""}
           </span>
+          <button
+            id="btn-open-purge"
+            className="btn btn-danger btn-sm"
+            onClick={() => {
+              setPurgeModalOpen(true);
+              fetchPurgeCount(purgeStatuses);
+            }}
+          >
+            🗑️ Purger
+          </button>
         </div>
       </div>
 
@@ -484,6 +535,70 @@ export default function InboxPage() {
         </div>
       )}
 
+      {/* ── Modal de purge ── */}
+      {purgeModalOpen && (
+        <div className="panel-overlay" onClick={() => setPurgeModalOpen(false)}>
+          <div
+            className="purge-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 16px", fontSize: "1.1rem" }}>
+              🗑️ Purger les tickets traités
+            </h3>
+
+            <div className="form-group" style={{ marginBottom: "16px" }}>
+              <label className="form-label">Statuts à supprimer</label>
+              <select
+                id="purge-status-filter"
+                className="form-control"
+                value={purgeStatuses.join(",")}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const newStatuses = val.split(",");
+                  setPurgeStatuses(newStatuses);
+                  fetchPurgeCount(newStatuses);
+                }}
+              >
+                <option value="Validated,Rejected">Validés + Rejetés</option>
+                <option value="Validated">Validés uniquement</option>
+                <option value="Rejected">Rejetés uniquement</option>
+              </select>
+            </div>
+
+            {purgeCount !== null && (
+              <div style={{
+                padding: "12px",
+                background: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.2)",
+                borderRadius: "var(--radius)",
+                marginBottom: "16px",
+                fontSize: "0.9rem",
+                textAlign: "center",
+              }}>
+                ⚠️ <strong>{purgeCount}</strong> ticket{purgeCount !== 1 ? "s" : ""} seront supprimés définitivement
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setPurgeModalOpen(false)}
+              >
+                Annuler
+              </button>
+              <button
+                id="btn-confirm-purge"
+                className="btn btn-danger"
+                onClick={handlePurge}
+                disabled={purgeLoading || purgeCount === 0}
+              >
+                {purgeLoading ? "Suppression..." : "Confirmer la suppression"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .empty-state {
           text-align: center;
@@ -556,6 +671,22 @@ export default function InboxPage() {
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+        /* ── Modal de purge ── */
+        .purge-modal {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: var(--bg-primary);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-lg);
+          padding: 28px;
+          min-width: 400px;
+          max-width: 90vw;
+          z-index: 1001;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
       `}</style>
     </div>
   );

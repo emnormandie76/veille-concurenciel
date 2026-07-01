@@ -91,10 +91,39 @@ function formatNum(val: number | null): string {
   return val.toLocaleString("fr-FR");
 }
 
+function inferProgramType(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes("pge") || n.includes("grande école")) return "PGE";
+  if (n.includes("bachelor") || n.includes("bba")) return "Bachelor";
+  if (n.includes("msc") || n.includes("science") || n.includes("spécialisé")) return "MSc";
+  if (n.includes("master") || n.includes("mastère") || n.includes("mba")) return "Master";
+  if (n.includes("doctorat") || n.includes("phd")) return "Doctorat";
+  return "Autre";
+}
+
+function inferProgramLevel(name: string): string {
+  const type = inferProgramType(name);
+  if (type === "Bachelor") return "Bac+3";
+  if (type === "PGE" || type === "Master") return "Bac+5";
+  if (type === "MSc") return "Bac+6";
+  if (type === "Doctorat") return "Bac+8";
+  return "Bac+5"; // Valeur par défaut
+}
+
 type Tab = "programs" | "stats" | "accreditations";
 
 export default function SchoolDetailClient({ school }: { school: School }) {
   const [activeTab, setActiveTab] = useState<Tab>("programs");
+  const [openCampuses, setOpenCampuses] = useState<Record<string, boolean>>({});
+  const [activeType, setActiveType] = useState<string>("all");
+  const [activeLevel, setActiveLevel] = useState<string>("all");
+
+  const toggleCampus = (campusId: string) => {
+    setOpenCampuses((prev) => ({
+      ...prev,
+      [campusId]: !prev[campusId],
+    }));
+  };
 
   const totalPrograms = school.campuses.reduce((a, c) => a + c.programs.length, 0);
   const latestStats = school.statsRecords[0] ?? null;
@@ -181,55 +210,135 @@ export default function SchoolDetailClient({ school }: { school: School }) {
               Aucun campus ni programme validé pour cette école. Les données sont en cours d&apos;enrichissement.
             </div>
           ) : (
-            school.campuses.map((campus) => (
-              <div key={campus.id} className="campus-section" id={`campus-${campus.id}`}>
-                <div className="campus-title">
-                  <span>🏛️</span>
-                  {campus.name}
-                  {campus.city && <span style={{ fontWeight: 400, color: "#64748b" }}>— {campus.city}</span>}
-                </div>
-                {campus.programs.length === 0 ? (
-                  <div className="no-data">Aucun programme sur ce campus.</div>
-                ) : (
-                  <div className="programs-list">
-                    {campus.programs.map((prog) => {
-                      const latestPrice = prog.pricingRecords[0] ?? null;
-                      return (
-                        <Link
-                          key={prog.id}
-                          href={`/schools/${school.id}/programs/${prog.id}`}
-                          className="program-card"
-                          id={`program-card-${prog.id}`}
-                        >
-                          <div className="program-card-left">
-                            <div className="program-card-name">{prog.name}</div>
-                            <div className="program-card-tags">
-                              {prog.admission_exam && (
-                                <span className="program-tag tag-exam">🎯 {prog.admission_exam}</span>
-                              )}
-                              {prog.is_alternance_possible && (
-                                <span className="program-tag tag-alternance">🔄 Alternance</span>
-                              )}
-                              {prog.is_expatriation_mandatory && (
-                                <span className="program-tag tag-expat">✈️ Expatriation</span>
-                              )}
-                            </div>
-                          </div>
-                          {latestPrice && (
-                            <div className="program-card-price">
-                              {(latestPrice.year_1_fee ?? latestPrice.total_fee)?.toLocaleString("fr-FR")} {latestPrice.currency}
-                              <div className="program-price-year">
-                                {latestPrice.year_1_fee ? "/an (1ère année)" : "total cursus"}
-                              </div>
-                            </div>
-                          )}
-                        </Link>
-                      );
-                    })}
+            <>
+              {/* FILTRES CLIENT-SIDE */}
+              <div className="filter-panel" id="programs-filter-panel">
+                <div className="filter-section">
+                  <span className="filter-label">Diplôme</span>
+                  <div className="filter-options">
+                    {["all", "PGE", "Bachelor", "Master", "MSc"].map((t) => (
+                      <button
+                        key={t}
+                        className={`filter-btn${activeType === t ? " active" : ""}`}
+                        onClick={() => { setActiveType(t); }}
+                      >
+                        {t === "all" ? "Tous" : t === "MSc" ? "MSc / MS" : t}
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
+
+                <div className="filter-section">
+                  <span className="filter-label">Niveau</span>
+                  <div className="filter-options">
+                    {["all", "Bac+3", "Bac+5", "Bac+6"].map((l) => (
+                      <button
+                        key={l}
+                        className={`filter-btn${activeLevel === l ? " active" : ""}`}
+                        onClick={() => { setActiveLevel(l); }}
+                      >
+                        {l === "all" ? "Tous" : l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            ))
+
+              {/* ACCORDÉONS CAMPUS */}
+              {school.campuses.map((campus) => {
+                // Filtrer les programmes en direct
+                const filteredPrograms = campus.programs.filter((prog) => {
+                  const type = inferProgramType(prog.name);
+                  const level = inferProgramLevel(prog.name);
+                  const typeMatch = activeType === "all" || type === activeType;
+                  const levelMatch = activeLevel === "all" || level === activeLevel;
+                  return typeMatch && levelMatch;
+                });
+
+                const isOpen = !!openCampuses[campus.id];
+
+                return (
+                  <div
+                    key={campus.id}
+                    className={`campus-accordion${isOpen ? " open" : ""}`}
+                    id={`campus-${campus.id}`}
+                  >
+                    {/* Header cliquable */}
+                    <div
+                      className="campus-header"
+                      onClick={() => toggleCampus(campus.id)}
+                    >
+                      <div className="campus-info">
+                        <span className="campus-icon">🏛️</span>
+                        <span className="campus-name">
+                          {campus.name}
+                          {campus.city && (
+                            <span style={{ fontWeight: 400, color: "var(--text-secondary)", marginLeft: 4 }}>
+                              — {campus.city}
+                            </span>
+                          )}
+                        </span>
+                        <span className="campus-count">
+                          {filteredPrograms.length} programme{filteredPrograms.length > 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <span className="chevron">▼</span>
+                    </div>
+
+                    {/* Contenu déroulant */}
+                    <div className="campus-content">
+                      {filteredPrograms.length === 0 ? (
+                        <div className="no-data" style={{ margin: 24 }}>
+                          Aucun programme ne correspond aux filtres sélectionnés.
+                        </div>
+                      ) : (
+                        <div className="programs-list">
+                          {filteredPrograms.map((prog) => {
+                            const latestPrice = prog.pricingRecords[0] ?? null;
+                            const type = inferProgramType(prog.name);
+                            const level = inferProgramLevel(prog.name);
+
+                            return (
+                              <Link
+                                key={prog.id}
+                                href={`/schools/${school.id}/programs/${prog.id}`}
+                                className="program-card"
+                                id={`program-card-${prog.id}`}
+                              >
+                                <div className="program-card-left">
+                                  <div className="program-card-name">{prog.name}</div>
+                                  <div className="program-card-tags">
+                                    <span className="program-tag tag-type">{type}</span>
+                                    <span className="program-tag tag-level">{level}</span>
+                                    {prog.admission_exam && (
+                                      <span className="program-tag tag-exam">🎯 {prog.admission_exam}</span>
+                                    )}
+                                    {prog.is_alternance_possible && (
+                                      <span className="program-tag tag-alternance">🔄 Alternance</span>
+                                    )}
+                                    {prog.is_expatriation_mandatory && (
+                                      <span className="program-tag tag-expat">✈️ Expatriation</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {latestPrice && (
+                                  <div className="program-card-price">
+                                    {(latestPrice.year_1_fee ?? latestPrice.total_fee)?.toLocaleString("fr-FR")} {latestPrice.currency}
+                                    <div className="program-price-year">
+                                      {latestPrice.year_1_fee ? "/an (1ère année)" : "total cursus"}
+                                    </div>
+                                  </div>
+                                )}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
           )}
         </div>
       )}

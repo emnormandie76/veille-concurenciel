@@ -1,6 +1,6 @@
 # ⚙️ Fiche de Test Manuel : Dashboard Admin & Monitoring Cron
 
-Ce guide détaille les étapes nécessaires pour tester localement le tableau de bord de monitoring des tâches cron (`/admin/cron`), le serveur backend (FastAPI), et le mécanisme de déblocage des cibles blacklistées.
+Ce guide détaille les étapes nécessaires pour tester localement le tableau de bord de monitoring des tâches (`/admin/cron`), le serveur backend (FastAPI), et le lancement de recherches manuelles.
 
 ---
 
@@ -20,13 +20,6 @@ npx prisma db seed
 ```
 * **Identifiant par défaut** : `admin`
 * **Mot de passe par défaut** : `admin1234`
-
-### 1.3 Générer les données de test pour le Cron
-Nous avons créé un script spécifique pour générer des cibles de scan (`CronTarget`) dans différents états (actif, en alerte, et bloqué/blacklisté) :
-```bash
-npx tsx prisma/seed_test_cron.ts
-```
-*Ce script va insérer en base de données des écoles de test (HEC Paris, ESSEC) et 4 cibles cron de test.*
 
 ---
 
@@ -80,18 +73,15 @@ npm run dev
 Une fois sur la page `/admin/cron` :
 1. **Statut Backend** : Vous devez voir une pastille verte indiquant **Opérationnel**. (Si le backend était arrêté, un bandeau jaune indiquant un "démarrage à froid" avec compte à rebours s'afficherait).
 2. **Modèle IA Principal** : Doit afficher `models/gemma-4-31b-it`.
-3. **Quotas Tavily** : La jauge doit afficher les crédits restants de la clé Tavily active (`950 / 950 crédits restants`).
-4. **Cibles de Scan (Cron)** : Vous devez voir la liste des 4 cibles générées par notre script de test :
-   * **HEC Paris - Grande École - Pricing** : Statut **Actif** (Vert, 0/3 échecs).
-   * **ESSEC Business School - Grande École - Pricing** : Statut **En échec** (Orange, 2/3 échecs).
-   * **HEC Paris - Grande École - Ranking** : Statut **⚠️ Bloqué** (Rouge, 3/3 échecs) avec un bouton **Débloquer**.
-   * **ESSEC Business School - Niveau École - Program_Discovery** : Statut **⚠️ Bloqué** (Rouge, 4/3 échecs) avec un bouton **Débloquer**.
+3. **Quotas Tavily** : La jauge doit afficher les crédits restants de la clé Tavily active.
+4. **Tâches en cours** : Si un pipeline est en cours, vous devez voir le détail avec barre de progression.
+5. **Recherche Manuelle** : Le formulaire de recherche ciblée doit être visible avec les sélecteurs Phase / École / Programme / Catégories.
 
-### 4.3 Tester l'action de Déblocage ("Unblock")
-1. Repérez la ligne de la cible **HEC Paris (Ranking)** ou **ESSEC (Program_Discovery)** qui est bloquée (Statut rouge).
-2. Cliquez sur le bouton **Débloquer** à droite de la ligne.
-3. Le bouton passera temporairement en état de chargement ("Déblocage...").
-4. **Résultat attendu** : La requête API transite par Next.js, appelle le backend FastAPI pour nettoyer le flag de blacklist en base de données PostgreSQL, puis rafraîchit la table. La cible doit instantanément passer au statut **Actif** (Vert, 0/3 échecs) et le bouton disparaît.
+### 4.3 Tester le lancement d'une recherche manuelle
+1. Sélectionnez **Phase 1** et choisissez une école dans le dropdown.
+2. Cliquez sur **Lancer**.
+3. Le bouton passera en état de chargement.
+4. **Résultat attendu** : Un toast de succès s'affiche. La tâche apparaît dans la section "Tâches en cours" avec progression en temps réel.
 
 ---
 

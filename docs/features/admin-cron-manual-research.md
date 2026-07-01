@@ -74,9 +74,7 @@ Deux features ajoutées à la page `/admin/cron` :
 
 | Fichier | Raison |
 |---|---|
-| `backend/scheduler/jobs.py` | Les jobs APScheduler appellent les fonctions avec les params par défaut → aucun impact |
-| `backend/pipeline/phase1.py` | Ancien pipeline Phase 1 — fallback |
-| `backend/pipeline/phase2.py` | Ancien pipeline Phase 2 — fallback |
+| `backend/scheduler/jobs.py` | Les jobs APScheduler appellent directement les fonctions Research |
 | `backend/pipeline/diff.py` | Réutilisé tel quel |
 | `backend/tavily_service/*` | Inchangé |
 | `backend/ai/*` | Inchangé |

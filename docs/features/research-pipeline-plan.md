@@ -2,8 +2,8 @@
 
 > **Version :** 1.0 — 29 mai 2026  
 > **Branche :** `devresearch` (créée depuis `dev` @ commit `fc25ead`)  
-> **Branche de fallback :** `dev` — Pipelines actuels intacts (crawl+search+Gemma)  
-> **Objectif :** Remplacer la chaîne `crawl/search → Gemma 26B (tri) → Gemma 31B (extraction)` par l'endpoint **Tavily Research** qui effectue recherche multi-sources + synthèse en un seul appel.
+> **Statut :** ✅ **IMPLÉMENTÉ ET PROMU** — Le pipeline Research est désormais le pipeline de base unique. L'ancien pipeline (crawl+search+Gemma) a été supprimé.  
+> **Objectif :** ~~Remplacer~~ A remplacé la chaîne `crawl/search → Gemma 26B (tri) → Gemma 31B (extraction)` par l'endpoint **Tavily Research** qui effectue recherche multi-sources + synthèse en un seul appel.
 
 ---
 

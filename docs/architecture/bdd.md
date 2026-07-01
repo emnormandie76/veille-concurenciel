@@ -57,7 +57,6 @@ model School {
   campuses        Campus[]
   statsRecords    SchoolStatsRecord[]
   accreditations  AccreditationRecord[]
-  cronTargets     CronTarget[]
 }
 
 model Campus {
@@ -88,7 +87,6 @@ model Program {
   pricingRecords  PricingRecord[]
   capacityRecords CapacityRecord[]
   rankingRecords  RankingRecord[]
-  cronTargets     CronTarget[]
 
   @@unique([campusId, name])
 }
@@ -188,7 +186,7 @@ model ContributionInbox {
   user_text              String?  
   urls                   String[] // URLs fournies ou trouvées
   ai_category            String   // "Pricing", "Ranking", "Capacity", "SchoolStats", "Accreditation", "Program_Discovery"
-  ai_extracted_json      Json?    // Résultat brut JSON de l'IA (modèles Gemma)
+  ai_extracted_json      Json?    // Résultat brut JSON de l'IA (Tavily Research + Gemma fallback)
   status                 String   @default("Pending_AI") // Pending_AI, Pending_Admin, Validated, Rejected
   year_assumed           Boolean  @default(false)
   data_conflict_warning  Boolean  @default(false)
@@ -199,21 +197,6 @@ model ContributionInbox {
   // - Pour "Program_Discovery" (Phase 1), seul schoolId est renseigné
   // - Pour les données de niveau école (SchoolStats, Accreditation), campusId/programId sont null
   // - Pour les données de niveau programme (Pricing, Ranking, Capacity), les 3 sont renseignés
-}
-
-model CronTarget {
-  id                    String    @id @default(uuid())
-  schoolId              String
-  programId             String?
-  data_category         String    // "Pricing", "Ranking", "Capacity", "Program_Discovery"
-  last_failed_attempt   DateTime?
-  failed_attempts_count Int       @default(0)
-  is_blacklisted        Boolean   @default(false)
-
-  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  program Program? @relation(fields: [programId], references: [id], onDelete: Cascade)
-
-  @@unique([schoolId, programId, data_category])
 }
 ```
 
@@ -226,7 +209,6 @@ School (1) ──→ (N) Campus (1) ──→ (N) Program (1) ──→ (N) Pric
 
 School (1) ──→ (N) SchoolStatsRecord
 School (1) ──→ (N) AccreditationRecord
-School (1) ──→ (N) CronTarget
 ```
 
 Les données de niveau **école** (stats, accréditations) sont rattachées directement à `School`.
@@ -237,7 +219,8 @@ Les données de niveau **programme** (tarifs, classements, capacités) passent p
 Lors de l'implémentation de nouvelles fonctionnalités ou de la manipulation des données :
 - **Pas de tables par diplôme :** Ne jamais créer de table `Master` ou `BTS`. Tout nouveau type de formation s'insère dans la table `Program`.
 - **Pas de tables par campus :** Ne jamais dupliquer les tables `_Record` par campus. Un `Program` est déjà rattaché à un `Campus`, donc un `PricingRecord` est implicitement lié à un campus via son programme.
-- **Typage JSONB :** Le champ `ai_extracted_json` (ContributionInbox) est mappé sur le type `JSONB` de PostgreSQL par Prisma. L'agent IA doit s'assurer que les clés générées par le LLM (Gemma) correspondent scrupuleusement aux champs attendus dans les tables `_Record` pour faciliter le mapping lors de la validation par l'Admin.
+- **Typage JSONB :** Le champ `ai_extracted_json` (ContributionInbox) est mappé sur le type `JSONB` de PostgreSQL par Prisma. L'agent IA doit s'assurer que les clés générées par Tavily Research (ou Gemma en fallback) correspondent scrupuleusement aux champs attendus dans les tables `_Record` pour faciliter le mapping lors de la validation par l'Admin.
 - **Upserting :** Les contraintes d'unicité (`@@unique`) définies dans le schéma sont cruciales. Elles garantissent qu'on ne créera pas deux tarifs pour la même école sur la même année. Lors du transfert d'une donnée validée depuis la `ContributionInbox` vers une table finale, l'agent doit utiliser la méthode `upsert` de Prisma (création si inexistant, mise à jour si existant).
 - **Niveaux de rattachement dans l'Inbox :** Les FK `schoolId`, `campusId` et `programId` de la `ContributionInbox` reflètent le niveau de sélection de l'utilisateur ou la cible du pipeline automatisé. Ne pas forcer un rattachement si l'information concerne un niveau supérieur (ex: une stat école n'a pas de `programId`).
 - **Edge Cases :** Consulter le fichier `edgecase.md` pour comprendre l'origine logique de champs spécifiques tels que `year_assumed` (Edge Case 2.1) ou `additional_fees_notes` (Edge Case 8).
+- **Pipeline IA :** Le pipeline utilise exclusivement l'API Tavily Research (agent de recherche autonome) avec `output_schema` JSON. Gemma 26B est utilisé uniquement en fallback si `output_schema` n'a pas fonctionné. Voir `research-pipeline-plan.md` pour les détails.

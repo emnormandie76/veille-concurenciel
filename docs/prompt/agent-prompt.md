@@ -95,7 +95,7 @@ Le schéma `prisma/schema.prisma` est défini dans `bdd.md` et est la référenc
 - `temperature = 0.1` sur tous les appels d'extraction
 
 ### Règle 4 — Gestion des ressources (Free Tier)
-- Tavily : rotation automatique des clés via `TavilyKeyManager`, seuil à 950 crédits
+- Tavily : rotation automatique des clés via `TavilyKeyManager` (stratégie Greedy), seuils différenciés par type de requête (pro vs mini)
 - Gemma : retry avec backoff exponentiel sur les erreurs 429 (voir `gemma-python-guide.md`)
 - Neon : pas de requêtes en boucle, utiliser les relations Prisma et le cache ISR
 
@@ -132,8 +132,8 @@ Après avoir présenté la synthèse de l'audit :
 | Backend IA | FastAPI + Python (Koyeb EcoFree) |
 | BDD | PostgreSQL via Prisma ORM (Neon.tech) |
 | Auth | NextAuth.js — Credentials Provider — 2 rôles : `ADMIN`, `MODERATOR` |
-| Crawl/Search | Tavily API (`crawl` Phase 1, `search` Phase 2, `extract` Workflow A) |
-| Extraction IA | Gemma 4 26B (tri rapide) + 31B (extraction) via `google-genai` |
+| Crawl/Search/Research | Tavily API (`research` Pipeline, `extract` Crowdsourcing) |
+| Extraction IA (fallback) | Gemma 4 26B (conversion texte→JSON) + 31B (crowdsourcing) via `google-genai` |
 | Scheduler | APScheduler dans FastAPI |
 | Cache | ISR Vercel `revalidate = 3600` sur toutes les routes publiques |
 
@@ -146,11 +146,11 @@ School → SchoolStatsRecord
 School → AccreditationRecord
 ```
 
-**Pipeline en 2 phases :**
+**Pipeline en 2 phases (via Tavily Research) :**
 ```
-Phase 1 (Tavily crawl) → Gemma 31B → ContributionInbox [Program_Discovery]
+Phase 1 (Tavily Research pro) → JSON direct (ou Gemma 26B fallback) → ContributionInbox [Program_Discovery]
         ↓ Validation Admin
-Phase 2 (Tavily search) → Gemma 26B (tri) → Gemma 31B (extraction) → ContributionInbox [Pricing/Ranking/...]
+Phase 2 (Tavily Research pro par catégorie) → JSON direct (ou Gemma 26B fallback) → Diff vs production → ContributionInbox [Pricing/Ranking/...]
         ↓ Validation Admin
         Tables rigides (PricingRecord, RankingRecord, etc.)
 ```

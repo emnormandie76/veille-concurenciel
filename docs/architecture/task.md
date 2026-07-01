@@ -31,7 +31,7 @@
 ## Étape 1 : Base de Données et Authentification
 
 ### 1.1 — Prisma Schema
-- [x] Créer `prisma/schema.prisma` avec TOUS les modèles définis dans `bdd.md` : `User`, `School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ContributionInbox`, `CronTarget`
+- [x] Créer `prisma/schema.prisma` avec TOUS les modèles définis dans `bdd.md` : `User`, `School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ContributionInbox`
 - [x] Exécuter `npx prisma migrate dev --name init` — migration réussie
 - [x] Exécuter `npx prisma generate` — client généré
 

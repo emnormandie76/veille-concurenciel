@@ -207,6 +207,28 @@ class TavilyKeyManager:
                             key_state.exhausted = True
                     break
 
+    def mark_exhausted(self, api_key: str):
+        """
+        Force le marquage d'une clé comme épuisée.
+        Appelé quand l'API Tavily retourne une erreur de quota (ex: 402, 429)
+        même si le tracker local n'avait pas détecté l'épuisement.
+        Déclenche aussi une synchro de quota en arrière-plan pour mettre à jour les crédits réels.
+        """
+        with self._lock:
+            for key_state in self._keys:
+                if key_state.api_key == api_key:
+                    if not key_state.exhausted:
+                        logger.warning(
+                            f"🚫 Clé Tavily ...{api_key[-6:]} forcée comme épuisée "
+                            f"(quota API atteint — synchro en cours)"
+                        )
+                        key_state.exhausted = True
+                    # Forcer une resynchronisation du quota réel en arrière-plan
+                    key_state.last_fetched_at = 0.0
+                    self._fetch_quota_in_background(key_state)
+                    break
+
+
     def get_status(self) -> list[dict]:
         """Retourne le statut de toutes les clés (déclenche une synchro asynchrone si cache > 5 min)."""
         now = time.time()

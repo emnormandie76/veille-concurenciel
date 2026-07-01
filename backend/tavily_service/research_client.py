@@ -89,62 +89,96 @@ def create_research_task(
             "request_id": "dry-run-000"
         }
 
-    # Obtenir une clé active via le key_manager en spécifiant les crédits requis
+    # Mots-clés dans les messages d'erreur Tavily indiquant un quota dépassé côté API
+    _QUOTA_ERROR_PHRASES = (
+        "exceeds your plan",
+        "usage limit",
+        "rate limit",
+        "quota",
+        "upgrade your plan",
+    )
+
     req_credits = REQUIRED_CREDITS_PRO if model == "pro" else REQUIRED_CREDITS_MINI
-    api_key = key_manager.get_active_key(required_credits=req_credits)
-    client = TavilyClient(api_key=api_key)
+    max_retries = key_manager.total_keys  # On ne réessaie pas plus de fois qu'il n'y a de clés
+    last_error: Exception | None = None
 
-    logger.info(f"🔬 Tavily Research ({model}) : '{query[:100]}...'")
+    for attempt in range(max_retries):
+        # Obtenir une clé active avec suffisamment de crédits
+        try:
+            api_key = key_manager.get_active_key(required_credits=req_credits)
+        except QuotaExhaustedError:
+            raise
 
-    # ── 1. Lancer la tâche ─────────────────────────────────────
-    research_params = {
-        "input": query,
-        "model": model,
-    }
-    if include_domains:
-        research_params["include_domains"] = include_domains
-    if output_schema:
-        research_params["output_schema"] = output_schema
+        client = TavilyClient(api_key=api_key)
+        logger.info(f"🔬 Tavily Research ({model}, clé ...{api_key[-6:]}) : '{query[:100]}...'")
 
-    try:
-        # Appeler le SDK Tavily
-        response = client.research(**research_params)
-        
-        request_id = response.get("request_id") or response.get("id")
-        if not request_id:
-            raise ResearchTaskFailedError(f"Pas de request_id dans la réponse: {response}")
-
-        logger.info(f"📋 Research task créée: {request_id}")
-
-        # ── 2. Polling ─────────────────────────────────────────────
-        result = _poll_research_task(
-            client=client,
-            request_id=request_id,
-            max_wait_seconds=max_wait_seconds,
-            poll_interval=poll_interval,
-        )
-
-        # ── 3. Déterminer les crédits et enregistrer l'utilisation ──
-        # Tavily peut retourner les crédits ou on estime
-        credits_consumed = result.get("credits") or result.get("credits_used")
-        if not credits_consumed:
-            credits_consumed = ESTIMATED_CREDITS.get(model, 25)
-
-        key_manager.record_usage(api_key, credits=credits_consumed)
-
-        return {
-            "report": result.get("content", ""),
-            "sources": result.get("sources", []),
-            "credits_used": credits_consumed,
-            "status": "completed",
-            "request_id": request_id,
+        # ── 1. Lancer la tâche ─────────────────────────────────────
+        research_params: dict = {
+            "input": query,
+            "model": model,
         }
+        if include_domains:
+            research_params["include_domains"] = include_domains
+        if output_schema:
+            research_params["output_schema"] = output_schema
 
-    except QuotaExhaustedError:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Échec de la recherche Tavily Research: {e}")
-        raise
+        try:
+            # Appeler le SDK Tavily
+            response = client.research(**research_params)
+
+            request_id = response.get("request_id") or response.get("id")
+            if not request_id:
+                raise ResearchTaskFailedError(f"Pas de request_id dans la réponse: {response}")
+
+            logger.info(f"📋 Research task créée: {request_id}")
+
+            # ── 2. Polling ─────────────────────────────────────────────
+            result = _poll_research_task(
+                client=client,
+                request_id=request_id,
+                max_wait_seconds=max_wait_seconds,
+                poll_interval=poll_interval,
+            )
+
+            # ── 3. Déterminer les crédits et enregistrer l'utilisation ──
+            credits_consumed = result.get("credits") or result.get("credits_used")
+            if not credits_consumed:
+                credits_consumed = ESTIMATED_CREDITS.get(model, 25)
+
+            key_manager.record_usage(api_key, credits=credits_consumed)
+
+            return {
+                "report": result.get("content", ""),
+                "sources": result.get("sources", []),
+                "credits_used": credits_consumed,
+                "status": "completed",
+                "request_id": request_id,
+            }
+
+        except QuotaExhaustedError:
+            raise
+        except Exception as e:
+            error_str = str(e).lower()
+            # Détecter les erreurs de quota renvoyées directement par l'API Tavily
+            if any(phrase in error_str for phrase in _QUOTA_ERROR_PHRASES):
+                logger.warning(
+                    f"⚠️ Quota API Tavily dépassé sur clé ...{api_key[-6:]} "
+                    f"— marquée épuisée, retry {attempt + 1}/{max_retries}"
+                )
+                # Forcer l'épuisement dans le tracker local pour ne pas re-sélectionner cette clé
+                key_manager.mark_exhausted(api_key)
+                last_error = e
+                continue  # Retry avec la prochaine clé disponible
+            else:
+                logger.error(f"❌ Échec de la recherche Tavily Research: {e}")
+                raise
+
+    # Toutes les clés ont renvoyé une erreur de quota API
+    raise QuotaExhaustedError(
+        f"Toutes les clés Tavily ont atteint la limite API après {max_retries} tentatives. "
+        f"Dernière erreur: {last_error}"
+    )
+
 
 
 def _poll_research_task(

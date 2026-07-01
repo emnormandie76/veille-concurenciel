@@ -42,52 +42,53 @@ Ouvrez votre terminal et activez l'environnement virtuel :
 
 ## 🗺️ Étape 1 : Simulation de la Phase 1 (Program Discovery)
 
-La **Phase 1** cherche à cartographier une école en découvrant ses campus et ses programmes d'études via son domaine officiel.
+La **Phase 1** cherche à cartographier une école en découvrant ses campus et ses programmes d'études via **Tavily Research** (agent de recherche autonome).
 
-* **Script concerné** : [simulate_run.py](file:///c:/Users/aparede/Desktop/dev/appVC/backend/simulate_run.py)
+* **Script concerné** : [simulate_phase1_research.py](file:///c:/Users/aparede/Desktop/dev/appVC/backend/simulate_phase1_research.py)
 * **Comportement** :
-  1. Il insère ou récupère l'école cible (par défaut `Em Normandie` avec le domaine `www.em-normandie.com`) en base de données.
-  2. Il exécute Tavily en mode `crawl` sur ce domaine.
-  3. Il envoie le texte extrait au modèle **Gemma 31B** pour extraire la liste structurée des campus et programmes.
-  4. Il insère un ticket de type `Program_Discovery` dans `ContributionInbox` au statut `Pending_Admin`.
+  1. Il insère ou récupère l'école cible en base de données.
+  2. Il construit un prompt dynamique contextualisé (nom de l'école, domaine officiel).
+  3. Il lance une tâche **Tavily Research** (mode `pro`) avec un `output_schema` JSON.
+  4. Si `output_schema` ne retourne pas de JSON structuré, Gemma 26B convertit le rapport texte en JSON.
+  5. Il insère un ticket de type `Program_Discovery` dans `ContributionInbox` au statut `Pending_Admin`.
 
 ### Lancement
 Exécutez la commande suivante à la racine du projet :
 ```powershell
-backend\.venv\Scripts\python backend\simulate_run.py
+backend\.venv\Scripts\python backend\simulate_phase1_research.py
 ```
 
 ### Personnalisation
-Pour tester une autre école, modifiez les variables suivantes au début de la fonction `simulate()` dans le fichier :
-```python
-school_name = "Votre Ecole"
-school_domain = "www.votre-domaine.com"
+Pour tester une autre école, passez le `school_id` ou le nom en paramètre selon le script.
+
+### Mode Dry Run (sans consommer de crédits)
+```powershell
+backend\.venv\Scripts\python backend\simulate_phase1_research.py --dry-run
 ```
 
 ---
 
 ## 🔍 Étape 2 : Simulation de la Phase 2 (Enrichissement Chirurgical)
 
-La **Phase 2** prend un programme déjà validé en base de données et recherche activement sur le web des informations spécifiques sur les tarifs, les places disponibles ou les classements.
+La **Phase 2** prend un programme déjà validé en base de données et recherche activement sur le web des informations spécifiques via **Tavily Research** (mode `pro`).
 
-* **Script concerné** : [simulate_run_phase2.py](file:///c:/Users/aparede/Desktop/dev/appVC/backend/simulate_run_phase2.py)
+* **Script concerné** : [simulate_phase2_research.py](file:///c:/Users/aparede/Desktop/dev/appVC/backend/simulate_phase2_research.py)
 * **Comportement** :
-  1. Il sélectionne automatiquement une école active disposant de programmes en base de données (ou utilise l'école passée en paramètre).
-  2. Il initie des requêtes ciblées sur Tavily Search (ex: *"tarifs scolarité frais PGE EMLV 2025"*).
-  3. Il transmet le texte brut des résultats de recherche à **Gemma 31B** pour structurer les données.
-  4. Si des données valides sont trouvées, il insère des tickets spécifiques (`Pricing`, `Ranking`, `Capacity`, `SchoolStats`) dans `ContributionInbox` en statut `Pending_Admin`.
+  1. Il sélectionne automatiquement une école active disposant de programmes en base de données.
+  2. Pour chaque programme/école, il construit des prompts dynamiques par catégorie (Pricing, Ranking, Capacity, SchoolStats, Accreditation) avec l'année scolaire N+1.
+  3. Il lance une tâche **Tavily Research** par catégorie.
+  4. Il compare les résultats avec les données de production (`has_data_changed()`).
+  5. Si des données nouvelles sont trouvées, il insère des tickets spécifiques dans `ContributionInbox` en statut `Pending_Admin`.
 
 ### Lancement
 Exécutez la commande suivante à la racine du projet :
 ```powershell
-backend\.venv\Scripts\python backend/simulate_run_phase2.py
+backend\.venv\Scripts\python backend/simulate_phase2_research.py
 ```
 
-### Personnalisation
-Pour forcer le script à enrichir une école spécifique (qui possède déjà un programme validé dans votre DB) :
-```python
-# Modifiez l'appel dans la section __main__ de simulate_run_phase2.py :
-run_phase2(school_name="EMLV")  # Remplacer par le nom exact de l'école
+### Mode Dry Run (sans consommer de crédits)
+```powershell
+backend\.venv\Scripts\python backend/simulate_phase2_research.py --dry-run
 ```
 
 ---

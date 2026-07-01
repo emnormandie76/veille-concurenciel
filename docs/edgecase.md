@@ -34,7 +34,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Contexte :** Le Workflow B (Pipeline IA Automatisé) lit une liste cible d'écoles pour identifier les données manquantes et déclenche une recherche.
 - **Problème :** Une école spécifique n'a pas de page "Tarifs" publique (ex: il faut créer un compte, télécharger une brochure PDF protégée, ou le site est en maintenance). L'IA automatisée cherche, ne trouve rien, et au prochain passage du cron, elle va recommencer à chercher pour la même école.
 - **Impact :** Épuisement du quota Tavily en boucle sur des écoles dont la donnée est inaccessible publiquement.
-- **Solution confirmée :** **Ajouter des champs `last_failed_attempt` et `failed_attempts_count` sur la table ciblée. Si l'IA échoue à trouver une info 3 fois de suite, on "blacklist" temporairement cette donnée/école pour l'automatisation et on la signale à l'Admin ("Donnée introuvable publiquement, requiert recherche manuelle").**
+- **Solution actuelle :** ~~Anciennement géré via la table `CronTarget` avec blacklist après 3 échecs.~~ **Cette table a été supprimée.** Les échecs sont désormais uniquement logués dans la console. Le pipeline Tavily Research est suffisamment intelligent pour naviguer autour des obstacles (paywalls, sites en maintenance). La rotation de clés et les quotas Tavily restent la protection principale contre l'épuisement des crédits.
 
 ### Edge Case 5 : Sources de données contradictoires (Véracité)
 - **Contexte :** Workflow A ou B. L'IA analyse le texte fourni par Tavily pour extraire un classement ou un prix.

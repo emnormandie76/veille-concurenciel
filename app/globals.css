@@ -896,6 +896,33 @@ select.form-control optgroup {
 .program-card-name { font-size: 1rem; font-weight: 600; margin-bottom: 6px; color: #fff; }
 .program-card-tags { display: flex; gap: 8px; flex-wrap: wrap; }
 
+.program-campus-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.campus-badge-icon {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.campus-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 0.70rem;
+  font-weight: 500;
+  border-radius: 50px;
+  background: rgba(59,130,246,0.08);
+  color: #93c5fd;
+  border: 1px solid rgba(59,130,246,0.18);
+  white-space: nowrap;
+}
+
 .program-tag {
   display: inline-flex;
   align-items: center;

@@ -45,6 +45,30 @@ def _cleanup_progress(job_id: str):
     _pipeline_progress.pop(job_id, None)
 
 
+def register_cron_job(job_id: str, school_id: str, phase: str):
+    """Enregistre un job automatique (Cron) dans l'état du pipeline."""
+    job_key = f"cron:{job_id}"
+    _pipeline_jobs[job_key] = {
+        "job_id": job_id,
+        "school_id": school_id,
+        "phase": phase,
+        "status": "running",
+        "source": "cron",
+        "created_at": time_module.time(),
+    }
+    return job_key
+
+
+def complete_cron_job(job_key: str, status: str, result: dict = None, error: str = None):
+    """Met à jour le statut d'un job cron (completed/failed)."""
+    if job_key in _pipeline_jobs:
+        _pipeline_jobs[job_key].update({
+            "status": status,
+            "result": result,
+            "error": error,
+        })
+
+
 # ── Authentification ──────────────────────────────────────────────
 
 def verify_internal_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -117,6 +141,7 @@ async def trigger_scan(
         "phase": "Phase 1 — Cartographie",
         "status": "queued",
         "priority": request.priority,
+        "source": "manual",
         "created_at": time_module.time(),
     }
 
@@ -160,6 +185,7 @@ async def trigger_enrichment(
         "categories": request.categories,
         "status": "queued",
         "force_refresh": request.force_refresh,
+        "source": "manual",
         "created_at": time_module.time(),
     }
 
@@ -228,6 +254,7 @@ async def trigger_targeted_research(
         "status": "queued",
         "program_id": request.program_id,
         "categories": request.categories,
+        "source": "manual",
         "created_at": time_module.time(),
     }
 
@@ -294,6 +321,9 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
         if job.get("status") in ("running", "queued")
     ]
 
+    manual_jobs = [job for job in active_jobs if job.get("source", "manual") == "manual"]
+    cron_jobs = [job for job in active_jobs if job.get("source") == "cron"]
+
     # Enrichir chaque job actif avec ses progress_details
     for job in active_jobs:
         job_id = job.get("job_id")
@@ -303,8 +333,9 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
     return {
         "status": "ok" if db_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
-        "pipeline_jobs_active": len(active_jobs),
-        "pipeline_jobs": active_jobs[:10],  # Limiter à 10 pour la lisibilité
+        "pipeline_jobs_active": len(manual_jobs) + len(cron_jobs),
+        "pipeline_jobs": manual_jobs[:10],  # Limiter à 10 pour la lisibilité
+        "cron_jobs": cron_jobs[:10],        # Limiter à 10 pour la lisibilité
         "tavily": tavily_status,
         "ai_model_primary": "models/gemma-4-31b-it",
         "ai_model_triage": "models/gemma-4-26b-a4b-it",

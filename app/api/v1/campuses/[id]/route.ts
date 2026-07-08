@@ -2,7 +2,7 @@
  * app/api/v1/campuses/[id]/route.ts
  *
  * GET /api/v1/campuses/[id]
- * Public API: Get campus details and its programs.
+ * Public API: Get campus details and its programs (via ProgramCampus).
  *
  * - Cache ISR 1h
  * - CORS enabled
@@ -36,18 +36,23 @@ export async function GET(
             status: true,
           },
         },
-        programs: {
+        programCampuses: {
           select: {
             id: true,
-            campusId: true,
-            name: true,
-            admission_exam: true,
-            is_alternance_possible: true,
-            is_expatriation_mandatory: true,
-            min_expatriation_months: true,
-            max_internship_months: true,
+            program: {
+              select: {
+                id: true,
+                schoolId: true,
+                name: true,
+                admission_exam: true,
+                is_alternance_possible: true,
+                is_expatriation_mandatory: true,
+                min_expatriation_months: true,
+                max_internship_months: true,
+              },
+            },
           },
-          orderBy: { name: "asc" },
+          orderBy: { program: { name: "asc" } },
         },
       },
     });

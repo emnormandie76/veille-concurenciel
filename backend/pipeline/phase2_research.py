@@ -167,8 +167,10 @@ PRO_MODEL_CATEGORIES = {"Pricing", "Ranking"}
 
 # Catégories de niveau école (pas besoin de programme)
 SCHOOL_LEVEL_CATEGORIES = ["SchoolStats", "Accreditation"]
-# Catégories de niveau programme
-PROGRAM_LEVEL_CATEGORIES = ["Pricing", "Ranking", "Capacity"]
+# Catégories de niveau programme unique (rattaché à School)
+PROGRAM_LEVEL_CATEGORIES = ["Pricing", "Ranking"]
+# Catégories de niveau programme-campus (via ProgramCampus — capacity varie par campus)
+PROGRAM_CAMPUS_LEVEL_CATEGORIES = ["Capacity"]
 
 
 def _get_research_model(category: str) -> str:
@@ -198,15 +200,21 @@ def _get_existing_record(cur, category: str, school_id: str, program_id: str | N
     if category == "Ranking" and program_id:
         cur.execute('SELECT * FROM "RankingRecord" WHERE "programId" = %s ORDER BY "academic_year" DESC LIMIT 1', (program_id,))
         return cur.fetchone()
-    if category == "Capacity" and program_id:
-        cur.execute('SELECT * FROM "CapacityRecord" WHERE "programId" = %s ORDER BY "academic_year" DESC LIMIT 1', (program_id,))
-        return cur.fetchone()
     if category == "SchoolStats":
         cur.execute('SELECT * FROM "SchoolStatsRecord" WHERE "schoolId" = %s ORDER BY "academic_year" DESC LIMIT 1', (school_id,))
         return cur.fetchone()
     if category == "Accreditation":
         return None
     return None
+
+
+def _get_existing_capacity_record(cur, program_campus_id: str) -> dict | None:
+    """Récupère le dernier CapacityRecord pour un ProgramCampus donné."""
+    cur.execute(
+        'SELECT * FROM "CapacityRecord" WHERE "programCampusId" = %s ORDER BY "academic_year" DESC LIMIT 1',
+        (program_campus_id,)
+    )
+    return cur.fetchone()
 
 
 def run_phase2_research(
@@ -260,27 +268,25 @@ def run_phase2_research(
                     "school": school_name,
                 })
 
-            # ── 2. Charger les programmes ─────────────────────────
+            # ── 2. Charger les programmes (uniques par école) ─────
             if target_program_id:
                 # Mode ciblé : un seul programme
                 cur.execute(
                     """
-                    SELECT p.id, p.name, p."campusId", c.name as campus_name 
-                    FROM "Program" p 
-                    JOIN "Campus" c ON p."campusId" = c.id 
-                    WHERE c."schoolId" = %s AND p.id = %s
+                    SELECT p.id, p.name, p."schoolId"
+                    FROM "Program" p
+                    WHERE p."schoolId" = %s AND p.id = %s
                     ORDER BY p.name ASC
                     """,
                     (school_id, target_program_id)
                 )
             else:
-                # Mode complet : tous les programmes
+                # Mode complet : tous les programmes uniques de l'école
                 cur.execute(
                     """
-                    SELECT p.id, p.name, p."campusId", c.name as campus_name 
-                    FROM "Program" p 
-                    JOIN "Campus" c ON p."campusId" = c.id 
-                    WHERE c."schoolId" = %s 
+                    SELECT p.id, p.name, p."schoolId"
+                    FROM "Program" p
+                    WHERE p."schoolId" = %s
                     ORDER BY p.name ASC
                     """,
                     (school_id,)
@@ -298,11 +304,33 @@ def run_phase2_research(
                 except ValueError:
                     pass
 
+            # ── 2b. Charger les associations ProgramCampus (pour Capacity) ──
+            prog_ids = [p["id"] for p in programs]
+            program_campuses = []
+            if prog_ids and (not target_categories or "Capacity" in target_categories):
+                if prog_ids:
+                    placeholders = ",".join(["%s"] * len(prog_ids))
+                    cur.execute(
+                        f"""
+                        SELECT pc.id as program_campus_id, pc."programId" as program_id,
+                               pc."campusId" as campus_id,
+                               p.name as program_name, c.name as campus_name
+                        FROM "ProgramCampus" pc
+                        JOIN "Program" p ON p.id = pc."programId"
+                        JOIN "Campus" c ON c.id = pc."campusId"
+                        WHERE pc."programId" IN ({placeholders})
+                        ORDER BY p.name ASC, c.name ASC
+                        """,
+                        prog_ids
+                    )
+                    program_campuses = cur.fetchall()
+
             # ── Calculer le total de tâches pour la progression ────
             school_cats = [c for c in SCHOOL_LEVEL_CATEGORIES if not target_categories or c in target_categories]
             prog_cats = [c for c in PROGRAM_LEVEL_CATEGORIES if not target_categories or c in target_categories]
-            total_to_scan = len(school_cats) + (len(programs) * len(prog_cats))
-            logger.info(f"📊 [Research] Total tâches à scanner: {total_to_scan} ({len(school_cats)} école + {len(programs)}×{len(prog_cats)} programmes)")
+            prog_campus_cats = [c for c in PROGRAM_CAMPUS_LEVEL_CATEGORIES if not target_categories or c in target_categories]
+            total_to_scan = len(school_cats) + (len(programs) * len(prog_cats)) + (len(program_campuses) * len(prog_campus_cats))
+            logger.info(f"📊 [Research] Total tâches à scanner: {total_to_scan} ({len(school_cats)} école + {len(programs)}×{len(prog_cats)} prog + {len(program_campuses)}×{len(prog_campus_cats)} prog-campus)")
 
             # ── 3. Catégories niveau École ─────────────────────────
             for category in school_cats:
@@ -375,7 +403,7 @@ def run_phase2_research(
                     )
                     tickets_created += 1
 
-            # ── 4. Catégories niveau Programme ─────────────────────
+            # ── 4. Catégories niveau Programme (Pricing, Ranking) ──
             for program in programs:
                 for category in prog_cats:
                     categories_scanned += 1
@@ -389,25 +417,19 @@ def run_phase2_research(
                             "progress": f"{categories_scanned}/{total_to_scan}",
                         })
 
-                    # Choix du prompt
+                    # Choix du prompt (Pricing et Ranking au niveau école, sans campus_name)
                     if category == "Pricing":
                         prompt = build_pricing_research_input(
-                            school_name, program["campus_name"], program["name"], 
+                            school_name, program["name"],
                             academic_year_str, official_domain
                         )
-                    elif category == "Ranking":
+                    else:  # Ranking
                         prompt = build_ranking_research_input(
                             school_name, program["name"], academic_year_str, official_domain
-                        )
-                    else: # Capacity
-                        prompt = build_capacity_research_input(
-                            school_name, program["campus_name"], program["name"], 
-                            academic_year_str, official_domain
                         )
 
                     # Appel Research
                     _, required_keys, schema = _get_prompt_and_schema_for_category(category)
-                    
                     research_model = _get_research_model(category)
                     try:
                         research_result = create_research_task(
@@ -437,22 +459,92 @@ def run_phase2_research(
                     if has_data_changed(extracted, existing):
                         sources = research_result.get("sources", [])
                         source_urls = [s.get("url") for s in sources if s.get("url")]
-                        
+
                         cur.execute(
                             """
-                            INSERT INTO "ContributionInbox" 
-                                (id, source_type, "schoolId", "campusId", "programId", 
+                            INSERT INTO "ContributionInbox"
+                                (id, source_type, "schoolId", "programId",
                                  ai_category, ai_extracted_json, status, year_assumed, data_conflict_warning, urls)
-                            VALUES (%s, 'Automated_AI', %s, %s, %s, %s, %s, 'Pending_Admin', %s, %s, %s)
+                            VALUES (%s, 'Automated_AI', %s, %s, %s, %s, 'Pending_Admin', %s, %s, %s)
                             """,
                             (
-                                str(uuid.uuid4()), 
-                                school_id, 
-                                program["campusId"], 
-                                program["id"], 
-                                category, 
-                                json.dumps(extracted), 
-                                extracted.get("year_assumed", False), 
+                                str(uuid.uuid4()),
+                                school_id,
+                                program["id"],
+                                category,
+                                json.dumps(extracted),
+                                extracted.get("year_assumed", False),
+                                extracted.get("data_conflict_warning", False),
+                                source_urls
+                            )
+                        )
+                        tickets_created += 1
+
+            # ── 5. Catégories niveau ProgramCampus (Capacity) ──────
+            for pc in program_campuses:
+                for category in prog_campus_cats:
+                    categories_scanned += 1
+
+                    if progress_callback:
+                        progress_callback({
+                            "current_action": f"Recherche {category}",
+                            "school": school_name,
+                            "program": f"{pc['program_name']} @ {pc['campus_name']}",
+                            "category": category,
+                            "progress": f"{categories_scanned}/{total_to_scan}",
+                        })
+
+                    prompt = build_capacity_research_input(
+                        school_name, pc["campus_name"], pc["program_name"],
+                        academic_year_str, official_domain
+                    )
+
+                    _, required_keys, schema = _get_prompt_and_schema_for_category(category)
+                    research_model = _get_research_model(category)
+                    try:
+                        research_result = create_research_task(
+                            query=prompt,
+                            key_manager=key_manager,
+                            include_domains=[official_domain],
+                            output_schema=schema,
+                            model=research_model,
+                            dry_run=dry_run
+                        )
+                        logger.info(f"🔬 [{research_model.upper()}] {category} pour {pc['program_name']} @ {pc['campus_name']}")
+                    except Exception as e:
+                        logger.error(f"❌ Échec Research Capacity pour {pc['program_name']} @ {pc['campus_name']}: {e}")
+                        continue
+
+                    if dry_run:
+                        logger.info(f"🧪 [DRY RUN] Résultat Capacity {pc['program_name']} @ {pc['campus_name']}: {research_result['report']}")
+                        continue
+
+                    extracted = _parse_research_report(research_result, category, required_keys)
+                    if not extracted:
+                        continue
+
+                    # Comparaison de données — on passe None pour program_id car on compare par programCampusId
+                    existing = _get_existing_capacity_record(cur, pc["program_campus_id"])
+                    if has_data_changed(extracted, existing):
+                        sources = research_result.get("sources", [])
+                        source_urls = [s.get("url") for s in sources if s.get("url")]
+
+                        cur.execute(
+                            """
+                            INSERT INTO "ContributionInbox"
+                                (id, source_type, "schoolId", "campusId", "programId", "programCampusId",
+                                 ai_category, ai_extracted_json, status, year_assumed, data_conflict_warning, urls)
+                            VALUES (%s, 'Automated_AI', %s, %s, %s, %s, %s, %s, 'Pending_Admin', %s, %s, %s)
+                            """,
+                            (
+                                str(uuid.uuid4()),
+                                school_id,
+                                pc["campus_id"],
+                                pc["program_id"],
+                                pc["program_campus_id"],
+                                category,
+                                json.dumps(extracted),
+                                extracted.get("year_assumed", False),
                                 extracted.get("data_conflict_warning", False),
                                 source_urls
                             )

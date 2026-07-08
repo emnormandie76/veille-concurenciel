@@ -27,10 +27,8 @@ export async function GET(request: Request) {
     const { page, limit, skip } = parsePagination(searchParams);
 
     const where: any = {
-      campus: {
-        school: {
-          status: "ACTIVE",
-        },
+      school: {
+        status: "ACTIVE",
       },
     };
 
@@ -54,20 +52,10 @@ export async function GET(request: Request) {
           },
         },
         {
-          campus: {
+          school: {
             name: {
               contains: search,
               mode: "insensitive",
-            },
-          },
-        },
-        {
-          campus: {
-            school: {
-              name: {
-                contains: search,
-                mode: "insensitive",
-              },
             },
           },
         },
@@ -79,24 +67,28 @@ export async function GET(request: Request) {
         where,
         select: {
           id: true,
-          campusId: true,
+          schoolId: true,
           name: true,
           admission_exam: true,
           is_alternance_possible: true,
           is_expatriation_mandatory: true,
           min_expatriation_months: true,
           max_internship_months: true,
-          campus: {
+          school: {
             select: {
               id: true,
-              schoolId: true,
               name: true,
-              city: true,
-              school: {
+              official_domain: true,
+            },
+          },
+          campuses: {
+            select: {
+              id: true,
+              campus: {
                 select: {
                   id: true,
                   name: true,
-                  official_domain: true,
+                  city: true,
                 },
               },
             },

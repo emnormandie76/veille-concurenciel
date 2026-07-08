@@ -2,7 +2,9 @@
  * app/api/v1/programs/[id]/capacity/route.ts
  *
  * GET /api/v1/programs/[id]/capacity
- * Public API: Get capacity history for a program, optionally filtered by year.
+ * Public API: Get capacity history for a program, grouped by campus.
+ * Capacity varies per campus (via ProgramCampus).
+ * Optionally filtered by year.
  *
  * - Cache ISR 1h
  * - CORS enabled
@@ -30,46 +32,55 @@ export async function GET(
     const program = await prisma.program.findUnique({
       where: { id },
       select: {
-        campus: {
+        school: {
           select: {
-            school: {
-              select: {
-                status: true,
-              },
-            },
+            status: true,
           },
         },
       },
     });
 
-    if (!program || program.campus.school.status !== "ACTIVE") {
+    if (!program || program.school.status !== "ACTIVE") {
       return corsErrorResponse("Programme introuvable", 404);
     }
 
-    // 2. Query capacity records
-    const where: any = { programId: id };
-
+    // 2. Build year filter for capacityRecords
+    const capacityWhere: any = {};
     if (yearParam) {
       const year = parseInt(yearParam, 10);
       if (isNaN(year)) {
         return corsErrorResponse("Année invalide", 400);
       }
-      where.academic_year = year;
+      capacityWhere.academic_year = year;
     }
 
-    const capacity = await prisma.capacityRecord.findMany({
-      where,
+    // 3. Query capacity records grouped by campus (via ProgramCampus)
+    const programCampuses = await prisma.programCampus.findMany({
+      where: { programId: id },
       select: {
         id: true,
-        programId: true,
-        academic_year: true,
-        spots_available: true,
-        source_url: true,
+        campus: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+          },
+        },
+        capacityRecords: {
+          where: capacityWhere,
+          select: {
+            id: true,
+            academic_year: true,
+            spots_available: true,
+            source_url: true,
+          },
+          orderBy: { academic_year: "desc" },
+        },
       },
-      orderBy: { academic_year: "desc" },
+      orderBy: { campus: { name: "asc" } },
     });
 
-    return corsResponse(capacity);
+    return corsResponse(programCampuses);
   } catch (error) {
     console.error("GET /api/v1/programs/[id]/capacity error:", error);
     return corsErrorResponse("Erreur serveur interne", 500);

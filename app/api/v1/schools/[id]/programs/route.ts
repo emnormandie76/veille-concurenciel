@@ -2,7 +2,8 @@
  * app/api/v1/schools/[id]/programs/route.ts
  *
  * GET /api/v1/schools/[id]/programs
- * Public API: Get list of programs for a school, optionally filtered by campus_id.
+ * Public API: Get list of programs for a school.
+ * Optional ?campus_id= filter to get programs available at a specific campus.
  *
  * - Cache ISR 1h
  * - CORS enabled
@@ -36,33 +37,37 @@ export async function GET(
       return corsErrorResponse("École introuvable", 404);
     }
 
-    // 2. Query programs
-    const where: any = {
-      campus: {
-        schoolId: id,
-      },
-    };
+    // 2. Query programs at school level
+    // Optional campus_id filter: find programs available at that campus via ProgramCampus
+    const where: any = { schoolId: id };
 
     if (campusId) {
-      where.campusId = campusId;
+      where.campuses = {
+        some: { campusId },
+      };
     }
 
     const programs = await prisma.program.findMany({
       where,
       select: {
         id: true,
-        campusId: true,
+        schoolId: true,
         name: true,
         admission_exam: true,
         is_alternance_possible: true,
         is_expatriation_mandatory: true,
         min_expatriation_months: true,
         max_internship_months: true,
-        campus: {
+        campuses: {
           select: {
             id: true,
-            name: true,
-            city: true,
+            campus: {
+              select: {
+                id: true,
+                name: true,
+                city: true,
+              },
+            },
           },
         },
       },

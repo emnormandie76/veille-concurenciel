@@ -33,13 +33,14 @@ RÈGLES STRICTES :
 
 
 def build_pricing_research_input(
-    school_name: str, campus_name: str, program_name: str, 
+    school_name: str, program_name: str,
     academic_year_str: str, domain: str
 ) -> str:
     """
     Construit le prompt de recherche pour la Phase 2 - Pricing.
+    Le tarif est identique quel que soit le campus (niveau programme-école).
     """
-    return f"""Recherche les frais de scolarité du programme "{program_name}" au campus "{campus_name}" de l'école "{school_name}" pour l'année scolaire {academic_year_str}.
+    return f"""Recherche les frais de scolarité du programme "{program_name}" de l'école "{school_name}" pour l'année scolaire {academic_year_str}.
 
 INFORMATIONS RECHERCHÉES :
 1. Frais de scolarité par année d'études :

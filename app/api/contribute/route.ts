@@ -11,7 +11,7 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const { schoolId, campusId, programId, categories, userText, urls } = body;
+        const { schoolId, campusId, programId, programCampusId, categories, userText, urls } = body;
 
         if (!schoolId || !categories || categories.length === 0 || !urls || urls.length === 0) {
             return NextResponse.json({ error: "Paramètres invalides, école, catégorie et URL sont requis" }, { status: 400 });
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
                     schoolId,
                     campusId: campusId || null,
                     programId: programId || null,
+                    programCampusId: programCampusId || null,
                     user_text: userText || "",
                     urls: urls,
                     ai_category: cat,

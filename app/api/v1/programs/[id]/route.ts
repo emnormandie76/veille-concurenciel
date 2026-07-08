@@ -2,7 +2,7 @@
  * app/api/v1/programs/[id]/route.ts
  *
  * GET /api/v1/programs/[id]
- * Public API: Get program details including campus and school.
+ * Public API: Get program details including school and associated campuses.
  *
  * - Cache ISR 1h
  * - CORS enabled
@@ -28,25 +28,39 @@ export async function GET(
       where: { id },
       select: {
         id: true,
-        campusId: true,
+        schoolId: true,
         name: true,
         admission_exam: true,
         is_alternance_possible: true,
         is_expatriation_mandatory: true,
         min_expatriation_months: true,
         max_internship_months: true,
-        campus: {
+        school: {
           select: {
             id: true,
-            schoolId: true,
             name: true,
-            city: true,
-            school: {
+            official_domain: true,
+            status: true,
+          },
+        },
+        campuses: {
+          select: {
+            id: true,
+            campus: {
               select: {
                 id: true,
                 name: true,
-                official_domain: true,
-                status: true,
+                city: true,
+              },
+            },
+            capacityRecords: {
+              orderBy: { academic_year: "desc" },
+              take: 3,
+              select: {
+                id: true,
+                academic_year: true,
+                spots_available: true,
+                source_url: true,
               },
             },
           },
@@ -54,7 +68,7 @@ export async function GET(
       },
     });
 
-    if (!program || program.campus.school.status !== "ACTIVE") {
+    if (!program || program.school.status !== "ACTIVE") {
       return corsErrorResponse("Programme introuvable", 404);
     }
 

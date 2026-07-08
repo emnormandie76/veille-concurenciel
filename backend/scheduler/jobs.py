@@ -102,6 +102,11 @@ def phase1_scanner(key_manager):
             f"🏫 [CRON] Traitement {i+1}/{len(schools_without_campus)}: {school_name}"
         )
 
+        import uuid
+        from backend.routers.internal import register_cron_job, complete_cron_job
+        job_id = str(uuid.uuid4())[:8]
+        job_key = register_cron_job(job_id, school_id, "Phase 1 — Cartographie (Auto)")
+
         try:
             result = run_phase1(school_id, key_manager)
 
@@ -111,9 +116,11 @@ def phase1_scanner(key_manager):
                     f"{result.get('campuses_count')} campus, "
                     f"{result.get('programs_count')} programmes → Inbox créé"
                 )
+                complete_cron_job(job_key, "completed", result=result)
             else:
                 msg = result.get("message", "Échec inconnu")
                 logger.warning(f"⚠️ [CRON] {school_name}: {msg}")
+                complete_cron_job(job_key, "failed", error=msg)
 
                 # Si quota épuisé → arrêter le job immédiatement
                 if "quota" in msg.lower() or "épuisé" in msg.lower():
@@ -122,9 +129,11 @@ def phase1_scanner(key_manager):
 
         except QuotaExhaustedError as e:
             logger.error(f"🛑 [CRON] Quota Tavily épuisé — arrêt immédiat du scanner: {e}")
+            complete_cron_job(job_key, "failed", error=str(e))
             break
         except Exception as e:
             logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
+            complete_cron_job(job_key, "failed", error=str(e))
 
         # Pause entre chaque école (sauf la dernière)
         if i < len(schools_without_campus) - 1:
@@ -185,6 +194,11 @@ def phase2_enricher(key_manager):
             f"🏫 [CRON] Traitement {i+1}/{len(schools_with_campus)}: {school_name}"
         )
 
+        import uuid
+        from backend.routers.internal import register_cron_job, complete_cron_job
+        job_id = str(uuid.uuid4())[:8]
+        job_key = register_cron_job(job_id, school_id, "Phase 2 — Enrichissement (Auto)")
+
         try:
             result = run_phase2(school_id, key_manager)
 
@@ -192,9 +206,11 @@ def phase2_enricher(key_manager):
                 logger.info(
                     f"✅ [CRON] {school_name}: {result.get('tickets_created')} ticket(s) créé(s)"
                 )
+                complete_cron_job(job_key, "completed", result=result)
             else:
                 msg = result.get("message", "Échec inconnu")
                 logger.warning(f"⚠️ [CRON] {school_name}: {msg}")
+                complete_cron_job(job_key, "failed", error=msg)
 
                 if "quota" in msg.lower() or "épuisé" in msg.lower():
                     logger.error("🛑 [CRON] Quota Tavily épuisé — arrêt de l'enricher")
@@ -202,9 +218,11 @@ def phase2_enricher(key_manager):
 
         except QuotaExhaustedError as e:
             logger.error(f"🛑 [CRON] Quota Tavily épuisé — arrêt immédiat de l'enricher: {e}")
+            complete_cron_job(job_key, "failed", error=str(e))
             break
         except Exception as e:
             logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
+            complete_cron_job(job_key, "failed", error=str(e))
 
         if i < len(schools_with_campus) - 1:
             logger.info(f"⏸️ [CRON] Pause {PAUSE_BETWEEN_SCHOOLS}s avant la prochaine école...")

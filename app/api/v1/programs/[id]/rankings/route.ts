@@ -31,19 +31,15 @@ export async function GET(
     const program = await prisma.program.findUnique({
       where: { id },
       select: {
-        campus: {
+        school: {
           select: {
-            school: {
-              select: {
-                status: true,
-              },
-            },
+            status: true,
           },
         },
       },
     });
 
-    if (!program || program.campus.school.status !== "ACTIVE") {
+    if (!program || program.school.status !== "ACTIVE") {
       return corsErrorResponse("Programme introuvable", 404);
     }
 

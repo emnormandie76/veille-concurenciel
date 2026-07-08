@@ -1,9 +1,9 @@
 /**
  * app/schools/[id]/programs/[pid]/page.tsx — Détail programme public (Étape 8.1)
  *
- * - Tarifs par année + total, classements, capacité
+ * - Tarifs par année + total, classements, capacité par campus
  * - ISR 1h
- * - Vérification école ACTIVE + appartenance programme
+ * - Vérification école ACTIVE + appartenance programme (schoolId)
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
@@ -22,10 +22,17 @@ async function getProgram(schoolId: string, programId: string) {
   const program = await prisma.program.findUnique({
     where: { id: programId },
     include: {
-      campus: {
+      school: true,
+      campuses: {
         include: {
-          school: true,
+          campus: {
+            select: { id: true, name: true, city: true },
+          },
+          capacityRecords: {
+            orderBy: { academic_year: "desc" },
+          },
         },
+        orderBy: { campus: { name: "asc" } },
       },
       pricingRecords: {
         orderBy: { academic_year: "desc" },
@@ -33,15 +40,12 @@ async function getProgram(schoolId: string, programId: string) {
       rankingRecords: {
         orderBy: [{ academic_year: "desc" }, { ranking_name: "asc" }],
       },
-      capacityRecords: {
-        orderBy: { academic_year: "desc" },
-      },
     },
   });
 
   if (!program) return null;
-  if (program.campus.schoolId !== schoolId) return null;
-  if (program.campus.school.status !== "ACTIVE") return null;
+  if (program.schoolId !== schoolId) return null;
+  if (program.school.status !== "ACTIVE") return null;
 
   return program;
 }
@@ -51,8 +55,8 @@ export async function generateMetadata({ params }: Props) {
   const program = await getProgram(id, pid);
   if (!program) return { title: "Programme introuvable" };
   return {
-    title: `${program.name} — ${program.campus.school.name} — EduData France`,
-    description: `Tarifs, classements et capacité du programme ${program.name} à ${program.campus.school.name}`,
+    title: `${program.name} — ${program.school.name} — EduData France`,
+    description: `Tarifs, classements et capacité du programme ${program.name} à ${program.school.name}`,
   };
 }
 
@@ -67,8 +71,12 @@ export default async function ProgramDetailPage({ params }: Props) {
 
   if (!program) notFound();
 
-  const school = program.campus.school;
-  const latestPricing = program.pricingRecords[0] ?? null;
+  const school = program.school;
+
+  // Collecte de toutes les données de capacité (groupées par campus)
+  const campusesWithCapacity = program.campuses.filter(
+    (pc) => pc.capacityRecords.length > 0
+  );
 
   return (
     <>
@@ -101,9 +109,19 @@ export default async function ProgramDetailPage({ params }: Props) {
         <div className="program-detail-meta">
           <span className="school-meta-item">
             <span className="school-meta-icon">🏛️</span>
-            {school.name} — {program.campus.name}
-            {program.campus.city && `, ${program.campus.city}`}
+            {school.name}
           </span>
+          {/* Campus disponibles */}
+          {program.campuses.length > 0 && (
+            <span className="school-meta-item">
+              <span className="school-meta-icon">📍</span>
+              {program.campuses.map((pc) => (
+                <span key={pc.id} className="campus-badge" style={{ marginRight: 4 }}>
+                  {pc.campus.city ?? pc.campus.name}
+                </span>
+              ))}
+            </span>
+          )}
           {program.admission_exam && (
             <span className="program-tag tag-exam">🎯 {program.admission_exam}</span>
           )}
@@ -210,23 +228,34 @@ export default async function ProgramDetailPage({ params }: Props) {
           )}
         </section>
 
-        {/* Section Capacité */}
+        {/* Section Capacité — par campus */}
         <section id="section-capacity" style={{ marginBottom: 48 }}>
           <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 20, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
             👥 Places disponibles
           </h2>
 
-          {program.capacityRecords.length === 0 ? (
+          {campusesWithCapacity.length === 0 ? (
             <div className="no-data" id="no-capacity-data">
               Aucune donnée de capacité disponible.{" "}
               <Link href="/contribute" style={{ color: "var(--accent)" }}>Contribuer des données</Link>
             </div>
           ) : (
-            <div className="stats-grid" id="capacity-grid" style={{ maxWidth: 600 }}>
-              {program.capacityRecords.map((cap) => (
-                <div key={cap.id} className="stat-card" id={`capacity-${cap.id}`}>
-                  <div className="stat-card-value">{cap.spots_available.toLocaleString("fr-FR")}</div>
-                  <div className="stat-card-label">Places — {cap.academic_year}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+              {campusesWithCapacity.map((pc) => (
+                <div key={pc.id}>
+                  <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>📍</span>
+                    {pc.campus.name}
+                    {pc.campus.city && <span style={{ fontWeight: 400 }}>— {pc.campus.city}</span>}
+                  </div>
+                  <div className="stats-grid" style={{ maxWidth: 600 }}>
+                    {pc.capacityRecords.map((cap) => (
+                      <div key={cap.id} className="stat-card" id={`capacity-${cap.id}`}>
+                        <div className="stat-card-value">{cap.spots_available.toLocaleString("fr-FR")}</div>
+                        <div className="stat-card-label">Places — {cap.academic_year}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>

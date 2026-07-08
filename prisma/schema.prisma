@@ -21,35 +21,47 @@ model School {
   status          String                @default("ACTIVE")
   accreditations  AccreditationRecord[]
   campuses        Campus[]
+  programs        Program[]
   statsRecords    SchoolStatsRecord[]
 }
 
 model Campus {
-  id       String    @id @default(uuid())
-  schoolId String
-  name     String
-  city     String?
-  school   School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  programs Program[]
+  id              String          @id @default(uuid())
+  schoolId        String
+  name            String
+  city            String?
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  programCampuses ProgramCampus[]
 
   @@unique([schoolId, name])
 }
 
 model Program {
   id                        String           @id @default(uuid())
-  campusId                  String
+  schoolId                  String
   name                      String
   admission_exam            String?
   is_alternance_possible    Boolean          @default(false)
   is_expatriation_mandatory Boolean          @default(false)
   min_expatriation_months   Int?
   max_internship_months     Int?
-  capacityRecords           CapacityRecord[]
+  campuses                  ProgramCampus[]
   pricingRecords            PricingRecord[]
-  campus                    Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  school                    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   rankingRecords            RankingRecord[]
 
-  @@unique([campusId, name])
+  @@unique([schoolId, name])
+}
+
+model ProgramCampus {
+  id              String           @id @default(uuid())
+  programId       String
+  campusId        String
+  program         Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  campus          Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  capacityRecords CapacityRecord[]
+
+  @@unique([programId, campusId])
 }
 
 model PricingRecord {
@@ -74,14 +86,14 @@ model PricingRecord {
 }
 
 model CapacityRecord {
-  id              String  @id @default(uuid())
-  programId       String
+  id              String        @id @default(uuid())
+  programCampusId String
   academic_year   Int
   spots_available Int
   source_url      String?
-  program         Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  programCampus   ProgramCampus @relation(fields: [programCampusId], references: [id], onDelete: Cascade)
 
-  @@unique([programId, academic_year])
+  @@unique([programCampusId, academic_year])
 }
 
 model RankingRecord {
@@ -131,6 +143,7 @@ model ContributionInbox {
   schoolId              String?
   campusId              String?
   programId             String?
+  programCampusId       String?
   user_text             String?
   urls                  String[]
   ai_category           String

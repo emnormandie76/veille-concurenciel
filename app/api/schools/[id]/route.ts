@@ -24,24 +24,31 @@ export async function GET(
       where: { id },
       include: {
         campuses: {
+          orderBy: { name: "asc" },
+        },
+        programs: {
           include: {
-            programs: {
+            campuses: {
               include: {
-                pricingRecords: {
-                  orderBy: { academic_year: "desc" },
-                  take: 5,
-                },
-                rankingRecords: {
-                  orderBy: { academic_year: "desc" },
-                  take: 10,
-                },
-                capacityRecords: {
-                  orderBy: { academic_year: "desc" },
-                  take: 3,
+                campus: {
+                  select: {
+                    id: true,
+                    name: true,
+                    city: true,
+                  },
                 },
               },
             },
+            pricingRecords: {
+              orderBy: { academic_year: "desc" },
+              take: 5,
+            },
+            rankingRecords: {
+              orderBy: { academic_year: "desc" },
+              take: 10,
+            },
           },
+          orderBy: { name: "asc" },
         },
         statsRecords: {
           orderBy: { academic_year: "desc" },

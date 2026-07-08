@@ -29,6 +29,7 @@ interface PipelineJob {
   phase: string;
   status: string;
   priority?: string;
+  source?: string;
   categories?: string[];
   program_id?: string;
   error?: string;
@@ -41,6 +42,7 @@ interface PipelineStatus {
   database: string;
   pipeline_jobs_active: number;
   pipeline_jobs: PipelineJob[];
+  cron_jobs: PipelineJob[];
   tavily: TavilyKeyStatus[];
   ai_model_primary: string;
 }
@@ -332,76 +334,119 @@ export default function CronMonitoringPage() {
         </div>
       )}
 
-      {/* ── Section Tâches en cours (enrichie) ─────────────────── */}
-      <div className="card active-tasks-card">
-        <h2 className="section-title">⚡ Tâches en cours ({pipelineStatus?.pipeline_jobs_active || 0})</h2>
+      <div className="tasks-columns-grid">
+        {/* ── Section Tâches en cours (manuelles) ─────────────────── */}
+        <div className="card active-tasks-card">
+          <h2 className="section-title">⚡ Tâches manuelles en cours ({pipelineStatus?.pipeline_jobs?.length || 0})</h2>
 
-        {pipelineStatus?.pipeline_jobs && pipelineStatus.pipeline_jobs.length > 0 ? (
-          <div className="tasks-grid">
-            {pipelineStatus.pipeline_jobs.map((job) => {
-              const elapsed = job.created_at
-                ? Math.floor(Date.now() / 1000 - job.created_at)
-                : 0;
-              const progress = parseProgress(job.progress_details?.progress);
-              const progressPct = progress
-                ? Math.min(100, (progress.done / progress.total) * 100)
-                : 0;
+          {pipelineStatus?.pipeline_jobs && pipelineStatus.pipeline_jobs.length > 0 ? (
+            <div className="tasks-grid">
+              {pipelineStatus.pipeline_jobs.map((job) => {
+                const elapsed = job.created_at
+                  ? Math.floor(Date.now() / 1000 - job.created_at)
+                  : 0;
+                const progress = parseProgress(job.progress_details?.progress);
+                const progressPct = progress
+                  ? Math.min(100, (progress.done / progress.total) * 100)
+                  : 0;
 
-              return (
-                <div key={job.job_id} className="task-card">
-                  <div className="task-card-header">
-                    <div className="task-card-title">
-                      <span className={`status-dot-sm ${job.status === "running" ? "dot-running" : "dot-queued"}`}></span>
-                      <span className="task-phase">{job.phase}</span>
-                      {job.progress_details?.school && (
-                        <span className="task-school">— {job.progress_details.school}</span>
-                      )}
-                    </div>
-                    <span className="task-timer">⏱ {formatElapsed(elapsed)}</span>
-                  </div>
-
-                  {/* Détail de l'action en cours */}
-                  {job.progress_details && (
-                    <div className="task-progress-details">
-                      <p className="task-action">
-                        🔍 {job.progress_details.current_action}
-                        {job.progress_details.program && (
-                          <> sur <strong>&quot;{job.progress_details.program}&quot;</strong></>
+                return (
+                  <div key={job.job_id} className="task-card">
+                    <div className="task-card-header">
+                      <div className="task-card-title">
+                        <span className={`status-dot-sm ${job.status === "running" ? "dot-running" : "dot-queued"}`}></span>
+                        <span className="task-phase">{job.phase}</span>
+                        {job.progress_details?.school && (
+                          <span className="task-school">— {job.progress_details.school}</span>
                         )}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Barre de progression */}
-                  {progress && (
-                    <div className="task-progress-bar-container">
-                      <div className="progress-bar-bg">
-                        <div
-                          className="progress-bar-fill fill-accent"
-                          style={{ width: `${progressPct}%` }}
-                        ></div>
                       </div>
-                      <span className="task-progress-text">
-                        {progress.done}/{progress.total} catégories
-                      </span>
+                      <span className="task-timer">⏱ {formatElapsed(elapsed)}</span>
                     </div>
-                  )}
 
-                  <div className="task-card-footer">
-                    <span className={`badge ${job.status === "running" ? "badge-active" : "badge-queued"}`}>
-                      {job.status === "running" ? "En cours" : "En file"}
-                    </span>
-                    <span className="job-id">Job #{job.job_id}</span>
+                    {/* Détail de l'action en cours */}
+                    {job.progress_details && (
+                      <div className="task-progress-details">
+                        <p className="task-action">
+                          🔍 {job.progress_details.current_action}
+                          {job.progress_details.program && (
+                            <> sur <strong>&quot;{job.progress_details.program}&quot;</strong></>
+                          )}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Barre de progression */}
+                    {progress && (
+                      <div className="task-progress-bar-container">
+                        <div className="progress-bar-bg">
+                          <div
+                            className="progress-bar-fill fill-accent"
+                            style={{ width: `${progressPct}%` }}
+                          ></div>
+                        </div>
+                        <span className="task-progress-text">
+                          {progress.done}/{progress.total} catégories
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="task-card-footer">
+                      <span className={`badge ${job.status === "running" ? "badge-active" : "badge-queued"}`}>
+                        {job.status === "running" ? "En cours" : "En file"}
+                      </span>
+                      <span className="job-id">Job #{job.job_id}</span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="empty-state-inline">
-            <span>💤</span> Aucune tâche en cours d&apos;exécution.
-          </div>
-        )}
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state-inline">
+              <span>💤</span> Aucune tâche manuelle en cours d&apos;exécution.
+            </div>
+          )}
+        </div>
+
+        {/* ── Section Tâches automatiques (Cron) ─────────────────── */}
+        <div className="card active-tasks-card">
+          <h2 className="section-title">🔄 Tâches automatiques (Cron) ({pipelineStatus?.cron_jobs?.length || 0})</h2>
+
+          {pipelineStatus?.cron_jobs && pipelineStatus.cron_jobs.length > 0 ? (
+            <div className="tasks-grid">
+              {pipelineStatus.cron_jobs.map((job) => {
+                const elapsed = job.created_at
+                  ? Math.floor(Date.now() / 1000 - job.created_at)
+                  : 0;
+
+                return (
+                  <div key={job.job_id} className="task-card task-card-cron">
+                    <div className="task-card-header">
+                      <div className="task-card-title">
+                        <span className="status-dot-sm dot-running"></span>
+                        <span className="task-phase" style={{ color: "var(--success)" }}>{job.phase}</span>
+                        {job.school_id && job.school_id !== "N/A" && (
+                          <span className="task-school">— École {job.school_id.substring(0, 8)}...</span>
+                        )}
+                      </div>
+                      <span className="task-timer">⏱ {formatElapsed(elapsed)}</span>
+                    </div>
+
+                    <div className="task-card-footer" style={{ marginTop: "8px" }}>
+                      <span className="badge badge-active" style={{ color: "var(--success)", borderColor: "rgba(16, 185, 129, 0.25)", backgroundColor: "rgba(16, 185, 129, 0.12)" }}>
+                        En cours
+                      </span>
+                      <span className="job-id">Job #{job.job_id}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state-inline">
+              <span>💤</span> Aucune tâche automatique en cours d&apos;exécution.
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="dashboard-grid">
@@ -1123,6 +1168,34 @@ export default function CronMonitoringPage() {
         .text-muted {
           color: var(--text-secondary);
           opacity: 0.5;
+        }
+
+        .task-card-cron {
+          background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%) !important;
+          border: 1px solid rgba(16, 185, 129, 0.20) !important;
+        }
+
+        .task-card-cron::before {
+          background: linear-gradient(90deg, var(--success), rgba(139, 92, 246, 0.8)) !important;
+        }
+
+        .tasks-columns-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 24px;
+          margin-top: 24px;
+          margin-bottom: 24px;
+        }
+
+        @media (min-width: 1024px) {
+          .tasks-columns-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+
+        .tasks-columns-grid .active-tasks-card {
+          margin: 0 !important;
+          height: 100%;
         }
       `}</style>
     </div>

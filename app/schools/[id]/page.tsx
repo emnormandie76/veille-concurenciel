@@ -27,16 +27,27 @@ async function getSchool(id: string) {
     where: { id },
     include: {
       campuses: {
+        orderBy: { name: "asc" },
+      },
+      programs: {
         include: {
-          programs: {
+          campuses: {
             include: {
-              pricingRecords: {
-                orderBy: { academic_year: "desc" },
-                take: 3,
+              campus: {
+                select: {
+                  id: true,
+                  name: true,
+                  city: true,
+                },
               },
             },
           },
+          pricingRecords: {
+            orderBy: { academic_year: "desc" },
+            take: 3,
+          },
         },
+        orderBy: { name: "asc" },
       },
       statsRecords: {
         orderBy: { academic_year: "desc" },

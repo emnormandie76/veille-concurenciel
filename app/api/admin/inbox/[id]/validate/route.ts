@@ -188,8 +188,15 @@ export async function PUT(
 }
 
 // ──────────────────────────────────────────────
-// Program_Discovery — Transaction atomique Campus + Programs
+// Program_Discovery — Transaction atomique Campus + Programs (niveau école)
 // Référence : task.md §3.2, architecture.md §5.2
+//
+// Nouvelle logique :
+// 1. Upsert Campus (inchangé)
+// 2. Pour chaque programme de chaque campus :
+//    - Upsert Program avec schoolId (déduplication automatique par @@unique([schoolId, name]))
+//    - Upsert ProgramCampus pour créer l'association programme ↔ campus
+// 3. Un même programme sur N campus = 1 Program + N ProgramCampus
 // ──────────────────────────────────────────────
 
 async function validateProgramDiscovery(
@@ -237,55 +244,76 @@ async function validateProgramDiscovery(
         })
       );
 
-      // 2. Préparation des upserts de programmes en parallèle
-      const programPromises: Promise<any>[] = [];
-      const createdCampuses: Array<{ campusId: string; campusName: string; programsCreated: number }> = [];
+      // 2. Upsert des programmes au niveau école + création des ProgramCampus
+      const programCampusPromises: Promise<any>[] = [];
+      const stats: Array<{ campusId: string; campusName: string; programsLinked: number }> = [];
 
       for (const item of campusResults) {
         if (!item) continue;
         const { campusData, campus } = item;
-        let programsCreated = 0;
+        let programsLinked = 0;
 
         if (Array.isArray(campusData.programs)) {
           for (const prog of campusData.programs) {
             if (!prog.name) continue;
-            programsCreated++;
-            programPromises.push(
-              tx.program.upsert({
-                where: {
-                  campusId_name: {
-                    campusId: campus.id,
-                    name: prog.name,
-                  },
-                },
-                create: {
-                  campusId: campus.id,
+            programsLinked++;
+
+            // Upsert du programme au niveau école
+            // @@unique([schoolId, name]) garantit la déduplication
+            const programUpsert = tx.program.upsert({
+              where: {
+                schoolId_name: {
+                  schoolId: ticket.schoolId!,
                   name: prog.name,
-                  admission_exam: prog.admission_exam ?? null,
-                  is_alternance_possible: prog.is_alternance_possible ?? false,
-                  is_expatriation_mandatory: prog.is_expatriation_mandatory ?? false,
-                  min_expatriation_months: prog.min_expatriation_months ?? null,
-                  max_internship_months: prog.max_internship_months ?? null,
                 },
-                update: {
-                  admission_exam: prog.admission_exam ?? undefined,
-                  is_alternance_possible: prog.is_alternance_possible ?? undefined,
-                  is_expatriation_mandatory: prog.is_expatriation_mandatory ?? undefined,
-                },
-              })
+              },
+              create: {
+                schoolId: ticket.schoolId!,
+                name: prog.name,
+                admission_exam: prog.admission_exam ?? null,
+                is_alternance_possible: prog.is_alternance_possible ?? false,
+                is_expatriation_mandatory: prog.is_expatriation_mandatory ?? false,
+                min_expatriation_months: prog.min_expatriation_months ?? null,
+                max_internship_months: prog.max_internship_months ?? null,
+              },
+              update: {
+                admission_exam: prog.admission_exam ?? undefined,
+                is_alternance_possible: prog.is_alternance_possible ?? undefined,
+                is_expatriation_mandatory: prog.is_expatriation_mandatory ?? undefined,
+              },
+            });
+
+            // Upsert ProgramCampus : associe ce programme à ce campus
+            // Enchaîné après l'upsert du programme pour avoir son id
+            programCampusPromises.push(
+              programUpsert.then((program) =>
+                tx.programCampus.upsert({
+                  where: {
+                    programId_campusId: {
+                      programId: program.id,
+                      campusId: campus.id,
+                    },
+                  },
+                  create: {
+                    programId: program.id,
+                    campusId: campus.id,
+                  },
+                  update: {}, // L'association existe déjà, rien à mettre à jour
+                })
+              )
             );
           }
         }
 
-        createdCampuses.push({
+        stats.push({
           campusId: campus.id,
           campusName: campus.name,
-          programsCreated,
+          programsLinked,
         });
       }
 
-      // Exécuter tous les upserts de programmes en parallèle
-      await Promise.all(programPromises);
+      // Exécuter tous les upserts programme+campus en parallèle
+      await Promise.all(programCampusPromises);
 
       // Marquer le ticket comme validé
       await tx.contributionInbox.update({
@@ -293,18 +321,17 @@ async function validateProgramDiscovery(
         data: { status: "Validated" },
       });
 
-      return createdCampuses;
+      return stats;
     }, {
-      timeout: 60000, // 60s timeout pour les imports volumineux (ex: EDHEC avec 9 campus et 30+ programmes)
+      timeout: 60000, // 60s timeout pour les imports volumineux
     });
 
     return NextResponse.json({
       message: "Program_Discovery validé avec succès",
-      campuses_created: result,
+      campuses_processed: result,
     });
   } catch (error) {
     console.error("Transaction Program_Discovery échouée:", error);
-    // Rollback automatique par Prisma $transaction
     return NextResponse.json(
       { error: "Erreur lors de la transaction. Rollback effectué. Aucune donnée insérée." },
       { status: 500 }
@@ -420,29 +447,57 @@ async function validateRanking(
 }
 
 // ──────────────────────────────────────────────
-// Capacity — Upsert CapacityRecord [programId, academic_year]
+// Capacity — Upsert CapacityRecord [programCampusId, academic_year]
+// La capacity varie par campus. On utilise programCampusId.
+// Si le ticket a programCampusId directement (pipeline auto), on l'utilise.
+// Sinon on le résout depuis (programId, campusId) (crowdsourcing).
 // ──────────────────────────────────────────────
 
 async function validateCapacity(
-  ticket: { id: string; programId: string | null },
+  ticket: { id: string; programId: string | null; programCampusId: string | null; campusId: string | null },
   data: CapacityJson
 ) {
-  if (!ticket.programId) {
-    return NextResponse.json({ error: "programId manquant pour un ticket Capacity" }, { status: 400 });
-  }
   if (!data.spots_available || !data.academic_year) {
     return NextResponse.json({ error: "spots_available et academic_year sont requis" }, { status: 400 });
   }
 
+  // Résoudre programCampusId
+  let programCampusId = ticket.programCampusId;
+
+  if (!programCampusId) {
+    // Fallback : résoudre depuis (programId, campusId)
+    if (!ticket.programId || !ticket.campusId) {
+      return NextResponse.json(
+        { error: "programCampusId (ou programId + campusId) manquant pour un ticket Capacity" },
+        { status: 400 }
+      );
+    }
+    const pc = await prisma.programCampus.findUnique({
+      where: {
+        programId_campusId: {
+          programId: ticket.programId,
+          campusId: ticket.campusId,
+        },
+      },
+    });
+    if (!pc) {
+      return NextResponse.json(
+        { error: `ProgramCampus introuvable pour programId=${ticket.programId} campusId=${ticket.campusId}` },
+        { status: 400 }
+      );
+    }
+    programCampusId = pc.id;
+  }
+
   const record = await prisma.capacityRecord.upsert({
     where: {
-      programId_academic_year: {
-        programId: ticket.programId,
+      programCampusId_academic_year: {
+        programCampusId,
         academic_year: data.academic_year,
       },
     },
     create: {
-      programId: ticket.programId,
+      programCampusId,
       academic_year: data.academic_year,
       spots_available: data.spots_available,
       source_url: data.source_url ?? null,

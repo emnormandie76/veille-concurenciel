@@ -23,9 +23,15 @@ export async function GET(
     const program = await prisma.program.findUnique({
       where: { id: pid },
       include: {
-        campus: {
+        school: true,
+        campuses: {
           include: {
-            school: true,
+            campus: {
+              select: { id: true, name: true, city: true },
+            },
+            capacityRecords: {
+              orderBy: { academic_year: "desc" },
+            },
           },
         },
         pricingRecords: {
@@ -33,9 +39,6 @@ export async function GET(
         },
         rankingRecords: {
           orderBy: [{ academic_year: "desc" }, { ranking_name: "asc" }],
-        },
-        capacityRecords: {
-          orderBy: { academic_year: "desc" },
         },
       },
     });
@@ -45,12 +48,12 @@ export async function GET(
     }
 
     // Vérifier que le programme appartient bien à l'école demandée
-    if (program.campus.schoolId !== schoolId) {
+    if (program.schoolId !== schoolId) {
       return NextResponse.json({ error: "Programme introuvable" }, { status: 404 });
     }
 
     // Vérifier que l'école est ACTIVE
-    if (program.campus.school.status !== "ACTIVE") {
+    if (program.school.status !== "ACTIVE") {
       return NextResponse.json({ error: "École non disponible" }, { status: 404 });
     }
 

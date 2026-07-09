@@ -44,6 +44,7 @@ export async function GET(
         id: true,
         schoolId: true,
         accreditation_name: true,
+        accreditation_type: true,
         year_obtained: true,
         is_active: true,
       },

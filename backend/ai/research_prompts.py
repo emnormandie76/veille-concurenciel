@@ -156,27 +156,38 @@ def build_accreditation_research_input(
 ) -> str:
     """
     Construit le prompt de recherche pour la Phase 2 - Accreditation.
+    ⚠️ Retourne une LISTE de toutes les accréditations avec classification par type.
     """
-    return f"""Recherche les accréditations et labels de qualité de l'école "{school_name}".
+    return f"""Recherche TOUTES les accréditations et labels de qualité de l'école "{school_name}".
 
-ACCRÉDITATIONS À RECHERCHER :
+ACCRÉDITATIONS À RECHERCHER (liste non exhaustive) :
 - EQUIS (EFMD Quality Improvement System)
 - AACSB (Association to Advance Collegiate Schools of Business)
 - AMBA (Association of MBAs)
 - EPAS (EFMD Programme Accreditation System)
+- BSIS (Business School Impact System)
 - CGE (Conférence des Grandes Écoles)
 - CTI (Commission des Titres d'Ingénieur)
+- EESPIG (Établissement d'Enseignement Supérieur Privé d'Intérêt Général)
 - Grade de Licence / Grade de Master (visas d'État)
-- Tout autre label ou accréditation officielle
+- Qualiopi, DD&RS, SD/RS, "Bienvenue en France", CEFDG, et tout autre label visible
 
-INFORMATIONS RECHERCHÉES PAR ACCRÉDITATION :
+INFORMATIONS RECHERCHÉES POUR CHAQUE ACCRÉDITATION :
 1. Nom exact de l'accréditation (accreditation_name)
-2. Année d'obtention ou de renouvellement (year_obtained)
-3. Statut actif ou non (is_active) — true/false
+2. Type (accreditation_type) — CLASSIFICATION OBLIGATOIRE :
+   - "international" : EQUIS, AACSB, AMBA, EPAS, BSIS, ABET (organismes internationaux)
+   - "state"         : Grade de Licence, Grade de Master, CTI, CEFDG (labels d'État français)
+   - "label"         : CGE, EESPIG, Qualiopi, DD&RS, SD/RS, "Bienvenue en France", "Happy at School", et tous les autres
+3. Année d'obtention ou de renouvellement (year_obtained) — mettre 0 si inconnu
+4. Statut actif ou non (is_active) — true par défaut sauf mention contraire
+5. URL de la page source (source_url)
 
-SOURCE PRINCIPALE : https://{domain} (pages "accréditations", "labels", "reconnaissances")
+SOURCE PRINCIPALE : https://{domain} (pages "accréditations", "labels", "reconnaissances", "accreditations")
 
-RÈGLES :
-- Chaque accréditation doit être rapportée séparément
-- Si l'année d'obtention n'est pas trouvée, estimer avec l'année la plus probable ou mettre 0
-- is_active = true sauf si explicitement mentionné comme expiré/perdu"""
+RÈGLES ABSOLUES :
+- Retourner TOUTES les accréditations trouvées dans la liste, même si elles sont nombreuses
+- NE JAMAIS retourner une seule accréditation si plusieurs sont présentes sur la page
+- Chaque accréditation doit être un élément distinct dans le tableau "accreditations"
+- accreditation_type est OBLIGATOIRE pour chaque entrée
+- is_active = true sauf si explicitement mentionné comme expiré/perdu/révoqué
+- Si l'année d'obtention n'est pas trouvée, mettre 0 plutôt que null"""

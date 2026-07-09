@@ -132,6 +132,8 @@ model AccreditationRecord {
   accreditation_name String
   year_obtained      Int
   is_active          Boolean @default(true)
+  // "international" = EQUIS, AACSB, AMBA, BSIS… | "label" = CGE, Qualiopi, DD&RS… | "state" = Grade Master, CTI…
+  accreditation_type String  @default("international")
   school             School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@unique([schoolId, accreditation_name])

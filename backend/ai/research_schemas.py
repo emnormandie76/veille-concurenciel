@@ -193,21 +193,45 @@ SCHOOL_STATS_OUTPUT_SCHEMA = {
 }
 
 # Schema pour la Phase 2 : Accreditation (Accréditations académiques)
+# ⚠️ Ce schema retourne une LISTE d'accréditations, pas un objet unique.
+# Tavily peut ainsi extraire toutes les accréditations trouvées sur une page en un seul appel.
 ACCREDITATION_OUTPUT_SCHEMA = {
     "properties": {
-        "accreditation_name": {
+        "accreditations": {
+            "type": "array",
+            "description": "Liste complète de TOUTES les accréditations trouvées pour cette école",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "accreditation_name": {
+                        "type": "string",
+                        "description": "Nom exact de l'accréditation (ex: 'EQUIS', 'AACSB', 'AMBA', 'CTI', 'CGE')"
+                    },
+                    "accreditation_type": {
+                        "type": "string",
+                        "enum": ["international", "label", "state"],
+                        "description": "Type : 'international' (EQUIS/AACSB/AMBA/BSIS/EPAS), 'state' (Grade Master/Licence/CTI), 'label' (CGE/Qualiopi/DD&RS/EESPIG/autres)"
+                    },
+                    "year_obtained": {
+                        "type": "integer",
+                        "description": "Année d'obtention ou de renouvellement de l'accréditation (0 si inconnue)"
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "description": "L'accréditation est-elle actuellement active ? (true par défaut)"
+                    },
+                    "source_url": {
+                        "type": "string",
+                        "description": "URL de la page source où l'accréditation a été trouvée"
+                    }
+                },
+                "required": ["accreditation_name", "accreditation_type", "is_active"]
+            }
+        },
+        "source_url": {
             "type": "string",
-            "description": "Nom exact de l'accréditation (ex: 'EQUIS', 'AACSB', 'AMBA')"
-        },
-        "year_obtained": {
-            "type": "integer",
-            "description": "Année d'obtention ou de renouvellement de l'accréditation"
-        },
-        "is_active": {
-            "type": "boolean",
-            "description": "L'accréditation est-elle actuellement active ?"
-        },
-        "source_url": {"type": "string", "description": "URL de la page source"}
+            "description": "URL principale de la page analysée"
+        }
     },
-    "required": ["accreditation_name", "year_obtained", "is_active"]
+    "required": ["accreditations"]
 }

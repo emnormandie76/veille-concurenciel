@@ -1,7 +1,7 @@
 # Architecture Complète — School Data Pipeline (Partie 1 : Système)
 
-> **Version :** 1.1 — 1er juillet 2026
-> **Statut :** Mis à jour — Purge Inbox + Fix Contributions Invalides (voir §6.2, §9, §11)
+> **Version :** 1.2 — 9 juillet 2026
+> **Statut :** Mis à jour — Refactorisation Modèle de Données (Program→School+ProgramCampus) + Extraction Accréditations en liste + Corrections routes API
 
 ---
 
@@ -268,13 +268,24 @@ appVC/
 ### 3.1. Chaîne Relationnelle
 
 ```
-School (1) ──► (N) Campus (1) ──► (N) Program (1) ──► (N) PricingRecord
-                                                  ──► (N) CapacityRecord
-                                                  ──► (N) RankingRecord
+                        ┌──────────────────────────────────────────────┐
+                        │                   School                    │
+                        └──┬─────────────────────────┬────────────────┘
+                           │                         │
+              (N) Campus   │          (N) Program    │ (dédupliqué par école)
+                           ▼                         ▼
+                        Campus ◄──── ProgramCampus ──► Program
+                                      (table jointure)     │
+                                           │               ├── PricingRecord (niveau école)
+                                           │               └── RankingRecord (niveau école)
+                                           │
+                                           └── CapacityRecord (niveau campus)
 
 School (1) ──► (N) SchoolStatsRecord
 School (1) ──► (N) AccreditationRecord
 ```
+
+> **Principe de déduplication :** Un même programme (ex: "PGE") disponible sur N campus est stocké **une seule fois** dans `Program` (lié directement à `School`), et son association à chaque campus est modélisée par une ligne dans `ProgramCampus`. Cela garantit l'unicité des tarifs et classements par programme, tout en permettant des capacités différentes par campus.
 
 ### 3.2. Entités Principales
 
@@ -291,35 +302,48 @@ model School {
 }
 ```
 
-#### Campus (NOUVEAU)
+#### Campus
 ```prisma
 model Campus {
-  id        String    @id @default(uuid())
-  schoolId  String
-  name      String    // "Campus Paris La Défense"
-  city      String?   // "Paris"
-  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  programs  Program[]
+  id              String           @id @default(uuid())
+  schoolId        String
+  name            String           // "Campus Paris La Défense"
+  city            String?          // "Paris"
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  programCampuses ProgramCampus[]  // Association vers les programmes via table de jointure
   @@unique([schoolId, name])
 }
 ```
 
-#### Program
+#### Program *(dédupliqué au niveau école)*
 ```prisma
 model Program {
-  id                        String   @id @default(uuid())
-  campusId                  String   // Lié au Campus (et non plus à School)
+  id                        String          @id @default(uuid())
+  schoolId                  String          // Lié directement à l'École (pas au Campus)
   name                      String
   admission_exam            String?
-  is_alternance_possible    Boolean  @default(false)
-  is_expatriation_mandatory Boolean  @default(false)
+  is_alternance_possible    Boolean         @default(false)
+  is_expatriation_mandatory Boolean         @default(false)
   min_expatriation_months   Int?
   max_internship_months     Int?
-  campus          Campus            @relation(fields: [campusId], references: [id], onDelete: Cascade)
-  pricingRecords  PricingRecord[]
-  capacityRecords CapacityRecord[]
-  rankingRecords  RankingRecord[]
-  @@unique([campusId, name])
+  school          School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campuses        ProgramCampus[]   // Liste des campus où ce programme est dispensé
+  pricingRecords  PricingRecord[]   // Tarifs identiques quel que soit le campus
+  rankingRecords  RankingRecord[]   // Classements identiques quel que soit le campus
+  @@unique([schoolId, name])        // Contrainte de déduplication
+}
+```
+
+#### ProgramCampus *(table de jointure)*
+```prisma
+model ProgramCampus {
+  id               String          @id @default(uuid())
+  programId        String
+  campusId         String
+  program          Program         @relation(fields: [programId], references: [id], onDelete: Cascade)
+  campus           Campus          @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  capacityRecords  CapacityRecord[] // Capacité variable selon le campus
+  @@unique([programId, campusId])
 }
 ```
 
@@ -328,10 +352,10 @@ model Program {
 | Table | FK | Clé d'unicité | Champs clés |
 |---|---|---|---|
 | `PricingRecord` | `programId` | `[programId, academic_year]` | `year_1_fee`…`year_5_fee`, `total_fee`, `intl_*`, `additional_fees_notes`, `currency` |
-| `CapacityRecord` | `programId` | `[programId, academic_year]` | `spots_available` |
+| `CapacityRecord` | `programCampusId` | `[programCampusId, academic_year]` | `spots_available` *(varie par campus)* |
 | `RankingRecord` | `programId` | `[programId, academic_year, ranking_name]` | `rank`, `ranking_name` |
-| `SchoolStatsRecord` | `schoolId` | `[schoolId, academic_year]` | `total_students`, `total_alumni`, `partner_companies`, etc. |
-| `AccreditationRecord` | `schoolId` | `[schoolId, accreditation_name]` | `accreditation_name`, `year_obtained`, `is_active` |
+| `SchoolStatsRecord` | `schoolId` | `[schoolId, academic_year]` | `total_students`, `total_alumni`, `partner_companies`, `international_professors_pct` (entier 0-100), `external_speakers_pct` (entier 0-100), etc. |
+| `AccreditationRecord` | `schoolId` | `[schoolId, accreditation_name]` | `accreditation_name`, `accreditation_type` ("international" \| "state" \| "label"), `year_obtained`, `is_active` |
 
 ### 3.4. Zone Buffer — ContributionInbox
 
@@ -407,13 +431,16 @@ Pas d'auto-inscription. L'Admin crée les comptes et communique les identifiants
 
 ### 4.1. Tavily Research — Pipeline de Base
 
-Le pipeline automatisé utilise exclusivement l'endpoint **Tavily Research** (mode `pro`) :
+Le pipeline automatisé utilise exclusivement l'endpoint **Tavily Research** (mode adaptatif) :
 
 | Usage | Mode | Paramètres clés | Coût |
 |---|---|---|---|
 | **Phase 1 — Cartographie** | `research` (pro) | `input=prompt_dynamique`, `include_domains=[official_domain]`, `output_schema=PHASE1_SCHEMA` | ~15-50 crédits |
-| **Phase 2 — Enrichissement** | `research` (pro) | `input=prompt_par_catégorie`, `include_domains=[official_domain]`, `output_schema=CATEGORY_SCHEMA` | ~15-50 crédits |
+| **Phase 2 — Pricing, Ranking** | `research` (pro) | `input=prompt_catégorie`, `include_domains=[official_domain]`, `output_schema=CATEGORY_SCHEMA` | ~15-50 crédits |
+| **Phase 2 — SchoolStats, Accreditation, Capacity** | `research` (mini) | `input=prompt_catégorie`, `include_domains=[official_domain]`, `output_schema=CATEGORY_SCHEMA` | ~4-15 crédits |
 | **Crowdsourcing** | `extract` | `urls=[url_utilisateur]`, `extract_depth="advanced"` | 1 crédit/5 URLs |
+
+> **⚠️ Accreditation — Extraction en liste :** Le `ACCREDITATION_OUTPUT_SCHEMA` retourne un objet avec un tableau `accreditations: []`. En un seul appel, Tavily extrait **toutes** les accréditations présentes sur la page (EQUIS, AACSB, AMBA, CTI, etc.). La validation d'un ticket `Accreditation` crée autant de `AccreditationRecord` que d'entrées dans le tableau, dans une transaction atomique unique.
 
 Les prompts dynamiques sont construits par les builders dans `research_prompts.py` :
 - `build_phase1_research_input(school_name, domain)`
@@ -519,15 +546,31 @@ Quand l'Admin ouvre un ticket `Program_Discovery` :
 
 ```
 CRON ──► Lire Programs WHERE school.status = "ACTIVE"
-       ──► Pour chaque (Programme/École, Catégorie) :
+       ──► Pour chaque catégorie niveau École (SchoolStats, Accreditation) :
            ──► Construire le prompt dynamique (research_prompts.build_*_research_input)
-           ──► Tavily Research(input=prompt, include_domains=[official_domain], output_schema=CATEGORY_SCHEMA, model="pro")
+           ──► Tavily Research(input=prompt, include_domains=[official_domain], output_schema=CATEGORY_SCHEMA, model="mini")
            ──► Si output_schema OK → JSON direct
                Sinon → Gemma 26B fallback
-           ──► Diff vs table de production (PricingRecord, etc.)
+           ──► Diff vs table de production
                Si IDENTIQUE → skip silencieux (Edge Case 10)
            ──► INSERT ContributionInbox(status="Pending_Admin")
+
+       ──► Pour chaque Programme × (Pricing, Ranking) :
+           ──► Tavily Research(model="pro") → 1 ticket par catégorie
+
+       ──► Pour chaque ProgramCampus × (Capacity) :
+           ──► Tavily Research(model="mini") → 1 ticket par campus
 ```
+
+**Niveaux de granularité :**
+
+| Catégorie | Niveau | Table cible | Modèle Tavily |
+|---|---|---|---|
+| `SchoolStats` | École | `SchoolStatsRecord` | mini |
+| `Accreditation` | École — **liste complète** | `AccreditationRecord` (N upserts) | mini |
+| `Pricing` | Programme (unique par école) | `PricingRecord` | pro |
+| `Ranking` | Programme (unique par école) | `RankingRecord` | pro |
+| `Capacity` | ProgramCampus (varie par campus) | `CapacityRecord` | mini |
 
 Les JSON Schemas par catégorie sont définis dans `research_schemas.py`. Voir `research-pipeline-plan.md` §8 pour les détails.
 
@@ -772,3 +815,6 @@ Le system prompt interdit formellement d'obéir à toute instruction trouvée da
 | Suppression vs Rejection pour erreurs permanentes | `_delete_ticket()` au lieu de `_update_ticket_status("Rejected")` | Préserve le quota Neon 500 MB — les tickets `Rejected` pour parsing sont inutiles et ne seront jamais corrigeables |
 | Constantes de prompts intégrées dans `processor.py` | `PIPELINE_STRATEGIES`, `CROWDSOURCING_COMPATIBILITY_CHECK`, system prompts dans le fichier qui les utilise | Les modules `backend/ai/prompts.py` et `backend/tavily_service/strategies.py` ont été supprimés lors du refactoring — les constantes sont maintenant co-localisées avec leur unique utilisateur |
 | Unwrapping des Listes JSON | Retrait automatique du conteneur `[ { ... } ]` | Résout les anomalies de formatage mineures générées par le modèle |
+| Déduplication Programme (Program→School) | `Program.schoolId` + `@@unique([schoolId, name])` + table de jointure `ProgramCampus` | Un programme commun à N campus (ex: PGE) n'est stocké qu'une fois — tarifs et classements centralisés, capacité différenciée par campus via `ProgramCampus.capacityRecords` |
+| Extraction Accréditations en liste | `ACCREDITATION_OUTPUT_SCHEMA` retourne `{ "accreditations": [...] }` | Un seul appel Tavily extrait toutes les accréditations de la page — validation admin en un clic crée N `AccreditationRecord` via transaction atomique — rétrocompatible avec l'ancien format objet unique |
+| Pourcentages SchoolStats | Valeurs entières 0-100 (ex: 46 pour 46%) | Alignment avec les données sources (Tavily renvoie des entiers) — `formatPct()` frontend gère la rétrocompatibilité avec les anciens décimaux 0-1 |

@@ -94,9 +94,22 @@ interface SchoolStatsJson {
   source_url?: string | null;
 }
 
-interface AccreditationJson {
+// Format liste (nouveau) — un ticket contient toutes les accréditations de l'école
+interface AccreditationItem {
   accreditation_name: string;
-  year_obtained: number;
+  accreditation_type?: "international" | "label" | "state";
+  year_obtained?: number;
+  is_active?: boolean;
+  source_url?: string | null;
+}
+
+interface AccreditationJson {
+  // Nouveau format : tableau de toutes les accréditations
+  accreditations?: AccreditationItem[];
+  // Ancien format single-object (rétrocompatibilité)
+  accreditation_name?: string;
+  accreditation_type?: "international" | "label" | "state";
+  year_obtained?: number;
   is_active?: boolean;
 }
 
@@ -574,6 +587,8 @@ async function validateSchoolStats(
 
 // ──────────────────────────────────────────────
 // Accreditation — Upsert AccreditationRecord [schoolId, accreditation_name]
+// ⚠️ Le ticket peut contenir une LISTE d'accréditations (nouveau format) ou
+//    un objet unique (ancien format — rétrocompatibilité).
 // ──────────────────────────────────────────────
 
 async function validateAccreditation(
@@ -583,36 +598,89 @@ async function validateAccreditation(
   if (!ticket.schoolId) {
     return NextResponse.json({ error: "schoolId manquant pour un ticket Accreditation" }, { status: 400 });
   }
-  if (!data.accreditation_name || !data.year_obtained) {
+
+  // Normaliser : construire une liste unifiée depuis les deux formats possibles
+  // Whitelist d'éléments 'international' connus
+  const INTERNATIONAL_NAMES = new Set(["equis", "aacsb", "amba", "epas", "bsis", "abet", "fibaa"]);
+  const STATE_NAMES = new Set(["cti", "cefdg", "grade de master", "grade de licence", "hceres"]);
+
+  const inferType = (name: string): "international" | "label" | "state" => {
+    const n = name.toLowerCase();
+    if (INTERNATIONAL_NAMES.has(n) || INTERNATIONAL_NAMES.has(n.split(" ")[0])) return "international";
+    if (STATE_NAMES.has(n) || n.includes("grade de") || n.includes("cti")) return "state";
+    return "label";
+  };
+
+  let accreditationItems: Array<{
+    accreditation_name: string;
+    accreditation_type: "international" | "label" | "state";
+    year_obtained: number;
+    is_active: boolean;
+  }>;
+
+  if (data.accreditations && Array.isArray(data.accreditations) && data.accreditations.length > 0) {
+    // Nouveau format : liste
+    accreditationItems = data.accreditations
+      .filter((item) => item.accreditation_name)
+      .map((item) => ({
+        accreditation_name: item.accreditation_name,
+        accreditation_type: item.accreditation_type ?? inferType(item.accreditation_name),
+        year_obtained: item.year_obtained ?? 0,
+        is_active: item.is_active ?? true,
+      }));
+  } else if (data.accreditation_name) {
+    // Ancien format : objet unique (rétrocompatibilité)
+    accreditationItems = [{
+      accreditation_name: data.accreditation_name,
+      accreditation_type: data.accreditation_type ?? inferType(data.accreditation_name),
+      year_obtained: data.year_obtained ?? 0,
+      is_active: data.is_active ?? true,
+    }];
+  } else {
     return NextResponse.json(
-      { error: "accreditation_name et year_obtained sont requis" },
+      { error: "accreditations[] ou accreditation_name est requis" },
       { status: 400 }
     );
   }
 
-  const record = await prisma.accreditationRecord.upsert({
-    where: {
-      schoolId_accreditation_name: {
-        schoolId: ticket.schoolId,
-        accreditation_name: data.accreditation_name,
-      },
-    },
-    create: {
-      schoolId: ticket.schoolId,
-      accreditation_name: data.accreditation_name,
-      year_obtained: data.year_obtained,
-      is_active: data.is_active ?? true,
-    },
-    update: {
-      year_obtained: data.year_obtained,
-      is_active: data.is_active ?? true,
-    },
-  });
+  if (accreditationItems.length === 0) {
+    return NextResponse.json({ error: "Aucune accréditation valide dans le ticket" }, { status: 400 });
+  }
+
+  // Upsert de toutes les accréditations dans une transaction atomique
+  const records = await prisma.$transaction(
+    accreditationItems.map((item) =>
+      prisma.accreditationRecord.upsert({
+        where: {
+          schoolId_accreditation_name: {
+            schoolId: ticket.schoolId!,
+            accreditation_name: item.accreditation_name,
+          },
+        },
+        create: {
+          schoolId: ticket.schoolId!,
+          accreditation_name: item.accreditation_name,
+          accreditation_type: item.accreditation_type,
+          year_obtained: item.year_obtained,
+          is_active: item.is_active,
+        },
+        update: {
+          accreditation_type: item.accreditation_type,
+          year_obtained: item.year_obtained,
+          is_active: item.is_active,
+        },
+      })
+    )
+  );
 
   await prisma.contributionInbox.update({
     where: { id: ticket.id },
     data: { status: "Validated" },
   });
 
-  return NextResponse.json({ message: "AccreditationRecord créé/mis à jour", record });
+  return NextResponse.json({
+    message: `${records.length} AccreditationRecord(s) créé(s)/mis à jour`,
+    count: records.length,
+    records,
+  });
 }

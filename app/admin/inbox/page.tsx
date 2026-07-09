@@ -500,6 +500,13 @@ export default function InboxPage() {
                   loading={actionLoading}
                   disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
                 />
+              ) : selectedTicket.ai_category === "Accreditation" ? (
+                <AccreditationListForm
+                  ticket={selectedTicket}
+                  onValidate={handleValidate}
+                  loading={actionLoading}
+                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+                />
               ) : (
                 <GenericForm
                   ticket={selectedTicket}
@@ -1085,4 +1092,205 @@ function getFieldsForCategory(category: string): FieldDef[] {
     default:
       return [];
   }
+}
+
+// ──────────────────────────────────────────────
+// Formulaire répéteur — Accreditation (Liste d'accréditations)
+// ──────────────────────────────────────────────
+
+interface AccreditationListItem {
+  accreditation_name: string;
+  accreditation_type: "international" | "label" | "state";
+  year_obtained: number;
+  is_active: boolean;
+  source_url?: string | null;
+}
+
+function AccreditationListForm({
+  ticket,
+  onValidate,
+  loading,
+  disabled,
+}: {
+  ticket: Ticket;
+  onValidate: (data: Record<string, unknown>) => void;
+  loading: boolean;
+  disabled: boolean;
+}) {
+  const initial = ticket.ai_extracted_json as {
+    accreditations?: AccreditationListItem[];
+    accreditation_name?: string;
+    accreditation_type?: "international" | "label" | "state";
+    year_obtained?: number;
+    is_active?: boolean;
+    source_url?: string | null;
+  } | null;
+
+  const [accreditations, setAccreditations] = useState<AccreditationListItem[]>(() => {
+    if (initial?.accreditations && Array.isArray(initial.accreditations)) {
+      return initial.accreditations.map((item) => ({
+        accreditation_name: item.accreditation_name || "",
+        accreditation_type: item.accreditation_type || "international",
+        year_obtained: item.year_obtained ?? 0,
+        is_active: item.is_active ?? true,
+        source_url: item.source_url || null,
+      }));
+    }
+    // Rétrocompatibilité : format objet unique
+    if (initial?.accreditation_name) {
+      return [{
+        accreditation_name: initial.accreditation_name,
+        accreditation_type: initial.accreditation_type || "international",
+        year_obtained: initial.year_obtained ?? 0,
+        is_active: initial.is_active ?? true,
+        source_url: initial.source_url || null,
+      }];
+    }
+    return [];
+  });
+
+  const updateItem = (index: number, field: keyof AccreditationListItem, val: any) => {
+    setAccreditations((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [field]: val } : item))
+    );
+  };
+
+  const removeItem = (index: number) => {
+    setAccreditations((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addItem = () => {
+    setAccreditations((prev) => [
+      ...prev,
+      { accreditation_name: "", accreditation_type: "international", year_obtained: new Date().getFullYear(), is_active: true },
+    ]);
+  };
+
+  const handleSubmit = () => {
+    onValidate({ accreditations });
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+        <h3 style={{ margin: 0, fontSize: "1rem" }}>
+          📜 Accréditations et Labels détectés ({accreditations.length})
+        </h3>
+        {!disabled && (
+          <button className="btn btn-secondary btn-sm" onClick={addItem}>
+            + Ajouter
+          </button>
+        )}
+      </div>
+
+      {accreditations.length === 0 && (
+        <div style={{ color: "var(--text-secondary)", fontStyle: "italic", marginBottom: "16px" }}>
+          Aucune accréditation détectée dans le JSON.
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "16px" }}>
+        {accreditations.map((item, idx) => (
+          <div
+            key={idx}
+            style={{
+              border: "1px solid var(--border-color)",
+              borderRadius: "var(--radius)",
+              padding: "12px",
+              background: "var(--bg-secondary)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "var(--text-secondary)" }}>
+                Item #{idx + 1}
+              </span>
+              {!disabled && (
+                <button
+                  className="btn btn-danger btn-sm"
+                  style={{ padding: "2px 8px", fontSize: "0.75rem" }}
+                  onClick={() => removeItem(idx)}
+                >
+                  Supprimer
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.75rem" }}>Nom</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={item.accreditation_name}
+                  onChange={(e) => updateItem(idx, "accreditation_name", e.target.value)}
+                  disabled={disabled}
+                />
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.75rem" }}>Type</label>
+                <select
+                  className="form-control"
+                  value={item.accreditation_type}
+                  onChange={(e) => updateItem(idx, "accreditation_type", e.target.value as any)}
+                  disabled={disabled}
+                >
+                  <option value="international">🌍 International (EQUIS, AACSB, AMBA...)</option>
+                  <option value="state">🇫🇷 Reconnu par l'État (Grade, CTI...)</option>
+                  <option value="label">🏷️ Label / Certif (CGE, Qualiopi, DDRS...)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.75rem" }}>Année d'obtention</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={item.year_obtained || ""}
+                  onChange={(e) => updateItem(idx, "year_obtained", e.target.value ? Number(e.target.value) : 0)}
+                  disabled={disabled}
+                />
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.75rem" }}>Statut actif</label>
+                <select
+                  className="form-control"
+                  value={String(item.is_active)}
+                  onChange={(e) => updateItem(idx, "is_active", e.target.value === "true")}
+                  disabled={disabled}
+                >
+                  <option value="true">Actif</option>
+                  <option value="false">Inactif (Expiré)</option>
+                </select>
+              </div>
+            </div>
+
+            {item.source_url && (
+              <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", wordBreak: "break-all" }}>
+                Source : <a href={item.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{item.source_url}</a>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {!disabled && (
+        <button
+          id="btn-validate-accreditations"
+          className="btn btn-primary"
+          style={{ width: "100%", marginTop: "8px" }}
+          onClick={handleSubmit}
+          disabled={loading || accreditations.length === 0}
+        >
+          {loading ? "Validation en cours..." : "✓ Valider et Publier ces accréditations"}
+        </button>
+      )}
+    </div>
+  );
 }

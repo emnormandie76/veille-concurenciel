@@ -63,6 +63,7 @@ interface StatsRecord {
 interface AccreditationRecord {
   id: string;
   accreditation_name: string;
+  accreditation_type?: string;
   year_obtained: number;
   is_active: boolean;
 }
@@ -401,32 +402,73 @@ export default function SchoolDetailClient({ school }: { school: School }) {
       )}
 
       {/* Tab : Accréditations */}
-      {activeTab === "accreditations" && (
-        <div className="tab-content" id="tab-content-accreditations">
-          {school.accreditations.length === 0 ? (
-            <div className="no-data">Aucune accréditation enregistrée pour cette école.</div>
-          ) : (
-            <div className="accreditations-list">
-              {school.accreditations.map((acc) => (
-                <div
-                  key={acc.id}
-                  className={`accreditation-badge${acc.is_active ? " active" : ""}`}
-                  id={`accreditation-${acc.id}`}
-                >
-                  <span className="accreditation-dot" style={{ background: acc.is_active ? "#34d399" : "#6b7280" }} />
-                  {acc.accreditation_name}
-                  <span style={{ fontSize: "0.78rem", fontWeight: 400, color: "var(--text-secondary)", marginLeft: 4 }}>
-                    depuis {acc.year_obtained}
-                  </span>
-                  {!acc.is_active && (
-                    <span style={{ fontSize: "0.72rem", color: "#6b7280" }}>(expirée)</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {activeTab === "accreditations" && (() => {
+        const internationals = school.accreditations.filter(acc => !acc.accreditation_type || acc.accreditation_type === "international");
+        const states = school.accreditations.filter(acc => acc.accreditation_type === "state");
+        const labels = school.accreditations.filter(acc => acc.accreditation_type === "label");
+
+        const renderBadge = (acc: AccreditationRecord) => (
+          <div
+            key={acc.id}
+            className={`accreditation-badge${acc.is_active ? " active" : ""}`}
+            id={`accreditation-${acc.id}`}
+          >
+            <span className="accreditation-dot" style={{ background: acc.is_active ? "#34d399" : "#6b7280" }} />
+            {acc.accreditation_name}
+            {acc.year_obtained > 0 && (
+              <span style={{ fontSize: "0.78rem", fontWeight: 400, color: "var(--text-secondary)", marginLeft: 4 }}>
+                depuis {acc.year_obtained}
+              </span>
+            )}
+            {!acc.is_active && (
+              <span style={{ fontSize: "0.72rem", color: "#6b7280", marginLeft: 4 }}>(expirée)</span>
+            )}
+          </div>
+        );
+
+        return (
+          <div className="tab-content" id="tab-content-accreditations">
+            {school.accreditations.length === 0 ? (
+              <div className="no-data">Aucune accréditation enregistrée pour cette école.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+                {internationals.length > 0 && (
+                  <div>
+                    <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+                      🌍 Accréditations Internationales
+                    </h3>
+                    <div className="accreditations-list">
+                      {internationals.map(renderBadge)}
+                    </div>
+                  </div>
+                )}
+
+                {states.length > 0 && (
+                  <div>
+                    <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+                      🇫🇷 Reconnaissances de l&apos;État français
+                    </h3>
+                    <div className="accreditations-list">
+                      {states.map(renderBadge)}
+                    </div>
+                  </div>
+                )}
+
+                {labels.length > 0 && (
+                  <div>
+                    <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+                      🏷️ Labels & Certifications
+                    </h3>
+                    <div className="accreditations-list">
+                      {labels.map(renderBadge)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </>
   );
 }

@@ -25,11 +25,19 @@ export async function GET() {
           select: {
             id: true,
             name: true,
-            programs: {
-              orderBy: { name: "asc" },
+            programCampuses: {
+              orderBy: {
+                program: {
+                  name: "asc"
+                }
+              },
               select: {
-                id: true,
-                name: true,
+                program: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
               },
             },
           },
@@ -37,7 +45,20 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json(schools);
+    const formattedSchools = schools.map((school) => ({
+      id: school.id,
+      name: school.name,
+      official_domain: school.official_domain,
+      campuses: school.campuses.map((campus) => ({
+        id: campus.id,
+        name: campus.name,
+        programs: campus.programCampuses
+          .map((pc) => pc.program)
+          .filter((p): p is { id: string; name: string } => p !== null),
+      })),
+    }));
+
+    return NextResponse.json(formattedSchools);
   } catch (err: any) {
     console.error("Erreur schools-with-programs:", err);
     return NextResponse.json(

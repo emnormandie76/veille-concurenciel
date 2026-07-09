@@ -17,7 +17,7 @@ import { prisma } from "../lib/prisma";
 async function main() {
   console.log("DB URL =", process.env.DATABASE_URL?.substring(0, 30) + "...");
   const ADMIN_USERNAME = "admin";
-  const ADMIN_PASSWORD = "admin1234"; // À changer immédiatement après le premier login
+  const ADMIN_PASSWORD = "admin"; // À changer immédiatement après le premier login
 
   const existingAdmin = await prisma.user.findUnique({
     where: { username: ADMIN_USERNAME },

@@ -95,7 +95,8 @@ function formatPrice(record: PricingRecord): string {
 
 function formatPct(val: number | null): string {
   if (val === null) return "—";
-  return `${Math.round(val * 100)}%`;
+  const num = val <= 1 ? val * 100 : val;
+  return `${Math.round(num)}%`;
 }
 
 function formatNum(val: number | null): string {

@@ -48,13 +48,17 @@ export async function GET(request: Request) {
               id: true,
               name: true,
               city: true,
-              programs: {
+              programCampuses: {
                 select: {
-                  id: true,
-                  name: true,
-                  admission_exam: true,
-                  is_alternance_possible: true,
-                  is_expatriation_mandatory: true,
+                  program: {
+                    select: {
+                      id: true,
+                      name: true,
+                      admission_exam: true,
+                      is_alternance_possible: true,
+                      is_expatriation_mandatory: true,
+                    },
+                  },
                 },
               },
             },
@@ -67,8 +71,29 @@ export async function GET(request: Request) {
       prisma.school.count({ where }),
     ]);
 
+    const formattedSchools = schools.map((school) => ({
+      id: school.id,
+      name: school.name,
+      official_domain: school.official_domain,
+      status: school.status,
+      campuses: school.campuses.map((campus) => ({
+        id: campus.id,
+        name: campus.name,
+        city: campus.city,
+        programs: campus.programCampuses
+          .map((pc) => pc.program)
+          .filter((p): p is {
+            id: string;
+            name: string;
+            admission_exam: string | null;
+            is_alternance_possible: boolean;
+            is_expatriation_mandatory: boolean;
+          } => p !== null),
+      })),
+    }));
+
     return NextResponse.json({
-      data: schools,
+      data: formattedSchools,
       pagination: {
         page,
         limit,

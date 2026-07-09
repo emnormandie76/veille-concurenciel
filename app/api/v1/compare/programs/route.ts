@@ -46,33 +46,44 @@ export async function GET(request: Request) {
     const programs = await prisma.program.findMany({
       where: {
         id: { in: idList },
-        campus: {
-          school: {
-            status: "ACTIVE",
-          },
+        school: {
+          status: "ACTIVE",
         },
       },
       select: {
         id: true,
-        campusId: true,
+        schoolId: true,
         name: true,
         admission_exam: true,
         is_alternance_possible: true,
         is_expatriation_mandatory: true,
         min_expatriation_months: true,
         max_internship_months: true,
-        campus: {
+        school: {
           select: {
             id: true,
-            schoolId: true,
             name: true,
-            city: true,
-            school: {
+            official_domain: true,
+          },
+        },
+        campuses: {
+          select: {
+            id: true,
+            campus: {
               select: {
                 id: true,
                 name: true,
-                official_domain: true,
+                city: true,
               },
+            },
+            capacityRecords: {
+              select: {
+                id: true,
+                academic_year: true,
+                spots_available: true,
+                source_url: true,
+              },
+              orderBy: { academic_year: "desc" },
             },
           },
         },
@@ -104,15 +115,6 @@ export async function GET(request: Request) {
             source_url: true,
           },
           orderBy: [{ academic_year: "desc" }, { ranking_name: "asc" }],
-        },
-        capacityRecords: {
-          select: {
-            id: true,
-            academic_year: true,
-            spots_available: true,
-            source_url: true,
-          },
-          orderBy: { academic_year: "desc" },
         },
       },
     });

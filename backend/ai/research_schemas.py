@@ -181,11 +181,11 @@ SCHOOL_STATS_OUTPUT_SCHEMA = {
         },
         "international_professors_pct": {
             "type": "number",
-            "description": "Pourcentage de professeurs internationaux (%)"
+            "description": "Pourcentage de professeurs internationaux (entier entre 0 et 100, ex: 46 pour 46%)"
         },
         "external_speakers_pct": {
             "type": "number",
-            "description": "Pourcentage de conférenciers/intervenants externes (%)"
+            "description": "Pourcentage de conférenciers/intervenants externes (entier entre 0 et 100, ex: 46 pour 46%)"
         },
         "source_url": {"type": "string", "description": "URL de la page source"}
     },

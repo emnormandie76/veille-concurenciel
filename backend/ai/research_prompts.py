@@ -139,8 +139,8 @@ INFORMATIONS RECHERCHÉES :
 5. Nombre de campus à l'étranger (abroad_campuses)
 6. Nombre d'universités partenaires (partner_universities)
 7. Nombre de professeurs permanents (permanent_professors)
-8. Pourcentage de professeurs internationaux (international_professors_pct) — entre 0 et 1
-9. Pourcentage d'intervenants extérieurs (external_speakers_pct) — entre 0 et 1
+8. Pourcentage de professeurs internationaux (international_professors_pct) — entier entre 0 et 100 (ex: 46 pour 46%)
+9. Pourcentage d'intervenants extérieurs (external_speakers_pct) — entier entre 0 et 100 (ex: 46 pour 46%)
 
 SOURCE PRINCIPALE : https://{domain} (pages "chiffres clés", "en bref", "key figures", "about")
 
@@ -148,7 +148,7 @@ RÈGLES :
 - Rapporter les chiffres EXACTS trouvés
 - Si un chiffre n'est pas disponible, mettre null
 - Privilégier les chiffres les plus récents
-- Les pourcentages doivent être entre 0 et 1 (ex: 35% → 0.35)"""
+- Les pourcentages doivent être représentés sous forme d'entiers entre 0 et 100 (ex: 35% → 35)"""
 
 
 def build_accreditation_research_input(

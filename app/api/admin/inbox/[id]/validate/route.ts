@@ -113,6 +113,32 @@ interface AccreditationJson {
   is_active?: boolean;
 }
 
+// Format multi-programme (nouveau — crowdsourcing avec matching IA)
+interface MatchedProgramEntry {
+  extracted_program_name: string;
+  matched_program_id: string | null;
+  matched_program_name: string | null;
+  match_confidence: "exact" | "fuzzy" | "none";
+  data: Record<string, unknown>;
+}
+
+interface MultiProgramJson {
+  programs: MatchedProgramEntry[];
+  unmatched_programs?: Array<{ extracted_program_name: string; reason: string }>;
+  source_url?: string;
+  year_assumed?: boolean;
+  data_conflict_warning?: boolean;
+}
+
+function isMultiProgramJson(json: unknown): json is MultiProgramJson {
+  return (
+    typeof json === "object" &&
+    json !== null &&
+    "programs" in json &&
+    Array.isArray((json as MultiProgramJson).programs)
+  );
+}
+
 // ──────────────────────────────────────────────
 // Handler principal
 // ──────────────────────────────────────────────
@@ -169,6 +195,9 @@ export async function PUT(
     const category = ticket.ai_category;
 
     // ── Dispatch par catégorie ──────────────────
+    if (["Pricing", "Ranking", "Capacity"].includes(category) && isMultiProgramJson(rawJson)) {
+      return await validateMultiProgram(ticket, category, rawJson as MultiProgramJson);
+    }
     switch (category) {
       case "Program_Discovery":
         return await validateProgramDiscovery(ticket, rawJson as unknown as ProgramDiscoveryJson);
@@ -683,4 +712,167 @@ async function validateAccreditation(
     count: records.length,
     records,
   });
+}
+
+// ──────────────────────────────────────────────
+// Multi-Programme — Validation N résultats en une transaction
+// Supporte Pricing, Ranking, Capacity avec matching IA
+// ──────────────────────────────────────────────
+
+async function validateMultiProgram(
+  ticket: { id: string; schoolId: string | null },
+  category: string,
+  data: MultiProgramJson
+) {
+  if (!data.programs || data.programs.length === 0) {
+    return NextResponse.json(
+      { error: "Aucun programme matché dans ce ticket" },
+      { status: 400 }
+    );
+  }
+
+  // Filtrer les programmes qui ont un matched_program_id
+  const validPrograms = data.programs.filter((p) => p.matched_program_id);
+
+  if (validPrograms.length === 0) {
+    return NextResponse.json(
+      { error: "Aucun programme n'a pu être rattaché à un ID existant en base" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const results = await prisma.$transaction(async (tx) => {
+      const records: unknown[] = [];
+
+      for (const prog of validPrograms) {
+        const programId = prog.matched_program_id!;
+        const d = prog.data;
+
+        if (category === "Pricing") {
+          const academicYear = d.academic_year as number;
+          if (!academicYear) continue;
+
+          const record = await tx.pricingRecord.upsert({
+            where: {
+              programId_academic_year: {
+                programId,
+                academic_year: academicYear,
+              },
+            },
+            create: {
+              programId,
+              academic_year: academicYear,
+              currency: (d.currency as string) ?? "EUR",
+              year_1_fee: (d.year_1_fee as number) ?? null,
+              year_2_fee: (d.year_2_fee as number) ?? null,
+              year_3_fee: (d.year_3_fee as number) ?? null,
+              year_4_fee: (d.year_4_fee as number) ?? null,
+              year_5_fee: (d.year_5_fee as number) ?? null,
+              total_fee: (d.total_fee as number) ?? null,
+              intl_year_1_fee: (d.intl_year_1_fee as number) ?? null,
+              intl_total_fee: (d.intl_total_fee as number) ?? null,
+              intl_currency: (d.intl_currency as string) ?? null,
+              additional_fees_notes: (d.additional_fees_notes as string) ?? null,
+              source_url: (d.source_url as string) ?? null,
+            },
+            update: {
+              currency: (d.currency as string) ?? "EUR",
+              year_1_fee: (d.year_1_fee as number) ?? null,
+              year_2_fee: (d.year_2_fee as number) ?? null,
+              year_3_fee: (d.year_3_fee as number) ?? null,
+              year_4_fee: (d.year_4_fee as number) ?? null,
+              year_5_fee: (d.year_5_fee as number) ?? null,
+              total_fee: (d.total_fee as number) ?? null,
+              intl_year_1_fee: (d.intl_year_1_fee as number) ?? null,
+              intl_total_fee: (d.intl_total_fee as number) ?? null,
+              intl_currency: (d.intl_currency as string) ?? null,
+              additional_fees_notes: (d.additional_fees_notes as string) ?? null,
+              source_url: (d.source_url as string) ?? null,
+            },
+          });
+          records.push(record);
+
+        } else if (category === "Ranking") {
+          const rankingName = d.ranking_name as string;
+          const rank = d.rank as number;
+          const academicYear = d.academic_year as number;
+          if (!rankingName || !rank || !academicYear) continue;
+
+          const record = await tx.rankingRecord.upsert({
+            where: {
+              programId_academic_year_ranking_name: {
+                programId,
+                academic_year: academicYear,
+                ranking_name: rankingName,
+              },
+            },
+            create: {
+              programId,
+              academic_year: academicYear,
+              ranking_name: rankingName,
+              rank,
+              source_url: (d.source_url as string) ?? null,
+            },
+            update: {
+              rank,
+              source_url: (d.source_url as string) ?? null,
+            },
+          });
+          records.push(record);
+
+        } else if (category === "Capacity") {
+          const spotsAvailable = d.spots_available as number;
+          const academicYear = d.academic_year as number;
+          if (!spotsAvailable || !academicYear) continue;
+
+          const programCampus = await tx.programCampus.findFirst({
+            where: { programId },
+          });
+
+          if (!programCampus) {
+            continue;
+          }
+
+          const record = await tx.capacityRecord.upsert({
+            where: {
+              programCampusId_academic_year: {
+                programCampusId: programCampus.id,
+                academic_year: academicYear,
+              },
+            },
+            create: {
+              programCampusId: programCampus.id,
+              academic_year: academicYear,
+              spots_available: spotsAvailable,
+              source_url: (d.source_url as string) ?? null,
+            },
+            update: {
+              spots_available: spotsAvailable,
+              source_url: (d.source_url as string) ?? null,
+            },
+          });
+          records.push(record);
+        }
+      }
+
+      await tx.contributionInbox.update({
+        where: { id: ticket.id },
+        data: { status: "Validated" },
+      });
+
+      return records;
+    });
+
+    return NextResponse.json({
+      message: `${results.length} ${category}Record(s) créé(s)/mis à jour`,
+      count: results.length,
+    });
+  } catch (error) {
+    console.error(`Transaction multi-programme ${category} échouée:`, error);
+    return NextResponse.json(
+      { error: "Erreur lors de la transaction multi-programme. Rollback effectué." },
+      { status: 500 }
+    );
+  }
 }

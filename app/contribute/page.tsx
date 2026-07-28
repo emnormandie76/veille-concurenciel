@@ -22,22 +22,6 @@ interface School {
   official_domain?: string;
 }
 
-interface Campus {
-  id: string;
-  name: string;
-  city: string | null;
-  programs: Program[];
-}
-
-interface Program {
-  id: string;
-  name: string;
-}
-
-interface SchoolDetail {
-  campuses: Campus[];
-}
-
 const CATEGORY_OPTIONS = [
   { id: "Pricing",       label: "💰 Tarifs de scolarité",   description: "Frais annuels, total cursus" },
   { id: "Ranking",       label: "🏆 Classement",            description: "Figaro, L'Étudiant, FT…" },
@@ -73,9 +57,6 @@ const smoothScrollToTop = (duration: number = 500) => {
 export default function ContributePage() {
   const [schools, setSchools]                 = useState<School[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState("");
-  const [schoolDetail, setSchoolDetail]       = useState<SchoolDetail | null>(null);
-  const [selectedCampusId, setSelectedCampusId] = useState("");
-  const [selectedProgramId, setSelectedProgramId] = useState("");
   const [categories, setCategories]           = useState<string[]>([]);
   const [userText, setUserText]               = useState("");
   const [urlInput, setUrlInput]               = useState("");
@@ -90,25 +71,6 @@ export default function ContributePage() {
       .then((d) => setSchools(Array.isArray(d.data) ? d.data : Array.isArray(d) ? d : []))
       .catch(() => setError("Impossible de charger la liste des écoles."));
   }, []);
-
-  // Charger les campus dynamiquement quand une école est sélectionnée
-  useEffect(() => {
-    if (!selectedSchoolId) {
-      setSchoolDetail(null);
-      setSelectedCampusId("");
-      setSelectedProgramId("");
-      return;
-    }
-    fetch(`/api/schools/${selectedSchoolId}`)
-      .then((r) => r.json())
-      .then((d) => setSchoolDetail(d))
-      .catch(() => setError("Impossible de charger les campus."));
-  }, [selectedSchoolId]);
-
-  // Réinitialiser le programme quand le campus change
-  useEffect(() => {
-    setSelectedProgramId("");
-  }, [selectedCampusId]);
 
   const toggleCategory = (id: string) => {
     setCategories((prev) =>
@@ -144,8 +106,6 @@ export default function ContributePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           schoolId: selectedSchoolId,
-          campusId: selectedCampusId || null,
-          programId: selectedProgramId || null,
           categories,
           userText,
           urls: [urlInput],
@@ -169,9 +129,7 @@ export default function ContributePage() {
     }
   };
 
-  const campuses  = schoolDetail?.campuses ?? [];
-  const programs  = campuses.find((c) => c.id === selectedCampusId)?.programs ?? [];
-  const isReady   = !submitting;
+  const isReady = !submitting;
 
   return (
     <>
@@ -222,7 +180,7 @@ export default function ContributePage() {
               1 — Sélectionner l&apos;établissement
             </h2>
 
-            <div className="form-group">
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" htmlFor="school-select">
                 École <span style={{ color: "var(--danger)" }}>*</span>
               </label>
@@ -240,42 +198,19 @@ export default function ContributePage() {
               </select>
             </div>
 
-            {campuses.length > 0 && (
-              <div className="form-group">
-                <label className="form-label" htmlFor="campus-select">
-                  Campus <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)", fontWeight: 400 }}>(optionnel)</span>
-                </label>
-                <select
-                  id="campus-select"
-                  className="form-control"
-                  value={selectedCampusId}
-                  onChange={(e) => setSelectedCampusId(e.target.value)}
-                >
-                  <option value="">Tous les campus / Non spécifié</option>
-                  {campuses.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}{c.city ? ` — ${c.city}` : ""}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {selectedCampusId && programs.length > 0 && (
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" htmlFor="program-select">
-                  Programme <span style={{ fontSize: "0.78rem", color: "var(--text-secondary)", fontWeight: 400 }}>(optionnel)</span>
-                </label>
-                <select
-                  id="program-select"
-                  className="form-control"
-                  value={selectedProgramId}
-                  onChange={(e) => setSelectedProgramId(e.target.value)}
-                >
-                  <option value="">Tous les programmes / Non spécifié</option>
-                  {programs.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
+            {selectedSchoolId && (
+              <p style={{ 
+                fontSize: "0.78rem", 
+                color: "var(--text-secondary)", 
+                marginTop: "12px",
+                padding: "8px 12px",
+                background: "rgba(59, 130, 246, 0.06)",
+                borderRadius: "var(--radius)",
+                border: "1px solid rgba(59, 130, 246, 0.12)",
+                marginBottom: 0,
+              }}>
+                💡 Les programmes seront automatiquement identifiés par l&apos;IA à partir de la page source que vous fournirez.
+              </p>
             )}
           </div>
 

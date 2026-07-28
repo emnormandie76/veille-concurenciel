@@ -507,6 +507,24 @@ export default function InboxPage() {
                   loading={actionLoading}
                   disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
                 />
+              ) : (selectedTicket.ai_extracted_json as any)?.programs ? (
+                <MultiProgramForm
+                  ticket={selectedTicket}
+                  onValidate={handleValidate}
+                  loading={actionLoading}
+                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+                  onRefreshTicket={async () => {
+                    // Recharger le ticket depuis l'API pour avoir le JSON mis à jour
+                    try {
+                      const res = await fetch(`/api/admin/inbox/${selectedTicket.id}`);
+                      if (res.ok) {
+                        const refreshed = await res.json();
+                        if (refreshed?.id) setSelectedTicket(refreshed);
+                      }
+                    } catch { /* silently ignore */ }
+                    fetchTickets();
+                  }}
+                />
               ) : (
                 <GenericForm
                   ticket={selectedTicket}
@@ -1289,6 +1307,303 @@ function AccreditationListForm({
           disabled={loading || accreditations.length === 0}
         >
           {loading ? "Validation en cours..." : "✓ Valider et Publier ces accréditations"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Formulaire répéteur — Multi-Programme (Pricing, Ranking, Capacity)
+// Affiche les programmes matchés par l'IA avec leur données extraites
+// ──────────────────────────────────────────────
+
+interface MatchedProgramEntry {
+  extracted_program_name: string;
+  matched_program_id: string | null;
+  matched_program_name: string | null;
+  match_confidence: "exact" | "fuzzy" | "none";
+  data: Record<string, unknown>;
+}
+
+interface UnmatchedProgramEntry {
+  extracted_program_name: string;
+  reason: string;
+}
+
+interface MultiProgramJson {
+  programs: MatchedProgramEntry[];
+  unmatched_programs: UnmatchedProgramEntry[];
+  source_url?: string;
+  year_assumed?: boolean;
+  data_conflict_warning?: boolean;
+}
+
+function MultiProgramForm({
+  ticket,
+  onValidate,
+  loading,
+  disabled,
+  onRefreshTicket,
+}: {
+  ticket: Ticket;
+  onValidate: (data: Record<string, unknown>) => void;
+  loading: boolean;
+  disabled: boolean;
+  onRefreshTicket?: () => Promise<void>;
+}) {
+  const initial = ticket.ai_extracted_json as MultiProgramJson | null;
+  const [programs, setPrograms] = useState<MatchedProgramEntry[]>(initial?.programs ?? []);
+  const [unmatchedPrograms, setUnmatchedPrograms] = useState<UnmatchedProgramEntry[]>(initial?.unmatched_programs ?? []);
+  const [creatingPrograms, setCreatingPrograms] = useState(false);
+  const [createMsg, setCreateMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Mettre à jour l'état si le ticket parent change
+  useEffect(() => {
+    const fresh = ticket.ai_extracted_json as MultiProgramJson | null;
+    if (fresh) {
+      setPrograms(fresh.programs ?? []);
+      setUnmatchedPrograms(fresh.unmatched_programs ?? []);
+    }
+  }, [ticket]);
+
+  // Les champs éditables dépendent de la catégorie
+  const fields = getFieldsForCategory(ticket.ai_category);
+
+  const updateProgramData = (progIdx: number, key: string, val: unknown) => {
+    setPrograms((prev) =>
+      prev.map((p, i) =>
+        i !== progIdx ? p : { ...p, data: { ...p.data, [key]: val } }
+      )
+    );
+  };
+
+  const removeProgram = (progIdx: number) => {
+    setPrograms((prev) => prev.filter((_, i) => i !== progIdx));
+  };
+
+  const handleSubmit = () => {
+    onValidate({
+      programs,
+      unmatched_programs: unmatchedPrograms,
+      source_url: initial?.source_url,
+      year_assumed: initial?.year_assumed,
+      data_conflict_warning: initial?.data_conflict_warning,
+    });
+  };
+
+  const CONFIDENCE_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+    exact: { bg: "rgba(34, 197, 94, 0.12)", color: "#16a34a", label: "✓ Match exact" },
+    fuzzy: { bg: "rgba(249, 115, 22, 0.12)", color: "#ea580c", label: "⚠ Match approximatif" },
+    none: { bg: "rgba(239, 68, 68, 0.12)", color: "#dc2626", label: "✕ Non matché" },
+  };
+
+  return (
+    <div>
+      <h3 style={{ fontSize: "1rem", marginBottom: "16px" }}>
+        {CATEGORY_ICONS[ticket.ai_category]} Données extraites — {ticket.ai_category} ({programs.length} programme{programs.length !== 1 ? "s" : ""})
+      </h3>
+
+      {/* Programmes matchés */}
+      {programs.map((prog, idx) => {
+        const conf = CONFIDENCE_STYLES[prog.match_confidence] || CONFIDENCE_STYLES.none;
+        return (
+          <div
+            key={idx}
+            style={{
+              border: "1px solid var(--border-color)",
+              borderRadius: "var(--radius)",
+              padding: "16px",
+              marginBottom: "12px",
+              background: "var(--bg-secondary)",
+            }}
+          >
+            {/* Header du programme */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "4px" }}>
+                  📚 {prog.matched_program_name || prog.extracted_program_name}
+                </div>
+                {prog.extracted_program_name !== prog.matched_program_name && prog.matched_program_name && (
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", fontStyle: "italic" }}>
+                    Nom extrait : « {prog.extracted_program_name} »
+                  </div>
+                )}
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "2px 8px",
+                    borderRadius: "999px",
+                    fontSize: "0.7rem",
+                    fontWeight: 600,
+                    marginTop: "6px",
+                    background: conf.bg,
+                    color: conf.color,
+                  }}
+                >
+                  {conf.label}
+                </span>
+              </div>
+              {!disabled && (
+                <button
+                  className="btn btn-danger btn-sm"
+                  style={{ padding: "2px 8px", fontSize: "0.75rem" }}
+                  onClick={() => removeProgram(idx)}
+                >
+                  Retirer
+                </button>
+              )}
+            </div>
+
+            {/* Champs de données */}
+            <div className="field-grid">
+              {fields.map(({ key, label, type, required }) => (
+                <div key={key} className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: "0.75rem" }}>
+                    {label}{required && <span style={{ color: "var(--danger)" }}> *</span>}
+                  </label>
+                  {type === "boolean" ? (
+                    <select
+                      className="form-control"
+                      value={String(prog.data[key] ?? "")}
+                      onChange={(e) =>
+                        updateProgramData(
+                          idx,
+                          key,
+                          e.target.value === "true" ? true : e.target.value === "false" ? false : null
+                        )
+                      }
+                      disabled={disabled}
+                    >
+                      <option value="">—</option>
+                      <option value="true">Oui</option>
+                      <option value="false">Non</option>
+                    </select>
+                  ) : type === "number" ? (
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={prog.data[key] != null ? String(prog.data[key]) : ""}
+                      onChange={(e) => updateProgramData(idx, key, e.target.value ? Number(e.target.value) : null)}
+                      disabled={disabled}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={prog.data[key] != null ? String(prog.data[key]) : ""}
+                      onChange={(e) => updateProgramData(idx, key, e.target.value || null)}
+                      disabled={disabled}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Programmes non matchés */}
+      {unmatchedPrograms.length > 0 && (
+        <div style={{ marginTop: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <h4 style={{ fontSize: "0.9rem", margin: 0, color: "var(--danger)" }}>
+              ⚠️ Programmes non matchés ({unmatchedPrograms.length})
+            </h4>
+          </div>
+          {unmatchedPrograms.map((up, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: "10px 14px",
+                background: "rgba(239, 68, 68, 0.06)",
+                border: "1px solid rgba(239, 68, 68, 0.15)",
+                borderRadius: "var(--radius)",
+                marginBottom: "6px",
+                fontSize: "0.85rem",
+              }}
+            >
+              <strong>{up.extracted_program_name}</strong>
+              <span style={{ color: "var(--text-secondary)", marginLeft: "8px" }}>— {up.reason}</span>
+            </div>
+          ))}
+
+          {createMsg && (
+            <div className={`alert ${createMsg.type === "success" ? "alert-success" : "alert-danger"}`} style={{ margin: "8px 0" }}>
+              {createMsg.type === "success" ? "✅" : "❌"} {createMsg.text}
+            </div>
+          )}
+
+          {!disabled && (
+            <button
+              className="btn btn-primary btn-sm"
+              style={{
+                width: "100%",
+                marginTop: "8px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+              }}
+              disabled={creatingPrograms}
+              onClick={async () => {
+                setCreatingPrograms(true);
+                setCreateMsg(null);
+                try {
+                  const programNames = unmatchedPrograms.map((u) => u.extracted_program_name);
+                  const res = await fetch(`/api/admin/inbox/${ticket.id}/create-programs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ programNames }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || "Erreur lors de la création");
+                  
+                  // Update local React state instantly with new updated JSON
+                  if (data.updatedJson) {
+                    setPrograms(data.updatedJson.programs || []);
+                    setUnmatchedPrograms(data.updatedJson.unmatched_programs || []);
+                  }
+                  
+                  setCreateMsg({ type: "success", text: `${data.count} programme(s) créé(s) et rattaché(s) au ticket` });
+                  
+                  // Refresh parent ticket in background
+                  if (onRefreshTicket) await onRefreshTicket();
+                } catch (err: unknown) {
+                  setCreateMsg({ type: "error", text: err instanceof Error ? err.message : "Erreur inconnue" });
+                } finally {
+                  setCreatingPrograms(false);
+                }
+              }}
+            >
+              {creatingPrograms ? "Création en cours..." : `➕ Créer et rattacher les ${unmatchedPrograms.length} programme(s)`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* JSON brut */}
+      <details style={{ marginTop: "12px" }}>
+        <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+          Voir JSON brut complet
+        </summary>
+        <pre style={{
+          background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
+          borderRadius: "var(--radius)", padding: "12px", fontSize: "0.75rem",
+          overflow: "auto", maxHeight: "200px", marginTop: "8px",
+        }}>
+          {JSON.stringify(ticket.ai_extracted_json, null, 2)}
+        </pre>
+      </details>
+
+      {!disabled && (
+        <button
+          className="btn btn-primary"
+          style={{ width: "100%", marginTop: "16px" }}
+          onClick={handleSubmit}
+          disabled={loading || programs.length === 0}
+        >
+          {loading ? "Validation en cours..." : `✓ Valider — ${programs.length} programme(s) ${ticket.ai_category}`}
         </button>
       )}
     </div>

@@ -41,7 +41,8 @@ async def main():
                 print("Aucune ecole active EMLV trouvee. Creation d'une ecole de test EMLV...")
                 school_id = str(uuid.uuid4())
                 cur.execute(
-                    'INSERT INTO "School" (id, name, official_domain, status) VALUES (%s, \'EMLV\', \'www.emlv.fr\', \'ACTIVE\')'
+                    'INSERT INTO "School" (id, name, official_domain, status) VALUES (%s, \'EMLV\', \'www.emlv.fr\', \'ACTIVE\')',
+                    (school_id,)
                 )
                 conn.commit()
                 print(f"School creee: EMLV (ID: {school_id})")
@@ -49,34 +50,24 @@ async def main():
                 print(f"Ecole EMLV existante trouvee: ID: {school_id}")
             
             # Recherche ou création d'un programme pour cette école
-            cur.execute('SELECT p.id, p.name FROM "Program" p JOIN "Campus" c ON c.id = p."campusId" WHERE c."schoolId" = %s LIMIT 1', (school_id,))
+            cur.execute('SELECT id, name FROM "Program" WHERE "schoolId" = %s LIMIT 1', (school_id,))
             prog = cur.fetchone()
             if prog:
                 program_id = prog[0]
                 print(f"Programme trouve : ID: {program_id}, Nom: {prog[1]}")
             else:
-                print("Aucun programme trouve pour EMLV. Recherche/creation d'un campus...")
-                cur.execute('SELECT id, name FROM "Campus" WHERE "schoolId" = %s LIMIT 1', (school_id,))
-                camp = cur.fetchone()
-                if camp:
-                    campus_id = camp[0]
-                else:
-                    campus_id = str(uuid.uuid4())
-                    cur.execute('INSERT INTO "Campus" (id, name, "schoolId") VALUES (%s, \'Campus Paris La Defense\', %s)', (campus_id, school_id))
-                    conn.commit()
-                    print(f"Campus cree: Campus Paris La Defense (ID: {campus_id})")
-                
+                print("Aucun programme trouve pour EMLV. Creation du Programme Grande Ecole...")
                 program_id = str(uuid.uuid4())
-                cur.execute('INSERT INTO "Program" (id, name, "campusId", degree) VALUES (%s, \'Programme Grande Ecole\', %s, \'Grande_Ecole\')', (program_id, campus_id))
+                cur.execute('INSERT INTO "Program" (id, name, "schoolId") VALUES (%s, \'Programme Grande Ecole\', %s)', (program_id, school_id))
                 conn.commit()
                 print(f"Programme cree: Programme Grande Ecole (ID: {program_id})")
 
     # URL du ticket
     test_url = "https://www.emlv.fr/admissions/tarifs-et-financements/"
-    print(f"\n=== CREATION D'UN TICKET DE TEST ===")
+    print(f"\n=== CREATION D'UN TICKET DE TEST (SANS PROGRAM_ID) ===")
     print(f"URL: {test_url}")
     print(f"Categorie: Pricing")
-    print(f"Rattachement programId: {program_id}")
+    print(f"Ecole: {school_id}")
     
     ticket_id = str(uuid.uuid4())
     with get_db_connection() as conn:
@@ -84,12 +75,12 @@ async def main():
             cur.execute(
                 """
                 INSERT INTO "ContributionInbox" (id, source_type, ai_category, status, urls, "schoolId", "programId", "createdAt")
-                VALUES (%s, 'User_Submission', 'Pricing', 'Pending_AI', %s, %s, %s, NOW())
+                VALUES (%s, 'User_Submission', 'Pricing', 'Pending_AI', %s, %s, NULL, NOW())
                 """,
-                (ticket_id, [test_url], school_id, program_id)
+                (ticket_id, [test_url], school_id)
             )
             conn.commit()
-    print(f"Ticket insere avec succes. ID: {ticket_id}")
+    print(f"Ticket inséré avec succès (sans programId). ID: {ticket_id}")
     
     print("\n=== EXECUTION DU TRAITEMENT ===")
     try:

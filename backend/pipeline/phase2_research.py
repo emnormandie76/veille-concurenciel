@@ -209,28 +209,34 @@ def _get_prompt_and_schema_for_category(category: str) -> tuple:
     raise ValueError(f"Catégorie inconnue: {category}")
 
 
-def _get_existing_record(cur, category: str, school_id: str, program_id: str | None) -> dict | None:
-    if category == "Pricing" and program_id:
-        cur.execute('SELECT * FROM "PricingRecord" WHERE "programId" = %s ORDER BY "academic_year" DESC LIMIT 1', (program_id,))
-        return cur.fetchone()
-    if category == "Ranking" and program_id:
-        cur.execute('SELECT * FROM "RankingRecord" WHERE "programId" = %s ORDER BY "academic_year" DESC LIMIT 1', (program_id,))
-        return cur.fetchone()
-    if category == "SchoolStats":
-        cur.execute('SELECT * FROM "SchoolStatsRecord" WHERE "schoolId" = %s ORDER BY "academic_year" DESC LIMIT 1', (school_id,))
-        return cur.fetchone()
-    if category == "Accreditation":
-        return None
-    return None
+def _get_existing_record(category: str, school_id: str, program_id: str | None) -> dict | None:
+    from backend.db import get_db_connection
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if category == "Pricing" and program_id:
+                cur.execute('SELECT * FROM "PricingRecord" WHERE "programId" = %s ORDER BY "academic_year" DESC LIMIT 1', (program_id,))
+                return cur.fetchone()
+            if category == "Ranking" and program_id:
+                cur.execute('SELECT * FROM "RankingRecord" WHERE "programId" = %s ORDER BY "academic_year" DESC LIMIT 1', (program_id,))
+                return cur.fetchone()
+            if category == "SchoolStats":
+                cur.execute('SELECT * FROM "SchoolStatsRecord" WHERE "schoolId" = %s ORDER BY "academic_year" DESC LIMIT 1', (school_id,))
+                return cur.fetchone()
+            if category == "Accreditation":
+                return None
+            return None
 
 
-def _get_existing_capacity_record(cur, program_campus_id: str) -> dict | None:
+def _get_existing_capacity_record(program_campus_id: str) -> dict | None:
     """Récupère le dernier CapacityRecord pour un ProgramCampus donné."""
-    cur.execute(
-        'SELECT * FROM "CapacityRecord" WHERE "programCampusId" = %s ORDER BY "academic_year" DESC LIMIT 1',
-        (program_campus_id,)
-    )
-    return cur.fetchone()
+    from backend.db import get_db_connection
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                'SELECT * FROM "CapacityRecord" WHERE "programCampusId" = %s ORDER BY "academic_year" DESC LIMIT 1',
+                (program_campus_id,)
+            )
+            return cur.fetchone()
 
 
 def run_phase2_research(
@@ -266,10 +272,9 @@ def run_phase2_research(
     tickets_created = 0
     categories_scanned = 0
 
+    # ── PHASE 1 : Lecture courte — connexion fermée après ──────────────
     with get_db_connection() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-
-            # ── 1. Charger l'école ────────────────────────────────
             cur.execute('SELECT id, name, official_domain, status FROM "School" WHERE id = %s', (school_id,))
             school = cur.fetchone()
             if not school or school["status"] != "ACTIVE":
@@ -340,142 +345,136 @@ def run_phase2_research(
                         prog_ids
                     )
                     program_campuses = cur.fetchall()
+    # ── Connexion BDD FERMÉE ici — les appels API commencent maintenant ──
 
-            # ── Calculer le total de tâches pour la progression ────
-            school_cats = [c for c in SCHOOL_LEVEL_CATEGORIES if not target_categories or c in target_categories]
-            prog_cats = [c for c in PROGRAM_LEVEL_CATEGORIES if not target_categories or c in target_categories]
-            prog_campus_cats = [c for c in PROGRAM_CAMPUS_LEVEL_CATEGORIES if not target_categories or c in target_categories]
-            total_to_scan = len(school_cats) + (len(programs) * len(prog_cats)) + (len(program_campuses) * len(prog_campus_cats))
-            logger.info(f"📊 [Research] Total tâches à scanner: {total_to_scan} ({len(school_cats)} école + {len(programs)}×{len(prog_cats)} prog + {len(program_campuses)}×{len(prog_campus_cats)} prog-campus)")
+    school_cats = [c for c in SCHOOL_LEVEL_CATEGORIES if not target_categories or c in target_categories]
+    prog_cats = [c for c in PROGRAM_LEVEL_CATEGORIES if not target_categories or c in target_categories]
+    prog_campus_cats = [c for c in PROGRAM_CAMPUS_LEVEL_CATEGORIES if not target_categories or c in target_categories]
+    total_to_scan = len(school_cats) + (len(programs) * len(prog_cats)) + (len(program_campuses) * len(prog_campus_cats))
+    logger.info(f"📊 [Research] Total tâches à scanner: {total_to_scan} ({len(school_cats)} école + {len(programs)}×{len(prog_cats)} prog + {len(program_campuses)}×{len(prog_campus_cats)} prog-campus)")
 
-            # ── 3. Catégories niveau École ─────────────────────────
-            for category in school_cats:
-                categories_scanned += 1
-                
-                if progress_callback:
-                    progress_callback({
-                        "current_action": f"Recherche {category}",
-                        "school": school_name,
-                        "category": category,
-                        "progress": f"{categories_scanned}/{total_to_scan}",
-                    })
+    # ── PHASE 2 : Appels API + écriture ticket-par-ticket (pas de connexion persistante) ──
 
-                # Choix du prompt
-                if category == "SchoolStats":
-                    prompt = build_school_stats_research_input(school_name, academic_year_str, official_domain)
-                else: # Accreditation
-                    prompt = build_accreditation_research_input(school_name, official_domain)
+    # ── 3. Catégories niveau École ─────────────────────────
+    for category in school_cats:
+        categories_scanned += 1
 
-                # Appel Research
-                _, required_keys, schema = _get_prompt_and_schema_for_category(category)
-                
-                research_model = _get_research_model(category)
-                try:
-                    research_result = create_research_task(
-                        query=prompt,
-                        key_manager=key_manager,
-                        include_domains=[official_domain],
-                        output_schema=schema,
-                        model=research_model,
-                        dry_run=dry_run
-                    )
-                    logger.info(f"🔬 [{research_model.upper()}] {category} pour {school_name}")
-                except Exception as e:
-                    logger.error(f"❌ Échec Research pour {school_name} - {category}: {e}")
-                    continue
+        if progress_callback:
+            progress_callback({
+                "current_action": f"Recherche {category}",
+                "school": school_name,
+                "category": category,
+                "progress": f"{categories_scanned}/{total_to_scan}",
+            })
 
-                if dry_run:
-                    logger.info(f"🧪 [DRY RUN] Résultat {category}: {research_result['report']}")
-                    continue
+        if category == "SchoolStats":
+            prompt = build_school_stats_research_input(school_name, academic_year_str, official_domain)
+        else:  # Accreditation
+            prompt = build_accreditation_research_input(school_name, official_domain)
 
-                # Extraction et structure JSON
-                extracted = _parse_research_report(research_result, category, required_keys)
-                if not extracted:
-                    continue
+        _, required_keys, schema = _get_prompt_and_schema_for_category(category)
+        research_model = _get_research_model(category)
+        try:
+            research_result = create_research_task(
+                query=prompt,
+                key_manager=key_manager,
+                include_domains=[official_domain],
+                output_schema=schema,
+                model=research_model,
+                dry_run=dry_run
+            )
+            logger.info(f"🔬 [{research_model.upper()}] {category} pour {school_name}")
+        except Exception as e:
+            logger.error(f"❌ Échec Research pour {school_name} - {category}: {e}")
+            continue
 
-                # Comparaison de données
-                existing = _get_existing_record(cur, category, school_id, None)
-                if has_data_changed(extracted, existing):
-                    # Trouver les sources urls pour le ticket
-                    sources = research_result.get("sources", [])
-                    source_urls = [s.get("url") for s in sources if s.get("url")]
-                    
+        if dry_run:
+            logger.info(f"🧪 [DRY RUN] Résultat {category}: {research_result['report']}")
+            continue
+
+        extracted = _parse_research_report(research_result, category, required_keys)
+        if not extracted:
+            continue
+
+        existing = _get_existing_record(category, school_id, None)
+        if has_data_changed(extracted, existing):
+            sources = research_result.get("sources", [])
+            source_urls = [s.get("url") for s in sources if s.get("url")]
+            with get_db_connection() as conn:
+                with conn.cursor() as cur:
                     cur.execute(
                         """
-                        INSERT INTO "ContributionInbox" 
-                            (id, source_type, "schoolId", "campusId", "programId", 
+                        INSERT INTO "ContributionInbox"
+                            (id, source_type, "schoolId", "campusId", "programId",
                              ai_category, ai_extracted_json, status, year_assumed, data_conflict_warning, urls)
                         VALUES (%s, 'Automated_AI', %s, NULL, NULL, %s, %s, 'Pending_Admin', %s, %s, %s)
                         """,
                         (
-                            str(uuid.uuid4()), 
-                            school_id, 
-                            category, 
-                            json.dumps(extracted), 
-                            extracted.get("year_assumed", False), 
+                            str(uuid.uuid4()),
+                            school_id,
+                            category,
+                            json.dumps(extracted),
+                            extracted.get("year_assumed", False),
                             extracted.get("data_conflict_warning", False),
                             source_urls
                         )
                     )
-                    tickets_created += 1
+            tickets_created += 1
 
-            # ── 4. Catégories niveau Programme (Pricing, Ranking) ──
-            for program in programs:
-                for category in prog_cats:
-                    categories_scanned += 1
+    # ── 4. Catégories niveau Programme (Pricing, Ranking) ──
+    for program in programs:
+        for category in prog_cats:
+            categories_scanned += 1
 
-                    if progress_callback:
-                        progress_callback({
-                            "current_action": f"Recherche {category}",
-                            "school": school_name,
-                            "program": program["name"],
-                            "category": category,
-                            "progress": f"{categories_scanned}/{total_to_scan}",
-                        })
+            if progress_callback:
+                progress_callback({
+                    "current_action": f"Recherche {category}",
+                    "school": school_name,
+                    "program": program["name"],
+                    "category": category,
+                    "progress": f"{categories_scanned}/{total_to_scan}",
+                })
 
-                    # Choix du prompt (Pricing et Ranking au niveau école, sans campus_name)
-                    if category == "Pricing":
-                        prompt = build_pricing_research_input(
-                            school_name, program["name"],
-                            academic_year_str, official_domain
-                        )
-                    else:  # Ranking
-                        prompt = build_ranking_research_input(
-                            school_name, program["name"], academic_year_str, official_domain
-                        )
+            if category == "Pricing":
+                prompt = build_pricing_research_input(
+                    school_name, program["name"],
+                    academic_year_str, official_domain
+                )
+            else:  # Ranking
+                prompt = build_ranking_research_input(
+                    school_name, program["name"], academic_year_str, official_domain
+                )
 
-                    # Appel Research
-                    _, required_keys, schema = _get_prompt_and_schema_for_category(category)
-                    research_model = _get_research_model(category)
-                    try:
-                        research_result = create_research_task(
-                            query=prompt,
-                            key_manager=key_manager,
-                            include_domains=[official_domain],
-                            output_schema=schema,
-                            model=research_model,
-                            dry_run=dry_run
-                        )
-                        logger.info(f"🔬 [{research_model.upper()}] {category} pour {program['name']}")
-                    except Exception as e:
-                        logger.error(f"❌ Échec Research pour {school_name} - {program['name']} - {category}: {e}")
-                        continue
+            _, required_keys, schema = _get_prompt_and_schema_for_category(category)
+            research_model = _get_research_model(category)
+            try:
+                research_result = create_research_task(
+                    query=prompt,
+                    key_manager=key_manager,
+                    include_domains=[official_domain],
+                    output_schema=schema,
+                    model=research_model,
+                    dry_run=dry_run
+                )
+                logger.info(f"🔬 [{research_model.upper()}] {category} pour {program['name']}")
+            except Exception as e:
+                logger.error(f"❌ Échec Research pour {school_name} - {program['name']} - {category}: {e}")
+                continue
 
-                    if dry_run:
-                        logger.info(f"🧪 [DRY RUN] Résultat {program['name']} - {category}: {research_result['report']}")
-                        continue
+            if dry_run:
+                logger.info(f"🧪 [DRY RUN] Résultat {program['name']} - {category}: {research_result['report']}")
+                continue
 
-                    # Extraction et structure JSON
-                    extracted = _parse_research_report(research_result, category, required_keys)
-                    if not extracted:
-                        continue
+            extracted = _parse_research_report(research_result, category, required_keys)
+            if not extracted:
+                continue
 
-                    # Comparaison de données
-                    existing = _get_existing_record(cur, category, school_id, program["id"])
-                    if has_data_changed(extracted, existing):
-                        sources = research_result.get("sources", [])
-                        source_urls = [s.get("url") for s in sources if s.get("url")]
-
+            existing = _get_existing_record(category, school_id, program["id"])
+            if has_data_changed(extracted, existing):
+                sources = research_result.get("sources", [])
+                source_urls = [s.get("url") for s in sources if s.get("url")]
+                with get_db_connection() as conn:
+                    with conn.cursor() as cur:
                         cur.execute(
                             """
                             INSERT INTO "ContributionInbox"
@@ -494,57 +493,57 @@ def run_phase2_research(
                                 source_urls
                             )
                         )
-                        tickets_created += 1
+                tickets_created += 1
 
-            # ── 5. Catégories niveau ProgramCampus (Capacity) ──────
-            for pc in program_campuses:
-                for category in prog_campus_cats:
-                    categories_scanned += 1
+    # ── 5. Catégories niveau ProgramCampus (Capacity) ──────
+    for pc in program_campuses:
+        for category in prog_campus_cats:
+            categories_scanned += 1
 
-                    if progress_callback:
-                        progress_callback({
-                            "current_action": f"Recherche {category}",
-                            "school": school_name,
-                            "program": f"{pc['program_name']} @ {pc['campus_name']}",
-                            "category": category,
-                            "progress": f"{categories_scanned}/{total_to_scan}",
-                        })
+            if progress_callback:
+                progress_callback({
+                    "current_action": f"Recherche {category}",
+                    "school": school_name,
+                    "program": f"{pc['program_name']} @ {pc['campus_name']}",
+                    "category": category,
+                    "progress": f"{categories_scanned}/{total_to_scan}",
+                })
 
-                    prompt = build_capacity_research_input(
-                        school_name, pc["campus_name"], pc["program_name"],
-                        academic_year_str, official_domain
-                    )
+            prompt = build_capacity_research_input(
+                school_name, pc["campus_name"], pc["program_name"],
+                academic_year_str, official_domain
+            )
 
-                    _, required_keys, schema = _get_prompt_and_schema_for_category(category)
-                    research_model = _get_research_model(category)
-                    try:
-                        research_result = create_research_task(
-                            query=prompt,
-                            key_manager=key_manager,
-                            include_domains=[official_domain],
-                            output_schema=schema,
-                            model=research_model,
-                            dry_run=dry_run
-                        )
-                        logger.info(f"🔬 [{research_model.upper()}] {category} pour {pc['program_name']} @ {pc['campus_name']}")
-                    except Exception as e:
-                        logger.error(f"❌ Échec Research Capacity pour {pc['program_name']} @ {pc['campus_name']}: {e}")
-                        continue
+            _, required_keys, schema = _get_prompt_and_schema_for_category(category)
+            research_model = _get_research_model(category)
+            try:
+                research_result = create_research_task(
+                    query=prompt,
+                    key_manager=key_manager,
+                    include_domains=[official_domain],
+                    output_schema=schema,
+                    model=research_model,
+                    dry_run=dry_run
+                )
+                logger.info(f"🔬 [{research_model.upper()}] {category} pour {pc['program_name']} @ {pc['campus_name']}")
+            except Exception as e:
+                logger.error(f"❌ Échec Research Capacity pour {pc['program_name']} @ {pc['campus_name']}: {e}")
+                continue
 
-                    if dry_run:
-                        logger.info(f"🧪 [DRY RUN] Résultat Capacity {pc['program_name']} @ {pc['campus_name']}: {research_result['report']}")
-                        continue
+            if dry_run:
+                logger.info(f"🧪 [DRY RUN] Résultat Capacity {pc['program_name']} @ {pc['campus_name']}: {research_result['report']}")
+                continue
 
-                    extracted = _parse_research_report(research_result, category, required_keys)
-                    if not extracted:
-                        continue
+            extracted = _parse_research_report(research_result, category, required_keys)
+            if not extracted:
+                continue
 
-                    # Comparaison de données — on passe None pour program_id car on compare par programCampusId
-                    existing = _get_existing_capacity_record(cur, pc["program_campus_id"])
-                    if has_data_changed(extracted, existing):
-                        sources = research_result.get("sources", [])
-                        source_urls = [s.get("url") for s in sources if s.get("url")]
-
+            existing = _get_existing_capacity_record(pc["program_campus_id"])
+            if has_data_changed(extracted, existing):
+                sources = research_result.get("sources", [])
+                source_urls = [s.get("url") for s in sources if s.get("url")]
+                with get_db_connection() as conn:
+                    with conn.cursor() as cur:
                         cur.execute(
                             """
                             INSERT INTO "ContributionInbox"
@@ -565,21 +564,18 @@ def run_phase2_research(
                                 source_urls
                             )
                         )
-                        tickets_created += 1
+                tickets_created += 1
 
-            if not dry_run:
-                conn.commit()
+    if progress_callback:
+        progress_callback({
+            "current_action": "Terminé",
+            "school": school_name,
+            "progress": f"{categories_scanned}/{total_to_scan}",
+            "tickets_created": tickets_created,
+        })
 
-            if progress_callback:
-                progress_callback({
-                    "current_action": "Terminé",
-                    "school": school_name,
-                    "progress": f"{categories_scanned}/{total_to_scan}",
-                    "tickets_created": tickets_created,
-                })
-
-            logger.info(f"✅ [Research] Phase 2 terminée : {categories_scanned} scans, {tickets_created} tickets créés")
-            return {"success": True, "tickets_created": tickets_created, "message": f"{tickets_created} ticket(s) créé(s) sur {categories_scanned} scans"}
+    logger.info(f"✅ [Research] Phase 2 terminée : {categories_scanned} scans, {tickets_created} tickets créés")
+    return {"success": True, "tickets_created": tickets_created, "message": f"{tickets_created} ticket(s) créé(s) sur {categories_scanned} scans"}
 
 
 def _parse_research_report(research_result: dict, category: str, required_keys: list[str]) -> Optional[dict]:

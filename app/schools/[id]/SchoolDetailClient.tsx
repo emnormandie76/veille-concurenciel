@@ -130,6 +130,7 @@ export default function SchoolDetailClient({ school }: { school: School }) {
   const [activeTab, setActiveTab] = useState<Tab>("programs");
   const [activeType, setActiveType] = useState<string>("all");
   const [activeLevel, setActiveLevel] = useState<string>("all");
+  const [activeCampus, setActiveCampus] = useState<string>("all");
 
   const totalPrograms = school.programs.length;
   const latestStats = school.statsRecords[0] ?? null;
@@ -248,6 +249,35 @@ export default function SchoolDetailClient({ school }: { school: School }) {
                     ))}
                   </div>
                 </div>
+
+                <div className="filter-section">
+                  <span className="filter-label">Campus</span>
+                  <div className="filter-options" style={{ width: "100%", maxWidth: "340px" }}>
+                    <select
+                      id="select-campus"
+                      className="filter-btn"
+                      value={activeCampus}
+                      onChange={(e) => setActiveCampus(e.target.value)}
+                      style={{
+                        background: "var(--bg-tertiary)",
+                        border: "1px solid var(--border-color)",
+                        color: "var(--text-primary)",
+                        padding: "8px 12px",
+                        borderRadius: "var(--radius-sm)",
+                        width: "100%",
+                        cursor: "pointer",
+                        outline: "none"
+                      }}
+                    >
+                      <option value="all">Tous les campus ({school.campuses.length})</option>
+                      {school.campuses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.city ? `${c.name} (${c.city})` : c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
               {/* LISTE PLATE DE PROGRAMMES */}
@@ -258,7 +288,8 @@ export default function SchoolDetailClient({ school }: { school: School }) {
                     const level = inferProgramLevel(prog.name);
                     const typeMatch = activeType === "all" || type === activeType;
                     const levelMatch = activeLevel === "all" || level === activeLevel;
-                    return typeMatch && levelMatch;
+                    const campusMatch = activeCampus === "all" || prog.campuses.some((pc) => pc.campus.id === activeCampus);
+                    return typeMatch && levelMatch && campusMatch;
                   })
                   .map((prog) => {
                     const latestPrice = prog.pricingRecords[0] ?? null;
@@ -313,7 +344,10 @@ export default function SchoolDetailClient({ school }: { school: School }) {
                 {school.programs.filter((prog) => {
                   const type = inferProgramType(prog.name);
                   const level = inferProgramLevel(prog.name);
-                  return (activeType === "all" || type === activeType) && (activeLevel === "all" || level === activeLevel);
+                  const campusMatch = activeCampus === "all" || prog.campuses.some((pc) => pc.campus.id === activeCampus);
+                  return (activeType === "all" || type === activeType) && 
+                         (activeLevel === "all" || level === activeLevel) &&
+                         campusMatch;
                 }).length === 0 && (
                   <div className="no-data">
                     Aucun programme ne correspond aux filtres sélectionnés.

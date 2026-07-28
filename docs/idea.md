@@ -1,4 +1,0 @@
-
-Dans la vue utilisateur sur la page d'une école, ce qu'il se passe quand il y a trop de programme c'est que la page devient trop longue.
-Ajouté dans le front une dépliant pour les campus des écoles, lors du clique sur le campus, cela déplis tout les programme rattacher aux campus.
-Mais meme cela ne suffira pas car des fois il y a trop de programme il faudrais également rajouté un filtre type = Msc pour les master spécialisé, PGE pour parcours grande école, bachleor, master, et pourquoi pas aussi BAC+3 pour les bachelor, BAC+5 pour les master, BAC+6 pour les msc BAC+8 pour les doctorat .Afin d'allégé l'affichage global de la page.

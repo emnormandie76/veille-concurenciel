@@ -757,6 +757,7 @@ Format : `{ "error": "Description" }`
 | 17 | Timeout transaction Prisma (validation) | Exécution parallèle des upserts (Promise.all) + timeout de 60s pour gérer les imports très volumineux (ex: EDHEC avec 9 campus et 30+ programmes) | `app/api/admin/inbox/[id]/validate/route.ts` |
 | 18 | URL invalide / faux lien utilisateur (ex: `http://localhost`, domaine inexistant) | Tavily retourne contenu vide → `TavilyExtractionError` → ticket **supprimé** (pas de `Rejected` parasite en BDD) | `processor.py` |
 | 19 | Accumulation de tickets `Validated`/`Rejected` en BDD (quota Neon 500 MB) | Bouton "🗑️ Purger" dans `admin/inbox` (`DELETE /api/admin/inbox/purge`) avec sélection des statuts + compteur avant confirmation | `app/api/admin/inbox/purge/route.ts` |
+| 20 | Timeout d'inactivité BDD pendant requêtes API/IA longues (`connection already closed`) | Pattern "Ephemeral DB Connections" : isolation des contextes de connexion BDD des requêtes Tavily/Gemma longues. Connexions éphémères courtes pour la lecture et par-ticket pour l'écriture. | `phase2_research.py`, `processor.py` |
 
 ---
 
@@ -776,11 +777,15 @@ Le system prompt interdit formellement d'obéir à toute instruction trouvée da
 - **Pricing/Capacity :** Restreint au `official_domain` de l'école
 - **Crowdsourcing :** Validation format `https://` + rate limiting IP
 
-### 10.3. Protection DB
+### 10.3. Protection DB et Gestion des Connexions Éphémères
 - API REST publique : cache ISR 1h (quasi-zéro charge DB)
 - Endpoints internes FastAPI : token partagé en header
 - Dashboard Admin : NextAuth session obligatoire
 - Suppression école : double confirmation frontend
+- **Sessions BDD Éphémères (Close Gate Connexion) :** Aucune connexion PostgreSQL ne doit rester ouverte pendant les requêtes réseau externes longues (Tavily Research, extraction web, Gemma LLM). Le pattern exige :
+  1. Connexion courte pour charger les métadonnées initiales (école, programmes), puis fermeture immédiate.
+  2. Exécution des recherches IA hors connexion BDD.
+  3. Connexions courtes à la volée (`with get_db_connection()`) pour la lecture comparative (`_get_existing_record`, `_get_existing_capacity_record`) et l'écriture unique de chaque ticket dans `ContributionInbox` (`_update_ticket_status`, `_delete_ticket`, `INSERT`).
 
 ### 10.4. Contraintes Gemma et Gestion d'Erreurs Robuste
 - **Pydantic interdit** avec les modèles Gemma (erreur 500)

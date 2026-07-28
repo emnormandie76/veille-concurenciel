@@ -291,8 +291,7 @@ async def process_crowdsourcing_ticket(ticket_id: str) -> None:
         reason = compatibility_res.get("reason", "Page incompatible")
 
         if not compatible:
-            with get_db_connection() as conn:
-                _update_ticket_status(conn, ticket_id, "Rejected", {"reason": reason})
+            _update_ticket_status(ticket_id, "Rejected", {"reason": reason})
             return
 
         # 4. EXTRACTION JSON (Gemma 31B)
@@ -364,8 +363,7 @@ async def process_crowdsourcing_ticket(ticket_id: str) -> None:
                         ticket_id,
                     )
                 )
-            conn.commit()
-            logger.info(f"✅ [Crowdsourcing] Ticket {ticket_id} validé par l'IA -> Pending_Admin")
+        logger.info(f"✅ [Crowdsourcing] Ticket {ticket_id} validé par l'IA -> Pending_Admin")
 
     except QuotaExhaustedError:
         raise
@@ -374,13 +372,11 @@ async def process_crowdsourcing_ticket(ticket_id: str) -> None:
         raise
     except (GemmaParsingError, TavilyExtractionError) as e:
         logger.error(f"❌ [Crowdsourcing] Erreur permanente. Ticket {ticket_id} SUPPRIMÉ de l'Inbox. Détails: {e}")
-        with get_db_connection() as conn:
-            _delete_ticket(conn, ticket_id)
+        _delete_ticket(ticket_id)
         raise
     except Exception as e:
         logger.error(f"❌ [Crowdsourcing] Erreur inattendue. Ticket {ticket_id} SUPPRIMÉ de l'Inbox. Détails: {e}")
-        with get_db_connection() as conn:
-            _delete_ticket(conn, ticket_id)
+        _delete_ticket(ticket_id)
         raise
 
 def process_pending_submissions(key_manager):
@@ -389,6 +385,7 @@ def process_pending_submissions(key_manager):
     global _key_manager
     _key_manager = key_manager
 
+    # ── PHASE 1 : Lecture courte de la liste des tickets ────────────
     try:
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -402,60 +399,66 @@ def process_pending_submissions(key_manager):
                     """
                 )
                 tickets = cur.fetchall()
-
-            if not tickets:
-                logger.info("✅ [Crowdsourcing] Aucune soumission en attente.")
-                return
-
-            success_tickets = []
-            api_error_tickets = []
-            parsing_error_tickets = []
-
-            for ticket in tickets:
-                ticket_id = ticket["id"]
-                category = ticket["ai_category"]
-
-                if category not in SUPPORTED_CROWDSOURCING_CATEGORIES:
-                    logger.warning(f"⚠️ Catégorie inconnue {category} pour le ticket {ticket_id}")
-                    _update_ticket_status(conn, ticket_id, "Rejected", {"error": f"Catégorie inconnue: {category}"})
-                    parsing_error_tickets.append(ticket_id)
-                    continue
-
-                logger.info(f"⚙️ Traitement du ticket {ticket_id} (Catégorie: {category})")
-                try:
-                    asyncio.run(process_crowdsourcing_ticket(ticket_id))
-                    success_tickets.append(ticket_id)
-                except QuotaExhaustedError as e:
-                    logger.error(f"🛑 [Crowdsourcing] Quota Tavily épuisé — arrêt du traitement: {e}")
-                    break
-                except GemmaAPIError as e:
-                    logger.error(f"🛑 [Crowdsourcing] Erreur API sur le ticket {ticket_id}: {e}")
-                    api_error_tickets.append(ticket_id)
-                    continue
-                except Exception as e:
-                    logger.error(f"❌ Erreur lors du traitement du ticket {ticket_id}: {e}")
-                    parsing_error_tickets.append(ticket_id)
-                    continue
-
-            # Rapport de fin de traitement
-            logger.info("=== 📊 RAPPORT DE CROWDSOURCING ===")
-            logger.info(f"✅ Validés (Pending_Admin)  : {len(success_tickets)} ticket(s) -> {success_tickets}")
-            logger.info(f"⏳ Erreurs API (Pending_AI) : {len(api_error_tickets)} ticket(s) -> {api_error_tickets}")
-            logger.info(f"❌ Rejetés (Rejected)       : {len(parsing_error_tickets)} ticket(s) -> {parsing_error_tickets}")
-            logger.info("==================================")
     except Exception as e:
-        logger.error(f"❌ [Crowdsourcing] Erreur générale: {e}")
+        logger.error(f"❌ [Crowdsourcing] Erreur lecture BDD: {e}")
+        return
+    # ── Connexion BDD FERMÉE ici — le traitement commence maintenant ───
 
-def _update_ticket_status(conn, ticket_id, status, error_details=None):
-    with conn.cursor() as cur:
-        if error_details:
-             cur.execute('UPDATE "ContributionInbox" SET status = %s, ai_extracted_json = %s WHERE id = %s', (status, json.dumps(error_details), ticket_id))
-        else:
-             cur.execute('UPDATE "ContributionInbox" SET status = %s WHERE id = %s', (status, ticket_id))
-    conn.commit()
+    if not tickets:
+        logger.info("✅ [Crowdsourcing] Aucune soumission en attente.")
+        return
 
-def _delete_ticket(conn, ticket_id):
+    success_tickets = []
+    api_error_tickets = []
+    parsing_error_tickets = []
+
+    # ── PHASE 2 : Traitement ticket-par-ticket, sans connexion BDD persistante ──
+    for ticket in tickets:
+        ticket_id = ticket["id"]
+        category = ticket["ai_category"]
+
+        if category not in SUPPORTED_CROWDSOURCING_CATEGORIES:
+            logger.warning(f"⚠️ Catégorie inconnue {category} pour le ticket {ticket_id}")
+            _update_ticket_status(ticket_id, "Rejected", {"error": f"Catégorie inconnue: {category}"})
+            parsing_error_tickets.append(ticket_id)
+            continue
+
+        logger.info(f"⚙️ Traitement du ticket {ticket_id} (Catégorie: {category})")
+        try:
+            asyncio.run(process_crowdsourcing_ticket(ticket_id))
+            success_tickets.append(ticket_id)
+        except QuotaExhaustedError as e:
+            logger.error(f"🛑 [Crowdsourcing] Quota Tavily épuisé — arrêt du traitement: {e}")
+            break
+        except GemmaAPIError as e:
+            logger.error(f"🛑 [Crowdsourcing] Erreur API sur le ticket {ticket_id}: {e}")
+            api_error_tickets.append(ticket_id)
+            continue
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du traitement du ticket {ticket_id}: {e}")
+            parsing_error_tickets.append(ticket_id)
+            continue
+
+    # Rapport de fin de traitement
+    logger.info("=== 📊 RAPPORT DE CROWDSOURCING ===")
+    logger.info(f"✅ Validés (Pending_Admin)  : {len(success_tickets)} ticket(s) -> {success_tickets}")
+    logger.info(f"⏳ Erreurs API (Pending_AI) : {len(api_error_tickets)} ticket(s) -> {api_error_tickets}")
+    logger.info(f"❌ Rejetés (Rejected)       : {len(parsing_error_tickets)} ticket(s) -> {parsing_error_tickets}")
+    logger.info("==================================")
+
+def _update_ticket_status(ticket_id: str, status: str, error_details=None):
+    from backend.db import get_db_connection
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            if error_details:
+                cur.execute('UPDATE "ContributionInbox" SET status = %s, ai_extracted_json = %s WHERE id = %s', (status, json.dumps(error_details), ticket_id))
+            else:
+                cur.execute('UPDATE "ContributionInbox" SET status = %s WHERE id = %s', (status, ticket_id))
+
+
+def _delete_ticket(ticket_id: str):
     """Supprime un ticket de l'Inbox (erreurs permanentes — URL invalide, parsing échoué)."""
-    with conn.cursor() as cur:
-        cur.execute('DELETE FROM "ContributionInbox" WHERE id = %s', (ticket_id,))
-    conn.commit()
+    from backend.db import get_db_connection
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM "ContributionInbox" WHERE id = %s', (ticket_id,))

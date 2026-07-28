@@ -258,7 +258,14 @@ def run_phase2_research(
 
 Les 3 nouveaux params ont des valeurs par défaut `None` → **backward-compatible**.
 
-#### 3.2.2. Filtrage par `target_program_id`
+#### 3.2.2. Gestion des Connexions BDD Éphémères (Close Gate Connexion)
+
+Pour éviter l'erreur `connection already closed` lors de recherches Tavily longues :
+1. **Lecture initiale isolée** : `run_phase2_research` ouvre un bloc `with get_db_connection() as conn:` uniquement pour charger les métadonnées (`School`, `Program`, `ProgramCampus`), puis ferme la connexion avant de lancer la boucle des recherches Tavily.
+2. **Helpers autonomes** : `_get_existing_record(category, school_id, program_id)` et `_get_existing_capacity_record(program_campus_id)` ouvrent désormais leur propre connexion éphémère à la volée (le paramètre `cur` a été supprimé).
+3. **Écriture par ticket** : Chaque création de ticket `ContributionInbox` s'effectue dans une transaction BDD éphémère distincte via `with get_db_connection() as conn:`.
+
+#### 3.2.3. Filtrage par `target_program_id`
 
 Si `target_program_id` est défini, la requête SQL est modifiée pour ne charger qu'un seul programme :
 

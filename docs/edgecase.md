@@ -113,11 +113,12 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Impact :** L'utilisateur lambda voit une erreur incompréhensible en soumettant son information. L'Admin croit que le backend est en panne.
 - **Solution confirmée :** **Côté Next.js (frontend), implémenter un mécanisme de retry automatique avec un message UX explicite ("Le serveur redémarre, nouvelle tentative dans quelques secondes..."). Côté Koyeb, configurer un healthcheck HTTP sur `/health` pour que Koyeb ne route le trafic qu'une fois le backend prêt.**
 
-### Edge Case 17 : Timeout de transaction Prisma sur les imports volumineux (Phase 1)
-- **Contexte :** Lors de la validation par l'Admin d'un ticket de type `Program_Discovery` (Phase 1), le système doit insérer ou mettre à jour tous les campus et programmes découverts pour l'école concernée dans une seule transaction atomique.
-- **Problème :** Pour des écoles avec un grand nombre de campus et de programmes (ex: EMLV avec 5 campus et 30+ programmes, ou EDHEC avec 9 campus et 30+ programmes, soit environ 40 opérations d'upserts), l'exécution séquentielle de ces requêtes successives via le driver Neon serverless prend énormément de temps (jusqu'à 40 secondes pour l'EDHEC).
-- **Impact :** La transaction dépasse le timeout de Prisma (même configuré à 25s), ce qui provoque l'annulation de la transaction par la base de données. Les requêtes subséquentes échouent avec une erreur de transaction expirée `P2028` (ou `P2003`), empêchant la validation du ticket.
-- **Solution confirmée :** **Optimisation de la transaction en parallélisant les requêtes (upserts de tous les campus d'abord en parallèle via `Promise.all`, puis upserts de tous leurs programmes en parallèle via un second `Promise.all`). En outre, le timeout de la transaction est allongé à 60 secondes (`{ timeout: 60000 }`) pour garantir la robustesse face à des pics de latence sur le réseau de la base de données.**
+### Edge Case 20 : Timeout d'inactivité de connexion BDD pendant les requêtes API/IA longues (Idle Timeout)
+- **Contexte :** Traitement automatisé ou manuel de la Phase 2 (Tavily Research) et traitement par lot des soumissions crowdsourcing (Tavily Extract + Gemma).
+- **Problème :** Les requêtes API longues (ex: Tavily Research bouclant pendant plusieurs minutes, ou traitement en lot de 20 tickets crowdsourcing) maintenaient une connexion PostgreSQL ouverte en état d'inactivité (*idle*). Le serveur BDD (Neon serverless) ou le socket TCP coupait automatiquement la connexion inerte (`connection already closed`).
+- **Impact :** Échec du job et perte des données extraites au moment de la sauvegarde en base, malgré la réussite et le coût en crédits de la recherche IA.
+- **Solution confirmée :** **Patron "Ephemeral DB Connections" (sessions BDD éphémères). Séparation stricte entre les contextes de connexion BDD et les appels API/IA externes. La connexion BDD est ouverte pour lire les métadonnées initiales puis immédiatement fermée. Les requêtes Tavily et Gemma s'exécutent hors connexion BDD, et des connexions courtes sont ouvertes à la volée uniquement pour vérifier ou insérer chaque ticket (`_get_existing_record`, `_get_existing_capacity_record`, `_update_ticket_status`, `_delete_ticket`, `INSERT INTO ContributionInbox`).**
+
 
 
 

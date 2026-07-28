@@ -43,11 +43,18 @@ export async function PUT(
 
   try {
     const body = await request.json();
-    const { name, official_domain } = body;
+    const { name, official_domain, status } = body;
 
-    if (!name && !official_domain) {
+    if (!name && !official_domain && !status) {
       return NextResponse.json(
-        { error: "Au moins un champ (nom ou domaine officiel) doit être fourni" },
+        { error: "Au moins un champ (nom, domaine officiel ou statut) doit être fourni" },
+        { status: 400 }
+      );
+    }
+
+    if (status && !["ACTIVE", "INACTIVE", "DRAFT"].includes(status)) {
+      return NextResponse.json(
+        { error: "Le statut doit être ACTIVE, INACTIVE ou DRAFT" },
         { status: 400 }
       );
     }
@@ -61,9 +68,10 @@ export async function PUT(
       return NextResponse.json({ error: "École introuvable" }, { status: 404 });
     }
 
-    const data: Record<string, string> = {};
+    const data: Record<string, any> = {};
     if (name) data.name = name.trim();
     if (official_domain) data.official_domain = official_domain.trim().toLowerCase();
+    if (status) data.status = status;
 
     // Vérifier l'unicité si le nom ou le domaine change
     if (name || official_domain) {

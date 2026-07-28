@@ -22,6 +22,7 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
   // États des formulaires/modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -51,7 +52,7 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setActionLoading(true);
-    setError(null);
+    setModalError(null);
 
     try {
       const res = await fetch("/api/admin/users", {
@@ -70,7 +71,7 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
       setIsAddModalOpen(false);
       fetchUsers();
     } catch (err: any) {
-      setError(err.message);
+      setModalError(err.message);
     } finally {
       setActionLoading(false);
     }
@@ -80,12 +81,12 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
     if (!selectedUser) return;
 
     if (selectedUser.id === currentUserId) {
-      setError("Erreur : vous ne pouvez pas supprimer votre propre compte.");
+      setModalError("Erreur : vous ne pouvez pas supprimer votre propre compte.");
       return;
     }
 
     setActionLoading(true);
-    setError(null);
+    setModalError(null);
 
     try {
       const res = await fetch(`/api/admin/users/${selectedUser.id}`, {
@@ -101,14 +102,22 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
       setIsDeleteModalOpen(false);
       fetchUsers();
     } catch (err: any) {
-      setError(err.message);
+      setModalError(err.message);
     } finally {
       setActionLoading(false);
     }
   };
 
+  const openAddModal = () => {
+    setUsername("");
+    setPassword("");
+    setModalError(null);
+    setIsAddModalOpen(true);
+  };
+
   const openDeleteModal = (user: User) => {
     setSelectedUser(user);
+    setModalError(null);
     setIsDeleteModalOpen(true);
   };
 
@@ -119,12 +128,7 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
           <h1>Gestion des Modérateurs</h1>
           <p className="page-title-desc">Créez et supprimez les comptes des modérateurs de la plateforme.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => {
-          setUsername("");
-          setPassword("");
-          setError(null);
-          setIsAddModalOpen(true);
-        }}>
+        <button className="btn btn-primary" onClick={openAddModal}>
           <span>➕</span> Créer un modérateur
         </button>
       </div>
@@ -191,7 +195,16 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
           <div className="modal">
             <div className="modal-header">
               <h3 className="modal-title">Créer un modérateur</h3>
+              <button className="modal-close" onClick={() => setIsAddModalOpen(false)}>
+                ✕
+              </button>
             </div>
+            {modalError && (
+              <div className="alert alert-danger" style={{ marginBottom: "16px" }}>
+                <span>⚠️ </span>
+                <span>{modalError}</span>
+              </div>
+            )}
             <form onSubmit={handleAddUser}>
               <div className="form-group">
                 <label className="form-label" htmlFor="new-username">Nom d'utilisateur</label>
@@ -236,7 +249,16 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
           <div className="modal">
             <div className="modal-header">
               <h3 className="modal-title" style={{ color: "var(--danger)" }}>Supprimer le compte ?</h3>
+              <button className="modal-close" onClick={() => setIsDeleteModalOpen(false)}>
+                ✕
+              </button>
             </div>
+            {modalError && (
+              <div className="alert alert-danger" style={{ marginBottom: "16px" }}>
+                <span>⚠️ </span>
+                <span>{modalError}</span>
+              </div>
+            )}
             <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", marginBottom: "20px", lineHeight: "1.5" }}>
               Êtes-vous sûr de vouloir supprimer définitivement le modérateur <strong>{selectedUser.username}</strong> ? Son accès à la plateforme sera immédiatement révoqué.
             </p>

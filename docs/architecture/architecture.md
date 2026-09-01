@@ -63,6 +63,16 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 | Auth | NextAuth.js (Credentials Provider) | Vercel | — |
 | Cache API | Vercel Edge Cache (ISR) | Vercel | `revalidate = 3600` |
 
+> **Versions des paquets critiques**, après la remédiation des vulnérabilités npm
+> du 1er septembre 2026 : `next@16.3.4` · `next-auth@4.24.15` · `prisma@7.10.0` ·
+> `@prisma/client@7.8.0` · `ws@8.21.3`. Voir §10 bis, *Sécurité des dépendances*.
+>
+> **Le client Prisma est en retard d'un cran sur la CLI** (`7.8.0` contre
+> `7.10.0`) : `npm audit fix` a monté `prisma` sans toucher `@prisma/client`, la
+> contrainte `^7.8.0` du `package.json` étant déjà satisfaite. `prisma validate`
+> le signale à chaque appel. Sans conséquence de sécurité — les avis portent sur
+> la CLI — mais à réaligner par `npm i @prisma/client@latest`.
+
 ### 2.3. Communication Inter-Services
 
 **Modèle hybride : DB partagée + API interne minimale.**
@@ -1122,10 +1132,12 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
 
 ### 10.10. Chantiers de sécurité ouverts
 
-1. **16 vulnérabilités npm, dont une critique sur `next-auth`** et une haute sur
-   `next` décrite comme un *bypass de middleware en App Router* — qui toucherait
-   directement les gardes du §10.5. Voir
-   [`tache-vulnerabilites-npm.md`](../memory/tache-vulnerabilites-npm.md).
+1. **Trois vulnérabilités hautes résiduelles sur `deepmerge-ts`**, atteintes
+   uniquement par la CLI Prisma (`prisma` → `@prisma/config` → `deepmerge-ts`).
+   Risque accepté, correctif refusé — voir §10 bis, *Sécurité des dépendances*.
+   La critique `next-auth` et la haute `next` (*bypass de middleware en App
+   Router*, qui touchait directement les gardes du §10.5) sont **corrigées**
+   depuis le 1er septembre 2026.
 2. **CSP à nonce**, pour retirer `'unsafe-inline'` de `script-src`.
 3. **Fragments de clés API dans les journaux** — six derniers caractères
    (`key_manager.py`, `research_client.py`) ; trois suffiraient.
@@ -1207,6 +1219,34 @@ contrat.
 > Le test le plus important vérifie que **`user_text` n'atteint jamais un modèle
 > d'IA**. C'est une garantie de confidentialité, pas un détail.
 
+### Contrôles d'exécution non automatisés
+
+`tsc`, ESLint et `pytest` ne voient jamais passer une session. Après toute montée
+de version de `next` ou `next-auth` — celle du 1er septembre 2026 comprise, où
+ils **n'ont pas été rejoués** — ces sept contrôles se font à la main, serveur
+`npm run dev` démarré :
+
+| # | Contrôle | Attendu |
+|---|---|---|
+| 1 | `GET /admin/inbox` sans session | **307** vers `/admin/login` |
+| 2 | Connexion réelle sur `/admin/login` | la session s'ouvre, `/admin` accessible |
+| 3 | 6 × `POST /api/auth/callback/credentials` | les 5 premiers passent, le **6ᵉ renvoie 429** |
+| 4 | `PATCH /api/admin/users/<id>/password` sans session | **401** |
+| 5 | `curl -I http://localhost:3000/admin/login` | les 6 en-têtes du §10.4 |
+| 6 | ~65 appels rapides sur `/api/v1/schools?limit=1` | **429** au-delà de 60/min |
+| 7 | Console du navigateur sur `/admin` | aucune violation CSP |
+
+**Le n°3 est le plus important.** `withAuth` de next-auth court-circuite tout
+chemin commençant par `/api/auth` : `handleMiddleware` sort **avant** d'appeler
+le callback interne. C'est pourquoi `proxy.ts` applique la limitation de débit
+en amont et ne délègue à `withAuth` que les chemins ayant besoin d'une session.
+Si une montée de `next-auth` modifie ce comportement, le plafond sur la page de
+connexion disparaît sans qu'aucun test ne le signale, et `proxy.ts` doit être
+relu.
+
+> En développement, `lib/rate-limit.ts` retombe sur son compteur mémoire faute
+> d'Upstash. Les contrôles n°3 et n°6 restent valides sur une instance unique.
+
 ### Dépendances
 
 - `backend/requirements.txt` — les 8 dépendances directes, **épinglées** ;
@@ -1215,6 +1255,44 @@ contrat.
 - `dotenv` est passé en **dépendance de production** : `lib/prisma.ts` l'importe
   au runtime, et toute installation `npm ci --omit=dev` plantait au démarrage.
 - `tsconfig.tsbuildinfo` a été retiré du suivi Git et ignoré.
+
+### Sécurité des dépendances
+
+`npm audit fix` — **sans `--force`** — a été passé le 1er septembre 2026 sur une
+branche dédiée (commit `4d5f85d`, 84 paquets touchés). `package-lock.json` est le
+**seul** fichier modifié : toutes les versions cibles satisfaisaient les
+contraintes `^` déjà écrites dans `package.json`.
+
+**13 vulnérabilités sur 16 éliminées**, dont les deux qui comptaient :
+
+| Paquet | Avant | Après | Avis |
+|---|---|---|---|
+| `next-auth` | `4.24.14` | **`4.24.15`** | **critique** — e-mail validé *avant* normalisation Unicode (contournement par homoglyphe `@`), `getToken()` levant une exception non rattrapée sur un en-tête `Bearer` malformé, cookies `state`/`nonce`/PKCE non liés au provider émetteur |
+| `next` | `16.2.6` | **`16.3.4`** | haute — **bypass de middleware / proxy en App Router**, DoS via Server Actions, SSRF dans les rewrites, confusion de cache |
+| `ws` | `8.20.1` | **`8.21.3`** | haute — épuisement mémoire par fragments minuscules |
+| `prisma` | `7.8.0` | **`7.10.0`** | haute — partiellement, voir ci-dessous |
+
+L'avis sur `next` est celui qui justifiait l'urgence : toute la protection de
+session et toute la limitation de débit vivent dans `proxy.ts`, donc dans le
+middleware. Un contournement annulait d'un coup les gardes du §10.5 et les
+plafonds du §10.3.
+
+**Trois hautes subsistent, volontairement.** `deepmerge-ts < 8.0.0`
+(GHSA-ggr8-5vv4-36mx, épuisement de pile en fusionnant des graphes d'objets
+récursifs) est tiré par `prisma` → `@prisma/config`. Le seul correctif proposé
+par npm est `npm audit fix --force`, qui **redescend Prisma en `6.12.0`** :
+rupture inacceptable, Prisma 7 ayant migré vers l'architecture d'adaptateurs. Le
+projet dépend de `@prisma/adapter-neon@7.x`, qui n'existe pas en v6 ; le
+downgrade casserait `prisma.config.ts`, la connexion Neon serverless et
+vraisemblablement les migrations.
+
+Le risque est accepté parce que `deepmerge-ts` n'est atteint que par la **CLI**
+Prisma, au build : aucun chemin de l'API n'y fait parvenir un graphe d'objets
+contrôlé par un tiers.
+
+**À surveiller** — `npm ls deepmerge-ts`. Dès qu'une version `7.x` de Prisma
+embarque `deepmerge-ts >= 8`, `npm update prisma` suffit, toujours sans
+`--force`.
 
 ### Intégration continue
 
@@ -1225,9 +1303,12 @@ contrat.
 | `validate` | tsc · ESLint · prisma generate · prisma validate · prisma migrate status · garde-fou « pas de `prisma db push` » · `npm audit --audit-level=critical` |
 | `python-tests` | Python 3.12 · `pip install -r backend/requirements-dev.txt` · `pytest` |
 
-> **L'étape `npm audit` fait actuellement échouer la CI** : une vulnérabilité
-> critique subsiste sur `next-auth`. Voir
-> [`tache-vulnerabilites-npm.md`](../memory/tache-vulnerabilites-npm.md).
+> **`npm audit` ne bloque plus la CI.** Le garde-fou est réglé sur
+> `--audit-level=critical` : il ne reste aucune critique, et les trois hautes
+> résiduelles ci-dessus ne le déclenchent pas. Vérifié en local, **pas encore sur
+> GitHub** — ni `gh` ni accès réseau depuis le poste de travail. À confirmer sur
+> https://github.com/Anton1P/veille-concurenciel/actions pour le commit `4d5f85d`
+> de `devresearch`.
 
 ---
 
@@ -1264,3 +1345,5 @@ contrat.
 | Déduplication Programme (Program→School) | `Program.schoolId` + `@@unique([schoolId, name])` + table de jointure `ProgramCampus` | Un programme commun à N campus (ex: PGE) n'est stocké qu'une fois — tarifs et classements centralisés, capacité différenciée par campus via `ProgramCampus.capacityRecords` |
 | Extraction Accréditations en liste | `ACCREDITATION_OUTPUT_SCHEMA` retourne `{ "accreditations": [...] }` | Un seul appel Tavily extrait toutes les accréditations de la page — validation admin en un clic crée N `AccreditationRecord` via transaction atomique — rétrocompatible avec l'ancien format objet unique |
 | Pourcentages SchoolStats | Valeurs entières 0-100 (ex: 46 pour 46%) | Alignment avec les données sources (Tavily renvoie des entiers) — `formatPct()` frontend gère la rétrocompatibilité avec les anciens décimaux 0-1 |
+| Montée de dépendances | Branche dédiée, `npm audit fix` **sans `--force`** | Une montée doit pouvoir être abandonnée d'un `git checkout` ; `--force` est précisément ce qui casse les contrats de version |
+| Vulnérabilité résiduelle `deepmerge-ts` (3 hautes) | Risque accepté, correctif npm refusé | Le correctif redescend Prisma en `6.12.0`, où `@prisma/adapter-neon` n'existe pas : la connexion Neon serverless casserait. L'avis ne concerne que la CLI de build, pas l'API à l'exécution |

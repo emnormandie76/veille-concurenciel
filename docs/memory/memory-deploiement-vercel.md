@@ -295,13 +295,14 @@ Pour éviter de rejouer des corrections déjà faites :
 
 ## 11. Chantiers ouverts, à trancher avant ou après le déploiement
 
-1. **Les 16 vulnérabilités npm, dont une critique sur `next-auth`.** Marche à
-   suivre complète : [`tache-vulnerabilites-npm.md`](tache-vulnerabilites-npm.md).
-   `npm audit fix` (sans `--force`) déclare pouvoir toutes les traiter sans
-   montée de version majeure. **À faire avant d'exposer publiquement** : la
-   critique est un contournement d'authentification, et l'une des hautes est un
-   *bypass de middleware Next.js en App Router* — qui toucherait directement les
-   gardes de session et la limitation de débit.
+1. **Vulnérabilités npm : traitées le 1er septembre 2026** (commit `4d5f85d`).
+   13 sur 16, dont la critique `next-auth` et le *bypass de middleware* de
+   `next`. Restent trois hautes sur `deepmerge-ts`, tirées par la CLI Prisma :
+   risque accepté, détail et surveillance dans
+   [`architecture.md`](../architecture/architecture.md), *Sécurité des
+   dépendances*. **Reste à faire avant d'exposer publiquement** : les sept
+   contrôles d'exécution (session, 307, 401, plafonds de débit), jamais rejoués
+   depuis la montée de version.
 2. **CSP à nonce**, pour retirer `'unsafe-inline'` de `script-src`.
 3. **Les 114 avertissements ESLint** (étape 6, §3.1).
 4. **Le prompt d'extraction multi-programme** ne restitue pas le campus : les

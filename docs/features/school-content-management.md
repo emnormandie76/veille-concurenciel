@@ -37,6 +37,15 @@
 > **Dette connue non traitée** : l'interface d'administration recourt largement à
 > `as any` — une soixantaine d'occurrences — ce qui neutralise localement le
 > `strict: true` du `tsconfig.json`. `npm run lint` les compte.
+>
+> **Montée des dépendances, 1er septembre 2026** — `next@16.3.4`,
+> `next-auth@4.24.15`. Le tableau de gardes ci-dessus n'a de valeur que si le
+> middleware s'exécute : les versions précédentes portaient un avis de *bypass de
+> middleware en App Router*, et `next-auth` un contournement critique
+> d'authentification. Les deux sont corrigées ; la vérification à l'exécution
+> (307 sans session, 401 sur une route admin) reste à faire — voir
+> [`architecture.md`](../architecture/architecture.md), *Contrôles d'exécution non
+> automatisés*.
 
 
 > **Version :** 1.0 — 27 juillet 2026  

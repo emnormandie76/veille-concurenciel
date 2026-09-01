@@ -1,15 +1,13 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { guardAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { validatePassword } from "@/lib/password";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  
-  if (!session) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const guard = await guardAdmin();
+  if (guard.error) return guard.error;
+  const session = guard.session;
 
   // Seul le rôle ADMIN a le droit de gérer les modérateurs
   if (session.user.role !== "ADMIN") {
@@ -34,15 +32,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-
-  if (session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Accès interdit : Rôle ADMIN requis" }, { status: 403 });
-  }
+  const { error } = await guardAdmin();
+  if (error) return error;
 
   try {
     const body = await request.json();
@@ -59,8 +50,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Le nom d'utilisateur doit faire au moins 3 caractères" }, { status: 400 });
     }
 
-    if (cleanPassword.length < 6) {
-      return NextResponse.json({ error: "Le mot de passe doit faire au moins 6 caractères" }, { status: 400 });
+    const policyError = validatePassword(cleanPassword);
+    if (policyError) {
+      return NextResponse.json({ error: policyError }, { status: 400 });
     }
 
     // Vérifier l'existence

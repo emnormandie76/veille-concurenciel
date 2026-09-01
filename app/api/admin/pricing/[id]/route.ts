@@ -1,0 +1,30 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { guardAuth } from "@/lib/auth";
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { error } = await guardAuth();
+  if (error) return error;
+
+  const { id } = await params;
+
+  try {
+    const existing = await prisma.pricingRecord.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Tarif introuvable" }, { status: 404 });
+    }
+
+    await prisma.pricingRecord.delete({ where: { id } });
+
+    return NextResponse.json({ message: "Tarif supprimé avec succès" });
+  } catch (err) {
+    console.error(`DELETE /api/admin/pricing/${id} error:`, err);
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
+}

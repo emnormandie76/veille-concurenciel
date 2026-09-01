@@ -1,0 +1,104 @@
+name: CI — Validation
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, devresearch]
+
+# Pas de déploiement Vercel — validation uniquement
+# Le déploiement sera ajouté dans une étape ultérieure
+
+jobs:
+  validate:
+    name: Lint, Types & Migrations
+    runs-on: ubuntu-latest
+
+    env:
+      # Variables requises par Prisma & Next.js pour le build de validation
+      # À configurer dans Settings > Secrets and variables > Actions sur GitHub
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      NEXTAUTH_URL: "http://localhost:3000"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ─── TypeScript ───────────────────────────────────────────────────────
+      - name: TypeScript — vérification des types
+        run: npx tsc --noEmit
+
+      # ─── Lint ─────────────────────────────────────────────────────────────
+      - name: ESLint
+        run: npm run lint
+
+      # ─── Prisma ───────────────────────────────────────────────────────────
+      - name: Prisma — génération du client
+        run: npx prisma generate
+
+      - name: Prisma — validation du schéma
+        run: npx prisma validate
+
+      - name: Prisma — statut des migrations (base de dev)
+        # Ne bloque PAS la CI si la base n'est pas disponible (ex. PR externe)
+        # Bloque si une migration est en attente sur une branche protégée
+        run: npx prisma migrate status
+        continue-on-error: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' }}
+
+      # ─── Garde-fou : interdire prisma db push ────────────────────────────
+      - name: Sécurité — détecter usage de "prisma db push" dans les scripts
+        run: |
+          echo "Recherche de 'prisma db push' dans les scripts CI et package.json..."
+          if grep -r "prisma db push" .github/ package.json 2>/dev/null; then
+            echo "❌ ERREUR : 'prisma db push' détecté dans un script CI ou package.json."
+            echo "   Utiliser 'prisma migrate deploy' en CI/staging/production."
+            exit 1
+          fi
+          echo "✅ Aucun usage de 'prisma db push' détecté."
+
+      # ─── Audit sécurité (non bloquant pour l'instant) ────────────────────
+      - name: npm audit
+        run: npm audit --audit-level=critical
+        # Bloque uniquement sur les vulnérabilités CRITIQUES
+        # Les HIGH/MODERATE sont documentées dans docs/memory/memorystep2.md §8
+        continue-on-error: false
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #  Tests Python — backend FastAPI
+  #
+  #  Ajouté à l'étape 6 de l'audit : la suite de tests n'était lancée nulle
+  #  part. Elle échouait depuis un refactor non répercuté sans que personne
+  #  ne le voie.
+  # ═══════════════════════════════════════════════════════════════════════
+  python-tests:
+    name: Tests Python
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        # requirements-dev.txt inclut requirements.txt et y ajoute
+        # pytest + pytest-asyncio, qui n'étaient déclarés nulle part.
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: pytest
+        run: python -m pytest -q

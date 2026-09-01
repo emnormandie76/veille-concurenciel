@@ -27,6 +27,48 @@ from google.genai import types
 
 logger = logging.getLogger("pipeline.gemma")
 
+
+# ── Délimitation du contenu non fiable ────────────────────────────
+#
+# Le contenu scrapé est interpolé dans un gabarit qui se termine par
+# </TEXTE_SOURCE>. Une page qui contient elle-même cette balise fermante sort du
+# bloc : tout ce qui suit est alors lu par le modèle comme une consigne et non
+# plus comme de la matière à analyser. Ces deux fonctions sont le seul chemin
+# autorisé pour injecter du contenu externe dans un prompt.
+
+_DELIMITER_RE = re.compile(r"</?\s*(TEXTE_SOURCE|REVENDICATION)\s*>", re.IGNORECASE)
+
+
+def sanitize_source(text: str | None) -> str:
+    """Neutralise les balises de délimitation présentes dans un contenu externe."""
+    return _DELIMITER_RE.sub("[balise neutralisée]", text or "")
+
+
+def wrap_source(text: str | None, limit: int | None = None) -> str:
+    """Tronque, neutralise puis encadre un contenu externe dans <TEXTE_SOURCE>."""
+    content = text or ""
+    if limit is not None:
+        content = content[:limit]
+    return f"<TEXTE_SOURCE>\n{sanitize_source(content)}\n</TEXTE_SOURCE>"
+
+
+# ── Custom Exceptions ─────────────────────────────────────────────
+
+class GemmaError(Exception):
+    """Base exception for Gemma-related errors."""
+    pass
+
+
+class GemmaAPIError(GemmaError):
+    """Raised when the Google GenAI API returns an error or fails to connect."""
+    pass
+
+
+class GemmaParsingError(GemmaError):
+    """Raised when the response cannot be parsed or lacks required fields."""
+    pass
+
+
 # ── Client API (singleton) ────────────────────────────────────────
 
 _client: genai.Client | None = None
@@ -51,8 +93,8 @@ def clean_gemma_json(raw_text: str) -> str:
     Nettoie les balises Markdown que Gemma rajoute autour du JSON.
 
     Gère les cas :
-    - ```json\\n{...}\\n```
-    - ```\\n{...}\\n```
+    - ```json\n{...}\n```
+    - ```\n{...}\n```
     - Texte avant/après le JSON
     - Multiples blocs de code
 
@@ -104,12 +146,12 @@ def call_gemma(
     max_retries: int = 3,
     base_delay: float = 2.0,
     temperature: float = 0.1,
-) -> dict | None:
+) -> dict:
     """
     Appelle un modèle Gemma avec retry, nettoyage JSON et validation structurelle.
 
     Args:
-        model: Identifiant du modèle ('models/gemma-4-31b-it' ou 'models/gemma-4-26b-it').
+        model: Identifiant du modèle ('models/gemma-4-31b-it' ou 'models/gemma-4-26b-a4b-it').
         system_prompt: Instructions système (rôle, règles, structure JSON attendue).
         user_content: Contenu à analyser, encadré par <TEXTE_SOURCE>...</TEXTE_SOURCE>.
         required_keys: Clés JSON obligatoires dans la réponse.
@@ -118,7 +160,11 @@ def call_gemma(
         temperature: Température du modèle (défaut: 0.1 pour la précision d'extraction).
 
     Returns:
-        Le dictionnaire JSON extrait, ou None en cas d'échec après max_retries.
+        Le dictionnaire JSON extrait.
+
+    Raises:
+        GemmaAPIError: Si l'API ou le réseau échoue de manière persistante.
+        GemmaParsingError: Si le format JSON ou les clés obligatoires sont incorrects.
 
     Référence : gemma-python-guide.md §3 (call_gemma_with_retry)
     """
@@ -151,7 +197,7 @@ def call_gemma(
                     if attempt < max_retries:
                         time.sleep(base_delay)
                         continue
-                    return None
+                    raise GemmaParsingError(f"Réponse tronquée avec finish_reason={finish_reason}")
 
             # ── Extraction et nettoyage ───────────────────────────
             raw_text = response.text
@@ -160,12 +206,22 @@ def call_gemma(
                 if attempt < max_retries:
                     time.sleep(base_delay)
                     continue
-                return None
+                raise GemmaParsingError("Réponse de Gemma vide ou trop courte")
 
             logger.debug(f"Réponse brute ({len(raw_text)} chars): {raw_text[:200]}...")
 
             clean_text = clean_gemma_json(raw_text)
             parsed_data = json.loads(clean_text)
+
+            # --- Robustesse au format Liste JSON ---
+            if isinstance(parsed_data, list):
+                if len(parsed_data) > 0 and isinstance(parsed_data[0], dict):
+                    logger.warning("⚠️ Le modèle a renvoyé une liste. Extraction du premier dictionnaire.")
+                    parsed_data = parsed_data[0]
+                else:
+                    raise GemmaParsingError("Le JSON extrait est une liste vide ou ne contient pas de dictionnaire.")
+            elif not isinstance(parsed_data, dict):
+                raise GemmaParsingError(f"Le JSON extrait n'est pas un dictionnaire. Type: {type(parsed_data)}")
 
             # ── Validation structurelle ───────────────────────────
             missing = validate_json_structure(parsed_data, required_keys)
@@ -177,37 +233,30 @@ def call_gemma(
                 if attempt < max_retries:
                     time.sleep(base_delay)
                     continue
-                # Dernier essai : retourner quand même (l'appelant décide)
-                return parsed_data
+                raise GemmaParsingError(f"Clés JSON obligatoires manquantes après {max_retries} tentatives: {missing}")
 
             logger.info("✅ Extraction réussie et validée.")
             return parsed_data
 
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, GemmaParsingError) as e:
             logger.error(
-                f"❌ JSON invalide (tentative {attempt}): {e}. "
+                f"❌ JSON/Parsing invalide (tentative {attempt}/{max_retries}): {e}. "
                 f"Brut: {raw_text[:300]}"
             )
-            if attempt < max_retries:
-                time.sleep(base_delay)
+            if attempt >= max_retries:
+                raise GemmaParsingError(f"Échec de parsing JSON après {max_retries} tentatives: {str(e)}")
+            time.sleep(base_delay)
 
         except Exception as e:
             error_str = str(e)
-            # ── Rate limit HTTP 429 → backoff exponentiel ─────────
-            # Référence : gemma-python-guide.md §3, Règle 4 (retry 429)
-            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                delay = base_delay * (2 ** (attempt - 1))
-                logger.warning(f"⏳ Rate limit détecté. Retry dans {delay:.1f}s...")
-                time.sleep(delay)
-            else:
-                logger.error(f"❌ Erreur API inattendue (tentative {attempt}): {e}")
-                if attempt < max_retries:
-                    time.sleep(base_delay)
-                else:
-                    return None
+            # Backoff exponentiel sur erreur d'API ou de réseau (ex: 429, 500, ConnectionError)
+            delay = base_delay * (1.5 ** (attempt - 1))
+            logger.error(f"❌ Erreur API inattendue (tentative {attempt}/{max_retries}): {e}")
+            if attempt >= max_retries:
+                raise GemmaAPIError(f"Erreur API Gemma persistante après {max_retries} tentatives: {str(e)}")
+            time.sleep(delay)
 
-    logger.error(f"❌ Échec après {max_retries} tentatives. Abandon.")
-    return None
+    raise GemmaError(f"Échec de call_gemma après {max_retries} tentatives.")
 
 
 # ── Tri rapide Gemma 26B ──────────────────────────────────────────
@@ -234,18 +283,19 @@ def is_content_relevant(raw_content: str, category: str) -> bool:
         f'- Page d\'erreur 404/500'
     )
 
-    user_content = f"<TEXTE_SOURCE>\n{raw_content[:3000]}\n</TEXTE_SOURCE>"
+    user_content = wrap_source(raw_content, 3000)
 
-    result = call_gemma(
-        model="models/gemma-4-26b-it",
-        system_prompt=system_prompt,
-        user_content=user_content,
-        required_keys=["relevant"],
-        max_retries=2,
-        temperature=0.1,
-    )
-
-    if result is None:
+    try:
+        result = call_gemma(
+            model="models/gemma-4-26b-a4b-it",
+            system_prompt=system_prompt,
+            user_content=user_content,
+            required_keys=["relevant"],
+            max_retries=2,
+            temperature=0.1,
+        )
+    except GemmaError as e:
+        logger.warning(f"⚠️ Erreur lors du check de pertinence: {e}")
         return False  # En cas de doute → skip (comportement sûr)
 
     return bool(result.get("relevant", False))
@@ -276,15 +326,21 @@ def fact_check(user_claim: str, source_content: str) -> dict | None:
         '}'
     )
 
+    # La revendication vient de l'utilisateur : elle était injectée brute et non
+    # tronquée. Elle est désormais bornée et délimitée comme le contenu scrapé.
     user_content = (
-        f"REVENDICATION : {user_claim}\n\n"
-        f"<TEXTE_SOURCE>\n{source_content[:4000]}\n</TEXTE_SOURCE>"
+        f"<REVENDICATION>\n{sanitize_source(user_claim[:2000])}\n</REVENDICATION>\n\n"
+        f"{wrap_source(source_content, 4000)}"
     )
 
-    return call_gemma(
-        model="models/gemma-4-26b-it",
-        system_prompt=system_prompt,
-        user_content=user_content,
-        required_keys=["confirmed", "confidence"],
-        temperature=0.1,
-    )
+    try:
+        return call_gemma(
+            model="models/gemma-4-26b-a4b-it",
+            system_prompt=system_prompt,
+            user_content=user_content,
+            required_keys=["confirmed", "confidence"],
+            temperature=0.1,
+        )
+    except GemmaError as e:
+        logger.warning(f"⚠️ Erreur lors du fact_check: {e}")
+        return None

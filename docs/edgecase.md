@@ -34,7 +34,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Contexte :** Le Workflow B (Pipeline IA Automatisé) lit une liste cible d'écoles pour identifier les données manquantes et déclenche une recherche.
 - **Problème :** Une école spécifique n'a pas de page "Tarifs" publique (ex: il faut créer un compte, télécharger une brochure PDF protégée, ou le site est en maintenance). L'IA automatisée cherche, ne trouve rien, et au prochain passage du cron, elle va recommencer à chercher pour la même école.
 - **Impact :** Épuisement du quota Tavily en boucle sur des écoles dont la donnée est inaccessible publiquement.
-- **Solution confirmée :** **Ajouter des champs `last_failed_attempt` et `failed_attempts_count` sur la table ciblée. Si l'IA échoue à trouver une info 3 fois de suite, on "blacklist" temporairement cette donnée/école pour l'automatisation et on la signale à l'Admin ("Donnée introuvable publiquement, requiert recherche manuelle").**
+- **Solution actuelle :** ~~Anciennement géré via la table `CronTarget` avec blacklist après 3 échecs.~~ **Cette table a été supprimée.** Les échecs sont désormais uniquement logués dans la console. Le pipeline Tavily Research est suffisamment intelligent pour naviguer autour des obstacles (paywalls, sites en maintenance). La rotation de clés et les quotas Tavily restent la protection principale contre l'épuisement des crédits.
 
 ### Edge Case 5 : Sources de données contradictoires (Véracité)
 - **Contexte :** Workflow A ou B. L'IA analyse le texte fourni par Tavily pour extraire un classement ou un prix.
@@ -112,6 +112,13 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Problème :** Après un redémarrage, l'instance met 10 à 30 secondes à redevenir opérationnelle. Durant ce laps de temps, les requêtes du frontend Next.js (soumissions utilisateur, chargement du dashboard Admin) échouent avec une erreur réseau ou un timeout.
 - **Impact :** L'utilisateur lambda voit une erreur incompréhensible en soumettant son information. L'Admin croit que le backend est en panne.
 - **Solution confirmée :** **Côté Next.js (frontend), implémenter un mécanisme de retry automatique avec un message UX explicite ("Le serveur redémarre, nouvelle tentative dans quelques secondes..."). Côté Koyeb, configurer un healthcheck HTTP sur `/health` pour que Koyeb ne route le trafic qu'une fois le backend prêt.**
+
+### Edge Case 20 : Timeout d'inactivité de connexion BDD pendant les requêtes API/IA longues (Idle Timeout)
+- **Contexte :** Traitement automatisé ou manuel de la Phase 2 (Tavily Research) et traitement par lot des soumissions crowdsourcing (Tavily Extract + Gemma).
+- **Problème :** Les requêtes API longues (ex: Tavily Research bouclant pendant plusieurs minutes, ou traitement en lot de 20 tickets crowdsourcing) maintenaient une connexion PostgreSQL ouverte en état d'inactivité (*idle*). Le serveur BDD (Neon serverless) ou le socket TCP coupait automatiquement la connexion inerte (`connection already closed`).
+- **Impact :** Échec du job et perte des données extraites au moment de la sauvegarde en base, malgré la réussite et le coût en crédits de la recherche IA.
+- **Solution confirmée :** **Patron "Ephemeral DB Connections" (sessions BDD éphémères). Séparation stricte entre les contextes de connexion BDD et les appels API/IA externes. La connexion BDD est ouverte pour lire les métadonnées initiales puis immédiatement fermée. Les requêtes Tavily et Gemma s'exécutent hors connexion BDD, et des connexions courtes sont ouvertes à la volée uniquement pour vérifier ou insérer chaque ticket (`_get_existing_record`, `_get_existing_capacity_record`, `_update_ticket_status`, `_delete_ticket`, `INSERT INTO ContributionInbox`).**
+
 
 
 

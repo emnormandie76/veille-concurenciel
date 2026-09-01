@@ -1,101 +1,117 @@
-# Documentation du Schéma de Base de Données (PostgreSQL / Prisma)
+# Schéma de base de données (PostgreSQL / Prisma)
 
-Ce document décrit l'architecture de la base de données relationnelle du projet School Data Pipeline. Il est conçu pour servir de référence aux agents IA et préparer l'intégration future avec l'ORM Prisma.
+> **Mise à jour** : 1er septembre 2026. Ce document décrivait encore le modèle
+> **antérieur** au refactor `Program` — `Program.campusId`, `CapacityRecord.programId`,
+> pas de `ProgramCampus`. Il est ici remis en phase avec `prisma/schema.prisma`.
 
-## 1. Philosophie et Principes Architecturaux
+Référence du projet School Data Pipeline. La source de vérité reste
+[`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
+les intentions.
 
-Le schéma repose sur quatre principes fondamentaux :
-1. **Séparation des Entités et des Données Temporelles :** Les données immuables (ex: le nom de l'école ou du programme) sont séparées des données qui évoluent chaque année (prix, classements, effectifs). Ces dernières sont stockées dans des tables de type `_Record` avec une colonne `academic_year`.
-2. **Standardisation des Programmes :** Il n'y a pas de tables distinctes par type de diplôme (pas de table "Bachelor" ni "PGE"). Tout est un `Program` lié à un `Campus`. Les spécificités métier sont gérées par des attributs (ex: `admission_exam`).
-3. **Double Zone (Buffer vs Production) :** Le système intègre une zone tampon (`ContributionInbox`) pour les données brutes issues de l'IA (Workflow B) ou du Crowdsourcing (Workflow A), qui ne rejoignent les tables "Rigides" qu'après validation humaine (Human-in-the-loop).
-4. **Architecture Multi-Campus :** Une école possède N campus (ex: "EMLV Paris La Défense", "EMLV Montpellier"). Chaque campus a ses propres programmes et tarifs. Cela évite les confusions quand une même école affiche des prix différents selon la localisation.
+---
 
-## 2. Modèle de Données (Format Prisma)
+## 1. Principes architecturaux
 
-Voici la modélisation conceptuelle au format Prisma Schema Language (`schema.prisma`), prête à être implémentée.
+1. **Séparation des entités et des données temporelles.** Les données immuables
+   (nom d'école, nom de programme) sont séparées de celles qui évoluent chaque
+   année (prix, classements, effectifs), stockées dans des tables `_Record`
+   portant une colonne `academic_year`.
+
+2. **Standardisation des programmes.** Aucune table par type de diplôme. Tout est
+   un `Program`. Les spécificités métier passent par des attributs
+   (`admission_exam`, `is_alternance_possible`…).
+
+3. **Double zone — tampon et production.** `ContributionInbox` recueille les
+   données brutes issues de l'IA ou du crowdsourcing ; elles ne rejoignent les
+   tables de production qu'après validation humaine.
+
+4. **Un programme appartient à une ÉCOLE, pas à un campus.** *(règle issue du
+   refactor `Program` — c'est le changement structurant du modèle actuel)*
+   L'association aux campus passe par la table `ProgramCampus`. Un même
+   programme ouvert sur trois campus = **un** `Program` + **trois**
+   `ProgramCampus`.
+
+5. **La capacité d'accueil varie par campus.** `CapacityRecord` référence
+   `programCampusId`, jamais `programId`. Les tarifs et classements, eux,
+   restent au niveau du programme.
+
+---
+
+## 2. Modèle de données actuel
 
 ```prisma
-// schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // L'URL vit dans prisma.config.ts depuis Prisma 7, plus dans ce bloc.
 }
 
-// ------------------------------------------------------
-// AUTHENTIFICATION ET RÔLES
-// ------------------------------------------------------
+// ── AUTHENTIFICATION ──────────────────────────────────────────────
 
 model User {
-  id              String   @id @default(uuid())
-  username        String   @unique
-  password_hash   String
-  role            String   @default("MODERATOR") // "ADMIN" ou "MODERATOR"
-  createdAt       DateTime @default(now())
+  id            String   @id @default(uuid())
+  username      String   @unique
+  password_hash String                        // bcrypt, 12 tours
+  role          String   @default("MODERATOR") // "ADMIN" | "MODERATOR"
+  createdAt     DateTime @default(now())
 }
 
-// Rôles :
-// - ADMIN : tous les droits + gestion des modérateurs (créer/supprimer)
-// - MODERATOR : mêmes droits que l'Admin sauf la gestion des utilisateurs
-// Pas d'auto-inscription. L'Admin crée les comptes et communique les identifiants.
-
-// ------------------------------------------------------
-// ENTITÉS PRINCIPALES (Immuables)
-// ------------------------------------------------------
+// ── ENTITÉS PRINCIPALES ───────────────────────────────────────────
 
 model School {
-  id              String   @id @default(uuid())
-  name            String   @unique
-  official_domain String   @unique
-  status          String   @default("ACTIVE") // ACTIVE, INACTIVE, DRAFT
-
-  // Relations
-  campuses        Campus[]
-  statsRecords    SchoolStatsRecord[]
+  id              String                @id @default(uuid())
+  name            String                @unique
+  official_domain String                @unique
+  status          String                @default("ACTIVE")
   accreditations  AccreditationRecord[]
-  cronTargets     CronTarget[]
+  campuses        Campus[]
+  programs        Program[]              // ← relation directe
+  statsRecords    SchoolStatsRecord[]
 }
 
 model Campus {
-  id              String   @id @default(uuid())
+  id              String          @id @default(uuid())
   schoolId        String
-  name            String   // ex: "Campus Paris La Défense", "Campus Montpellier"
-  city            String?  // ex: "Paris", "Montpellier"
-
-  // Relations
-  school          School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  programs        Program[]
+  name            String
+  city            String?
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  programCampuses ProgramCampus[]
 
   @@unique([schoolId, name])
 }
 
 model Program {
-  id                        String   @id @default(uuid())
-  campusId                  String
-  name                      String   // ex: "Programme Grande École", "Bachelor", "IBBA"
-  admission_exam            String?  // ex: "Concours Sésame"
-  is_alternance_possible    Boolean  @default(false)
-  is_expatriation_mandatory Boolean  @default(false)
+  id                        String          @id @default(uuid())
+  schoolId                  String          // ← et non campusId
+  name                      String
+  admission_exam            String?
+  is_alternance_possible    Boolean         @default(false)
+  is_expatriation_mandatory Boolean         @default(false)
   min_expatriation_months   Int?
   max_internship_months     Int?
+  campuses                  ProgramCampus[]
+  pricingRecords            PricingRecord[]
+  rankingRecords            RankingRecord[]
+  school                    School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
-  // Relations
-  campus          Campus            @relation(fields: [campusId], references: [id], onDelete: Cascade)
-  pricingRecords  PricingRecord[]
-  capacityRecords CapacityRecord[]
-  rankingRecords  RankingRecord[]
-  cronTargets     CronTarget[]
-
-  @@unique([campusId, name])
+  @@unique([schoolId, name])   // ← unicité PAR ÉCOLE
 }
 
-// ------------------------------------------------------
-// TABLES TEMPORELLES "RECORDS" (Données évolutives)
-// ------------------------------------------------------
+model ProgramCampus {
+  id              String           @id @default(uuid())
+  programId       String
+  campusId        String
+  program         Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  campus          Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  capacityRecords CapacityRecord[]
+
+  @@unique([programId, campusId])
+}
+
+// ── TABLES TEMPORELLES ────────────────────────────────────────────
 
 model PricingRecord {
   id                    String  @id @default(uuid())
@@ -113,33 +129,30 @@ model PricingRecord {
   intl_currency         String?
   additional_fees_notes String?
   source_url            String?
-
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  program               Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   @@unique([programId, academic_year])
 }
 
 model CapacityRecord {
-  id              String  @id @default(uuid())
-  programId       String
+  id              String        @id @default(uuid())
+  programCampusId String        // ← et non programId
   academic_year   Int
   spots_available Int
   source_url      String?
+  programCampus   ProgramCampus @relation(fields: [programCampusId], references: [id], onDelete: Cascade)
 
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
-
-  @@unique([programId, academic_year])
+  @@unique([programCampusId, academic_year])
 }
 
 model RankingRecord {
   id            String  @id @default(uuid())
   programId     String
   academic_year Int
-  ranking_name  String  // ex: "Le Parisien", "SIGEM", "FT"
+  ranking_name  String
   rank          Int
   source_url    String?
-
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  program       Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   @@unique([programId, academic_year, ranking_name])
 }
@@ -157,8 +170,7 @@ model SchoolStatsRecord {
   permanent_professors         Int?
   international_professors_pct Float?
   external_speakers_pct        Float?
-
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school                       School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@unique([schoolId, academic_year])
 }
@@ -166,78 +178,196 @@ model SchoolStatsRecord {
 model AccreditationRecord {
   id                 String  @id @default(uuid())
   schoolId           String
-  accreditation_name String  // ex: "EQUIS", "AACSB", "AMBA"
+  accreditation_name String
   year_obtained      Int
   is_active          Boolean @default(true)
-
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  // "international" = EQUIS, AACSB, AMBA, BSIS… | "label" = CGE, Qualiopi… | "state" = Grade Master, CTI…
+  accreditation_type String  @default("international")
+  school             School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@unique([schoolId, accreditation_name])
 }
 
-// ------------------------------------------------------
-// PIPELINE IA ET AUTOMATISATION
-// ------------------------------------------------------
+// ── ZONE TAMPON ───────────────────────────────────────────────────
 
 model ContributionInbox {
-  id                     String   @id @default(uuid())
-  source_type            String   // "User_Submission" ou "Automated_AI"
-  schoolId               String?  // Rattachement à l'école (toujours renseigné sauf exceptions)
-  campusId               String?  // Rattachement au campus (nullable selon le niveau de donnée)
-  programId              String?  // Rattachement au programme (nullable selon le niveau de donnée)
-  user_text              String?  
-  urls                   String[] // URLs fournies ou trouvées
-  ai_category            String   // "Pricing", "Ranking", "Capacity", "SchoolStats", "Accreditation", "Program_Discovery"
-  ai_extracted_json      Json?    // Résultat brut JSON de l'IA (modèles Gemma)
-  status                 String   @default("Pending_AI") // Pending_AI, Pending_Admin, Validated, Rejected
-  year_assumed           Boolean  @default(false)
-  data_conflict_warning  Boolean  @default(false)
-  program_name_mismatch  Boolean  @default(false)
-  createdAt              DateTime @default(now())
-
-  // Note: Les FK schoolId/campusId/programId sont optionnelles car :
-  // - Pour "Program_Discovery" (Phase 1), seul schoolId est renseigné
-  // - Pour les données de niveau école (SchoolStats, Accreditation), campusId/programId sont null
-  // - Pour les données de niveau programme (Pricing, Ranking, Capacity), les 3 sont renseignés
-}
-
-model CronTarget {
-  id                    String    @id @default(uuid())
-  schoolId              String
+  id                    String   @id @default(uuid())
+  source_type           String   // "User_Submission" | "Automated_AI"
+  schoolId              String?
+  campusId              String?
   programId             String?
-  data_category         String    // "Pricing", "Ranking", "Capacity", "Program_Discovery"
-  last_failed_attempt   DateTime?
-  failed_attempts_count Int       @default(0)
-  is_blacklisted        Boolean   @default(false)
+  programCampusId       String?
+  user_text             String?
+  urls                  String[]
+  ai_category           String
+  ai_extracted_json     Json?
+  status                String   @default("Pending_AI")
+  year_assumed          Boolean  @default(false)
+  data_conflict_warning Boolean  @default(false)
+  program_name_mismatch Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  submission_group_id   String?
 
-  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  program Program? @relation(fields: [programId], references: [id], onDelete: Cascade)
-
-  @@unique([schoolId, programId, data_category])
+  @@index([submission_group_id])
+  @@index([status, createdAt])
 }
 ```
 
-## 3. Chaîne Relationnelle
+> **La table `CronTarget` a été supprimée** (migration
+> `20260701100000_remove_cron_target`). Le pipeline n'entretient plus de liste
+> noire ; les échecs de scan sont journalisés.
+
+---
+
+## 3. Chaîne relationnelle
 
 ```
-School (1) ──→ (N) Campus (1) ──→ (N) Program (1) ──→ (N) PricingRecord
-                                                    ──→ (N) CapacityRecord
-                                                    ──→ (N) RankingRecord
-
+School (1) ──→ (N) Campus
+School (1) ──→ (N) Program ──→ (N) PricingRecord
+                            ──→ (N) RankingRecord
 School (1) ──→ (N) SchoolStatsRecord
 School (1) ──→ (N) AccreditationRecord
-School (1) ──→ (N) CronTarget
+
+Program (N) ←──→ (N) Campus   via ProgramCampus
+ProgramCampus (1) ──→ (N) CapacityRecord
 ```
 
-Les données de niveau **école** (stats, accréditations) sont rattachées directement à `School`.
-Les données de niveau **programme** (tarifs, classements, capacités) passent par `Campus → Program`.
+| Niveau de la donnée | Rattachement |
+|---------------------|--------------|
+| École — stats, accréditations | `School` |
+| Programme — tarifs, classements | `Program` |
+| **Programme × campus — capacités** | **`ProgramCampus`** |
 
-## 4. Directives pour les Agents IA futurs
+---
 
-Lors de l'implémentation de nouvelles fonctionnalités ou de la manipulation des données :
-- **Pas de tables par diplôme :** Ne jamais créer de table `Master` ou `BTS`. Tout nouveau type de formation s'insère dans la table `Program`.
-- **Pas de tables par campus :** Ne jamais dupliquer les tables `_Record` par campus. Un `Program` est déjà rattaché à un `Campus`, donc un `PricingRecord` est implicitement lié à un campus via son programme.
-- **Typage JSONB :** Le champ `ai_extracted_json` (ContributionInbox) est mappé sur le type `JSONB` de PostgreSQL par Prisma. L'agent IA doit s'assurer que les clés générées par le LLM (Gemma) correspondent scrupuleusement aux champs attendus dans les tables `_Record` pour faciliter le mapping lors de la validation par l'Admin.
-- **Upserting :** Les contraintes d'unicité (`@@unique`) définies dans le schéma sont cruciales. Elles garantissent qu'on ne créera pas deux tarifs pour la même école sur la même année. Lors du transfert d'une donnée validée depuis la `ContributionInbox` vers une table finale, l'agent doit utiliser la méthode `upsert` de Prisma (création si inexistant, mise à jour si existant).
-- **Niveaux de rattachement dans l'Inbox :** Les FK `schoolId`, `campusId` et `programId` de la `ContributionInbox` reflètent le niveau de sélection de l'utilisateur ou la cible du pipeline automatisé. Ne pas forcer un rattachement si l'information concerne un niveau supérieur (ex: une stat école n'a pas de `programId`).
-- **Edge Cases :** Consulter le fichier `edgecase.md` pour comprendre l'origine logique de champs spécifiques tels que `year_assumed` (Edge Case 2.1) ou `additional_fees_notes` (Edge Case 8).
+## 4. Migrations
+
+Cinq migrations, à appliquer par `prisma migrate deploy` :
+
+| Migration | Contenu |
+|-----------|---------|
+| `20260520095936_init` | schéma initial (modèle antérieur au refactor) |
+| `20260521170000_add_submission_group_id` | `ContributionInbox.submission_group_id` + index |
+| `20260701100000_remove_cron_target` | suppression de `CronTarget` |
+| `20260901120000_program_campus_refactor` | **refactor `Program` — écrite à la main** |
+| `20260901160000_inbox_status_index` | `@@index([status, createdAt])` sur l'inbox |
+
+### Ce qu'il faut savoir sur la migration de rattrapage
+
+Le refactor `Program` avait été appliqué à `schema.prisma` **sans jamais générer
+de migration** ; les bases étaient alignées par `prisma db push`. La migration
+`20260901120000` comble cet écart.
+
+Elle a été **écrite à la main**, parce que la version générée par
+`prisma migrate diff` était destructrice :
+
+```sql
+-- version auto-générée, NON retenue
+ALTER TABLE "Program" DROP COLUMN "campusId", ADD COLUMN "schoolId" TEXT NOT NULL;
+CREATE TABLE "ProgramCampus" (...);   -- créée vide
+```
+
+Elle échouait sur toute table peuplée et perdait le lien programme ↔ campus.
+La version retenue procède dans cet ordre :
+
+1. colonnes nullables ajoutées,
+2. rétro-remplissage (`Program.schoolId` déduit du campus ; `ProgramCampus`
+   peuplée depuis `Program.campusId` ; `CapacityRecord.programCampusId` déduit),
+3. `SET NOT NULL`,
+4. **puis seulement** suppression des anciennes colonnes.
+
+**Contrainte d'ordre permanente** : `ProgramCampus` se peuple depuis
+`Program.campusId`. Toute future migration touchant ce lien doit respecter la
+même séquence reprise → suppression.
+
+Elle porte deux garde-fous `RAISE EXCEPTION` :
+
+- **programmes orphelins** — un `campusId` pointant vers un campus disparu ;
+- **collision d'unicité** — l'ancienne contrainte était `(campusId, name)`, la
+  nouvelle est `(schoolId, name)`. *« MSc Finance » à Paris* et *« MSc Finance »
+  à Lyon* étaient deux `Program` légitimes et se percutent désormais. Le refactor
+  suppose qu'ils soient **fusionnés** en un `Program` relié à deux
+  `ProgramCampus` — un arbitrage métier (quel tarif garder ? quel classement ?)
+  qu'aucune migration ne peut trancher seule. La migration s'arrête donc avec un
+  message explicite.
+
+### Règles d'exploitation
+
+- **`prisma db push` est proscrit hors développement local.** C'est son usage qui
+  a produit la désynchronisation. Un garde-fou de CI le vérifie.
+- Une base alignée par `db push` doit être **baselinée**
+  (`prisma migrate resolve --applied <migration>`), pas migrée.
+- **Prisma 7 exige `SHADOW_DATABASE_URL`** dans `prisma.config.ts` pour
+  régénérer une migration depuis l'historique
+  (`migrate diff --from-migrations`). L'option `--shadow-database-url` n'existe
+  plus en ligne de commande, et `--to-schema-datamodel` est devenu `--to-schema`.
+- **`env()` ne lit pas la variable** : il construit un objet de référence que
+  Prisma résout plus tard. Un objet est toujours vrai, donc
+  `env("DIRECT_URL") || env("DATABASE_URL")` retournait **systématiquement** la
+  première branche — le repli annoncé en commentaire n'existait pas, et les
+  migrations échouaient au lieu de basculer. L'arbitrage se fait désormais sur
+  `process.env`, **avant** l'appel :
+
+  ```ts
+  const MIGRATION_URL_VAR = process.env.DIRECT_URL ? "DIRECT_URL" : "DATABASE_URL";
+  url: env(MIGRATION_URL_VAR),
+  ```
+
+---
+
+## 5. Cycle de vie d'un ticket `ContributionInbox`
+
+| Statut | Signification |
+|--------|---------------|
+| `Pending_AI` | en attente de traitement par le pipeline |
+| `Pending_Admin` | données extraites, en attente de validation humaine |
+| `Validated` | transféré en production ; **posé uniquement si une donnée a réellement été écrite** |
+| `Rejected` | écarté (page incompatible, catégorie inconnue) |
+| `Failed` | erreur inattendue ; porte un compteur de tentatives |
+
+`Failed` n'est pas terminal : le ticket est rejoué après un délai, puis supprimé
+au bout de N tentatives. Charge utile écrite dans `ai_extracted_json` :
+
+```json
+{ "error": "...", "processing_attempts": 2,
+  "failed_at": "2026-09-01T09:29:08Z", "failed_at_epoch": 1788000000.0 }
+```
+
+Le doublon numérique `failed_at_epoch` existe parce que la file d'attente
+compare cette valeur **en SQL** : un `::timestamptz` sur une chaîne issue d'un
+JSON lève une erreur si la valeur est malformée et ferait tomber toute la boucle
+de traitement.
+
+> Politique complète : [`decision-retention-tickets.md`](../memory/decision-retention-tickets.md).
+
+---
+
+## 6. Directives pour les agents futurs
+
+- **Pas de table par diplôme.** Tout type de formation s'insère dans `Program`.
+- **Pas de table `_Record` par campus.** Seule la capacité varie par campus, et
+  c'est `ProgramCampus` qui porte cette dimension.
+- **Un `Program` est unique par `(schoolId, name)`.** Ne jamais créer un doublon
+  pour distinguer deux campus : créer un `ProgramCampus` supplémentaire.
+- **Ne jamais écrire un `CapacityRecord` sans campus identifiable.** La route de
+  validation **refuse** l'import plutôt que de choisir un campus au hasard —
+  c'était un défaut corrigé (`findFirst` sans `orderBy` renvoyait une ligne
+  arbitraire, et l'ordre PostgreSQL sans `ORDER BY` n'est même pas stable).
+- **`ContributionInbox` n'a aucune clé étrangère.** `schoolId`, `campusId`,
+  `programId` et `programCampusId` sont de simples `String?`. Rien en base ne
+  rattrape une incohérence : **le contrôle d'appartenance doit être fait
+  applicativement**, comme le fait `POST /api/contribute`.
+- **Upsert obligatoire** lors du transfert vers la production : les contraintes
+  `@@unique` sont là pour ça.
+- **Upsert et changement de statut dans une même transaction.** Séparés, un échec
+  du second laissait la donnée écrite et le ticket ouvert — l'admin revalidait
+  et écrasait.
+- **Statuts et catégories circulent en chaînes libres**, dupliquées entre Python
+  et TypeScript, sans énumération. Une faute de frappe crée un état inatteignable
+  silencieusement. *Dette connue, non traitée.*
+- **`User.role` est un `String`** avec `MODERATOR` par défaut et aucune
+  contrainte ; les contrôles reposent sur une comparaison exacte à `"ADMIN"`.
+- **Typage JSONB** : `ai_extracted_json` est mappé sur `JSONB`. Les clés générées
+  par l'IA doivent correspondre aux champs attendus par les tables `_Record`.
+- **Edge cases** : voir `edgecase.md` pour l'origine de `year_assumed`,
+  `additional_fees_notes`, etc.

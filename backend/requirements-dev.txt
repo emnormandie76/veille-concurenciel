@@ -1,0 +1,14 @@
+# Dependances de developpement et de test.
+#
+# Installation :  pip install -r backend/requirements-dev.txt
+# (inclut requirements.txt)
+#
+# pytest et pytest-asyncio etaient utilises par test/test_crowdsourcing_processor.py
+# sans etre declares nulle part : le seul test du depot — qui verifie une
+# garantie de confidentialite importante — ne tournait pas depuis une
+# installation propre.
+
+-r requirements.txt
+
+pytest==9.0.3
+pytest-asyncio==1.3.0

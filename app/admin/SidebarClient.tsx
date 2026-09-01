@@ -47,6 +47,13 @@ export default function SidebarClient({ user }: SidebarClientProps) {
           <span>🏫</span> Écoles & Campus
         </Link>
 
+        <Link
+          href="/admin/cron"
+          className={`nav-link ${pathname.startsWith("/admin/cron") ? "active" : ""}`}
+        >
+          <span>⚙️</span> Monitoring & Cron
+        </Link>
+
         {user.role === "ADMIN" && (
           <Link
             href="/admin/users"
@@ -132,28 +139,32 @@ export default function SidebarClient({ user }: SidebarClientProps) {
           flex: 1;
         }
 
-        .nav-link {
+        :global(.nav-link),
+        :global(.nav-link:visited) {
           display: flex;
           align-items: center;
           gap: 12px;
           padding: 12px 16px;
           border-radius: var(--radius-md);
-          color: var(--text-secondary);
+          color: var(--text-secondary) !important;
           text-decoration: none;
           font-size: 0.925rem;
           font-weight: 500;
-          transition: var(--transition-fast);
+          transition: all var(--transition-fast) !important;
         }
 
-        .nav-link:hover {
-          background-color: var(--bg-tertiary);
-          color: #ffffff;
+        :global(.nav-link:hover),
+        :global(.nav-link:hover:visited) {
+          background-color: var(--bg-tertiary) !important;
+          color: rgba(255, 255, 255, 0.8) !important;
+          transform: translateX(4px) !important;
         }
 
-        .nav-link.active {
-          background-color: var(--accent-glow);
-          color: var(--accent);
-          border-left: 3px solid var(--accent);
+        :global(.nav-link.active),
+        :global(.nav-link.active:visited) {
+          background-color: var(--accent-glow) !important;
+          color: var(--accent) !important;
+          border-left: 3px solid var(--accent) !important;
         }
 
         .sidebar-footer {

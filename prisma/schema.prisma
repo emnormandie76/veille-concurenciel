@@ -1,122 +1,109 @@
-// schema.prisma — Source de vérité : bdd.md (immuable)
-// ⚠️ Ne JAMAIS créer de table Master, Bachelor, BTS — tout est un Program
-// ⚠️ Toujours utiliser upsert() lors du transfert ContributionInbox → tables rigides
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  // url est défini dans prisma.config.ts (Prisma v7)
 }
-
-// ------------------------------------------------------
-// AUTHENTIFICATION ET RÔLES
-// ------------------------------------------------------
 
 model User {
   id            String   @id @default(uuid())
   username      String   @unique
-  password_hash String   // bcrypt
-  role          String   @default("MODERATOR") // "ADMIN" | "MODERATOR"
+  password_hash String
+  role          String   @default("MODERATOR")
   createdAt     DateTime @default(now())
 }
 
-// ------------------------------------------------------
-// ENTITÉS PRINCIPALES (Immuables)
-// ------------------------------------------------------
-
 model School {
-  id              String  @id @default(uuid())
-  name            String  @unique
-  official_domain String  @unique
-  status          String  @default("ACTIVE") // ACTIVE, INACTIVE, DRAFT
-
-  campuses       Campus[]
-  statsRecords   SchoolStatsRecord[]
-  accreditations AccreditationRecord[]
-  cronTargets    CronTarget[]
+  id              String                @id @default(uuid())
+  name            String                @unique
+  official_domain String                @unique
+  status          String                @default("ACTIVE")
+  accreditations  AccreditationRecord[]
+  campuses        Campus[]
+  programs        Program[]
+  statsRecords    SchoolStatsRecord[]
 }
 
 model Campus {
-  id       String  @id @default(uuid())
-  schoolId String
-  name     String  // ex: "Campus Paris La Défense"
-  city     String? // ex: "Paris"
-
-  school   School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  programs Program[]
+  id              String          @id @default(uuid())
+  schoolId        String
+  name            String
+  city            String?
+  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  programCampuses ProgramCampus[]
 
   @@unique([schoolId, name])
 }
 
 model Program {
-  id                        String  @id @default(uuid())
-  campusId                  String
-  name                      String  // ex: "Programme Grande École"
-  admission_exam            String? // ex: "Concours Sésame"
-  is_alternance_possible    Boolean @default(false)
-  is_expatriation_mandatory Boolean @default(false)
+  id                        String           @id @default(uuid())
+  schoolId                  String
+  name                      String
+  admission_exam            String?
+  is_alternance_possible    Boolean          @default(false)
+  is_expatriation_mandatory Boolean          @default(false)
   min_expatriation_months   Int?
   max_internship_months     Int?
+  campuses                  ProgramCampus[]
+  pricingRecords            PricingRecord[]
+  school                    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  rankingRecords            RankingRecord[]
 
-  campus          Campus          @relation(fields: [campusId], references: [id], onDelete: Cascade)
-  pricingRecords  PricingRecord[]
-  capacityRecords CapacityRecord[]
-  rankingRecords  RankingRecord[]
-  cronTargets     CronTarget[]
-
-  @@unique([campusId, name])
+  @@unique([schoolId, name])
 }
 
-// ------------------------------------------------------
-// TABLES TEMPORELLES "RECORDS" (Données évolutives)
-// ------------------------------------------------------
+model ProgramCampus {
+  id              String           @id @default(uuid())
+  programId       String
+  campusId        String
+  program         Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  campus          Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  capacityRecords CapacityRecord[]
+
+  @@unique([programId, campusId])
+}
 
 model PricingRecord {
   id                    String  @id @default(uuid())
   programId             String
   academic_year         Int
   currency              String  @default("EUR")
-  year_1_fee            Int?    // Edge Case 3 : prix par année, jamais de lissage IA
+  year_1_fee            Int?
   year_2_fee            Int?
   year_3_fee            Int?
   year_4_fee            Int?
   year_5_fee            Int?
-  total_fee             Int?    // Si le prix est global pour le cursus
-  intl_year_1_fee       Int?    // Edge Case 12 : tarif Non-UE séparé
+  total_fee             Int?
+  intl_year_1_fee       Int?
   intl_total_fee        Int?
   intl_currency         String?
-  additional_fees_notes String? // Edge Case 8 : frais cachés (dossier, CVEC, asso)
+  additional_fees_notes String?
   source_url            String?
-
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  program               Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   @@unique([programId, academic_year])
 }
 
 model CapacityRecord {
-  id              String  @id @default(uuid())
-  programId       String
+  id              String        @id @default(uuid())
+  programCampusId String
   academic_year   Int
   spots_available Int
   source_url      String?
+  programCampus   ProgramCampus @relation(fields: [programCampusId], references: [id], onDelete: Cascade)
 
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
-
-  @@unique([programId, academic_year])
+  @@unique([programCampusId, academic_year])
 }
 
 model RankingRecord {
   id            String  @id @default(uuid())
   programId     String
   academic_year Int
-  ranking_name  String  // ex: "Le Parisien", "SIGEM", "FT"
+  ranking_name  String
   rank          Int
   source_url    String?
-
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  program       Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   @@unique([programId, academic_year, ranking_name])
 }
@@ -134,8 +121,7 @@ model SchoolStatsRecord {
   permanent_professors         Int?
   international_professors_pct Float?
   external_speakers_pct        Float?
-
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school                       School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@unique([schoolId, academic_year])
 }
@@ -143,50 +129,36 @@ model SchoolStatsRecord {
 model AccreditationRecord {
   id                 String  @id @default(uuid())
   schoolId           String
-  accreditation_name String  // ex: "EQUIS", "AACSB", "AMBA"
+  accreditation_name String
   year_obtained      Int
   is_active          Boolean @default(true)
-
-  school School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  // "international" = EQUIS, AACSB, AMBA, BSIS… | "label" = CGE, Qualiopi, DD&RS… | "state" = Grade Master, CTI…
+  accreditation_type String  @default("international")
+  school             School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   @@unique([schoolId, accreditation_name])
 }
 
-// ------------------------------------------------------
-// PIPELINE IA ET AUTOMATISATION
-// ------------------------------------------------------
-
 model ContributionInbox {
   id                    String   @id @default(uuid())
-  source_type           String   // "User_Submission" | "Automated_AI"
-  schoolId              String?  // FK niveau école (toujours renseigné sauf exceptions)
-  campusId              String?  // FK niveau campus (nullable)
-  programId             String?  // FK niveau programme (nullable)
-  user_text             String?
-  urls                  String[] // URLs fournies ou trouvées
-  ai_category           String   // "Program_Discovery" | "Pricing" | "Ranking" | "Capacity" | "SchoolStats" | "Accreditation"
-  ai_extracted_json     Json?    // JSONB PostgreSQL — résultat brut Gemma
-  status                String   @default("Pending_AI") // Pending_AI | Pending_Admin | Validated | Rejected
-  year_assumed          Boolean  @default(false)  // Edge Case 2.1
-  data_conflict_warning Boolean  @default(false)  // Edge Case 5
-  program_name_mismatch Boolean  @default(false)  // Edge Case 6
-  createdAt             DateTime @default(now())
-  // Note FK : Pour "Program_Discovery" (Phase 1), seul schoolId est renseigné.
-  // Pour SchoolStats/Accreditation : campusId/programId = null.
-  // Pour Pricing/Ranking/Capacity : les 3 FK sont renseignées.
-}
-
-model CronTarget {
-  id                    String    @id @default(uuid())
-  schoolId              String
+  source_type           String
+  schoolId              String?
+  campusId              String?
   programId             String?
-  data_category         String    // "Program_Discovery" | "Pricing" | "Ranking" | "Capacity"
-  last_failed_attempt   DateTime?
-  failed_attempts_count Int       @default(0)  // Edge Case 4 : blacklist après 3 échecs
-  is_blacklisted        Boolean   @default(false)
+  programCampusId       String?
+  user_text             String?
+  urls                  String[]
+  ai_category           String
+  ai_extracted_json     Json?
+  status                String   @default("Pending_AI")
+  year_assumed          Boolean  @default(false)
+  data_conflict_warning Boolean  @default(false)
+  program_name_mismatch Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  submission_group_id   String?
 
-  school  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  program Program? @relation(fields: [programId], references: [id], onDelete: Cascade)
-
-  @@unique([schoolId, programId, data_category])
+  @@index([submission_group_id])
+  // La file de traitement filtre sur status et trie sur createdAt a chaque
+  // passage (toutes les minutes). Aucun index ne couvrait ces colonnes.
+  @@index([status, createdAt])
 }

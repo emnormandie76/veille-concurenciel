@@ -9,16 +9,13 @@
  * Référence : task.md §3.1, architecture.md §3.4
  */
 
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { guardAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const { error } = await guardAuth();
+  if (error) return error;
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") ?? undefined;
@@ -45,8 +42,48 @@ export async function GET(request: Request) {
       prisma.contributionInbox.count({ where }),
     ]);
 
+    // Extraire les identifiants uniques non nuls pour faire un batch select
+    const schoolIds = Array.from(new Set(tickets.map((t) => t.schoolId).filter(Boolean))) as string[];
+    const campusIds = Array.from(new Set(tickets.map((t) => t.campusId).filter(Boolean))) as string[];
+    const programIds = Array.from(new Set(tickets.map((t) => t.programId).filter(Boolean))) as string[];
+
+    // Charger les noms correspondants en parallèle
+    const [schools, campuses, programs] = await Promise.all([
+      schoolIds.length > 0
+        ? prisma.school.findMany({
+            where: { id: { in: schoolIds } },
+            select: { id: true, name: true },
+          })
+        : [],
+      campusIds.length > 0
+        ? prisma.campus.findMany({
+            where: { id: { in: campusIds } },
+            select: { id: true, name: true },
+          })
+        : [],
+      programIds.length > 0
+        ? prisma.program.findMany({
+            where: { id: { in: programIds } },
+            select: { id: true, name: true },
+          })
+        : [],
+    ]);
+
+    // Créer des maps indexées par ID pour récupération en O(1)
+    const schoolMap = new Map(schools.map((s) => [s.id, s.name]));
+    const campusMap = new Map(campuses.map((c) => [c.id, c.name]));
+    const programMap = new Map(programs.map((p) => [p.id, p.name]));
+
+    // Associer les noms correspondants aux tickets
+    const enrichedTickets = tickets.map((t) => ({
+      ...t,
+      schoolName: t.schoolId ? (schoolMap.get(t.schoolId) ?? null) : null,
+      campusName: t.campusId ? (campusMap.get(t.campusId) ?? null) : null,
+      programName: t.programId ? (programMap.get(t.programId) ?? null) : null,
+    }));
+
     return NextResponse.json({
-      data: tickets,
+      data: enrichedTickets,
       pagination: {
         total,
         page,

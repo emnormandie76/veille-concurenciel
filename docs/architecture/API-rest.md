@@ -1,91 +1,194 @@
-# Design Spec: Public REST API (v1)
+# API REST publique (v1) — spécification et état réel
 
-## Objective
-Provide a fully open, public-facing REST API for partners to consume validated school data (schools, campuses, programs, pricing, capacity, rankings, stats, accreditations). The API must be highly performant and robust against high traffic to protect the underlying Neon PostgreSQL database.
+> **Mise à jour** : 1er septembre 2026, après la remédiation de l'audit technique.
+> Les sections marquées **« État réel »** décrivent ce que fait le code
+> aujourd'hui, là où il s'écarte de l'intention initiale.
 
-## Architecture & Technology Stack
-- **Framework**: Next.js App Router (Route Handlers `app/api/v1/...`)
-- **Language**: TypeScript
-- **Database Access**: Prisma ORM
-- **Hosting**: Vercel
-- **Caching**: Vercel Edge Cache (ISR / Route Segment Config)
+## Objectif
 
-## Endpoints (15 routes)
+Exposer une API REST publique permettant à des partenaires de consommer les
+données validées (écoles, campus, programmes, tarifs, capacités, classements,
+statistiques, accréditations). L'API doit rester performante et **protéger la
+base Neon**, qui est sur un palier gratuit.
 
-All endpoints reside under `/api/v1/`. Versioning ensures backward compatibility.
+## Pile technique
 
-### 1. Schools (Écoles)
+- **Framework** : Next.js App Router (Route Handlers `app/api/v1/...`)
+- **Langage** : TypeScript
+- **Accès BDD** : Prisma ORM
+- **Hébergement cible** : Vercel (non déployé à ce jour)
 
-| Method | Endpoint | Description | Query Params |
+---
+
+## Protection de la base — ce qui protège réellement
+
+### Limitation de débit *(ajoutée à l'étape 4 de la remédiation)*
+
+L'API était **entièrement hors du périmètre du middleware** : ni authentifiée,
+ni limitée. Un seul client pouvait aspirer la base et saturer le palier Neon.
+
+| Portée | Plafond | Implémentation |
+|--------|---------|----------------|
+| `/api/v1/:path*` | **60 requêtes / minute / IP** | `proxy.ts` → `lib/rate-limit.ts`, seau `v1:` |
+
+- Les pré-vols CORS (`OPTIONS`) ne consomment pas de quota.
+- Dépassement → **429** avec un en-tête `Retry-After`.
+- L'IP est déterminée par `clientIp()`, qui interroge `x-vercel-forwarded-for`
+  puis `x-real-ip` **avant** `x-forwarded-for` — ce dernier étant contrôlable
+  par le client.
+- Le compteur s'appuie sur **Upstash Redis** si `UPSTASH_REDIS_REST_URL` et
+  `UPSTASH_REDIS_REST_TOKEN` sont définies. **Sinon il retombe en mémoire, et le
+  plafond ne tient pas sur une plateforme sans état.**
+
+### Cache — l'intention et la réalité
+
+**Intention initiale** : `export const revalidate = 3600` sur chaque route, la
+première requête frappant la base et les suivantes étant servies par le CDN.
+
+**État réel** : la directive est bien présente dans les 12 routes, **mais elle
+ne s'applique pas**. Tous les handlers reçoivent `request` et lisent
+`new URL(request.url).searchParams` : en App Router, cela force le rendu
+dynamique et neutralise `revalidate`. Le build le confirme — les routes `/api/v1`
+sortent toutes en `ƒ (Dynamic)`, aucune en `○ (Static)`.
+
+**Conséquence** : chaque appel atteint la base. C'est la limitation de débit,
+et non le cache, qui protège aujourd'hui Neon.
+
+**Piste** si le cache devient nécessaire : passer par
+`unstable_cache` / `revalidateTag` autour des requêtes Prisma, plutôt que de
+compter sur le cache de segment de route — inopérant dès qu'un paramètre de
+requête est lu.
+
+### Bornes sur les collections *(étape 4)*
+
+| Type de route | Protection |
+|---------------|------------|
+| Collections racine — `/v1/schools`, `/v1/programs`, `/v1/rankings` | **paginées** via `parsePagination` (`limit` plafonné à 100, défaut 20) |
+| Sous-collections — les 7 routes rattachées à une entité parente | **plafond dur `take: 500`** |
+| `/v1/compare/programs` | 5 identifiants maximum, **dédupliqués** |
+
+Le plafond de 500 a été préféré à la pagination pour les sous-collections : les
+paginer aurait changé leur forme de réponse — un tableau nu devient
+`{ data, pagination }` — et cassé tout consommateur existant. La valeur est très
+au-dessus de tout volume légitime : elle borne une requête pathologique sans
+tronquer de donnée réelle.
+
+---
+
+## Points d'entrée (12 routes)
+
+Toutes sous `/api/v1/`. Seules les écoles `status == "ACTIVE"` sont exposées.
+
+### Écoles
+
+| Méthode | Endpoint | Description | Paramètres | Forme |
+|---|---|---|---|---|
+| `GET` | `/api/v1/schools` | Liste des écoles actives | `?search=&page=1&limit=20` | `{ data, pagination }` |
+| `GET` | `/api/v1/schools/[id]` | Détail d'une école | — | objet |
+| `GET` | `/api/v1/schools/[id]/stats` | Statistiques | `?year=2025` | tableau |
+| `GET` | `/api/v1/schools/[id]/accreditations` | Accréditations | — | tableau, `take: 500` |
+
+### Campus
+
+| Méthode | Endpoint | Description | Forme |
 |---|---|---|---|
-| `GET` | `/api/v1/schools` | Liste paginée des écoles actives | `?search=emlv&page=1&limit=20` |
-| `GET` | `/api/v1/schools/[id]` | Détail d'une école (infos de base) | — |
-| `GET` | `/api/v1/schools/[id]/stats` | Stats de l'école (étudiants, alumni, partenaires…) | `?year=2025` (optionnel, dernier par défaut) |
-| `GET` | `/api/v1/schools/[id]/accreditations` | Accréditations de l'école (EQUIS, AACSB…) | — |
+| `GET` | `/api/v1/schools/[id]/campuses` | Campus d'une école | tableau, `take: 500` |
+| `GET` | `/api/v1/campuses/[id]` | Détail d'un campus + ses programmes | objet |
 
-### 2. Campuses
+### Programmes
 
-| Method | Endpoint | Description | Query Params |
+| Méthode | Endpoint | Description | Paramètres | Forme |
+|---|---|---|---|---|
+| `GET` | `/api/v1/schools/[id]/programs` | Programmes de l'école | `?campus_id=` | tableau, `take: 500` |
+| `GET` | `/api/v1/programs/[id]` | Détail d'un programme | — | objet |
+| `GET` | `/api/v1/programs` | Recherche globale | `?search=&admission_exam=&alternance=&page=&limit=` | `{ data, pagination }` |
+
+> **Modèle** : un programme appartient à une **école**, pas à un campus. Le
+> filtre `campus_id` passe par la table d'association `ProgramCampus`.
+
+### Tarifs, classements, capacités
+
+| Méthode | Endpoint | Description | Forme |
 |---|---|---|---|
-| `GET` | `/api/v1/schools/[id]/campuses` | Liste des campus d'une école | — |
-| `GET` | `/api/v1/campuses/[id]` | Détail d'un campus spécifique + ses programmes | — |
+| `GET` | `/api/v1/programs/[id]/pricing` | Historique tarifaire | tableau, `take: 500` |
+| `GET` | `/api/v1/schools/[id]/pricing` | Tarifs de tous les programmes | tableau, `take: 500` |
+| `GET` | `/api/v1/programs/[id]/rankings` | Classements d'un programme | tableau, `take: 500` |
+| `GET` | `/api/v1/rankings` | Tableau global | `?ranking_name=&year=&page=&limit=` | `{ data, pagination }` |
+| `GET` | `/api/v1/programs/[id]/capacity` | Places disponibles | tableau, `take: 500` |
 
-### 3. Programs (Programmes)
+> **Capacité** : elle est rattachée à un couple **(programme, campus)** via
+> `ProgramCampus`, jamais au programme seul. La réponse expose donc le campus.
 
-| Method | Endpoint | Description | Query Params |
-|---|---|---|---|
-| `GET` | `/api/v1/schools/[id]/programs` | Tous les programmes de l'école (tous campus) | `?campus_id=xxx` (filtre optionnel) |
-| `GET` | `/api/v1/programs/[id]` | Détail d'un programme spécifique | — |
-| `GET` | `/api/v1/programs` | Recherche globale de programmes (toutes écoles) | `?search=pge&admission_exam=sesame&alternance=true` |
+### Comparaison
 
-### 4. Pricing (Tarifs)
+| Méthode | Endpoint | Paramètres |
+|---|---|---|
+| `GET` | `/api/v1/compare/programs` | `?ids=uuid1,uuid2,uuid3` — **5 maximum** |
 
-| Method | Endpoint | Description | Query Params |
-|---|---|---|---|
-| `GET` | `/api/v1/programs/[id]/pricing` | Historique tarifaire d'un programme | `?year=2025` |
-| `GET` | `/api/v1/schools/[id]/pricing` | Tous les tarifs de l'école (tous programmes) | `?year=2025` |
+Les identifiants sont **dédupliqués** avant la requête. Sans cela, `?ids=X,X`
+renvoyait un `404 introuvable` pour un programme parfaitement valide, la route
+comparant la longueur de la liste au nombre de résultats.
 
-### 5. Rankings (Classements)
+---
 
-| Method | Endpoint | Description | Query Params |
-|---|---|---|---|
-| `GET` | `/api/v1/programs/[id]/rankings` | Classements d'un programme | `?year=2025&ranking_name=Figaro` |
-| `GET` | `/api/v1/rankings` | Tableau global de classements par média/année | `?ranking_name=Figaro&year=2025&page=1&limit=50` |
+## Endpoint public de contribution
 
-### 6. Capacity (Places disponibles)
+Hors `/api/v1`, mais public et non authentifié — donc soumis aux mêmes
+préoccupations.
 
-| Method | Endpoint | Description | Query Params |
-|---|---|---|---|
-| `GET` | `/api/v1/programs/[id]/capacity` | Historique des places d'un programme | `?year=2025` |
+`POST /api/contribute`
 
-### 7. Comparaison
+| Contrainte | Valeur |
+|------------|--------|
+| Débit | 5 requêtes / 20 s / IP (middleware) |
+| `schoolId` | requis, école existante **et `ACTIVE`** |
+| `categories` | tableau non vide, dédupliqué, **liste blanche** : `Pricing`, `Ranking`, `Capacity`, `SchoolStats`, `Accreditation` |
+| `urls` | tableau non vide, **5 maximum**, `https:` obligatoire, 2048 caractères max |
+| Domaine des URLs | doit appartenir au **domaine officiel de l'école** ou à `CONTRIBUTION_ALLOWED_DOMAINS` |
+| Hôtes internes | rejetés (boucle locale, RFC1918, lien-local, CGNAT, `.local`, `.internal`) |
+| `userText` | 2 000 caractères maximum |
+| `campusId`, `programId`, `programCampusId` | optionnels, **vérifiés comme appartenant à `schoolId`** |
+| Écriture | un ticket par catégorie, dans **une seule transaction** |
 
-| Method | Endpoint | Description | Query Params |
-|---|---|---|---|
-| `GET` | `/api/v1/compare/programs` | Comparer N programmes côte à côte (tarifs, classements, capacité) | `?ids=uuid1,uuid2,uuid3` (max 5) |
+La restriction de domaine existe parce que chaque ticket déclenche une
+extraction Tavily **facturée** : sans elle, un utilisateur pouvait faire dépenser
+des crédits sur des cibles arbitraires.
 
-## Data Flow & Protection (Caching)
-Since the API is entirely open (no API keys), protecting the free-tier Neon database is the top priority.
-- **Cache Strategy**: Each Route Handler will enforce a time-based cache using the route segment config: `export const revalidate = 3600;` (1 hour).
-- **Mechanism**: The first incoming request will hit the Neon database via Prisma. Subsequent requests within the 1-hour window will be served directly from Vercel's global CDN, resulting in near-zero database load regardless of traffic volume.
+---
 
-## Error Handling & CORS
-- **CORS**: Endpoints must return appropriate CORS headers (`Access-Control-Allow-Origin: *`) to allow consumption from client-side web applications (browsers) by partners.
-- **Standardized Errors**: JSON error format: `{ "error": "Description of the error" }`. 
-  - `400 Bad Request` for invalid query parameters (ex: `ids` with more than 5 UUIDs on compare).
-  - `404 Not Found` if an ID does not exist or school is not `ACTIVE`.
-  - `500 Internal Server Error` for unexpected backend issues.
+## CORS et erreurs
 
-## Excluded Tables
-The following tables are **strictly excluded** from all API responses to maintain security:
-- `ContributionInbox` (zone tampon interne)
-- `CronTarget` (tracking pipeline IA)
-- `User` (authentification admin)
+- **CORS** : `Access-Control-Allow-Origin: *` sur `/api/v1` (`lib/utils.ts`).
+  Assumé : l'API est en lecture seule et publique.
+- **Format d'erreur** : `{ "error": "description" }`.
 
-## Validation Criteria
-- API successfully returns JSON data matching the Prisma schema.
-- Endpoints only return data for schools where `status == "ACTIVE"`.
-- Next.js caching is functional (verified via response times on consecutive requests).
-- CORS headers are correctly applied.
-- Search/filter parameters work correctly on paginated endpoints.
-- Compare endpoint returns side-by-side data for up to 5 programs.
+| Code | Cas |
+|------|-----|
+| `400` | paramètre invalide, corps de requête non conforme |
+| `404` | identifiant inexistant ou école non `ACTIVE` |
+| `429` | plafond de débit dépassé (en-tête `Retry-After`) |
+| `500` | erreur interne — message générique, détail en `console.error` |
+
+---
+
+## Tables exclues de toute réponse
+
+- `ContributionInbox` — zone tampon interne, jamais exposée
+- `User` — authentification du back-office
+
+> `CronTarget` figurait dans cette liste ; **la table a été supprimée du projet**
+> (migration `20260701100000_remove_cron_target`).
+
+---
+
+## Critères de validation
+
+- Les réponses correspondent au schéma Prisma.
+- Seules les écoles `ACTIVE` sont exposées.
+- Les en-têtes CORS sont appliqués.
+- Recherche et filtres fonctionnent sur les routes paginées.
+- La comparaison accepte jusqu'à 5 programmes, identifiants dupliqués compris.
+- **Le plafond de 60 requêtes/minute se déclenche** — vérifié : 66 appels
+  successifs donnent 60 réponses `200` puis des `429`.
+- **Le cache ISR ne fonctionne pas** ; ne pas s'appuyer dessus tant que le point
+  n'est pas repris (voir plus haut).

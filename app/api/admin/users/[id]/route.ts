@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { guardAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -7,15 +6,9 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
-
-  if (session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Accès interdit : Rôle ADMIN requis" }, { status: 403 });
-  }
+  const guard = await guardAdmin();
+  if (guard.error) return guard.error;
+  const session = guard.session;
 
   const { id } = await params;
 

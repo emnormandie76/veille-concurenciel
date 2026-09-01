@@ -33,7 +33,7 @@ def get_pool() -> pool.SimpleConnectionPool:
             minconn=1,
             maxconn=5,  # Free Tier Neon : limiter les connexions simultanées
             dsn=database_url,
-            connect_timeout=5,  # 5s max pour éviter le blocage (Edge Case 15)
+            connect_timeout=15,  # 15s max pour tolérer le cold start de Neon serverless
         )
         logger.info("✅ Pool PostgreSQL initialisé (1–5 connexions)")
 

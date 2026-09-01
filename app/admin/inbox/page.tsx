@@ -48,6 +48,9 @@ interface Ticket {
   data_conflict_warning: boolean;
   program_name_mismatch: boolean;
   createdAt: string;
+  schoolName?: string | null;
+  campusName?: string | null;
+  programName?: string | null;
 }
 
 const STATUS_OPTIONS = ["", "Pending_AI", "Pending_Admin", "Validated", "Rejected"];
@@ -81,7 +84,7 @@ export default function InboxPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filtres
-  const [filterStatus, setFilterStatus] = useState("");
+  const [filterStatus, setFilterStatus] = useState("Pending_Admin");
   const [filterCategory, setFilterCategory] = useState("");
 
   // Panneau de détail
@@ -89,6 +92,12 @@ export default function InboxPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Purge
+  const [purgeModalOpen, setPurgeModalOpen] = useState(false);
+  const [purgeStatuses, setPurgeStatuses] = useState<string[]>(["Validated", "Rejected"]);
+  const [purgeCount, setPurgeCount] = useState<number | null>(null);
+  const [purgeLoading, setPurgeLoading] = useState(false);
 
   const LIMIT = 20;
 
@@ -169,6 +178,41 @@ export default function InboxPage() {
     }
   };
 
+  const fetchPurgeCount = async (statuses: string[]) => {
+    try {
+      let totalCount = 0;
+      for (const status of statuses) {
+        const res = await fetch(`/api/admin/inbox?status=${status}&limit=1`);
+        if (res.ok) {
+          const data = await res.json();
+          totalCount += data.pagination.total;
+        }
+      }
+      setPurgeCount(totalCount);
+    } catch {
+      setPurgeCount(null);
+    }
+  };
+
+  const handlePurge = async () => {
+    setPurgeLoading(true);
+    try {
+      const res = await fetch("/api/admin/inbox/purge", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statuses: purgeStatuses }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur lors de la purge");
+      setPurgeModalOpen(false);
+      fetchTickets();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setPurgeLoading(false);
+    }
+  };
+
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
@@ -185,6 +229,16 @@ export default function InboxPage() {
           <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
             {total} ticket{total !== 1 ? "s" : ""}
           </span>
+          <button
+            id="btn-open-purge"
+            className="btn btn-danger btn-sm"
+            onClick={() => {
+              setPurgeModalOpen(true);
+              fetchPurgeCount(purgeStatuses);
+            }}
+          >
+            🗑️ Purger
+          </button>
         </div>
       </div>
 
@@ -249,7 +303,7 @@ export default function InboxPage() {
               <tr>
                 <th>Catégorie</th>
                 <th>Source</th>
-                <th>École</th>
+                <th>École / Campus / Parcours</th>
                 <th>Alertes</th>
                 <th>Statut</th>
                 <th>Date</th>
@@ -274,9 +328,25 @@ export default function InboxPage() {
                     </span>
                   </td>
                   <td>
-                    <code style={{ fontSize: "0.8rem", color: "var(--accent)" }}>
-                      {t.schoolId ? t.schoolId.substring(0, 8) + "…" : "—"}
-                    </code>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                        {t.schoolName || (t.schoolId ? t.schoolId.substring(0, 8) + "…" : "—")}
+                      </span>
+                      {(t.campusName || t.programName) && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                          {t.campusName && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                              📍 {t.campusName}
+                            </span>
+                          )}
+                          {t.programName && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
+                              📚 {t.programName}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
@@ -349,6 +419,19 @@ export default function InboxPage() {
                 <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
                   ID: {selectedTicket.id}
                 </p>
+                {(selectedTicket.schoolName || selectedTicket.schoolId) && (
+                  <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--accent)" }}>
+                      🏫 {selectedTicket.schoolName || selectedTicket.schoolId}
+                    </span>
+                    {(selectedTicket.campusName || selectedTicket.programName) && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                        {selectedTicket.campusName && <span>📍 {selectedTicket.campusName}</span>}
+                        {selectedTicket.programName && <span>📚 {selectedTicket.programName}</span>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <button className="btn btn-secondary btn-sm" onClick={closePanel}>✕ Fermer</button>
             </div>
@@ -390,14 +473,22 @@ export default function InboxPage() {
               </div>
             )}
 
-            {/* Texte utilisateur (si crowdsourcing) */}
+            {/* Commentaire utilisateur — bloc secondaire, conditionnel */}
             {selectedTicket.user_text && (
-              <div className="user-text-box">
-                <p style={{ fontWeight: 600, marginBottom: "6px", fontSize: "0.9rem" }}>Message utilisateur :</p>
-                <p style={{ fontSize: "0.9rem", whiteSpace: "pre-wrap", margin: 0 }}>
-                  {selectedTicket.user_text}
+              <aside
+                style={{
+                  borderLeft: "3px solid var(--muted, #64748b)",
+                  paddingLeft: "12px",
+                  marginTop: "16px",
+                  marginBottom: "16px",
+                  opacity: 0.75,
+                }}
+              >
+                <p style={{ fontSize: "11px", textTransform: "uppercase", marginBottom: "4px", fontWeight: "bold", color: "var(--text-secondary)" }}>
+                  Note du contributeur
                 </p>
-              </div>
+                <p style={{ fontSize: "14px", margin: 0 }}>{selectedTicket.user_text}</p>
+              </aside>
             )}
 
             {/* ── Formulaire par catégorie ── */}
@@ -408,6 +499,31 @@ export default function InboxPage() {
                   onValidate={handleValidate}
                   loading={actionLoading}
                   disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+                />
+              ) : selectedTicket.ai_category === "Accreditation" ? (
+                <AccreditationListForm
+                  ticket={selectedTicket}
+                  onValidate={handleValidate}
+                  loading={actionLoading}
+                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+                />
+              ) : (selectedTicket.ai_extracted_json as any)?.programs ? (
+                <MultiProgramForm
+                  ticket={selectedTicket}
+                  onValidate={handleValidate}
+                  loading={actionLoading}
+                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+                  onRefreshTicket={async () => {
+                    // Recharger le ticket depuis l'API pour avoir le JSON mis à jour
+                    try {
+                      const res = await fetch(`/api/admin/inbox/${selectedTicket.id}`);
+                      if (res.ok) {
+                        const refreshed = await res.json();
+                        if (refreshed?.id) setSelectedTicket(refreshed);
+                      }
+                    } catch { /* silently ignore */ }
+                    fetchTickets();
+                  }}
                 />
               ) : (
                 <GenericForm
@@ -440,6 +556,70 @@ export default function InboxPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de purge ── */}
+      {purgeModalOpen && (
+        <div className="panel-overlay" onClick={() => setPurgeModalOpen(false)}>
+          <div
+            className="purge-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: "0 0 16px", fontSize: "1.1rem" }}>
+              🗑️ Purger les tickets traités
+            </h3>
+
+            <div className="form-group" style={{ marginBottom: "16px" }}>
+              <label className="form-label">Statuts à supprimer</label>
+              <select
+                id="purge-status-filter"
+                className="form-control"
+                value={purgeStatuses.join(",")}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const newStatuses = val.split(",");
+                  setPurgeStatuses(newStatuses);
+                  fetchPurgeCount(newStatuses);
+                }}
+              >
+                <option value="Validated,Rejected">Validés + Rejetés</option>
+                <option value="Validated">Validés uniquement</option>
+                <option value="Rejected">Rejetés uniquement</option>
+              </select>
+            </div>
+
+            {purgeCount !== null && (
+              <div style={{
+                padding: "12px",
+                background: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.2)",
+                borderRadius: "var(--radius)",
+                marginBottom: "16px",
+                fontSize: "0.9rem",
+                textAlign: "center",
+              }}>
+                ⚠️ <strong>{purgeCount}</strong> ticket{purgeCount !== 1 ? "s" : ""} seront supprimés définitivement
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setPurgeModalOpen(false)}
+              >
+                Annuler
+              </button>
+              <button
+                id="btn-confirm-purge"
+                className="btn btn-danger"
+                onClick={handlePurge}
+                disabled={purgeLoading || purgeCount === 0}
+              >
+                {purgeLoading ? "Suppression..." : "Confirmer la suppression"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -516,6 +696,22 @@ export default function InboxPage() {
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+        /* ── Modal de purge ── */
+        .purge-modal {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: var(--bg-primary);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-lg);
+          padding: 28px;
+          min-width: 400px;
+          max-width: 90vw;
+          z-index: 1001;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
       `}</style>
     </div>
   );
@@ -914,4 +1110,502 @@ function getFieldsForCategory(category: string): FieldDef[] {
     default:
       return [];
   }
+}
+
+// ──────────────────────────────────────────────
+// Formulaire répéteur — Accreditation (Liste d'accréditations)
+// ──────────────────────────────────────────────
+
+interface AccreditationListItem {
+  accreditation_name: string;
+  accreditation_type: "international" | "label" | "state";
+  year_obtained: number;
+  is_active: boolean;
+  source_url?: string | null;
+}
+
+function AccreditationListForm({
+  ticket,
+  onValidate,
+  loading,
+  disabled,
+}: {
+  ticket: Ticket;
+  onValidate: (data: Record<string, unknown>) => void;
+  loading: boolean;
+  disabled: boolean;
+}) {
+  const initial = ticket.ai_extracted_json as {
+    accreditations?: AccreditationListItem[];
+    accreditation_name?: string;
+    accreditation_type?: "international" | "label" | "state";
+    year_obtained?: number;
+    is_active?: boolean;
+    source_url?: string | null;
+  } | null;
+
+  const [accreditations, setAccreditations] = useState<AccreditationListItem[]>(() => {
+    if (initial?.accreditations && Array.isArray(initial.accreditations)) {
+      return initial.accreditations.map((item) => ({
+        accreditation_name: item.accreditation_name || "",
+        accreditation_type: item.accreditation_type || "international",
+        year_obtained: item.year_obtained ?? 0,
+        is_active: item.is_active ?? true,
+        source_url: item.source_url || null,
+      }));
+    }
+    // Rétrocompatibilité : format objet unique
+    if (initial?.accreditation_name) {
+      return [{
+        accreditation_name: initial.accreditation_name,
+        accreditation_type: initial.accreditation_type || "international",
+        year_obtained: initial.year_obtained ?? 0,
+        is_active: initial.is_active ?? true,
+        source_url: initial.source_url || null,
+      }];
+    }
+    return [];
+  });
+
+  const updateItem = (index: number, field: keyof AccreditationListItem, val: any) => {
+    setAccreditations((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [field]: val } : item))
+    );
+  };
+
+  const removeItem = (index: number) => {
+    setAccreditations((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addItem = () => {
+    setAccreditations((prev) => [
+      ...prev,
+      { accreditation_name: "", accreditation_type: "international", year_obtained: new Date().getFullYear(), is_active: true },
+    ]);
+  };
+
+  const handleSubmit = () => {
+    onValidate({ accreditations });
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+        <h3 style={{ margin: 0, fontSize: "1rem" }}>
+          📜 Accréditations et Labels détectés ({accreditations.length})
+        </h3>
+        {!disabled && (
+          <button className="btn btn-secondary btn-sm" onClick={addItem}>
+            + Ajouter
+          </button>
+        )}
+      </div>
+
+      {accreditations.length === 0 && (
+        <div style={{ color: "var(--text-secondary)", fontStyle: "italic", marginBottom: "16px" }}>
+          Aucune accréditation détectée dans le JSON.
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "16px" }}>
+        {accreditations.map((item, idx) => (
+          <div
+            key={idx}
+            style={{
+              border: "1px solid var(--border-color)",
+              borderRadius: "var(--radius)",
+              padding: "12px",
+              background: "var(--bg-secondary)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "var(--text-secondary)" }}>
+                Item #{idx + 1}
+              </span>
+              {!disabled && (
+                <button
+                  className="btn btn-danger btn-sm"
+                  style={{ padding: "2px 8px", fontSize: "0.75rem" }}
+                  onClick={() => removeItem(idx)}
+                >
+                  Supprimer
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.75rem" }}>Nom</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={item.accreditation_name}
+                  onChange={(e) => updateItem(idx, "accreditation_name", e.target.value)}
+                  disabled={disabled}
+                />
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.75rem" }}>Type</label>
+                <select
+                  className="form-control"
+                  value={item.accreditation_type}
+                  onChange={(e) => updateItem(idx, "accreditation_type", e.target.value as any)}
+                  disabled={disabled}
+                >
+                  <option value="international">🌍 International (EQUIS, AACSB, AMBA...)</option>
+                  <option value="state">🇫🇷 Reconnu par l'État (Grade, CTI...)</option>
+                  <option value="label">🏷️ Label / Certif (CGE, Qualiopi, DDRS...)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.75rem" }}>Année d'obtention</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={item.year_obtained || ""}
+                  onChange={(e) => updateItem(idx, "year_obtained", e.target.value ? Number(e.target.value) : 0)}
+                  disabled={disabled}
+                />
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontSize: "0.75rem" }}>Statut actif</label>
+                <select
+                  className="form-control"
+                  value={String(item.is_active)}
+                  onChange={(e) => updateItem(idx, "is_active", e.target.value === "true")}
+                  disabled={disabled}
+                >
+                  <option value="true">Actif</option>
+                  <option value="false">Inactif (Expiré)</option>
+                </select>
+              </div>
+            </div>
+
+            {item.source_url && (
+              <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", wordBreak: "break-all" }}>
+                Source : <a href={item.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{item.source_url}</a>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {!disabled && (
+        <button
+          id="btn-validate-accreditations"
+          className="btn btn-primary"
+          style={{ width: "100%", marginTop: "8px" }}
+          onClick={handleSubmit}
+          disabled={loading || accreditations.length === 0}
+        >
+          {loading ? "Validation en cours..." : "✓ Valider et Publier ces accréditations"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Formulaire répéteur — Multi-Programme (Pricing, Ranking, Capacity)
+// Affiche les programmes matchés par l'IA avec leur données extraites
+// ──────────────────────────────────────────────
+
+interface MatchedProgramEntry {
+  extracted_program_name: string;
+  matched_program_id: string | null;
+  matched_program_name: string | null;
+  match_confidence: "exact" | "fuzzy" | "none";
+  data: Record<string, unknown>;
+}
+
+interface UnmatchedProgramEntry {
+  extracted_program_name: string;
+  reason: string;
+}
+
+interface MultiProgramJson {
+  programs: MatchedProgramEntry[];
+  unmatched_programs: UnmatchedProgramEntry[];
+  source_url?: string;
+  year_assumed?: boolean;
+  data_conflict_warning?: boolean;
+}
+
+function MultiProgramForm({
+  ticket,
+  onValidate,
+  loading,
+  disabled,
+  onRefreshTicket,
+}: {
+  ticket: Ticket;
+  onValidate: (data: Record<string, unknown>) => void;
+  loading: boolean;
+  disabled: boolean;
+  onRefreshTicket?: () => Promise<void>;
+}) {
+  const initial = ticket.ai_extracted_json as MultiProgramJson | null;
+  const [programs, setPrograms] = useState<MatchedProgramEntry[]>(initial?.programs ?? []);
+  const [unmatchedPrograms, setUnmatchedPrograms] = useState<UnmatchedProgramEntry[]>(initial?.unmatched_programs ?? []);
+  const [creatingPrograms, setCreatingPrograms] = useState(false);
+  const [createMsg, setCreateMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Mettre à jour l'état si le ticket parent change
+  useEffect(() => {
+    const fresh = ticket.ai_extracted_json as MultiProgramJson | null;
+    if (fresh) {
+      setPrograms(fresh.programs ?? []);
+      setUnmatchedPrograms(fresh.unmatched_programs ?? []);
+    }
+  }, [ticket]);
+
+  // Les champs éditables dépendent de la catégorie
+  const fields = getFieldsForCategory(ticket.ai_category);
+
+  const updateProgramData = (progIdx: number, key: string, val: unknown) => {
+    setPrograms((prev) =>
+      prev.map((p, i) =>
+        i !== progIdx ? p : { ...p, data: { ...p.data, [key]: val } }
+      )
+    );
+  };
+
+  const removeProgram = (progIdx: number) => {
+    setPrograms((prev) => prev.filter((_, i) => i !== progIdx));
+  };
+
+  const handleSubmit = () => {
+    onValidate({
+      programs,
+      unmatched_programs: unmatchedPrograms,
+      source_url: initial?.source_url,
+      year_assumed: initial?.year_assumed,
+      data_conflict_warning: initial?.data_conflict_warning,
+    });
+  };
+
+  const CONFIDENCE_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+    exact: { bg: "rgba(34, 197, 94, 0.12)", color: "#16a34a", label: "✓ Match exact" },
+    fuzzy: { bg: "rgba(249, 115, 22, 0.12)", color: "#ea580c", label: "⚠ Match approximatif" },
+    none: { bg: "rgba(239, 68, 68, 0.12)", color: "#dc2626", label: "✕ Non matché" },
+  };
+
+  return (
+    <div>
+      <h3 style={{ fontSize: "1rem", marginBottom: "16px" }}>
+        {CATEGORY_ICONS[ticket.ai_category]} Données extraites — {ticket.ai_category} ({programs.length} programme{programs.length !== 1 ? "s" : ""})
+      </h3>
+
+      {/* Programmes matchés */}
+      {programs.map((prog, idx) => {
+        const conf = CONFIDENCE_STYLES[prog.match_confidence] || CONFIDENCE_STYLES.none;
+        return (
+          <div
+            key={idx}
+            style={{
+              border: "1px solid var(--border-color)",
+              borderRadius: "var(--radius)",
+              padding: "16px",
+              marginBottom: "12px",
+              background: "var(--bg-secondary)",
+            }}
+          >
+            {/* Header du programme */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "4px" }}>
+                  📚 {prog.matched_program_name || prog.extracted_program_name}
+                </div>
+                {prog.extracted_program_name !== prog.matched_program_name && prog.matched_program_name && (
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", fontStyle: "italic" }}>
+                    Nom extrait : « {prog.extracted_program_name} »
+                  </div>
+                )}
+                <span
+                  style={{
+                    display: "inline-block",
+                    padding: "2px 8px",
+                    borderRadius: "999px",
+                    fontSize: "0.7rem",
+                    fontWeight: 600,
+                    marginTop: "6px",
+                    background: conf.bg,
+                    color: conf.color,
+                  }}
+                >
+                  {conf.label}
+                </span>
+              </div>
+              {!disabled && (
+                <button
+                  className="btn btn-danger btn-sm"
+                  style={{ padding: "2px 8px", fontSize: "0.75rem" }}
+                  onClick={() => removeProgram(idx)}
+                >
+                  Retirer
+                </button>
+              )}
+            </div>
+
+            {/* Champs de données */}
+            <div className="field-grid">
+              {fields.map(({ key, label, type, required }) => (
+                <div key={key} className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontSize: "0.75rem" }}>
+                    {label}{required && <span style={{ color: "var(--danger)" }}> *</span>}
+                  </label>
+                  {type === "boolean" ? (
+                    <select
+                      className="form-control"
+                      value={String(prog.data[key] ?? "")}
+                      onChange={(e) =>
+                        updateProgramData(
+                          idx,
+                          key,
+                          e.target.value === "true" ? true : e.target.value === "false" ? false : null
+                        )
+                      }
+                      disabled={disabled}
+                    >
+                      <option value="">—</option>
+                      <option value="true">Oui</option>
+                      <option value="false">Non</option>
+                    </select>
+                  ) : type === "number" ? (
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={prog.data[key] != null ? String(prog.data[key]) : ""}
+                      onChange={(e) => updateProgramData(idx, key, e.target.value ? Number(e.target.value) : null)}
+                      disabled={disabled}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={prog.data[key] != null ? String(prog.data[key]) : ""}
+                      onChange={(e) => updateProgramData(idx, key, e.target.value || null)}
+                      disabled={disabled}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Programmes non matchés */}
+      {unmatchedPrograms.length > 0 && (
+        <div style={{ marginTop: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <h4 style={{ fontSize: "0.9rem", margin: 0, color: "var(--danger)" }}>
+              ⚠️ Programmes non matchés ({unmatchedPrograms.length})
+            </h4>
+          </div>
+          {unmatchedPrograms.map((up, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: "10px 14px",
+                background: "rgba(239, 68, 68, 0.06)",
+                border: "1px solid rgba(239, 68, 68, 0.15)",
+                borderRadius: "var(--radius)",
+                marginBottom: "6px",
+                fontSize: "0.85rem",
+              }}
+            >
+              <strong>{up.extracted_program_name}</strong>
+              <span style={{ color: "var(--text-secondary)", marginLeft: "8px" }}>— {up.reason}</span>
+            </div>
+          ))}
+
+          {createMsg && (
+            <div className={`alert ${createMsg.type === "success" ? "alert-success" : "alert-danger"}`} style={{ margin: "8px 0" }}>
+              {createMsg.type === "success" ? "✅" : "❌"} {createMsg.text}
+            </div>
+          )}
+
+          {!disabled && (
+            <button
+              className="btn btn-primary btn-sm"
+              style={{
+                width: "100%",
+                marginTop: "8px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+              }}
+              disabled={creatingPrograms}
+              onClick={async () => {
+                setCreatingPrograms(true);
+                setCreateMsg(null);
+                try {
+                  const programNames = unmatchedPrograms.map((u) => u.extracted_program_name);
+                  const res = await fetch(`/api/admin/inbox/${ticket.id}/create-programs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ programNames }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || "Erreur lors de la création");
+                  
+                  // Update local React state instantly with new updated JSON
+                  if (data.updatedJson) {
+                    setPrograms(data.updatedJson.programs || []);
+                    setUnmatchedPrograms(data.updatedJson.unmatched_programs || []);
+                  }
+                  
+                  setCreateMsg({ type: "success", text: `${data.count} programme(s) créé(s) et rattaché(s) au ticket` });
+                  
+                  // Refresh parent ticket in background
+                  if (onRefreshTicket) await onRefreshTicket();
+                } catch (err: unknown) {
+                  setCreateMsg({ type: "error", text: err instanceof Error ? err.message : "Erreur inconnue" });
+                } finally {
+                  setCreatingPrograms(false);
+                }
+              }}
+            >
+              {creatingPrograms ? "Création en cours..." : `➕ Créer et rattacher les ${unmatchedPrograms.length} programme(s)`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* JSON brut */}
+      <details style={{ marginTop: "12px" }}>
+        <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+          Voir JSON brut complet
+        </summary>
+        <pre style={{
+          background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
+          borderRadius: "var(--radius)", padding: "12px", fontSize: "0.75rem",
+          overflow: "auto", maxHeight: "200px", marginTop: "8px",
+        }}>
+          {JSON.stringify(ticket.ai_extracted_json, null, 2)}
+        </pre>
+      </details>
+
+      {!disabled && (
+        <button
+          className="btn btn-primary"
+          style={{ width: "100%", marginTop: "16px" }}
+          onClick={handleSubmit}
+          disabled={loading || programs.length === 0}
+        >
+          {loading ? "Validation en cours..." : `✓ Valider — ${programs.length} programme(s) ${ticket.ai_category}`}
+        </button>
+      )}
+    </div>
+  );
 }

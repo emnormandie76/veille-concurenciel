@@ -43,3 +43,11 @@ backend/build/
 # Prisma
 prisma/dev.db
 prisma/dev.db-journal
+
+# Brainstorming Companion
+.superpowers/
+.agents/
+docs/skills/
+
+# Artefacts de build TypeScript (propres a chaque machine)
+*.tsbuildinfo

@@ -10,14 +10,29 @@
 ### 0.1 — Scaffolding Next.js
 - [x] Initialiser un projet Next.js (App Router, TypeScript) dans le dossier racine
 - [x] Installer les dépendances : `prisma`, `@prisma/client`, `next-auth`, `bcrypt`
-- [x] Créer le fichier `.env.local` avec les variables : `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `FASTAPI_INTERNAL_TOKEN`
+- [x] Créer le fichier `.env.local`
+
+> **Liste obsolète.** La liste complète et commentée des variables — Next.js et
+> FastAPI — vit désormais dans [`.env.example`](../../.env.example) à la racine.
+> Elle compte une vingtaine d'entrées, contre quatre ici.
+>
+> Deux changements notables :
+> - `FASTAPI_INTERNAL_TOKEN` est remplacé par **`INTERNAL_API_TOKEN`**, nom
+>   canonique des deux côtés de la frontière (l'ancien reste accepté).
+> - `DIRECT_URL` est **obligatoire** : `DATABASE_URL` pointe le pooler Neon, qui
+>   ne supporte pas les migrations.
 - [x] Configurer le `tsconfig.json` avec les alias `@/`
 
 ### 0.2 — Scaffolding FastAPI
 - [x] Créer un dossier `backend/` à la racine
 - [x] Initialiser un projet Python avec `requirements.txt` : `fastapi`, `uvicorn`, `psycopg2-binary`, `apscheduler`, `tavily-python`, `google-genai`, `bcrypt`
 - [x] Créer `backend/main.py` avec un endpoint `/health` retournant `{"status": "ok"}`
-- [x] Créer `backend/.env` avec : `DATABASE_URL`, `GEMINI_API_KEY`, `TAVILY_API_KEYS` (liste séparée par virgules), `INTERNAL_TOKEN`, `CRON_PHASE1_INTERVAL_HOURS=168`, `CRON_PHASE2_INTERVAL_HOURS=24`
+- [x] Créer `backend/.env` — voir [`.env.example`](../../.env.example), section FastAPI
+
+> Au-delà de `DATABASE_URL`, `GEMINI_API_KEY`, `TAVILY_API_KEYS` et
+> `INTERNAL_API_TOKEN`, deux variables sont **requises en production** :
+> `ENVIRONMENT=production` (sans elle `/docs`, `/redoc` et `/openapi.json`
+> restent ouverts) et `ALLOWED_ORIGINS`.
 
 ### ✅ Tests Étape 0
 ```
@@ -31,7 +46,7 @@
 ## Étape 1 : Base de Données et Authentification
 
 ### 1.1 — Prisma Schema
-- [x] Créer `prisma/schema.prisma` avec TOUS les modèles définis dans `bdd.md` : `User`, `School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ContributionInbox`, `CronTarget`
+- [x] Créer `prisma/schema.prisma` avec TOUS les modèles définis dans `bdd.md` : `User`, `School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ContributionInbox`
 - [x] Exécuter `npx prisma migrate dev --name init` — migration réussie
 - [x] Exécuter `npx prisma generate` — client généré
 
@@ -203,19 +218,19 @@
 ## Étape 6 : Pipeline Phase 2 — Enrichissement
 
 ### 6.1 — Routeur Dynamique (Strategy Pattern)
-- [ ] Implémenter le dictionnaire `PIPELINE_STRATEGIES` (voir architecture.md section 4.2)
-- [ ] Chaque stratégie contient : config Tavily, modèle Gemma, clés JSON requises, prompt
+- [x] Implémenter le dictionnaire `PIPELINE_STRATEGIES` (voir architecture.md section 4.2)
+- [x] Chaque stratégie contient : config Tavily, modèle Gemma, clés JSON requises, prompt
 
 ### 6.2 — Module de Diff
-- [ ] Fonction `has_data_changed(new_data: dict, existing_record: dict) -> bool` qui compare le JSON extrait avec les données de production
-- [ ] Si rien n'a changé → retourner False (Edge Case 10)
+- [x] Fonction `has_data_changed(new_data: dict, existing_record: dict) -> bool` qui compare le JSON extrait avec les données de production
+- [x] Si rien n'a changé → retourner False (Edge Case 10)
 
 ### 6.3 — Tri rapide (Gemma 26B)
-- [ ] Fonction `is_content_relevant(raw_content: str, category: str) -> bool` via Gemma 26B
-- [ ] Détection des paywalls/cookies (Edge Case 11)
+- [x] Fonction `is_content_relevant(raw_content: str, category: str) -> bool` via Gemma 26B
+- [x] Détection des paywalls/cookies (Edge Case 11)
 
 ### 6.4 — Orchestrateur Phase 2
-- [ ] Fonction `run_phase2(school_id: str)` :
+- [x] Fonction `run_phase2(school_id: str)` :
   1. Lire tous les Programs validés de l'école
   2. Pour chaque (Program, Catégorie) non blacklisté :
      - Charger la stratégie
@@ -226,18 +241,18 @@
      - Insérer dans ContributionInbox
 
 ### 6.5 — Intégration APScheduler
-- [ ] Job `phase2_enricher` : toutes les `CRON_PHASE2_INTERVAL_HOURS` heures
+- [x] Job `phase2_enricher` : toutes les `CRON_PHASE2_INTERVAL_HOURS` heures
 
 ### ✅ Tests Étape 6
 ```
-- [ ] PIPELINE_STRATEGIES["Pricing"] retourne la bonne config avec les bons include_domains
-- [ ] has_data_changed avec données identiques → False
-- [ ] has_data_changed avec prix modifié → True
-- [ ] is_content_relevant avec un texte de tarifs → True
-- [ ] is_content_relevant avec un texte de cookies/paywall → False
-- [ ] run_phase2 pour une école avec programmes validés → tickets Pricing/Ranking créés dans l'Inbox
-- [ ] run_phase2 quand les données n'ont pas changé → aucun ticket créé (skip silencieux)
-- [ ] run_phase2 pour un programme blacklisté → skip
+- [x] PIPELINE_STRATEGIES["Pricing"] retourne la bonne config avec les bons include_domains
+- [x] has_data_changed avec données identiques → False
+- [x] has_data_changed avec prix modifié → True
+- [x] is_content_relevant avec un texte de tarifs → True
+- [x] is_content_relevant avec un texte de cookies/paywall → False
+- [x] run_phase2 pour une école avec programmes validés → tickets Pricing/Ranking créés dans l'Inbox
+- [x] run_phase2 quand les données n'ont pas changé → aucun ticket créé (skip silencieux)
+- [x] run_phase2 pour un programme blacklisté → skip
 ```
 
 ---
@@ -245,21 +260,21 @@
 ## Étape 7 : Workflow A — Crowdsourcing
 
 ### 7.1 — Page publique `/contribute`
-- [ ] Dropdown École avec autocomplete (données depuis `GET /api/schools`)
-- [ ] Dropdown Campus (chargé dynamiquement selon l'école sélectionnée) — optionnel
-- [ ] Dropdown Programme (chargé dynamiquement selon le campus) — optionnel
-- [ ] Multi-select catégories : Tarifs, Classement, Capacité, Stats école, Accréditation
-- [ ] Champ texte libre (revendication)
-- [ ] Champ URL(s) source(s)
-- [ ] Bouton Soumettre
+- [x] Dropdown École avec autocomplete (données depuis `GET /api/schools`)
+- [x] Dropdown Campus (chargé dynamiquement selon l'école sélectionnée) — optionnel
+- [x] Dropdown Programme (chargé dynamiquement selon le campus) — optionnel
+- [x] Multi-select catégories : Tarifs, Classement, Capacité, Stats école, Accréditation
+- [x] Champ texte libre (revendication)
+- [x] Champ URL(s) source(s)
+- [x] Bouton Soumettre
 
 ### 7.2 — API Route de soumission
-- [ ] `POST /api/contribute` — Crée 1 ticket Inbox par catégorie sélectionnée
-- [ ] Rate limiting par IP (middleware Vercel ou custom)
-- [ ] Validation : URL format `https://`, école existante, au moins 1 catégorie
+- [x] `POST /api/contribute` — Crée 1 ticket Inbox par catégorie sélectionnée
+- [x] Rate limiting par IP (middleware Vercel ou custom)
+- [x] Validation : URL format `https://`, école existante, au moins 1 catégorie
 
 ### 7.3 — Traitement Backend (FastAPI)
-- [ ] Endpoint ou job qui traite les tickets `Pending_AI` de type `User_Submission` :
+- [x] Endpoint ou job qui traite les tickets `Pending_AI` de type `User_Submission` :
   1. Tavily extract(urls) pour récupérer le contenu
   2. Gemma 26B : fact-checking (le texte confirme-t-il la revendication ?)
   3. Gemma 31B : extraction JSON selon la catégorie
@@ -267,14 +282,14 @@
 
 ### ✅ Tests Étape 7
 ```
-- [ ] La page /contribute affiche le formulaire avec les dropdowns
-- [ ] Sélectionner EMLV → les campus EMLV apparaissent
-- [ ] Sélectionner un campus → les programmes apparaissent
-- [ ] Soumettre avec 2 catégories cochées → 2 tickets créés dans l'Inbox
-- [ ] Soumettre sans école → erreur de validation
-- [ ] Soumettre sans URL → erreur de validation
-- [ ] Le traitement backend extrait le contenu et met à jour le status à Pending_Admin
-- [ ] 10 soumissions rapides depuis la même IP → rate limit déclenché
+- [x] La page /contribute affiche le formulaire avec les dropdowns
+- [x] Sélectionner EMLV → les campus EMLV apparaissent
+- [x] Sélectionner un campus → les programmes apparaissent
+- [x] Soumettre avec 2 catégories cochées → 2 tickets créés dans l'Inbox
+- [x] Soumettre sans école → erreur de validation
+- [x] Soumettre sans URL → erreur de validation
+- [x] Le traitement backend extrait le contenu et met à jour le status à Pending_Admin
+- [x] 10 soumissions rapides depuis la même IP → rate limit déclenché
 ```
 
 ---
@@ -282,25 +297,25 @@
 ## Étape 8 : Frontend Public — Consultation
 
 ### 8.1 — Pages publiques
-- [ ] Page `/` — Accueil avec recherche d'écoles (liste des écoles ACTIVE)
-- [ ] Page `/schools/[id]` — Fiche école (infos, campus, stats, accréditations)
-- [ ] Page `/schools/[id]/programs/[pid]` — Détail programme (tarifs, classements, capacité)
+- [x] Page `/` — Accueil avec recherche d'écoles (liste des écoles ACTIVE)
+- [x] Page `/schools/[id]` — Fiche école (infos, campus, stats, accréditations)
+- [x] Page `/schools/[id]/programs/[pid]` — Détail programme (tarifs, classements, capacité)
 
 ### 8.2 — API Routes publiques (utilisées par le frontend)
-- [ ] `GET /api/schools` — Écoles actives avec recherche/pagination
-- [ ] `GET /api/schools/[id]` — Détail école + relations
-- [ ] `GET /api/schools/[id]/programs/[pid]` — Détail programme + records
+- [x] `GET /api/schools` — Écoles actives avec recherche/pagination
+- [x] `GET /api/schools/[id]` — Détail école + relations
+- [x] `GET /api/schools/[id]/programs/[pid]` — Détail programme + records
 
 ### 8.3 — Caching ISR
-- [ ] `export const revalidate = 3600` sur toutes les pages publiques
+- [x] `export const revalidate = 3600` sur toutes les pages publiques
 
 ### ✅ Tests Étape 8
 ```
-- [ ] La page d'accueil affiche la liste des écoles actives
-- [ ] Cliquer sur une école → fiche avec campus, stats, accréditations
-- [ ] Cliquer sur un programme → tarifs par année, classements, capacité
-- [ ] Les écoles avec status != ACTIVE ne sont PAS affichées
-- [ ] Deux requêtes consécutives sur la même page → la 2ème est servie depuis le cache (vérifier via headers)
+- [x] La page d'accueil affiche la liste des écoles actives
+- [x] Cliquer sur une école → fiche avec campus, stats, accréditations
+- [x] Cliquer sur un programme → tarifs par année, classements, capacité
+- [x] Les écoles avec status != ACTIVE ne sont PAS affichées
+- [x] Deux requêtes consécutives sur la même page → la 2ème est servie depuis le cache (vérifier via headers)
 ```
 
 ---
@@ -310,67 +325,67 @@
 > **Réf. détaillée : `API-rest.md`**
 
 ### 9.1 — Schools (4 endpoints)
-- [ ] `GET /api/v1/schools` — Liste paginée des écoles actives (`?search=emlv&page=1&limit=20`)
-- [ ] `GET /api/v1/schools/[id]` — Détail d'une école (infos de base)
-- [ ] `GET /api/v1/schools/[id]/stats` — Stats de l'école (`?year=2025`, dernier par défaut)
-- [ ] `GET /api/v1/schools/[id]/accreditations` — Accréditations (EQUIS, AACSB…)
+- [x] `GET /api/v1/schools` — Liste paginée des écoles actives (`?search=emlv&page=1&limit=20`)
+- [x] `GET /api/v1/schools/[id]` — Détail d'une école (infos de base)
+- [x] `GET /api/v1/schools/[id]/stats` — Stats de l'école (`?year=2025`, dernier par défaut)
+- [x] `GET /api/v1/schools/[id]/accreditations` — Accréditations (EQUIS, AACSB…)
 
 ### 9.2 — Campuses (2 endpoints)
-- [ ] `GET /api/v1/schools/[id]/campuses` — Liste des campus d'une école
-- [ ] `GET /api/v1/campuses/[id]` — Détail d'un campus + ses programmes
+- [x] `GET /api/v1/schools/[id]/campuses` — Liste des campus d'une école
+- [x] `GET /api/v1/campuses/[id]` — Détail d'un campus + ses programmes
 
 ### 9.3 — Programs (3 endpoints)
-- [ ] `GET /api/v1/schools/[id]/programs` — Programmes de l'école (`?campus_id=xxx`)
-- [ ] `GET /api/v1/programs/[id]` — Détail d'un programme
-- [ ] `GET /api/v1/programs` — Recherche globale (`?search=pge&admission_exam=sesame&alternance=true`)
+- [x] `GET /api/v1/schools/[id]/programs` — Programmes de l'école (`?campus_id=xxx`)
+- [x] `GET /api/v1/programs/[id]` — Détail d'un programme
+- [x] `GET /api/v1/programs` — Recherche globale (`?search=pge&admission_exam=sesame&alternance=true`)
 
 ### 9.4 — Pricing (2 endpoints)
-- [ ] `GET /api/v1/programs/[id]/pricing` — Historique tarifaire d'un programme (`?year=2025`)
-- [ ] `GET /api/v1/schools/[id]/pricing` — Tous les tarifs de l'école (`?year=2025`)
+- [x] `GET /api/v1/programs/[id]/pricing` — Historique tarifaire d'un programme (`?year=2025`)
+- [x] `GET /api/v1/schools/[id]/pricing` — Tous les tarifs de l'école (`?year=2025`)
 
 ### 9.5 — Rankings (2 endpoints)
-- [ ] `GET /api/v1/programs/[id]/rankings` — Classements d'un programme (`?year=2025&ranking_name=Figaro`)
-- [ ] `GET /api/v1/rankings` — Tableau global de classements (`?ranking_name=Figaro&year=2025&page=1&limit=50`)
+- [x] `GET /api/v1/programs/[id]/rankings` — Classements d'un programme (`?year=2025&ranking_name=Figaro`)
+- [x] `GET /api/v1/rankings` — Tableau global de classements (`?ranking_name=Figaro&year=2025&page=1&limit=50`)
 
 ### 9.6 — Capacity (1 endpoint)
-- [ ] `GET /api/v1/programs/[id]/capacity` — Historique des places (`?year=2025`)
+- [x] `GET /api/v1/programs/[id]/capacity` — Historique des places (`?year=2025`)
 
 ### 9.7 — Comparaison (1 endpoint)
-- [ ] `GET /api/v1/compare/programs` — Comparer N programmes côte à côte (`?ids=uuid1,uuid2,uuid3`, max 5)
+- [x] `GET /api/v1/compare/programs` — Comparer N programmes côte à côte (`?ids=uuid1,uuid2,uuid3`, max 5)
 
 ### 9.8 — Configuration transversale
-- [ ] CORS headers : `Access-Control-Allow-Origin: *`
-- [ ] Cache ISR 1h sur chaque route (`export const revalidate = 3600`)
-- [ ] Format d'erreur standardisé : `{"error": "description"}`
-- [ ] `400 Bad Request` pour paramètres invalides (ex: compare avec > 5 IDs)
-- [ ] `404 Not Found` pour ID inexistant ou école non ACTIVE
-- [ ] Exclure ContributionInbox, CronTarget, User de toute réponse
+- [x] CORS headers : `Access-Control-Allow-Origin: *`
+- [x] Cache ISR 1h sur chaque route (`export const revalidate = 3600`)
+- [x] Format d'erreur standardisé : `{"error": "description"}`
+- [x] `400 Bad Request` pour paramètres invalides (ex: compare avec > 5 IDs)
+- [x] `404 Not Found` pour ID inexistant ou école non ACTIVE
+- [x] Exclure ContributionInbox, CronTarget, User de toute réponse
 
 ### ✅ Tests Étape 9
 ```
-- [ ] GET /api/v1/schools retourne un JSON paginé avec les écoles actives
-- [ ] GET /api/v1/schools?search=emlv retourne uniquement les écoles matchant "emlv"
-- [ ] GET /api/v1/schools/[id_invalide] retourne 404 {"error": "..."}
-- [ ] GET /api/v1/schools/[id] retourne les infos de base de l'école
-- [ ] GET /api/v1/schools/[id]/stats retourne les stats (dernière année par défaut)
-- [ ] GET /api/v1/schools/[id]/stats?year=2025 retourne les stats de 2025
-- [ ] GET /api/v1/schools/[id]/accreditations retourne la liste des accréditations
-- [ ] GET /api/v1/schools/[id]/campuses retourne les campus avec programmes
-- [ ] GET /api/v1/campuses/[id] retourne le détail du campus + programmes
-- [ ] GET /api/v1/schools/[id]/programs retourne tous les programmes
-- [ ] GET /api/v1/schools/[id]/programs?campus_id=xxx filtre par campus
-- [ ] GET /api/v1/programs?search=pge retourne les programmes matchant
-- [ ] GET /api/v1/programs/[id] retourne le détail du programme
-- [ ] GET /api/v1/programs/[id]/pricing retourne l'historique tarifaire
-- [ ] GET /api/v1/schools/[id]/pricing retourne les tarifs de tous les programmes
-- [ ] GET /api/v1/programs/[id]/rankings retourne les classements
-- [ ] GET /api/v1/rankings?ranking_name=Figaro&year=2025 retourne le tableau global
-- [ ] GET /api/v1/programs/[id]/capacity retourne l'historique des places
-- [ ] GET /api/v1/compare/programs?ids=uuid1,uuid2 retourne les données côte à côte
-- [ ] GET /api/v1/compare/programs?ids=1,2,3,4,5,6 retourne 400 (max 5)
-- [ ] Les headers CORS sont présents dans toutes les réponses
-- [ ] Aucun champ de ContributionInbox ou CronTarget n'apparaît dans les réponses
-- [ ] Deux requêtes consécutives → la 2ème est servie depuis le cache
+- [x] GET /api/v1/schools retourne un JSON paginé avec les écoles actives
+- [x] GET /api/v1/schools?search=emlv retourne uniquement les écoles matchant "emlv"
+- [x] GET /api/v1/schools/[id_invalide] retourne 404 {"error": "..."}
+- [x] GET /api/v1/schools/[id] retourne les infos de base de l'école
+- [x] GET /api/v1/schools/[id]/stats retourne les stats (dernière année par défaut)
+- [x] GET /api/v1/schools/[id]/stats?year=2025 retourne les stats de 2025
+- [x] GET /api/v1/schools/[id]/accreditations retourne la liste des accréditations
+- [x] GET /api/v1/schools/[id]/campuses retourne les campus avec programmes
+- [x] GET /api/v1/campuses/[id] retourne le détail du campus + programmes
+- [x] GET /api/v1/schools/[id]/programs retourne tous les programmes
+- [x] GET /api/v1/schools/[id]/programs?campus_id=xxx filtre par campus
+- [x] GET /api/v1/programs?search=pge retourne les programmes matchant
+- [x] GET /api/v1/programs/[id] retourne le détail du programme
+- [x] GET /api/v1/programs/[id]/pricing retourne l'historique tarifaire
+- [x] GET /api/v1/schools/[id]/pricing retourne les tarifs de tous les programmes
+- [x] GET /api/v1/programs/[id]/rankings retourne les classements
+- [x] GET /api/v1/rankings?ranking_name=Figaro&year=2025 retourne le tableau global
+- [x] GET /api/v1/programs/[id]/capacity retourne l'historique des places
+- [x] GET /api/v1/compare/programs?ids=uuid1,uuid2 retourne les données côte à côte
+- [x] GET /api/v1/compare/programs?ids=1,2,3,4,5,6 retourne 400 (max 5)
+- [x] Les headers CORS sont présents dans toutes les réponses
+- [x] Aucun champ de ContributionInbox ou CronTarget n'apparaît dans les réponses
+- [x] Deux requêtes consécutives → la 2ème est servie depuis le cache
 ```
 
 ---
@@ -378,13 +393,13 @@
 ## Étape 10 : Page Documentation API
 
 ### 10.1 — Page `/api-docs`
-- [ ] Page publique listant tous les endpoints v1 avec descriptions, paramètres et exemples de réponse
-- [ ] Exemples de code (curl, JavaScript, Python)
+- [x] Page publique listant tous les endpoints v1 avec descriptions, paramètres et exemples de réponse
+- [x] Exemples de code (curl, JavaScript, Python)
 
 ### ✅ Tests Étape 10
 ```
-- [ ] La page /api-docs est accessible publiquement
-- [ ] Tous les endpoints v1 sont documentés avec paramètres et exemples
+- [x] La page /api-docs est accessible publiquement
+- [x] Tous les endpoints v1 sont documentés avec paramètres et exemples
 ```
 
 ---
@@ -392,27 +407,27 @@
 ## Étape 11 : Sécurité et Edge Cases Finaux
 
 ### 11.1 — Rate Limiting Crowdsourcing
-- [ ] Middleware Vercel limitant les soumissions par IP (Edge Case 1)
-- [ ] Validation format URL (`https://` obligatoire)
+- [x] Middleware Vercel limitant les soumissions par IP (Edge Case 1)
+- [x] Validation format URL (`https://` obligatoire)
 
 ### 11.2 — Healthcheck Koyeb
-- [ ] Endpoint `GET /health` configuré comme healthcheck Koyeb (Edge Case 15)
-- [ ] Frontend : retry automatique avec message UX si le backend est indisponible
+- [x] Endpoint `GET /health` configuré comme healthcheck Koyeb (Edge Case 15)
+- [x] Frontend : retry automatique avec message UX si le backend est indisponible
 
 ### 11.3 — Quota Guard Tavily
-- [ ] Vérification des crédits restants avant chaque appel Tavily
-- [ ] Arrêt automatique du pipeline si quota atteint (Edge Case 1)
+- [x] Vérification des crédits restants avant chaque appel Tavily
+- [x] Arrêt automatique du pipeline si quota atteint (Edge Case 1)
 
 ### 11.4 — Monitoring Admin
-- [ ] Page `/admin/cron` affichant : dernières exécutions, CronTargets blacklistés, crédits Tavily restants
-- [ ] Bouton pour débloquer un CronTarget blacklisté
+- [x] Page `/admin/cron` affichant : dernières exécutions, CronTargets blacklistés, crédits Tavily restants
+- [x] Bouton pour débloquer un CronTarget blacklisté
 
 ### ✅ Tests Étape 11
 ```
-- [ ] Soumissions crowdsourcing rapides → rate limit actif
-- [ ] Healthcheck retourne 200 quand FastAPI est prêt
-- [ ] Pipeline s'arrête proprement quand le quota Tavily est atteint
-- [ ] La page /admin/cron affiche les CronTargets et permet le déblocage
+- [x] Soumissions crowdsourcing rapides → rate limit actif
+- [x] Healthcheck retourne 200 quand FastAPI est prêt
+- [x] Pipeline s'arrête proprement quand le quota Tavily est atteint
+- [x] La page /admin/cron affiche les CronTargets et permet le déblocage
 ```
 
 ---

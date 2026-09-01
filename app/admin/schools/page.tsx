@@ -238,6 +238,13 @@ export default function SchoolsPage() {
                   </td>
                   <td style={{ textAlign: "right" }}>
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+                      <Link
+                        href={`/admin/schools/${school.id}/manage`}
+                        className="btn btn-primary btn-sm"
+                        style={{ padding: "6px 12px" }}
+                      >
+                        ⚙️ Gérer le contenu
+                      </Link>
                       <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(school)} style={{ padding: "6px 12px" }}>
                         Modifier
                       </button>

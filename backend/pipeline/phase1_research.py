@@ -17,7 +17,7 @@ import json
 from datetime import datetime, timezone
 from typing import Optional, Callable
 
-from backend.ai.gemma_client import call_gemma, GemmaError
+from backend.ai.gemma_client import call_gemma, wrap_source, GemmaError
 from backend.ai.research_schemas import PHASE1_OUTPUT_SCHEMA
 from backend.ai.research_prompts import build_phase1_research_input
 from backend.tavily_service.research_client import create_research_task
@@ -138,7 +138,7 @@ def run_phase1_research(school_id: str, key_manager, dry_run: bool = False, prog
         except Exception:
             # Fallback vers Gemma 26B pour convertir le texte brut en JSON structuré
             logger.info("⚠️ Tavily Research a retourné du texte brut. Passage au fallback Gemma 26B...")
-            user_content = f"<TEXTE_SOURCE>\n{report_content}\n</TEXTE_SOURCE>"
+            user_content = wrap_source(report_content)
             try:
                 extracted = call_gemma(
                     model="models/gemma-4-26b-a4b-it",

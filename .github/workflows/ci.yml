@@ -73,3 +73,32 @@ jobs:
         # Bloque uniquement sur les vulnérabilités CRITIQUES
         # Les HIGH/MODERATE sont documentées dans docs/memory/memorystep2.md §8
         continue-on-error: false
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #  Tests Python — backend FastAPI
+  #
+  #  Ajouté à l'étape 6 de l'audit : la suite de tests n'était lancée nulle
+  #  part. Elle échouait depuis un refactor non répercuté sans que personne
+  #  ne le voie.
+  # ═══════════════════════════════════════════════════════════════════════
+  python-tests:
+    name: Tests Python
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        # requirements-dev.txt inclut requirements.txt et y ajoute
+        # pytest + pytest-asyncio, qui n'étaient déclarés nulle part.
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: pytest
+        run: python -m pytest -q

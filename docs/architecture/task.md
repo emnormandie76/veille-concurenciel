@@ -10,14 +10,29 @@
 ### 0.1 — Scaffolding Next.js
 - [x] Initialiser un projet Next.js (App Router, TypeScript) dans le dossier racine
 - [x] Installer les dépendances : `prisma`, `@prisma/client`, `next-auth`, `bcrypt`
-- [x] Créer le fichier `.env.local` avec les variables : `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `FASTAPI_INTERNAL_TOKEN`
+- [x] Créer le fichier `.env.local`
+
+> **Liste obsolète.** La liste complète et commentée des variables — Next.js et
+> FastAPI — vit désormais dans [`.env.example`](../../.env.example) à la racine.
+> Elle compte une vingtaine d'entrées, contre quatre ici.
+>
+> Deux changements notables :
+> - `FASTAPI_INTERNAL_TOKEN` est remplacé par **`INTERNAL_API_TOKEN`**, nom
+>   canonique des deux côtés de la frontière (l'ancien reste accepté).
+> - `DIRECT_URL` est **obligatoire** : `DATABASE_URL` pointe le pooler Neon, qui
+>   ne supporte pas les migrations.
 - [x] Configurer le `tsconfig.json` avec les alias `@/`
 
 ### 0.2 — Scaffolding FastAPI
 - [x] Créer un dossier `backend/` à la racine
 - [x] Initialiser un projet Python avec `requirements.txt` : `fastapi`, `uvicorn`, `psycopg2-binary`, `apscheduler`, `tavily-python`, `google-genai`, `bcrypt`
 - [x] Créer `backend/main.py` avec un endpoint `/health` retournant `{"status": "ok"}`
-- [x] Créer `backend/.env` avec : `DATABASE_URL`, `GEMINI_API_KEY`, `TAVILY_API_KEYS` (liste séparée par virgules), `INTERNAL_TOKEN`, `CRON_PHASE1_INTERVAL_HOURS=168`, `CRON_PHASE2_INTERVAL_HOURS=24`
+- [x] Créer `backend/.env` — voir [`.env.example`](../../.env.example), section FastAPI
+
+> Au-delà de `DATABASE_URL`, `GEMINI_API_KEY`, `TAVILY_API_KEYS` et
+> `INTERNAL_API_TOKEN`, deux variables sont **requises en production** :
+> `ENVIRONMENT=production` (sans elle `/docs`, `/redoc` et `/openapi.json`
+> restent ouverts) et `ALLOWED_ORIGINS`.
 
 ### ✅ Tests Étape 0
 ```

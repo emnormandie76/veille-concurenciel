@@ -71,3 +71,47 @@ research_result = call_tavily_research(...)
 with get_db_connection() as conn:
     save_contribution_ticket(conn, research_result)
 ```
+
+---
+
+## État au 1er septembre 2026
+
+### Ce qui a été corrigé
+
+**`backend/crowdsourcing/processor.py`** — le point B de la cartographie
+ci-dessus est **résolu**. `process_pending_submissions()` applique le pattern
+cible :
+
+1. connexion courte pour lire la liste des tickets, puis fermeture explicite
+   (commentaire `── Connexion BDD FERMÉE ici ───` dans le code) ;
+2. boucle de traitement **hors connexion**, Tavily et Gemma compris ;
+3. connexions courtes à la volée pour chaque écriture.
+
+### La règle, étendue
+
+> **Ne JAMAIS maintenir une connexion PostgreSQL ouverte pendant un appel réseau
+> externe** (Tavily, Gemini/Gemma, scraping HTTP).
+
+Elle vaut aussi pour les **transactions Prisma** côté Next.js : le client
+transactionnel ne dispose que d'une connexion, et `validate/route.ts` émet des
+`Promise.all` dessus (l. 266, 358). Sous charge, risque de blocage ou de
+dépassement du délai de 60 s. *Non corrigé.*
+
+### Une limite proche, non traitée
+
+`get_pool()` dans `backend/db.py` initialise le pool **sans verrou**, alors que
+les appels arrivent depuis `run_in_executor` et les threads APScheduler. Deux
+pools concurrents créés à froid ouvriraient jusqu'à **10 connexions** sur un
+palier Neon qui en autorise **5** — exactement le risque de saturation décrit
+plus haut, par une autre voie.
+
+Correctif attendu : protéger `get_pool()` par un `threading.Lock` en double
+vérification.
+
+### Effet de bord positif de la rétention des tickets
+
+Le statut `Failed` avec rejeu différé (voir
+[`decision-retention-tickets.md`](../memory/decision-retention-tickets.md))
+réduit la portée de l'incident d'origine : une contribution perdue sur
+`connection already closed` n'est plus détruite, elle est retentée une heure plus
+tard.

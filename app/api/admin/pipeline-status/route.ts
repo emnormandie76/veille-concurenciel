@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
 import { guardAuth } from "@/lib/auth";
+import { internalApiToken, fastapiUrl } from "@/lib/internal-api";
 
 export async function GET(request: Request) {
   // Guard authentication
   const { error } = await guardAuth();
   if (error) return error;
 
-  const fastapiUrl = process.env.FASTAPI_URL || "http://localhost:8000";
-  const token = process.env.FASTAPI_INTERNAL_TOKEN;
+  const baseUrl = fastapiUrl();
+  const token = internalApiToken();
 
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
 
-    const res = await fetch(`${fastapiUrl}/internal/pipeline-status`, {
+    const res = await fetch(`${baseUrl}/internal/pipeline-status`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },

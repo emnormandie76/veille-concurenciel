@@ -1,5 +1,41 @@
 # Feature — Monitoring Temps Réel + Recherche Manuelle depuis Admin/Cron
 
+<!-- audit-2026-09-01 -->
+> ## ⚠️ Amendements — remédiation de l'audit, 1er septembre 2026
+>
+> **`POST /api/admin/trigger-research` est passé sous `guardAdmin`.** La route
+> déclenche des dépenses réelles en crédits Tavily ; elle n'est plus accessible à
+> un MODERATOR.
+>
+> **Le jeton de l'API interne s'appelle `INTERNAL_API_TOKEN`.** Côté Next.js,
+> l'accès passe par `lib/internal-api.ts` ; `FASTAPI_INTERNAL_TOKEN` reste accepté
+> mais journalise un avertissement. Côté FastAPI, il est comparé par
+> `secrets.compare_digest` — un `!=` laissait fuir la longueur du préfixe correct
+> par mesure du temps de réponse.
+>
+> **`/internal/pipeline-status` a changé de contrat** : nouveaux champs
+> `scheduler` (jobs, `last_runs`, `has_failure`), et `status` passe à `degraded`
+> si un cron a échoué. Le champ `database` reflète enfin un `SELECT 1` réel — il
+> était codé en dur à « connecté ».
+>
+> **Le cron Phase 1 ne fonctionnait pas.** `ORDER BY s."createdAt"` sur une
+> colonne inexistante levait `UndefinedColumn` à chaque passage, exception avalée.
+> Aucune école n'a jamais été cartographiée automatiquement. Corrigé, avec un
+> premier déclenchement 5 min après démarrage (auparavant : une semaine).
+>
+> **Limites connues de `internal.py`, non corrigées** :
+> - `asyncio.create_task()` sans conservation de référence (l. 149, 192, 261) — le
+>   ramasse-miettes peut annuler la tâche en vol, le job reste « running » et
+>   verrouille l'école ;
+> - `_pipeline_jobs` et `_pipeline_progress` ne sont jamais purgés — croissance
+>   mémoire non bornée sur un processus longue durée ;
+> - `trigger-enrichment` ne vérifie aucun job en cours, contrairement à
+>   `trigger-scan` et `trigger-targeted-research` — enrichissements concurrents
+>   possibles sur la même école.
+>
+> Voir aussi [`visibility_on_crontask.md`](visibility_on_crontask.md).
+
+
 > **Version :** 1.0 — 12 juin 2026  
 > **Branche :** `devresearch`  
 > **Pipeline concerné :** Research uniquement (`USE_RESEARCH_PIPELINE=true`)  

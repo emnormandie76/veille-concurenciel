@@ -36,6 +36,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pipeline.main")
 
+# ── Environnement ─────────────────────────────────────────────────
+# Pilote ce qui ne doit exister qu en developpement : documentation OpenAPI,
+# origines CORS de repli.
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "development").strip().lower()
+IS_PRODUCTION = ENVIRONMENT in ("production", "prod")
+
+# Source unique : le healthcheck annoncait 0.4.0 pendant que l app declarait 0.5.0.
+APP_VERSION = "0.5.0"
+
 # ── Singleton TavilyKeyManager ─────────────────────────────────────
 # Accessible par tous les modules via app.state.tavily_manager
 from backend.tavily_service.key_manager import TavilyKeyManager, QuotaExhaustedError
@@ -97,24 +106,41 @@ app = FastAPI(
         "Pipeline IA automatisé pour la centralisation des données "
         "de l'enseignement supérieur français."
     ),
-    version="0.5.0",
+    version=APP_VERSION,
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    # Fermes en production : la documentation publiait la surface complete de
+    # l API interne, routes /internal/* comprises. openapi_url doit etre ferme
+    # aussi, sinon le schema reste telechargeable et /docs reconstructible.
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
 )
 
 # ── CORS ──────────────────────────────────────────────────────────
 # En production, remplacer par l'URL Vercel/Koyeb
-ALLOWED_ORIGINS = os.environ.get(
-    "ALLOWED_ORIGINS", "http://localhost:3000"
-).split(",")
+_origins_env = os.environ.get("ALLOWED_ORIGINS", "").strip()
+
+if _origins_env:
+    ALLOWED_ORIGINS = [o.strip() for o in _origins_env.split(",") if o.strip()]
+elif IS_PRODUCTION:
+    # Le repli http://localhost:3000 partait tel quel en production quand la
+    # variable n etait pas fixee. Aucune origine plutot qu une mauvaise :
+    # les appels serveur a serveur (Next.js -> FastAPI) ne passent pas par CORS.
+    ALLOWED_ORIGINS = []
+    logger.error(
+        "ALLOWED_ORIGINS non definie en production : aucune origine croisee "
+        "ne sera acceptee."
+    )
+else:
+    ALLOWED_ORIGINS = ["http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Restreint a ce que l API expose reellement, au lieu de ["*"].
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # ── Routers ───────────────────────────────────────────────────────
@@ -134,5 +160,5 @@ async def health_check():
     """
     return {
         "status": "ok",
-        "version": "0.4.0",
+        "version": APP_VERSION,
     }

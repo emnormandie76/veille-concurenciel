@@ -42,6 +42,25 @@ class TavilyKeyState:
     last_fetched_at: float = 0.0  # Timestamp Unix de la dernière actualisation API
 
 
+# Fragments de message renvoyes par l API Tavily quand le quota est atteint.
+# Etaient definis en local dans research_client.py : client.py ne les connaissait
+# pas et n appelait donc jamais mark_exhausted(). Une cle morte restait
+# selectionnee et etait reinterrogee en boucle.
+QUOTA_ERROR_PHRASES = (
+    "exceeds your plan",
+    "usage limit",
+    "rate limit",
+    "quota",
+    "upgrade your plan",
+)
+
+
+def is_quota_error(error: Exception) -> bool:
+    """Vrai si l exception ressemble a un refus de quota de l API Tavily."""
+    message = str(error).lower()
+    return any(phrase in message for phrase in QUOTA_ERROR_PHRASES)
+
+
 class TavilyKeyManager:
     """
     Gestionnaire de rotation des clés API Tavily avec suivi de quota dynamique.
@@ -127,16 +146,20 @@ class TavilyKeyManager:
                                 limit = 1000
                             
                             with self._lock:
-                                key_state.credits_used = usage
+                                # max() et non affectation directe : la synchro est declenchee par
+                                # mark_exhausted() lui-meme. Une valeur distante en retard ecrasait le
+                                # compteur local et rouvrait la cle.
+                                key_state.credits_used = max(key_state.credits_used, usage)
                                 key_state.credits_limit = limit
                                 key_state.last_fetched_at = time.time()
-                                
-                                # Seuil de sécurité : rotation s'il reste 10 crédits ou moins
+
+                                # Seuil de securite : rotation s'il reste 10 credits ou moins
                                 rotation_threshold = limit - 10
-                                if usage >= rotation_threshold:
+                                if key_state.credits_used >= rotation_threshold:
                                     key_state.exhausted = True
-                                else:
-                                    key_state.exhausted = False
+                                # JAMAIS de branche else remettant exhausted a False : c etait la
+                                # boucle de sollicitation d une cle refusee par l API. Seul le
+                                # passage au mois suivant (_reset_if_new_month) leve le drapeau.
                             
                             logger.info(
                                 f"📊 Synchro Quota Tavily (...{key_state.api_key[-6:]}) réussie : "

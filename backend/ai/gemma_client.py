@@ -28,6 +28,30 @@ from google.genai import types
 logger = logging.getLogger("pipeline.gemma")
 
 
+# ── Délimitation du contenu non fiable ────────────────────────────
+#
+# Le contenu scrapé est interpolé dans un gabarit qui se termine par
+# </TEXTE_SOURCE>. Une page qui contient elle-même cette balise fermante sort du
+# bloc : tout ce qui suit est alors lu par le modèle comme une consigne et non
+# plus comme de la matière à analyser. Ces deux fonctions sont le seul chemin
+# autorisé pour injecter du contenu externe dans un prompt.
+
+_DELIMITER_RE = re.compile(r"</?\s*(TEXTE_SOURCE|REVENDICATION)\s*>", re.IGNORECASE)
+
+
+def sanitize_source(text: str | None) -> str:
+    """Neutralise les balises de délimitation présentes dans un contenu externe."""
+    return _DELIMITER_RE.sub("[balise neutralisée]", text or "")
+
+
+def wrap_source(text: str | None, limit: int | None = None) -> str:
+    """Tronque, neutralise puis encadre un contenu externe dans <TEXTE_SOURCE>."""
+    content = text or ""
+    if limit is not None:
+        content = content[:limit]
+    return f"<TEXTE_SOURCE>\n{sanitize_source(content)}\n</TEXTE_SOURCE>"
+
+
 # ── Custom Exceptions ─────────────────────────────────────────────
 
 class GemmaError(Exception):
@@ -259,7 +283,7 @@ def is_content_relevant(raw_content: str, category: str) -> bool:
         f'- Page d\'erreur 404/500'
     )
 
-    user_content = f"<TEXTE_SOURCE>\n{raw_content[:3000]}\n</TEXTE_SOURCE>"
+    user_content = wrap_source(raw_content, 3000)
 
     try:
         result = call_gemma(
@@ -302,9 +326,11 @@ def fact_check(user_claim: str, source_content: str) -> dict | None:
         '}'
     )
 
+    # La revendication vient de l'utilisateur : elle était injectée brute et non
+    # tronquée. Elle est désormais bornée et délimitée comme le contenu scrapé.
     user_content = (
-        f"REVENDICATION : {user_claim}\n\n"
-        f"<TEXTE_SOURCE>\n{source_content[:4000]}\n</TEXTE_SOURCE>"
+        f"<REVENDICATION>\n{sanitize_source(user_claim[:2000])}\n</REVENDICATION>\n\n"
+        f"{wrap_source(source_content, 4000)}"
     )
 
     try:

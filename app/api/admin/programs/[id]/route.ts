@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { guardAuth } from "@/lib/auth";
+import { guardAuth, guardAdmin } from "@/lib/auth";
 
 export async function PUT(
   request: Request,
@@ -122,7 +122,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardAdmin();
   if (error) return error;
 
   const { id } = await params;

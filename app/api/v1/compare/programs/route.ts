@@ -27,10 +27,16 @@ export async function GET(request: Request) {
       return corsErrorResponse("Paramètre ids manquant", 400);
     }
 
-    const idList = idsParam
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean);
+    // Set() : sans déduplication, ?ids=X,X renvoyait un 404 « introuvable »
+    // pour un programme parfaitement valide (comparaison des longueurs plus bas).
+    const idList = [
+      ...new Set(
+        idsParam
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      ),
+    ];
 
     if (idList.length === 0) {
       return corsErrorResponse("Aucun identifiant de programme fourni", 400);

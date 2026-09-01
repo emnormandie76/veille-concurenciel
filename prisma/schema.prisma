@@ -158,4 +158,7 @@ model ContributionInbox {
   submission_group_id   String?
 
   @@index([submission_group_id])
+  // La file de traitement filtre sur status et trie sur createdAt a chaque
+  // passage (toutes les minutes). Aucun index ne couvrait ces colonnes.
+  @@index([status, createdAt])
 }

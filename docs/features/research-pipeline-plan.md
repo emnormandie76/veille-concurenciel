@@ -1,5 +1,42 @@
 # 📋 Plan d'Implémentation — Refactorisation Pipelines via Tavily Research
 
+<!-- audit-2026-09-01 -->
+> ## ⚠️ Amendements — remédiation de l'audit, 1er septembre 2026
+>
+> **Injection de prompt.** Tout contenu externe injecté dans un prompt passe
+> obligatoirement par `wrap_source()` (`backend/ai/gemma_client.py`), qui tronque,
+> **neutralise les balises de délimitation** et encadre. Une page contenant
+> elle-même `</TEXTE_SOURCE>` sortait du bloc : tout ce qui suivait était lu comme
+> une consigne. Les six points d'injection du projet y sont passés — phases 1 et 2
+> comprises, où le contenu partait de surcroît **sans troncature**.
+>
+> Corollaire : **les règles vont dans le `system_prompt`**, jamais dans le message
+> utilisateur.
+>
+> **Quotas Tavily** — trois correctifs, détaillés dans
+> [`api-key-optimization-plan.md`](api-key-optimization-plan.md) :
+> la synchro ne réhabilite plus une clé épuisée · `client.py` marque enfin les
+> clés refusées · un seul `TavilyKeyManager` pour tout le processus.
+>
+> **Cron Phase 1** : la requête de sélection des écoles échouait à chaque passage
+> (`ORDER BY` sur une colonne inexistante), exception avalée. Corrigé, et l'échec
+> d'un job périodique remonte désormais dans `/internal/pipeline-status`.
+>
+> **Limites connues, non corrigées** :
+> - `phase1_research.py:136` affecte le résultat de `json.loads` sans vérifier le
+>   type, puis appelle `.get()` dessus — une réponse sous forme de tableau lève
+>   `AttributeError`. `call_gemma` gère ce cas, pas ce chemin.
+> - `gemma_client.py:180-181` : si `response.text` vaut `None`, `len(raw_text)`
+>   lève `TypeError`, reclassé en erreur API avec un backoff inadapté.
+> - `gemma_client.py:226-233` réessaie sur **toute** exception, y compris une clé
+>   invalide ou une requête malformée.
+> - `research_client.py:210-211` avale chaque échec de `get_research` en simple
+>   avertissement et poursuit jusqu'à 600 s : une tâche perdue immobilise un
+>   thread dix minutes.
+> - Troncatures incohérentes : 25 000 caractères en multi-programme, 80 000 en
+>   mono-programme, sans justification apparente.
+
+
 > **Version :** 1.0 — 29 mai 2026  
 > **Branche :** `devresearch` (créée depuis `dev` @ commit `fc25ead`)  
 > **Statut :** ✅ **IMPLÉMENTÉ ET PROMU** — Le pipeline Research est désormais le pipeline de base unique. L'ancien pipeline (crawl+search+Gemma) a été supprimé.  

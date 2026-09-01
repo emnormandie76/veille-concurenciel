@@ -10,6 +10,8 @@ Référence : architecture.md §4.1, task.md §5.1
 import logging
 from typing import Optional
 
+from backend.tavily_service.key_manager import is_quota_error
+
 logger = logging.getLogger("pipeline.tavily_client")
 
 # Timeout des appels Tavily (Edge Case 14 : réponse vide ou lente)
@@ -97,6 +99,14 @@ def crawl_school_website(
     except QuotaExhaustedError:
         raise
     except Exception as e:
+        if is_quota_error(e):
+            # research_client.py etait le seul a marquer la cle. Sans cet
+            # appel, une cle refusee par l API (402/429) restait selectionnee
+            # et etait reinterrogee en boucle par les appels suivants.
+            logger.warning(
+                f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
+            )
+            key_manager.mark_exhausted(api_key)
         error_str = str(e)
         if "timeout" in error_str.lower() or "timed out" in error_str.lower():
             logger.warning(f"⏱️ Timeout Tavily crawl {url} (Edge Case 14)")
@@ -178,6 +188,14 @@ def search_web(
     except QuotaExhaustedError:
         raise
     except Exception as e:
+        if is_quota_error(e):
+            # research_client.py etait le seul a marquer la cle. Sans cet
+            # appel, une cle refusee par l API (402/429) restait selectionnee
+            # et etait reinterrogee en boucle par les appels suivants.
+            logger.warning(
+                f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
+            )
+            key_manager.mark_exhausted(api_key)
         logger.error(f"❌ Erreur Tavily search '{query[:60]}': {e}")
         return ""
 
@@ -236,5 +254,13 @@ def extract_from_urls(
     except QuotaExhaustedError:
         raise
     except Exception as e:
+        if is_quota_error(e):
+            # research_client.py etait le seul a marquer la cle. Sans cet
+            # appel, une cle refusee par l API (402/429) restait selectionnee
+            # et etait reinterrogee en boucle par les appels suivants.
+            logger.warning(
+                f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
+            )
+            key_manager.mark_exhausted(api_key)
         logger.error(f"❌ Erreur Tavily extract: {e}")
         return ""

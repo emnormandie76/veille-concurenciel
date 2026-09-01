@@ -16,7 +16,7 @@ import time
 import logging
 from typing import Optional, Any
 from tavily import TavilyClient
-from backend.tavily_service.key_manager import QuotaExhaustedError
+from backend.tavily_service.key_manager import QuotaExhaustedError, is_quota_error
 
 logger = logging.getLogger("pipeline.research_client")
 
@@ -90,14 +90,6 @@ def create_research_task(
         }
 
     # Mots-clés dans les messages d'erreur Tavily indiquant un quota dépassé côté API
-    _QUOTA_ERROR_PHRASES = (
-        "exceeds your plan",
-        "usage limit",
-        "rate limit",
-        "quota",
-        "upgrade your plan",
-    )
-
     req_credits = REQUIRED_CREDITS_PRO if model == "pro" else REQUIRED_CREDITS_MINI
     max_retries = key_manager.total_keys  # On ne réessaie pas plus de fois qu'il n'y a de clés
     last_error: Exception | None = None
@@ -158,9 +150,8 @@ def create_research_task(
         except QuotaExhaustedError:
             raise
         except Exception as e:
-            error_str = str(e).lower()
             # Détecter les erreurs de quota renvoyées directement par l'API Tavily
-            if any(phrase in error_str for phrase in _QUOTA_ERROR_PHRASES):
+            if is_quota_error(e):
                 logger.warning(
                     f"⚠️ Quota API Tavily dépassé sur clé ...{api_key[-6:]} "
                     f"— marquée épuisée, retry {attempt + 1}/{max_retries}"

@@ -13,6 +13,9 @@ interface UsersManagerClientProps {
   currentUserId: string;
 }
 
+/** Doit rester aligné sur MIN_PASSWORD_LENGTH de lib/password.ts. */
+const MIN_PASSWORD_LENGTH = 12;
+
 export default function UsersManagerClient({ currentUserId }: UsersManagerClientProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,9 +25,14 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
   // États des formulaires/modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [modalSuccess, setModalSuccess] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   useEffect(() => {
@@ -108,6 +116,46 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+
+    setModalError(null);
+    setModalSuccess(null);
+
+    if (newPassword !== confirmPassword) {
+      setModalError("Les deux saisies du nouveau mot de passe ne correspondent pas.");
+      return;
+    }
+
+    setActionLoading(true);
+    const isSelf = selectedUser.id === currentUserId;
+
+    try {
+      const res = await fetch(`/api/admin/users/${selectedUser.id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isSelf ? { currentPassword, newPassword } : { newPassword }
+        ),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erreur lors du changement de mot de passe");
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setModalSuccess(data.message || "Mot de passe mis à jour.");
+    } catch (err: any) {
+      setModalError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const openAddModal = () => {
     setUsername("");
     setPassword("");
@@ -119,6 +167,24 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
     setSelectedUser(user);
     setModalError(null);
     setIsDeleteModalOpen(true);
+  };
+
+  const openPasswordModal = (user: User) => {
+    setSelectedUser(user);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setModalError(null);
+    setModalSuccess(null);
+    setIsPasswordModalOpen(true);
+  };
+
+  const closePasswordModal = () => {
+    setSelectedUser(null);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setIsPasswordModalOpen(false);
   };
 
   return (
@@ -176,6 +242,13 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
                     })}
                   </td>
                   <td style={{ textAlign: "right" }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => openPasswordModal(user)}
+                      style={{ padding: "6px 12px", marginRight: "8px" }}
+                    >
+                      {user.id === currentUserId ? "Changer mon mot de passe" : "Réinitialiser"}
+                    </button>
                     {user.id !== currentUserId && (
                       <button className="btn btn-danger btn-sm" onClick={() => openDeleteModal(user)} style={{ padding: "6px 12px" }}>
                         Supprimer
@@ -224,9 +297,10 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
                   id="new-password"
                   type="password"
                   className="form-control"
-                  placeholder="Minimum 6 caractères"
+                  placeholder={`Minimum ${MIN_PASSWORD_LENGTH} caractères`}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  minLength={MIN_PASSWORD_LENGTH}
                   required
                 />
               </div>
@@ -236,6 +310,87 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={actionLoading}>
                   {actionLoading ? "Création..." : "Créer le compte"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Changement de mot de passe */}
+      {isPasswordModalOpen && selectedUser && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3 className="modal-title">
+                {selectedUser.id === currentUserId
+                  ? "Changer mon mot de passe"
+                  : `Réinitialiser le mot de passe de ${selectedUser.username}`}
+              </h3>
+              <button className="modal-close" onClick={closePasswordModal}>
+                ✕
+              </button>
+            </div>
+            {modalError && (
+              <div className="alert alert-danger" style={{ marginBottom: "16px" }}>
+                <span>⚠️ </span>
+                <span>{modalError}</span>
+              </div>
+            )}
+            {modalSuccess && (
+              <div className="alert alert-success" style={{ marginBottom: "16px" }}>
+                <span>✅ </span>
+                <span>{modalSuccess}</span>
+              </div>
+            )}
+            <form onSubmit={handleChangePassword}>
+              {selectedUser.id === currentUserId && (
+                <div className="form-group">
+                  <label className="form-label" htmlFor="current-password">Mot de passe actuel</label>
+                  <input
+                    id="current-password"
+                    type="password"
+                    className="form-control"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
+              <div className="form-group">
+                <label className="form-label" htmlFor="change-new-password">Nouveau mot de passe</label>
+                <input
+                  id="change-new-password"
+                  type="password"
+                  className="form-control"
+                  placeholder={`Minimum ${MIN_PASSWORD_LENGTH} caractères`}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={MIN_PASSWORD_LENGTH}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="confirm-new-password">Confirmer le nouveau mot de passe</label>
+                <input
+                  id="confirm-new-password"
+                  type="password"
+                  className="form-control"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={MIN_PASSWORD_LENGTH}
+                  required
+                />
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={closePasswordModal} disabled={actionLoading}>
+                  Fermer
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
+                  {actionLoading ? "Mise à jour..." : "Mettre à jour"}
                 </button>
               </div>
             </form>

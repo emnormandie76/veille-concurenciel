@@ -1,5 +1,44 @@
 # Plan d'Implémentation — Gestion Complète du Contenu des Écoles
 
+<!-- audit-2026-09-01 -->
+> ## ⚠️ Amendements — remédiation de l'audit, 1er septembre 2026
+>
+> **Chaque route admin choisit désormais explicitement son garde.** Les 32 routes
+> sous `app/api/admin/` ont été recartographiées ; `getServerSession` nu n'y
+> subsiste nulle part.
+>
+> Pour la gestion de contenu décrite dans ce document, la règle est :
+>
+> | Action | Garde |
+> |---|---|
+> | Créer une école | **ADMIN** |
+> | Supprimer une école, un campus, un programme *(cascade)* | **ADMIN** |
+> | Créer / modifier tarifs, classements, capacités, accréditations, stats, campus | toute session |
+> | Supprimer **un enregistrement isolé** (une ligne de tarif, un classement…) | toute session |
+> | Purger l'inbox | **ADMIN** |
+>
+> Le principe : *un MODERATOR modère la donnée, un ADMIN assume l'irréversible.*
+> Une suppression en cascade détruit des dizaines d'enregistrements ; corriger une
+> ligne fausse est du travail de modération.
+>
+> **Validation vers la production** — trois règles s'ajoutent :
+> - upsert et passage à `Validated` dans **une seule transaction** ;
+> - le ticket n'est clos **que si une donnée a réellement été écrite** ;
+> - une capacité n'est jamais écrite sans campus identifiable.
+>
+> **Une capacité de 0 place est une donnée valide** (formation fermée). Le
+> contrôle `!data.spots_available` la rejetait comme manquante ; il teste
+> désormais `== null`.
+>
+> **Modèle de données** : voir [`bdd.md`](../architecture/bdd.md), remis en phase
+> avec le refactor `Program` (un programme appartient à une **école**, les campus
+> passent par `ProgramCampus`, la capacité est portée par `programCampusId`).
+>
+> **Dette connue non traitée** : l'interface d'administration recourt largement à
+> `as any` — une soixantaine d'occurrences — ce qui neutralise localement le
+> `strict: true` du `tsconfig.json`. `npm run lint` les compte.
+
+
 > **Version :** 1.0 — 27 juillet 2026  
 > **Statut :** En attente de validation  
 > **Objectif :** Créer une nouvelle page admin `/admin/schools/[id]/manage` avec navigation par onglets pour gérer la totalité du contenu d'une école (infos de base, accréditations, statistiques, campus, programmes, tarifs, classements, capacités).

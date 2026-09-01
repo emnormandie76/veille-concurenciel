@@ -78,6 +78,10 @@ export async function GET(
         },
       },
       orderBy: { campus: { name: "asc" } },
+      // Plafond de sécurité : cette collection n'est pas paginée. La valeur est
+      // très au-dessus de tout volume légitime — elle borne une requête
+      // pathologique, elle ne tronque pas de donnée réelle.
+      take: 500,
     });
 
     return corsResponse(programCampuses);

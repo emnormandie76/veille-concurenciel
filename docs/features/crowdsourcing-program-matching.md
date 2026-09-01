@@ -1,5 +1,52 @@
 # Feature : Matching Automatique des Programmes dans le Pipeline Crowdsourcing
 
+<!-- audit-2026-09-01 -->
+> ## ⚠️ Ce plan a été amendé — remédiation de l'audit, 1er septembre 2026
+>
+> Le matching multi-programme décrit ci-dessous fonctionne, mais **six règles
+> l'encadrent désormais**. Elles priment sur le texte du plan.
+>
+> **1. La capacité exige un campus identifiable.** La branche multi-programme
+> résolvait le `ProgramCampus` par `findFirst({ where: { programId } })` — sans
+> `orderBy`, donc une ligne arbitraire, et l'ordre PostgreSQL sans `ORDER BY`
+> n'est même pas stable. Le nombre de places était écrit sur un campus
+> indéterminé. La résolution est maintenant explicite : `campus_id` fourni ·
+> `campus_name` fourni · une seule association · **sinon l'entrée est écartée**.
+> **Le prompt d'extraction ne restitue pas encore le campus** : tant que ce n'est
+> pas fait, les capacités des programmes multi-campus sont écartées et signalées
+> plutôt qu'écrites au mauvais endroit.
+>
+> **2. Les entrées écartées sont renvoyées, plus avalées.** Les `continue`
+> silencieux alimentent un tableau `skipped: [{ program, reason }]`, retourné à
+> l'admin même en cas de succès partiel.
+>
+> **3. Le ticket n'est clos que si une donnée a été écrite.** Le passage à
+> `Validated` était **inconditionnel** : un ticket dont toutes les entrées étaient
+> écartées repartait en `Validated` avec un 200 « 0 Record(s) créé(s) », et la
+> contribution était perdue sans erreur. La route renvoie désormais **422** avec
+> le détail, et le ticket reste ouvert.
+>
+> **4. Upsert et clôture dans une seule transaction.** Séparés, un échec du second
+> appel laissait la donnée écrite et le ticket ouvert : l'admin revalidait et
+> écrasait.
+>
+> **5. Nouveau statut `Failed`.** Une erreur inattendue ne supprime plus la
+> contribution : le ticket est rejoué après délai, puis supprimé s'il échoue
+> toujours. Voir [`decision-retention-tickets.md`](../memory/decision-retention-tickets.md).
+>
+> **6. Le contrôle de compatibilité était vulnérable à l'injection de prompt.**
+> Les règles partaient dans `user_content`, au même niveau de confiance que la
+> page analysée, et une page contenant `</TEXTE_SOURCE>` sortait du bloc. Tout
+> contenu externe passe désormais par `wrap_source()`.
+>
+> **Entrée publique bornée** : `POST /api/contribute` applique dix contrôles avant
+> la moindre écriture — liste blanche de catégories, 5 URLs, 2 000 caractères,
+> restriction au domaine de l'école, rejet des hôtes internes, vérification que
+> les identifiants appartiennent bien à l'école.
+>
+> Référence à jour : [`architecture.md`](../architecture/architecture.md) §6.2 et §10.
+
+
 ## 1. Contexte et Problème
 
 ### 1.1. Situation actuelle

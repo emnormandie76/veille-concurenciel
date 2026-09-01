@@ -60,3 +60,86 @@ Le proxy Next.js transmet déjà la réponse complète du backend. Les nouveaux 
 3. Attendre qu'un job Cron se déclenche (ou forcer un trigger en réduisant temporairement l'intervalle) → vérifier qu'il apparaît dans "🔄 Tâches automatiques (Cron)" avec les infos de base
 4. Vérifier que les deux sections sont bien séparées visuellement
 5. Vérifier que le polling 5s rafraîchit bien les deux sections
+
+---
+
+## Implémenté, puis complété le 1er septembre 2026
+
+Le plan ci-dessus est en place : `register_cron_job()` et `complete_cron_job()`
+existent, `phase1_scanner` et `phase2_enricher` les appellent par école, et
+`/internal/pipeline-status` sépare `pipeline_jobs` de `cron_jobs`.
+
+**Mais il manquait l'essentiel : la visibilité d'un job qui échoue avant même de
+traiter une école.**
+
+### Le cas qui échappait au dispositif
+
+`phase1_scanner` lisait la liste des écoles avec `ORDER BY s."createdAt"` — **une
+colonne qui n'existe pas** sur `School`, ni au schéma Prisma ni dans les
+migrations (seules `User` et `ContributionInbox` en possèdent une).
+
+Chaîne d'échec :
+
+```
+psycopg2 lève UndefinedColumn
+  → le except Exception l'intercepte
+  → une ligne de log est écrite
+  → return
+```
+
+Du point de vue d'APScheduler, le job se terminait **normalement**. Aucun
+`register_cron_job()` n'avait encore été appelé, donc rien n'apparaissait dans
+`cron_jobs`. **Aucune école n'a jamais été cartographiée automatiquement**, et le
+panneau admin n'affichait aucune anomalie.
+
+*Reproduit puis vérifié contre la base réelle : l'ancienne requête renvoie
+`column s.createdAt does not exist`, la nouvelle passe.*
+
+### Ce qui a été ajouté
+
+**1. Un registre du dernier passage de chaque job** — `_last_job_runs` dans
+`jobs.py`, alimenté par `_record_job_run(job_id, status, detail)` : sur échec de
+lecture BDD, sur « rien à traiter », et en fin de passage.
+
+**2. `get_scheduler_status()` sorti du code mort.** La fonction existait et
+n'était **jamais appelée**. Elle expose désormais `last_run` par job, `last_runs`
+global, et un drapeau `has_failure`.
+
+**3. `/internal/pipeline-status` remonte le tout :**
+
+```json
+{
+  "status": "degraded",
+  "database": "connected",
+  "scheduler": { "running": true, "jobs": [...], "last_runs": {...}, "has_failure": true },
+  "cron_jobs": [...]
+}
+```
+
+**Un cron en échec fait passer `status` à `degraded`**, même quand la base répond.
+
+**4. `database` dit enfin la vérité.** `db_ok` était codé en dur à `True`, avec le
+commentaire « en production la BDD est toujours accessible ».
+`check_db_connection()` existait dans `db.py` — un `SELECT 1` — et n'était jamais
+appelé. Il l'est désormais, dans un `try` pour que l'endpoint de supervision ne
+tombe pas à cause de ce qu'il est censé superviser.
+
+**5. Premier déclenchement après démarrage.** Le trigger était réglé à 168 h
+**sans `next_run_time`** : le premier passage n'avait lieu qu'une semaine après
+chaque redémarrage — donc jamais, sur une instance qui redémarre régulièrement.
+Une `start_date` à +5 min est posée, réglable par
+`CRON_PHASE1_INITIAL_DELAY_MINUTES`.
+
+> **Attention au coût** : chaque redémarrage déclenche désormais une cartographie
+> 5 minutes plus tard, avec la consommation Tavily correspondante.
+
+**6. Libellé aligné sur la réalité.** Le job crowdsourcing annonçait « toutes les
+5 m » dans son nom et dans le log de démarrage, alors que son déclencheur était
+réglé sur **1 minute**. C'est l'intervalle réel qui a été conservé, et les
+libellés lisent maintenant la constante `CROWDSOURCING_INTERVAL_MINUTES`.
+
+### Reste à faire côté frontend
+
+`/admin/cron` ne consomme pas encore `scheduler.last_runs` ni `has_failure`. Le
+signal existe côté API, il n'est pas affiché : **un cron en échec reste invisible
+pour l'opérateur tant que cette section n'est pas ajoutée.**

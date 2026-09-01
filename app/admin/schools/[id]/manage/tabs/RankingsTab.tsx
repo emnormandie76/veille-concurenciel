@@ -58,7 +58,7 @@ export default function RankingsTab({ schoolId }: { schoolId: string }) {
       const progsJson = await resProg.json();
       setPrograms(progsJson);
 
-      let queryParams = [];
+      const queryParams = [];
       if (year) queryParams.push(`year=${year}`);
       if (programId) queryParams.push(`programId=${programId}`);
       const queryString = queryParams.length > 0 ? `?${queryParams.join("&")}` : "";

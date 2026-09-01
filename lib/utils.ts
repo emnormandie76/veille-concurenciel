@@ -120,3 +120,84 @@ export function corsErrorResponse(message: string, status: number = 400) {
   );
 }
 
+
+// ──────────────────────────────────────────────
+// Sûreté des URLs soumises (crowdsourcing)
+// ──────────────────────────────────────────────
+
+/**
+ * Normalise une valeur de `School.official_domain` en nom d'hôte comparable.
+ *
+ * Les valeurs en base ne sont pas homogènes : « em-lyon.com »,
+ * « www.em-normandie.com » et même « em-strasbourg.com/fr » cohabitent. On
+ * retire le schéma, le chemin, le port, un éventuel « www. » de tête, et on
+ * passe en minuscules.
+ */
+export function normalizeDomain(value: string): string {
+  let host = value.trim().toLowerCase();
+  host = host.replace(/^[a-z][a-z0-9+.-]*:\/\//, ""); // schéma
+  host = host.split("/")[0];                          // chemin
+  host = host.split("?")[0].split("#")[0];
+  host = host.split("@").pop() ?? host;               // éventuels identifiants
+  host = host.split(":")[0];                          // port
+  host = host.replace(/^www\./, "");
+  return host.replace(/\.$/, "");
+}
+
+/**
+ * Vrai si l'hôte désigne une ressource interne : boucle locale, plage privée,
+ * lien-local, ou nom de domaine non routable.
+ *
+ * Sans ce contrôle, une URL soumise peut faire interroger par le pipeline des
+ * adresses du réseau interne de la plateforme.
+ */
+export function isPrivateHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".home.arpa")
+  ) {
+    return true;
+  }
+
+  // IPv6
+  if (host.includes(":")) {
+    if (host === "::" || host === "::1") return true;
+    if (/^f[cd][0-9a-f]{2}:/.test(host)) return true; // unique local fc00::/7
+    if (/^fe[89ab][0-9a-f]:/.test(host)) return true; // lien-local fe80::/10
+    return false;
+  }
+
+  // IPv4
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * Vrai si `url` pointe vers `baseDomain` ou l'un de ses sous-domaines.
+ * `baseDomain` est normalisé par `normalizeDomain`.
+ */
+export function urlBelongsToDomain(url: string, baseDomain: string): boolean {
+  const base = normalizeDomain(baseDomain);
+  if (!base) return false;
+  try {
+    const host = normalizeDomain(new URL(url).hostname);
+    return host === base || host.endsWith(`.${base}`);
+  } catch {
+    return false;
+  }
+}

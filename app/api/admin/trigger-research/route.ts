@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { guardAuth } from "@/lib/auth";
+import { guardAdmin } from "@/lib/auth";
+import { internalApiToken, fastapiUrl } from "@/lib/internal-api";
 
 /**
  * POST /api/admin/trigger-research
@@ -10,11 +11,11 @@ import { guardAuth } from "@/lib/auth";
  * Body: { school_id, phase, program_id?, categories? }
  */
 export async function POST(request: Request) {
-  const { error } = await guardAuth();
+  const { error } = await guardAdmin();
   if (error) return error;
 
-  const fastapiUrl = process.env.FASTAPI_URL || "http://localhost:8000";
-  const token = process.env.FASTAPI_INTERNAL_TOKEN;
+  const baseUrl = fastapiUrl();
+  const token = internalApiToken();
 
   try {
     const body = await request.json();
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
     const res = await fetch(
-      `${fastapiUrl}/internal/trigger-targeted-research/${school_id}`,
+      `${baseUrl}/internal/trigger-targeted-research/${school_id}`,
       {
         method: "POST",
         headers: {

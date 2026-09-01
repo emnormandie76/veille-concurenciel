@@ -10,6 +10,7 @@ Référence : task.md §4.2, architecture.md §6 (API Interne)
 """
 
 import os
+import secrets
 import logging
 import asyncio
 import time as time_module
@@ -72,14 +73,25 @@ def complete_cron_job(job_key: str, status: str, result: dict = None, error: str
 # ── Authentification ──────────────────────────────────────────────
 
 def verify_internal_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Vérifie le token Bearer de l'API interne."""
-    expected_token = os.environ.get("INTERNAL_API_TOKEN") or os.environ.get("INTERNAL_TOKEN")
+    """Vérifie le token Bearer de l'API interne, en temps constant."""
+    # Le meme secret portait trois noms de part et d autre de la meme frontiere
+    # de confiance : Next.js envoyait FASTAPI_INTERNAL_TOKEN, FastAPI attendait
+    # INTERNAL_API_TOKEN ou INTERNAL_TOKEN. Nom canonique : INTERNAL_API_TOKEN.
+    # Les deux autres restent acceptes pour ne casser aucun deploiement.
+    expected_token = (
+        os.environ.get("INTERNAL_API_TOKEN")
+        or os.environ.get("INTERNAL_TOKEN")
+        or os.environ.get("FASTAPI_INTERNAL_TOKEN")
+    )
     if not expected_token:
         raise HTTPException(
             status_code=500,
-            detail="INTERNAL_API_TOKEN ou INTERNAL_TOKEN non configuré côté serveur"
+            detail="INTERNAL_API_TOKEN non configuré côté serveur"
         )
-    if credentials.credentials != expected_token:
+    # compare_digest et non != : la comparaison native s'arrête au premier
+    # octet différent, ce qui laisse fuir la longueur du préfixe correct par
+    # mesure du temps de réponse.
+    if not secrets.compare_digest(credentials.credentials, expected_token):
         raise HTTPException(
             status_code=401,
             detail="Token d'authentification invalide"
@@ -297,8 +309,16 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
 
     Référence : task.md §4.2, architecture.md §6.1
     """
-    db_ok = True  # Pas de check direct (psycopg2 peut bloquer sur Neon local)
-    # En production sur Koyeb, la BDD est toujours accessible
+    # check_db_connection() existait dans db.py mais n'était jamais appelé :
+    # le panneau admin affichait « base connectée » quelle que soit la réalité.
+    # L'appel est protégé pour que l'endpoint de supervision ne tombe jamais
+    # à cause de ce qu'il est censé superviser.
+    try:
+        from backend.db import check_db_connection
+        db_ok = check_db_connection()
+    except Exception as e:
+        logger.error(f"❌ Échec du contrôle de connexion BDD: {e}")
+        db_ok = False
 
     # Statut Tavily (si initialisé)
     tavily_status = []
@@ -316,6 +336,15 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
     except Exception as e:
         tavily_status = {"error": f"non initialisé: {e}"}
 
+    # État des jobs périodiques : un cron qui échoue à chaque passage se
+    # terminait « normalement » du point de vue d'APScheduler et n'apparaissait
+    # nulle part. get_scheduler_status() existait mais n'était jamais appelé.
+    try:
+        from backend.scheduler.jobs import get_scheduler_status
+        scheduler_status = get_scheduler_status()
+    except Exception as e:
+        scheduler_status = {"running": False, "jobs": [], "error": str(e)}
+
     active_jobs = [
         {**job} for job in _pipeline_jobs.values()
         if job.get("status") in ("running", "queued")
@@ -330,9 +359,15 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
         if job_id and job_id in _pipeline_progress:
             job["progress_details"] = _pipeline_progress[job_id]
 
+    # Un job periodique en echec degrade le pipeline, meme si la BDD repond.
+    scheduler_failed = bool(scheduler_status.get("has_failure")) or bool(
+        scheduler_status.get("error")
+    )
+
     return {
-        "status": "ok" if db_ok else "degraded",
+        "status": "ok" if (db_ok and not scheduler_failed) else "degraded",
         "database": "connected" if db_ok else "disconnected",
+        "scheduler": scheduler_status,
         "pipeline_jobs_active": len(manual_jobs) + len(cron_jobs),
         "pipeline_jobs": manual_jobs[:10],  # Limiter à 10 pour la lisibilité
         "cron_jobs": cron_jobs[:10],        # Limiter à 10 pour la lisibilité

@@ -19,8 +19,7 @@
  * Référence : task.md §3.2-3.3, bdd.md §4 (upserting), architecture.md §5.2
  */
 
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { guardAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -147,10 +146,8 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session) {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
-  }
+  const { error } = await guardAuth();
+  if (error) return error;
 
   const { id } = await params;
 
@@ -397,49 +394,53 @@ async function validatePricing(
     return NextResponse.json({ error: "academic_year manquant dans le JSON Pricing" }, { status: 400 });
   }
 
-  const record = await prisma.pricingRecord.upsert({
-    where: {
-      programId_academic_year: {
+  // Upsert et clôture du ticket dans UNE SEULE transaction. Séparés, un échec
+  // du second appel laissait la donnée écrite et le ticket ouvert : l'admin
+  // revalidait et écrasait.
+  const [record] = await prisma.$transaction([
+    prisma.pricingRecord.upsert({
+      where: {
+        programId_academic_year: {
+          programId: ticket.programId,
+          academic_year: data.academic_year,
+        },
+      },
+      create: {
         programId: ticket.programId,
         academic_year: data.academic_year,
+        currency: data.currency ?? "EUR",
+        year_1_fee: data.year_1_fee ?? null,
+        year_2_fee: data.year_2_fee ?? null,
+        year_3_fee: data.year_3_fee ?? null,
+        year_4_fee: data.year_4_fee ?? null,
+        year_5_fee: data.year_5_fee ?? null,
+        total_fee: data.total_fee ?? null,
+        intl_year_1_fee: data.intl_year_1_fee ?? null,
+        intl_total_fee: data.intl_total_fee ?? null,
+        intl_currency: data.intl_currency ?? null,
+        additional_fees_notes: data.additional_fees_notes ?? null,
+        source_url: data.source_url ?? null,
       },
-    },
-    create: {
-      programId: ticket.programId,
-      academic_year: data.academic_year,
-      currency: data.currency ?? "EUR",
-      year_1_fee: data.year_1_fee ?? null,
-      year_2_fee: data.year_2_fee ?? null,
-      year_3_fee: data.year_3_fee ?? null,
-      year_4_fee: data.year_4_fee ?? null,
-      year_5_fee: data.year_5_fee ?? null,
-      total_fee: data.total_fee ?? null,
-      intl_year_1_fee: data.intl_year_1_fee ?? null,
-      intl_total_fee: data.intl_total_fee ?? null,
-      intl_currency: data.intl_currency ?? null,
-      additional_fees_notes: data.additional_fees_notes ?? null,
-      source_url: data.source_url ?? null,
-    },
-    update: {
-      currency: data.currency ?? "EUR",
-      year_1_fee: data.year_1_fee ?? null,
-      year_2_fee: data.year_2_fee ?? null,
-      year_3_fee: data.year_3_fee ?? null,
-      year_4_fee: data.year_4_fee ?? null,
-      year_5_fee: data.year_5_fee ?? null,
-      total_fee: data.total_fee ?? null,
-      intl_year_1_fee: data.intl_year_1_fee ?? null,
-      intl_total_fee: data.intl_total_fee ?? null,
-      intl_currency: data.intl_currency ?? null,
-      additional_fees_notes: data.additional_fees_notes ?? null,
-      source_url: data.source_url ?? null,
-    },
-  });
-
-  await prisma.contributionInbox.update({
-    where: { id: ticket.id },
-    data: { status: "Validated" },
-  });
+      update: {
+        currency: data.currency ?? "EUR",
+        year_1_fee: data.year_1_fee ?? null,
+        year_2_fee: data.year_2_fee ?? null,
+        year_3_fee: data.year_3_fee ?? null,
+        year_4_fee: data.year_4_fee ?? null,
+        year_5_fee: data.year_5_fee ?? null,
+        total_fee: data.total_fee ?? null,
+        intl_year_1_fee: data.intl_year_1_fee ?? null,
+        intl_total_fee: data.intl_total_fee ?? null,
+        intl_currency: data.intl_currency ?? null,
+        additional_fees_notes: data.additional_fees_notes ?? null,
+        source_url: data.source_url ?? null,
+      },
+    }),
+    prisma.contributionInbox.update({
+      where: { id: ticket.id },
+      data: { status: "Validated" },
+    }),
+  ]);
 
   return NextResponse.json({ message: "PricingRecord créé/mis à jour", record });
 }
@@ -459,31 +460,35 @@ async function validateRanking(
     return NextResponse.json({ error: "ranking_name, rank et academic_year sont requis" }, { status: 400 });
   }
 
-  const record = await prisma.rankingRecord.upsert({
-    where: {
-      programId_academic_year_ranking_name: {
+  // Upsert et clôture du ticket dans UNE SEULE transaction. Séparés, un échec
+  // du second appel laissait la donnée écrite et le ticket ouvert : l'admin
+  // revalidait et écrasait.
+  const [record] = await prisma.$transaction([
+    prisma.rankingRecord.upsert({
+      where: {
+        programId_academic_year_ranking_name: {
+          programId: ticket.programId,
+          academic_year: data.academic_year,
+          ranking_name: data.ranking_name,
+        },
+      },
+      create: {
         programId: ticket.programId,
         academic_year: data.academic_year,
         ranking_name: data.ranking_name,
+        rank: data.rank,
+        source_url: data.source_url ?? null,
       },
-    },
-    create: {
-      programId: ticket.programId,
-      academic_year: data.academic_year,
-      ranking_name: data.ranking_name,
-      rank: data.rank,
-      source_url: data.source_url ?? null,
-    },
-    update: {
-      rank: data.rank,
-      source_url: data.source_url ?? null,
-    },
-  });
-
-  await prisma.contributionInbox.update({
-    where: { id: ticket.id },
-    data: { status: "Validated" },
-  });
+      update: {
+        rank: data.rank,
+        source_url: data.source_url ?? null,
+      },
+    }),
+    prisma.contributionInbox.update({
+      where: { id: ticket.id },
+      data: { status: "Validated" },
+    }),
+  ]);
 
   return NextResponse.json({ message: "RankingRecord créé/mis à jour", record });
 }
@@ -499,7 +504,8 @@ async function validateCapacity(
   ticket: { id: string; programId: string | null; programCampusId: string | null; campusId: string | null },
   data: CapacityJson
 ) {
-  if (!data.spots_available || !data.academic_year) {
+  // == null et non !valeur : 0 place (formation fermée) est une donnée valide.
+  if (data.spots_available == null || !data.academic_year) {
     return NextResponse.json({ error: "spots_available et academic_year sont requis" }, { status: 400 });
   }
 
@@ -531,29 +537,33 @@ async function validateCapacity(
     programCampusId = pc.id;
   }
 
-  const record = await prisma.capacityRecord.upsert({
-    where: {
-      programCampusId_academic_year: {
+  // Upsert et clôture du ticket dans UNE SEULE transaction. Séparés, un échec
+  // du second appel laissait la donnée écrite et le ticket ouvert : l'admin
+  // revalidait et écrasait.
+  const [record] = await prisma.$transaction([
+    prisma.capacityRecord.upsert({
+      where: {
+        programCampusId_academic_year: {
+          programCampusId,
+          academic_year: data.academic_year,
+        },
+      },
+      create: {
         programCampusId,
         academic_year: data.academic_year,
+        spots_available: data.spots_available,
+        source_url: data.source_url ?? null,
       },
-    },
-    create: {
-      programCampusId,
-      academic_year: data.academic_year,
-      spots_available: data.spots_available,
-      source_url: data.source_url ?? null,
-    },
-    update: {
-      spots_available: data.spots_available,
-      source_url: data.source_url ?? null,
-    },
-  });
-
-  await prisma.contributionInbox.update({
-    where: { id: ticket.id },
-    data: { status: "Validated" },
-  });
+      update: {
+        spots_available: data.spots_available,
+        source_url: data.source_url ?? null,
+      },
+    }),
+    prisma.contributionInbox.update({
+      where: { id: ticket.id },
+      data: { status: "Validated" },
+    }),
+  ]);
 
   return NextResponse.json({ message: "CapacityRecord créé/mis à jour", record });
 }
@@ -573,43 +583,47 @@ async function validateSchoolStats(
     return NextResponse.json({ error: "academic_year est requis" }, { status: 400 });
   }
 
-  const record = await prisma.schoolStatsRecord.upsert({
-    where: {
-      schoolId_academic_year: {
+  // Upsert et clôture du ticket dans UNE SEULE transaction. Séparés, un échec
+  // du second appel laissait la donnée écrite et le ticket ouvert : l'admin
+  // revalidait et écrasait.
+  const [record] = await prisma.$transaction([
+    prisma.schoolStatsRecord.upsert({
+      where: {
+        schoolId_academic_year: {
+          schoolId: ticket.schoolId,
+          academic_year: data.academic_year,
+        },
+      },
+      create: {
         schoolId: ticket.schoolId,
         academic_year: data.academic_year,
+        total_students: data.total_students ?? null,
+        total_alumni: data.total_alumni ?? null,
+        partner_companies: data.partner_companies ?? null,
+        annual_internship_offers: data.annual_internship_offers ?? null,
+        abroad_campuses: data.abroad_campuses ?? null,
+        partner_universities: data.partner_universities ?? null,
+        permanent_professors: data.permanent_professors ?? null,
+        international_professors_pct: data.international_professors_pct ?? null,
+        external_speakers_pct: data.external_speakers_pct ?? null,
       },
-    },
-    create: {
-      schoolId: ticket.schoolId,
-      academic_year: data.academic_year,
-      total_students: data.total_students ?? null,
-      total_alumni: data.total_alumni ?? null,
-      partner_companies: data.partner_companies ?? null,
-      annual_internship_offers: data.annual_internship_offers ?? null,
-      abroad_campuses: data.abroad_campuses ?? null,
-      partner_universities: data.partner_universities ?? null,
-      permanent_professors: data.permanent_professors ?? null,
-      international_professors_pct: data.international_professors_pct ?? null,
-      external_speakers_pct: data.external_speakers_pct ?? null,
-    },
-    update: {
-      total_students: data.total_students ?? null,
-      total_alumni: data.total_alumni ?? null,
-      partner_companies: data.partner_companies ?? null,
-      annual_internship_offers: data.annual_internship_offers ?? null,
-      abroad_campuses: data.abroad_campuses ?? null,
-      partner_universities: data.partner_universities ?? null,
-      permanent_professors: data.permanent_professors ?? null,
-      international_professors_pct: data.international_professors_pct ?? null,
-      external_speakers_pct: data.external_speakers_pct ?? null,
-    },
-  });
-
-  await prisma.contributionInbox.update({
-    where: { id: ticket.id },
-    data: { status: "Validated" },
-  });
+      update: {
+        total_students: data.total_students ?? null,
+        total_alumni: data.total_alumni ?? null,
+        partner_companies: data.partner_companies ?? null,
+        annual_internship_offers: data.annual_internship_offers ?? null,
+        abroad_campuses: data.abroad_campuses ?? null,
+        partner_universities: data.partner_universities ?? null,
+        permanent_professors: data.permanent_professors ?? null,
+        international_professors_pct: data.international_professors_pct ?? null,
+        external_speakers_pct: data.external_speakers_pct ?? null,
+      },
+    }),
+    prisma.contributionInbox.update({
+      where: { id: ticket.id },
+      data: { status: "Validated" },
+    }),
+  ]);
 
   return NextResponse.json({ message: "SchoolStatsRecord créé/mis à jour", record });
 }
@@ -676,9 +690,10 @@ async function validateAccreditation(
     return NextResponse.json({ error: "Aucune accréditation valide dans le ticket" }, { status: 400 });
   }
 
-  // Upsert de toutes les accréditations dans une transaction atomique
-  const records = await prisma.$transaction(
-    accreditationItems.map((item) =>
+  // Upsert de toutes les accréditations ET clôture du ticket dans la même
+  // transaction : la mise à jour du statut était jusqu'ici hors transaction.
+  const results = await prisma.$transaction([
+    ...accreditationItems.map((item) =>
       prisma.accreditationRecord.upsert({
         where: {
           schoolId_accreditation_name: {
@@ -699,13 +714,15 @@ async function validateAccreditation(
           is_active: item.is_active,
         },
       })
-    )
-  );
+    ),
+    prisma.contributionInbox.update({
+      where: { id: ticket.id },
+      data: { status: "Validated" },
+    }),
+  ]);
 
-  await prisma.contributionInbox.update({
-    where: { id: ticket.id },
-    data: { status: "Validated" },
-  });
+  // Le dernier élément est la mise à jour du ticket, pas un enregistrement.
+  const records = results.slice(0, accreditationItems.length);
 
   return NextResponse.json({
     message: `${records.length} AccreditationRecord(s) créé(s)/mis à jour`,
@@ -741,17 +758,26 @@ async function validateMultiProgram(
     );
   }
 
+  // Entrées écartées : renvoyées à l'admin au lieu d'être avalées par un
+  // `continue` silencieux. Déclaré hors transaction pour survivre au callback.
+  const skipped: Array<{ program: string; reason: string }> = [];
+
   try {
     const results = await prisma.$transaction(async (tx) => {
       const records: unknown[] = [];
 
       for (const prog of validPrograms) {
         const programId = prog.matched_program_id!;
+        const label =
+          prog.matched_program_name ?? prog.extracted_program_name ?? programId;
         const d = prog.data;
 
         if (category === "Pricing") {
           const academicYear = d.academic_year as number;
-          if (!academicYear) continue;
+          if (!academicYear) {
+            skipped.push({ program: label, reason: "academic_year absent" });
+            continue;
+          }
 
           const record = await tx.pricingRecord.upsert({
             where: {
@@ -797,7 +823,13 @@ async function validateMultiProgram(
           const rankingName = d.ranking_name as string;
           const rank = d.rank as number;
           const academicYear = d.academic_year as number;
-          if (!rankingName || !rank || !academicYear) continue;
+          if (!rankingName || !rank || !academicYear) {
+            skipped.push({
+              program: label,
+              reason: "ranking_name, rank ou academic_year absent",
+            });
+            continue;
+          }
 
           const record = await tx.rankingRecord.upsert({
             where: {
@@ -824,13 +856,68 @@ async function validateMultiProgram(
         } else if (category === "Capacity") {
           const spotsAvailable = d.spots_available as number;
           const academicYear = d.academic_year as number;
-          if (!spotsAvailable || !academicYear) continue;
+          if (spotsAvailable == null || !academicYear) {
+            skipped.push({
+              program: label,
+              reason: "spots_available ou academic_year absent",
+            });
+            continue;
+          }
 
-          const programCampus = await tx.programCampus.findFirst({
+          // La capacité varie PAR CAMPUS. L'ancien code prenait la première
+          // association venue (findFirst sans orderBy) : pour un programme
+          // ouvert sur plusieurs campus, le nombre de places était écrit sur un
+          // campus indéterminé, et l'ordre renvoyé par PostgreSQL sans ORDER BY
+          // n'est même pas stable. On exige désormais un campus identifiable.
+          const associations = await tx.programCampus.findMany({
             where: { programId },
+            include: { campus: true },
+            orderBy: { campusId: "asc" },
           });
 
-          if (!programCampus) {
+          if (associations.length === 0) {
+            skipped.push({
+              program: label,
+              reason: "aucun campus rattaché à ce programme",
+            });
+            continue;
+          }
+
+          const campusId = (d.campus_id as string | undefined) ?? null;
+          const campusName = (d.campus_name as string | undefined) ?? null;
+
+          let programCampus: (typeof associations)[number] | null = null;
+
+          if (campusId) {
+            programCampus = associations.find((a) => a.campusId === campusId) ?? null;
+            if (!programCampus) {
+              skipped.push({
+                program: label,
+                reason: `campus ${campusId} non rattaché à ce programme`,
+              });
+              continue;
+            }
+          } else if (campusName) {
+            const needle = campusName.trim().toLowerCase();
+            const matches = associations.filter(
+              (a) => a.campus.name.trim().toLowerCase() === needle
+            );
+            if (matches.length !== 1) {
+              skipped.push({
+                program: label,
+                reason: `campus « ${campusName} » introuvable ou ambigu`,
+              });
+              continue;
+            }
+            programCampus = matches[0];
+          } else if (associations.length === 1) {
+            // Un seul campus : aucune ambiguïté possible.
+            programCampus = associations[0];
+          } else {
+            skipped.push({
+              program: label,
+              reason: `programme ouvert sur ${associations.length} campus et campus non précisé — import refusé pour éviter une donnée fausse`,
+            });
             continue;
           }
 
@@ -856,17 +943,35 @@ async function validateMultiProgram(
         }
       }
 
-      await tx.contributionInbox.update({
-        where: { id: ticket.id },
-        data: { status: "Validated" },
-      });
+      // Ne clore le ticket QUE si une donnée a réellement été écrite.
+      // Auparavant cette mise à jour était inconditionnelle : un ticket dont
+      // toutes les entrées étaient écartées repartait en "Validated" avec
+      // « 0 Record(s) créé(s) », et la contribution était perdue sans erreur.
+      if (records.length > 0) {
+        await tx.contributionInbox.update({
+          where: { id: ticket.id },
+          data: { status: "Validated" },
+        });
+      }
 
       return records;
     });
 
+    if (results.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Aucune donnée n'a pu être importée : le ticket reste ouvert pour correction.",
+          skipped,
+        },
+        { status: 422 }
+      );
+    }
+
     return NextResponse.json({
       message: `${results.length} ${category}Record(s) créé(s)/mis à jour`,
       count: results.length,
+      skipped,
     });
   } catch (error) {
     console.error(`Transaction multi-programme ${category} échouée:`, error);

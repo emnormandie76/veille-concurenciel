@@ -32,7 +32,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Optional, Callable
 
-from backend.ai.gemma_client import call_gemma, GemmaError
+from backend.ai.gemma_client import call_gemma, wrap_source, GemmaError
 from backend.pipeline.diff import has_data_changed
 from backend.ai.research_schemas import (
     PRICING_OUTPUT_SCHEMA,
@@ -600,7 +600,7 @@ def _parse_research_report(research_result: dict, category: str, required_keys: 
 
         # Fallback Gemma 26B pour structuration
         logger.info(f"⚠️ Rapport textuel reçu pour {category}. Structuration via Gemma 26B...")
-        user_content = f"<TEXTE_SOURCE>\n{report_content}\n</TEXTE_SOURCE>"
+        user_content = wrap_source(report_content)
         try:
             return call_gemma(
                 model="models/gemma-4-26b-a4b-it",

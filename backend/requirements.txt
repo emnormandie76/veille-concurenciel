@@ -1,8 +1,18 @@
-fastapi
-uvicorn[standard]
-psycopg2-binary
-apscheduler
-tavily-python
-google-genai
-bcrypt
-python-dotenv
+# Dependances directes du backend FastAPI, versions epinglees.
+#
+# Les versions correspondent a l'environnement de reference (backend/.venv,
+# Python 3.14). L'arbre complet, transitives comprises, est fige dans
+# requirements.lock.txt : c'est ce fichier qu'il faut installer en CI et en
+# production (`pip install -r requirements.lock.txt`).
+#
+# Regenerer le lock apres toute modification ici :
+#   pip install -r requirements.txt && pip freeze > requirements.lock.txt
+
+fastapi==0.136.1
+uvicorn[standard]==0.47.0
+psycopg2-binary==2.9.12
+APScheduler==3.11.2
+tavily-python==0.7.24
+google-genai==2.4.0
+bcrypt==5.0.0
+python-dotenv==1.2.2

@@ -57,10 +57,23 @@ jobs:
         run: npx prisma validate
 
       - name: Prisma — statut des migrations (base de dev)
-        # Ne bloque PAS la CI si la base n'est pas disponible (ex. PR externe)
-        # Bloque si une migration est en attente sur une branche protégée
+        # Bloque uniquement sur les branches d'integration (main, devresearch)
+        # et sur les PR vers main. Ailleurs l'etape s'execute et affiche son
+        # verdict, mais ne fait pas echouer le job.
+        #
+        # Pourquoi : cette etape interroge la base Neon PARTAGEE. Une branche
+        # qui ajoute une migration echouait donc tant que cette migration
+        # n'avait pas ete appliquee a la base commune — c'est-a-dire avant
+        # meme que le code soit relu. Trois branches ont bute dessus le
+        # 2 septembre 2026. Le constat est deplace la ou il est actionnable :
+        # a l'integration, quand appliquer la migration est bien l'etape
+        # suivante.
+        #
+        # Ce n'est qu'un palliatif. Le correctif de fond est un service
+        # Postgres ephemere dans le job — voir
+        # docs/memory/memory-deploiement-vercel.md, "Base de CI ephemere".
         run: npx prisma migrate status
-        continue-on-error: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' }}
+        continue-on-error: ${{ !(github.ref == 'refs/heads/main' || github.ref == 'refs/heads/devresearch' || github.base_ref == 'main') }}
 
       # ─── Garde-fou : interdire la synchro de schema sans migration ───────
       - name: Sécurité — détecter une synchro de schema hors migration

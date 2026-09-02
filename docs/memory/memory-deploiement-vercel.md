@@ -309,3 +309,119 @@ Pour éviter de rejouer des corrections déjà faites :
 4. **Le prompt d'extraction multi-programme** ne restitue pas le campus : les
    capacités des programmes multi-campus sont écartées et signalées plutôt
    qu'écrites au hasard (étape 3, §3.5).
+
+---
+
+## 12. Base de CI éphémère — à faire juste avant le déploiement
+
+> **Pour l'agent qui reprendra ce point.** Cette section est autoportante :
+> elle suppose que vous ne connaissez ni ce dépôt ni l'historique. Lisez-la
+> entièrement avant de toucher au workflow.
+
+### L'état actuel, et pourquoi il est provisoire
+
+`.github/workflows/ci.yml`, étape **« Prisma — statut des migrations »**,
+exécute `npx prisma migrate status` **contre la base Neon partagée**, celle
+que désignent les secrets `DATABASE_URL` / `DIRECT_URL` du dépôt.
+
+Depuis le 2 septembre 2026, elle ne fait échouer le job que sur les branches
+d'intégration :
+
+```yaml
+continue-on-error: ${{ !(github.ref == 'refs/heads/main'
+                      || github.ref == 'refs/heads/devresearch'
+                      || github.base_ref == 'main') }}
+```
+
+**C'est un palliatif assumé, pas une solution.** Il déplace le symptôme, il ne
+retire pas la cause.
+
+### La cause
+
+`prisma migrate status` répond à deux questions que rien ne distingue :
+
+1. *« Ces migrations sont-elles cohérentes et applicables ? »* — une propriété
+   du **code**, vraie ou fausse sur n'importe quelle branche, indépendamment
+   de toute base.
+2. *« Cette base-là est-elle à jour ? »* — un **état de déploiement**, qui n'a
+   rien à faire dans la validation d'une branche de travail.
+
+Seule la première relève d'une CI de branche. En interrogeant une base
+partagée, l'étape impose la seconde partout.
+
+**Ce que ça a coûté, concrètement.** Le 2 septembre 2026, trois branches
+successives ont buté dessus en une matinée. Une branche qui ajoute une
+migration échouait tant que cette migration n'avait pas été appliquée à la
+base commune — donc **avant même que le code soit relu**. L'ordre imposé est
+absurde : appliquer en base précède la revue.
+
+### Ce que personne ne vérifie aujourd'hui
+
+Aucun test, nulle part, ne vérifie que **les migrations s'appliquent proprement
+sur une base vierge**. `migrate status` compare un journal à une base déjà
+migrée ; il ne rejoue jamais l'historique depuis zéro.
+
+Conséquence directe pour le déploiement : une migration cassée — colonne
+inexistante, ordre de dépendances faux, `DROP` qui échoue — ne se découvrirait
+qu'en production. C'est le vrai risque, et il est plus grave que le désagrément
+qui a motivé le palliatif.
+
+### Ce qu'il faut construire
+
+Un **service Postgres éphémère** dans le job `validate` : un conteneur jetable,
+créé pour le run, détruit après. On y joue `prisma migrate deploy` depuis une
+base vide. Ça teste la question n°1 seule, sur toutes les branches, sans état
+partagé et sans ordre imposé.
+
+### Les pièges propres à ce dépôt
+
+**1. `DIRECT_URL` gagne sur `DATABASE_URL`.** [`prisma.config.ts`](../../prisma.config.ts)
+choisit la variable de migration ainsi :
+
+```ts
+const MIGRATION_URL_VAR = process.env.DIRECT_URL ? "DIRECT_URL" : "DATABASE_URL";
+```
+
+Le job définit **les deux** depuis les secrets. Un agent qui ne surchargerait
+que `DATABASE_URL` pour pointer le conteneur verrait ses migrations partir
+quand même vers Neon, sans le moindre avertissement. **Surcharger `DIRECT_URL`
+est obligatoire** — c'est elle qui est lue.
+
+**2. `schema.prisma` ne porte pas d'URL.** Son bloc `datasource db` n'a qu'un
+`provider = "postgresql"` ; l'URL vient entièrement de `prisma.config.ts`, qui
+charge `.env.local` puis `.env` avant de résoudre. En CI ces fichiers n'existent
+pas, donc seules les variables d'environnement du job comptent.
+
+**3. Ne jamais utiliser `prisma db push` pour préparer la base de CI.** Ce
+serait contourner précisément ce qu'on cherche à tester, et le garde-fou du
+workflow fait échouer le job s'il détecte ce motif. Utiliser `migrate deploy`.
+
+**4. Le poste de développement ne peut pas joindre Postgres.** La sortie TCP
+sur le port 5432 y est filtrée (voir [`architecture.md`](../architecture/architecture.md),
+*Intégration continue*). Ce chantier **ne peut pas se tester en local** : il
+s'itère dans la CI. Prévoir des runs à répétition.
+
+**5. `@prisma/adapter-neon` ne concerne pas ce point.** L'application se
+connecte en WebSocket via le driver serverless, mais la **CLI** Prisma ouvre
+une connexion PostgreSQL classique. Un conteneur `postgres:` standard lui
+convient parfaitement.
+
+### Critère d'acceptation
+
+Ne pas se contenter d'un job vert — un test qui ne peut pas échouer ne vaut
+rien. Les deux conditions doivent être vraies :
+
+1. Une branche ajoutant une migration **inédite** obtient une CI verte **sans
+   que personne n'ait touché à la base Neon partagée**.
+2. Une migration **délibérément cassée** (par exemple un `ALTER TABLE` sur une
+   colonne inexistante), poussée sur une branche de test, **fait échouer le
+   job**. Vérifier ce second point explicitement, puis retirer la migration
+   fautive.
+
+### Et le palliatif, on le garde ?
+
+À trancher au moment de faire le travail. Deux options défendables : conserver
+le `migrate status` contre Neon sur les seules branches d'intégration — il
+répond alors à la question n°2, qui est légitime *là*, avant un déploiement —
+ou le retirer entièrement une fois la base éphémère en place. La première est
+plus prudente.

@@ -62,16 +62,22 @@ jobs:
         run: npx prisma migrate status
         continue-on-error: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' }}
 
-      # ─── Garde-fou : interdire prisma db push ────────────────────────────
-      - name: Sécurité — détecter usage de "prisma db push" dans les scripts
+      # ─── Garde-fou : interdire la synchro de schema sans migration ───────
+      - name: Sécurité — détecter une synchro de schema hors migration
         run: |
-          echo "Recherche de 'prisma db push' dans les scripts CI et package.json..."
-          if grep -r "prisma db push" .github/ package.json 2>/dev/null; then
-            echo "❌ ERREUR : 'prisma db push' détecté dans un script CI ou package.json."
+          # Le motif est ecrit en classes de caracteres pour ne PAS se trouver
+          # lui-meme : le garde-fou scanne .github/, donc une recherche du
+          # litteral matchait sa propre source et echouait systematiquement.
+          # C'etait le cas depuis le premier run — masque par l'echec anterieur
+          # de tsc, qui empechait d'atteindre cette etape.
+          MOTIF='prisma[[:space:]]+db[[:space:]]+push'
+          echo "Recherche d'une synchro de schema dans les scripts CI et package.json..."
+          if grep -rEn "$MOTIF" .github/ package.json 2>/dev/null; then
+            echo "❌ ERREUR : synchro de schema detectee dans un script CI ou package.json."
             echo "   Utiliser 'prisma migrate deploy' en CI/staging/production."
             exit 1
           fi
-          echo "✅ Aucun usage de 'prisma db push' détecté."
+          echo "✅ Aucune synchro de schema hors migration detectee."
 
       # ─── Audit sécurité (non bloquant pour l'instant) ────────────────────
       - name: npm audit

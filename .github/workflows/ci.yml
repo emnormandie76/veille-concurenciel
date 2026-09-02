@@ -35,6 +35,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ─── Prisma ───────────────────────────────────────────────────────────
+      # DOIT précéder tsc et ESLint. `npm ci` ne génère plus le client : le
+      # hook postinstall a disparu avec Prisma 7 et package.json n'en déclare
+      # aucun. Sans cette étape, `@prisma/client` n'exporte pas `PrismaClient`
+      # (TS2305) et tsc part en cascade de ~40 TS7006 sur tous les callbacks
+      # Prisma, qui perdent leur type. C'est ce qui faisait échouer la CI
+      # depuis son tout premier run.
+      - name: Prisma — génération du client
+        run: npx prisma generate
+
       # ─── TypeScript ───────────────────────────────────────────────────────
       - name: TypeScript — vérification des types
         run: npx tsc --noEmit
@@ -42,10 +52,6 @@ jobs:
       # ─── Lint ─────────────────────────────────────────────────────────────
       - name: ESLint
         run: npm run lint
-
-      # ─── Prisma ───────────────────────────────────────────────────────────
-      - name: Prisma — génération du client
-        run: npx prisma generate
 
       - name: Prisma — validation du schéma
         run: npx prisma validate

@@ -37,11 +37,11 @@
 > *bypass de middleware en App Router* et `next-auth@4.24.15` une faille critique
 > d'authentification. Le `guardAdmin` posé ci-dessus sur
 > `POST /api/admin/trigger-research` — la route qui dépense des crédits Tavily —
-> reposait donc jusque-là sur un middleware contournable. Les contrôles qui
-> vérifient à l'exécution que la session et le plafond de connexion tiennent
-> toujours **n'ont pas été rejoués** : voir
-> [`architecture.md`](../architecture/architecture.md), *Contrôles d'exécution non
-> automatisés*.
+> reposait donc jusque-là sur un middleware contournable. Les contrôles
+> d'exécution ont été **rejoués le 2 septembre 2026** : la session, la
+> redirection 307 et le plafond de 5 tentatives de connexion tiennent après la
+> montée. Voir [`architecture.md`](../architecture/architecture.md), *Contrôles
+> d'exécution non automatisés*.
 >
 > Voir aussi [`visibility_on_crontask.md`](visibility_on_crontask.md).
 

@@ -65,13 +65,14 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 
 > **Versions des paquets critiques**, après la remédiation des vulnérabilités npm
 > du 1er septembre 2026 : `next@16.3.4` · `next-auth@4.24.15` · `prisma@7.10.0` ·
-> `@prisma/client@7.8.0` · `ws@8.21.3`. Voir §10 bis, *Sécurité des dépendances*.
+> `@prisma/client@7.10.0` · `ws@8.21.3`. Voir §10 bis, *Sécurité des dépendances*.
 >
-> **Le client Prisma est en retard d'un cran sur la CLI** (`7.8.0` contre
-> `7.10.0`) : `npm audit fix` a monté `prisma` sans toucher `@prisma/client`, la
-> contrainte `^7.8.0` du `package.json` étant déjà satisfaite. `prisma validate`
-> le signale à chaque appel. Sans conséquence de sécurité — les avis portent sur
-> la CLI — mais à réaligner par `npm i @prisma/client@latest`.
+> **La CLI et le client Prisma doivent rester sur la même version.**
+> `npm audit fix` avait monté `prisma` en `7.10.0` sans toucher
+> `@prisma/client`, resté en `7.8.0` — la contrainte `^7.8.0` du `package.json`
+> était déjà satisfaite, npm n'avait donc rien à faire. `prisma validate` le
+> signalait à chaque appel. Réaligné le 2 septembre 2026 :
+> `npm i @prisma/client@latest` puis `npx prisma generate`.
 
 ### 2.3. Communication Inter-Services
 
@@ -1060,6 +1061,14 @@ d'hydratation en ligne. Le retirer impose une CSP à nonce générée dans
 développement, pour le rafraîchissement à chaud (vérifié sur un build de
 production : il en est bien absent).
 
+> **Cette politique ne casse rien — mesuré, pas supposé.** Le 2 septembre 2026,
+> les huit pages du back-office et du site public ont été parcourues sous Chrome
+> 151 piloté par Playwright, console et onglet réseau sous surveillance : **zéro
+> violation CSP, zéro requête `(blocked:csp)`**, en développement comme sur le
+> build de production — celui où `'unsafe-eval'` est absent, donc le plus
+> exposé. Deux réserves de méthode : l'inbox était vide au moment du contrôle, et
+> aucune soumission destructive n'a été jouée dans l'écran de gestion d'école.
+
 > **`preload` engage le domaine** vers la liste de préchargement HSTS des
 > navigateurs, et en sortir prend des mois. À retirer si le domaine ou ses
 > sous-domaines ne resteront pas en HTTPS.
@@ -1132,8 +1141,9 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
 
 ### 10.10. Chantiers de sécurité ouverts
 
-1. **Trois vulnérabilités hautes résiduelles sur `deepmerge-ts`**, atteintes
-   uniquement par la CLI Prisma (`prisma` → `@prisma/config` → `deepmerge-ts`).
+1. **Quatre vulnérabilités hautes résiduelles, toutes tirées par la CLI
+   Prisma** : trois sur la chaîne `prisma` → `@prisma/config` → `deepmerge-ts`,
+   une sur `mysql2` — un pilote de base que le projet n'utilise pas.
    Risque accepté, correctif refusé — voir §10 bis, *Sécurité des dépendances*.
    La critique `next-auth` et la haute `next` (*bypass de middleware en App
    Router*, qui touchait directement les gardes du §10.5) sont **corrigées**
@@ -1222,19 +1232,28 @@ contrat.
 ### Contrôles d'exécution non automatisés
 
 `tsc`, ESLint et `pytest` ne voient jamais passer une session. Après toute montée
-de version de `next` ou `next-auth` — celle du 1er septembre 2026 comprise, où
-ils **n'ont pas été rejoués** — ces sept contrôles se font à la main, serveur
-`npm run dev` démarré :
+de version de `next` ou `next-auth`, ces sept contrôles se font à la main,
+serveur `npm run dev` démarré. **Les sept ont été joués le 2 septembre 2026**,
+après la montée `next@16.3.4` / `next-auth@4.24.15` — tous au vert :
 
-| # | Contrôle | Attendu |
-|---|---|---|
-| 1 | `GET /admin/inbox` sans session | **307** vers `/admin/login` |
-| 2 | Connexion réelle sur `/admin/login` | la session s'ouvre, `/admin` accessible |
-| 3 | 6 × `POST /api/auth/callback/credentials` | les 5 premiers passent, le **6ᵉ renvoie 429** |
-| 4 | `PATCH /api/admin/users/<id>/password` sans session | **401** |
-| 5 | `curl -I http://localhost:3000/admin/login` | les 6 en-têtes du §10.4 |
-| 6 | ~65 appels rapides sur `/api/v1/schools?limit=1` | **429** au-delà de 60/min |
-| 7 | Console du navigateur sur `/admin` | aucune violation CSP |
+| # | Contrôle | Attendu | 2 sept. 2026 |
+|---|---|---|---|
+| 1 | `GET /admin/inbox` sans session | **307** vers `/admin/login` | ✅ `307` → `/admin/login?callbackUrl=%2Fadmin%2Finbox` |
+| 2 | Connexion réelle sur `/admin/login` | la session s'ouvre, le back-office est accessible | ✅ cookie de session posé, rôle `ADMIN` dans `/api/auth/session`, `/admin/inbox`·`/schools`·`/users`·`/cron` en 200 |
+| 3 | 6 × `POST /api/auth/callback/credentials` | les 5 premiers passent, le **6ᵉ renvoie 429** | ✅ `401, 401, 401, 401, 401, 429` |
+| 4 | `PATCH /api/admin/users/<id>/password` sans session | **401** | ✅ `guardAuth` répond avant toute lecture de la base |
+| 5 | En-têtes de sécurité sur `/admin/login` | les 6 en-têtes du §10.4 | ✅ les 6 présents |
+| 6 | ~65 appels rapides sur `/api/v1/schools?limit=1` | **429** au-delà de 60/min | ✅ premier 429 à la requête n°61 |
+| 7 | Console du navigateur sur `/admin` | aucune violation CSP | ✅ **zéro violation**, en développement *et* sur le build de production — Chrome 151 piloté par Playwright, 8 pages parcourues |
+
+> **`/admin` n'est pas une route.** Il n'existe aucun `app/admin/page.tsx` : la
+> racine du back-office renvoie 404, avec ou sans session. Le contrôle n°2 se
+> mène sur `/admin/inbox`, la page réellement protégée — c'est celle du n°1.
+
+> **Isoler les seaux de débit.** Chaque contrôle a été passé avec un en-tête
+> `x-real-ip` distinct : `clientIp()` l'interroge avant `x-forwarded-for`. Sans
+> cela, la connexion du n°2 consomme une des cinq tentatives du n°3, et le n°3
+> ne peut être rejoué qu'après l'expiration de sa fenêtre de 15 minutes.
 
 **Le n°3 est le plus important.** `withAuth` de next-auth court-circuite tout
 chemin commençant par `/api/auth` : `handleMiddleware` sort **avant** d'appeler
@@ -1290,9 +1309,21 @@ Le risque est accepté parce que `deepmerge-ts` n'est atteint que par la **CLI**
 Prisma, au build : aucun chemin de l'API n'y fait parvenir un graphe d'objets
 contrôlé par un tiers.
 
-**À surveiller** — `npm ls deepmerge-ts`. Dès qu'une version `7.x` de Prisma
-embarque `deepmerge-ts >= 8`, `npm update prisma` suffit, toujours sans
-`--force`.
+**Une quatrième haute est apparue le 2 septembre 2026** : `mysql2 < 3.22.0`
+(GHSA-3f6p-5ww8-9rcr — *auth plugin downgrade* vers `mysql_clear_password`, qui
+livre les identifiants en clair à un serveur MySQL malveillant). Ce n'est **pas**
+la conséquence d'une montée de version : `mysql2@3.15.3` était déjà dans le lock,
+c'est l'avis qui vient d'être publié. Le paquet est tiré par `prisma`, au titre
+des pilotes qu'il sait piloter ; le projet ne se connecte qu'à PostgreSQL/Neon et
+n'ouvre **jamais** de connexion MySQL. Correctif proposé : `prisma@6.19.3` —
+même downgrade majeur, même refus.
+
+**Total au 2 septembre 2026 : 4 hautes, 0 critique**, toutes tirées par la CLI
+Prisma. Le garde-fou de CI (`--audit-level=critical`) reste au vert.
+
+**À surveiller** — `npm ls deepmerge-ts mysql2`. Dès qu'une version `7.x` de
+Prisma embarque `deepmerge-ts >= 8` et `mysql2 >= 3.22`, `npm update prisma`
+suffit, toujours sans `--force`.
 
 ### Intégration continue
 
@@ -1300,15 +1331,66 @@ embarque `deepmerge-ts >= 8`, `npm update prisma` suffit, toujours sans
 
 | Job | Étapes |
 |---|---|
-| `validate` | tsc · ESLint · prisma generate · prisma validate · prisma migrate status · garde-fou « pas de `prisma db push` » · `npm audit --audit-level=critical` |
+| `validate` | **prisma generate** · tsc · ESLint · prisma validate · prisma migrate status · garde-fou « pas de synchro hors migration » · `npm audit --audit-level=critical` |
 | `python-tests` | Python 3.12 · `pip install -r backend/requirements-dev.txt` · `pytest` |
 
-> **`npm audit` ne bloque plus la CI.** Le garde-fou est réglé sur
-> `--audit-level=critical` : il ne reste aucune critique, et les trois hautes
-> résiduelles ci-dessus ne le déclenchent pas. Vérifié en local, **pas encore sur
-> GitHub** — ni `gh` ni accès réseau depuis le poste de travail. À confirmer sur
-> https://github.com/Anton1P/veille-concurenciel/actions pour le commit `4d5f85d`
-> de `devresearch`.
+> **`prisma generate` doit précéder `tsc`, et c'est une correction, pas un
+> détail.** Le workflow lançait `npx tsc --noEmit` **avant** de générer le
+> client Prisma. Or `npm ci` ne le génère pas : Prisma 7 a supprimé le hook
+> `postinstall`, et `package.json` n'en déclare aucun — seul le script `build`
+> enchaîne `prisma generate && next build`, et la CI n'appelle jamais `build`.
+> Sur un `node_modules` neuf, `@prisma/client` n'exporte donc pas
+> `PrismaClient` (`TS2305` sur [`lib/prisma.ts`](../../lib/prisma.ts) ligne 15),
+> et **une quarantaine de `TS7006`** tombent en cascade : privés du type du
+> client, tous les callbacks Prisma (`tx`, `pc`, `school`, `campus`…) passent en
+> `any` implicite. Ces erreurs n'étaient pas une dette de typage — elles étaient
+> le symptôme d'une seule étape manquante.
+>
+> **Aucun run de CI n'était jamais passé.** Les cinq runs de `devresearch`, du
+> premier (`5aa9021`, 1er septembre 2026 09h40 UTC) au dernier (`8532f8c`,
+> 14h04 UTC), échouent tous sur ce même point. Le job `python-tests`, lui,
+> passait : l'échec était isolé au job `validate`. Lu le 2 septembre 2026 via
+> l'API GitHub Actions, run `33517269595`.
+>
+> **`npm audit` ne bloque pas la CI** : le garde-fou est réglé sur
+> `--audit-level=critical`, il ne reste aucune critique, et les quatre hautes
+> résiduelles ci-dessus ne le déclenchent pas.
+>
+> **Le garde-fou « db push » se détectait lui-même.** Il lançait
+> `grep -r` du littéral sur `.github/`, donc il lisait `ci.yml` et y trouvait sa
+> propre source — commentaire, nom de l'étape, la commande `grep` elle-même et
+> ses deux `echo` : cinq correspondances, `exit 1` systématique. L'étape ne
+> pouvait structurellement jamais passer. Le motif s'écrit désormais en classes
+> de caractères (`prisma[[:space:]]+db[[:space:]]+push`), forme que sa propre
+> source ne satisfait pas ; vérifié dans les deux sens — aucun faux positif, et
+> une vraie occurrence reste détectée. **Ne jamais réécrire ce motif en
+> littéral.**
+>
+> **La base était en retard d'une migration.**
+> `20260901160000_inbox_status_index` — l'index
+> `ContributionInbox(status, createdAt)` dont dépend la file de crowdsourcing,
+> interrogée chaque minute — était commitée mais jamais appliquée. Passée le
+> 2 septembre 2026 par `prisma migrate deploy`. `prisma migrate status` n'est
+> `continue-on-error` que sur les *pull requests* : sur un `push`, il bloque, et
+> il exige donc que le secret `DATABASE_URL` soit valide **et** que Neon réponde.
+>
+> **Trois défauts empilés, chacun masquant le suivant** : l'ordre des étapes,
+> la migration en attente, le garde-fou auto-référent. C'est la signature d'une
+> CI qui n'a jamais réussi une seule fois — chaque couche ne devient visible
+> qu'une fois la précédente levée.
+>
+> **Premier run vert le 2 septembre 2026** : run `33611880574`, commit `dee8067`,
+> branche `fix/ci-prisma-generate-order`. Les deux jobs au vert.
+
+> **Le poste de développement ne peut pas joindre Neon en direct.** La sortie
+> TCP sur le port **5432** est filtrée (`P1001` ; même IP, le port 443 répond).
+> Aucune commande de la CLI Prisma touchant la base — `migrate status`,
+> `migrate deploy`, `db execute` — ne fonctionne depuis ce réseau ; il faut en
+> changer (partage de connexion) ou passer par un runner GitHub.
+> L'application, elle, fonctionne : [`lib/prisma.ts`](../../lib/prisma.ts) passe
+> par `@neondatabase/serverless` en WebSocket sur 443, un chemin réseau
+> différent. Un `npm run dev` qui marche ne prouve donc **pas** que la CLI Prisma
+> joindra la base.
 
 ---
 
@@ -1346,4 +1428,4 @@ embarque `deepmerge-ts >= 8`, `npm update prisma` suffit, toujours sans
 | Extraction Accréditations en liste | `ACCREDITATION_OUTPUT_SCHEMA` retourne `{ "accreditations": [...] }` | Un seul appel Tavily extrait toutes les accréditations de la page — validation admin en un clic crée N `AccreditationRecord` via transaction atomique — rétrocompatible avec l'ancien format objet unique |
 | Pourcentages SchoolStats | Valeurs entières 0-100 (ex: 46 pour 46%) | Alignment avec les données sources (Tavily renvoie des entiers) — `formatPct()` frontend gère la rétrocompatibilité avec les anciens décimaux 0-1 |
 | Montée de dépendances | Branche dédiée, `npm audit fix` **sans `--force`** | Une montée doit pouvoir être abandonnée d'un `git checkout` ; `--force` est précisément ce qui casse les contrats de version |
-| Vulnérabilité résiduelle `deepmerge-ts` (3 hautes) | Risque accepté, correctif npm refusé | Le correctif redescend Prisma en `6.12.0`, où `@prisma/adapter-neon` n'existe pas : la connexion Neon serverless casserait. L'avis ne concerne que la CLI de build, pas l'API à l'exécution |
+| Vulnérabilités résiduelles de la CLI Prisma (4 hautes : `deepmerge-ts`, `mysql2`) | Risque accepté, correctif npm refusé | Le correctif redescend Prisma en v6, où `@prisma/adapter-neon` n'existe pas : la connexion Neon serverless casserait. Les avis ne concernent que la CLI de build — et `mysql2` un pilote que le projet n'ouvre jamais |

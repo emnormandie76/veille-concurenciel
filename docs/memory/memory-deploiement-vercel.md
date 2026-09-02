@@ -297,12 +297,13 @@ Pour éviter de rejouer des corrections déjà faites :
 
 1. **Vulnérabilités npm : traitées le 1er septembre 2026** (commit `4d5f85d`).
    13 sur 16, dont la critique `next-auth` et le *bypass de middleware* de
-   `next`. Restent trois hautes sur `deepmerge-ts`, tirées par la CLI Prisma :
-   risque accepté, détail et surveillance dans
+   `next`. Restent quatre hautes (`deepmerge-ts`, `mysql2`), toutes tirées par
+   la CLI Prisma : risque accepté, détail et surveillance dans
    [`architecture.md`](../architecture/architecture.md), *Sécurité des
-   dépendances*. **Reste à faire avant d'exposer publiquement** : les sept
-   contrôles d'exécution (session, 307, 401, plafonds de débit), jamais rejoués
-   depuis la montée de version.
+   dépendances*. **Les sept contrôles d'exécution ont été joués le 2 septembre
+   2026 et sont tous au vert**, contrôle des violations CSP au navigateur
+   compris — détail dans [`architecture.md`](../architecture/architecture.md),
+   *Contrôles d'exécution non automatisés*.
 2. **CSP à nonce**, pour retirer `'unsafe-inline'` de `script-src`.
 3. **Les 114 avertissements ESLint** (étape 6, §3.1).
 4. **Le prompt d'extraction multi-programme** ne restitue pas le campus : les

@@ -34,18 +34,20 @@
 > avec le refactor `Program` (un programme appartient à une **école**, les campus
 > passent par `ProgramCampus`, la capacité est portée par `programCampusId`).
 >
-> **Dette connue non traitée** : l'interface d'administration recourt largement à
-> `as any` — une soixantaine d'occurrences — ce qui neutralise localement le
-> `strict: true` du `tsconfig.json`. `npm run lint` les compte.
+> **Dette largement résorbée** : l'interface d'administration recourait à `as any`
+> une soixantaine de fois, ce qui neutralisait localement le `strict: true` du
+> `tsconfig.json`. Au 2 septembre 2026 il n'en reste **4** dans tout `app/`,
+> `components/` et `lib/`.
 >
 > **Montée des dépendances, 1er septembre 2026** — `next@16.3.4`,
 > `next-auth@4.24.15`. Le tableau de gardes ci-dessus n'a de valeur que si le
 > middleware s'exécute : les versions précédentes portaient un avis de *bypass de
 > middleware en App Router*, et `next-auth` un contournement critique
-> d'authentification. Les deux sont corrigées ; la vérification à l'exécution
-> (307 sans session, 401 sur une route admin) reste à faire — voir
-> [`architecture.md`](../architecture/architecture.md), *Contrôles d'exécution non
-> automatisés*.
+> d'authentification. Les deux sont corrigées, et la vérification à l'exécution a
+> été faite le 2 septembre 2026 : 307 sans session sur `/admin/inbox`, 401 sur
+> `PATCH /api/admin/users/<id>/password`, back-office accessible une fois la
+> session ouverte. Voir [`architecture.md`](../architecture/architecture.md),
+> *Contrôles d'exécution non automatisés*.
 
 
 > **Version :** 1.0 — 27 juillet 2026  

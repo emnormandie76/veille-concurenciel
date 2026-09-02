@@ -57,13 +57,19 @@ export async function POST(
       );
     }
 
-    const yearNum = parseInt(year_obtained);
-    const currentYear = new Date().getFullYear();
-    if (isNaN(yearNum) || yearNum < 2000 || yearNum > currentYear + 2) {
-      return NextResponse.json(
-        { error: `L'année d'obtention doit être comprise entre 2000 et ${currentYear + 2}` },
-        { status: 400 }
-      );
+    // L'année est facultative : la colonne accepte NULL depuis que l'année
+    // inconnue ne s'écrit plus 0. Fournie, elle reste bornée.
+    let yearNum: number | null = null;
+    if (year_obtained !== undefined && year_obtained !== null && year_obtained !== "") {
+      const parsed = parseInt(year_obtained);
+      const currentYear = new Date().getFullYear();
+      if (isNaN(parsed) || parsed < 2000 || parsed > currentYear + 2) {
+        return NextResponse.json(
+          { error: `L'année d'obtention doit être comprise entre 2000 et ${currentYear + 2}` },
+          { status: 400 }
+        );
+      }
+      yearNum = parsed;
     }
 
     const school = await prisma.school.findUnique({ where: { id } });

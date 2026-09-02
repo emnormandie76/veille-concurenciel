@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { CONTRIBUTION_CATEGORIES, CONTRIBUTION_STATUSES } from "@/lib/contribution";
 
 // ──────────────────────────────────────────────
 // Types
@@ -53,14 +54,18 @@ interface Ticket {
   programName?: string | null;
 }
 
-const STATUS_OPTIONS = ["", "Pending_AI", "Pending_Admin", "Validated", "Rejected"];
-const CATEGORY_OPTIONS = ["", "Program_Discovery", "Pricing", "Ranking", "Capacity", "SchoolStats", "Accreditation"];
+// Les listes viennent de lib/contribution.ts : elles étaient recopiées ici, et
+// « Failed » y manquait déjà — un ticket en échec était invisible au filtre.
+const STATUS_OPTIONS = ["", ...CONTRIBUTION_STATUSES];
+const CATEGORY_OPTIONS = ["", ...CONTRIBUTION_CATEGORIES];
 
 const STATUS_COLORS: Record<string, string> = {
   Pending_AI: "badge-warning",
   Pending_Admin: "badge-info",
   Validated: "badge-active",
   Rejected: "badge-danger",
+  // Manquait : un ticket en échec s'affichait sans badge, donc sans couleur.
+  Failed: "badge-danger",
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -1103,7 +1108,9 @@ function getFieldsForCategory(category: string): FieldDef[] {
     case "Accreditation":
       return [
         { key: "accreditation_name", label: "Nom accréditation", type: "text", required: true },
-        { key: "year_obtained", label: "Année d'obtention", type: "number", required: true },
+        // Non requise : l'année n'est pas toujours publiée, et la colonne
+        // accepte désormais NULL plutôt que la sentinelle 0.
+        { key: "year_obtained", label: "Année d'obtention", type: "number" },
         { key: "is_active", label: "Active ?", type: "boolean" },
       ];
 
@@ -1119,7 +1126,9 @@ function getFieldsForCategory(category: string): FieldDef[] {
 interface AccreditationListItem {
   accreditation_name: string;
   accreditation_type: "international" | "label" | "state";
-  year_obtained: number;
+  // null = année inconnue. L'ancienne sentinelle 0 partait en production
+  // comme une année réelle.
+  year_obtained: number | null;
   is_active: boolean;
   source_url?: string | null;
 }
@@ -1139,7 +1148,7 @@ function AccreditationListForm({
     accreditations?: AccreditationListItem[];
     accreditation_name?: string;
     accreditation_type?: "international" | "label" | "state";
-    year_obtained?: number;
+    year_obtained?: number | null;
     is_active?: boolean;
     source_url?: string | null;
   } | null;
@@ -1149,7 +1158,7 @@ function AccreditationListForm({
       return initial.accreditations.map((item) => ({
         accreditation_name: item.accreditation_name || "",
         accreditation_type: item.accreditation_type || "international",
-        year_obtained: item.year_obtained ?? 0,
+        year_obtained: item.year_obtained ?? null,
         is_active: item.is_active ?? true,
         source_url: item.source_url || null,
       }));
@@ -1159,7 +1168,7 @@ function AccreditationListForm({
       return [{
         accreditation_name: initial.accreditation_name,
         accreditation_type: initial.accreditation_type || "international",
-        year_obtained: initial.year_obtained ?? 0,
+        year_obtained: initial.year_obtained ?? null,
         is_active: initial.is_active ?? true,
         source_url: initial.source_url || null,
       }];
@@ -1269,8 +1278,8 @@ function AccreditationListForm({
                 <input
                   type="number"
                   className="form-control"
-                  value={item.year_obtained || ""}
-                  onChange={(e) => updateItem(idx, "year_obtained", e.target.value ? Number(e.target.value) : 0)}
+                  value={item.year_obtained ?? ""}
+                  onChange={(e) => updateItem(idx, "year_obtained", e.target.value ? Number(e.target.value) : null)}
                   disabled={disabled}
                 />
               </div>

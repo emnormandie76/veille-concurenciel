@@ -8,16 +8,43 @@ Référence : architecture.md §4.1, task.md §5.1
 """
 
 import logging
+import os
 from typing import Optional
 
 from backend.tavily_service.key_manager import is_quota_error
 
 logger = logging.getLogger("pipeline.tavily_client")
 
-# Timeout des appels Tavily (Edge Case 14 : réponse vide ou lente)
-CRAWL_TIMEOUT_SECONDS = 15
-SEARCH_TIMEOUT_SECONDS = 10
-EXTRACT_TIMEOUT_SECONDS = 15
+# ── Timeouts des appels Tavily (Edge Case 14 : réponse vide ou lente) ────
+#
+# Ces trois constantes étaient déclarées et n'apparaissaient nulle part ailleurs
+# dans le fichier : les requêtes partaient sans limite explicite, dans un thread
+# APScheduler. Elles sont désormais passées aux appels du SDK.
+#
+# Les valeurs affichées avant (15 / 10 / 15 s) n'ont jamais été appliquées et
+# sont hors d'atteinte pour ces appels — un crawl de profondeur 2 ne tient pas
+# en 15 s. On reprend donc les valeurs effectives (celles du SDK), qui ne
+# changent rien au comportement observé mais rendent le réglage réel et
+# ajustable par l'environnement.
+CRAWL_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_CRAWL_TIMEOUT_SECONDS", 150))
+SEARCH_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_SEARCH_TIMEOUT_SECONDS", 60))
+EXTRACT_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_EXTRACT_TIMEOUT_SECONDS", 30))
+
+# Tavily facture 1 crédit par tranche de 5 URLs et n'en accepte pas davantage
+# par appel. Le surplus était tronqué en silence : l'appelant croyait ses URLs
+# analysées. Voir split_extractable_urls().
+EXTRACT_MAX_URLS = 5
+
+
+def split_extractable_urls(urls: list[str] | None) -> tuple[list[str], list[str]]:
+    """
+    Sépare les URLs qui partiront à Tavily de celles qui seront écartées.
+
+    Permet à l'appelant de signaler les URLs ignorées à l'admin, au lieu de les
+    voir disparaître dans un `urls[:5]`.
+    """
+    all_urls = list(urls or [])
+    return all_urls[:EXTRACT_MAX_URLS], all_urls[EXTRACT_MAX_URLS:]
 
 
 def crawl_school_website(
@@ -72,6 +99,7 @@ def crawl_school_website(
                 "alternance options, and expatriation requirements. "
                 "Focus on official program names and campus locations."
             ),
+            timeout=CRAWL_TIMEOUT_SECONDS,
         )
 
         # Enregistrer l'utilisation (1 crédit pour le crawl)
@@ -156,6 +184,7 @@ def search_web(
             "search_depth": search_depth,
             "max_results": max_results,
             "include_raw_content": include_raw_content,
+            "timeout": SEARCH_TIMEOUT_SECONDS,
         }
         if include_domains:
             params["include_domains"] = include_domains
@@ -225,15 +254,26 @@ def extract_from_urls(
     if not urls:
         return ""
 
+    # Le surplus était écarté en silence par un `urls[:5]` en ligne. Il est
+    # désormais journalisé ici, et l'appelant peut le remonter à l'admin via
+    # split_extractable_urls().
+    kept_urls, ignored_urls = split_extractable_urls(urls)
+    if ignored_urls:
+        logger.warning(
+            f"⚠️ Tavily extract : {len(ignored_urls)} URL(s) écartée(s) "
+            f"(maximum {EXTRACT_MAX_URLS} par appel) — {ignored_urls}"
+        )
+
     api_key = key_manager.get_active_key(required_credits=5)
     client = TavilyClient(api_key=api_key)
 
-    logger.info(f"📥 Tavily extract: {len(urls)} URL(s)")
+    logger.info(f"📥 Tavily extract: {len(kept_urls)} URL(s)")
 
     try:
         result = client.extract(
-            urls=urls[:5],  # Max 5 URLs par appel
+            urls=kept_urls,
             extract_depth=extract_depth,
+            timeout=EXTRACT_TIMEOUT_SECONDS,
         )
 
         # 1 crédit par 5 URLs

@@ -64,7 +64,7 @@ interface AccreditationRecord {
   id: string;
   accreditation_name: string;
   accreditation_type?: string;
-  year_obtained: number;
+  year_obtained: number | null;
   is_active: boolean;
 }
 
@@ -449,7 +449,7 @@ export default function SchoolDetailClient({ school }: { school: School }) {
           >
             <span className="accreditation-dot" style={{ background: acc.is_active ? "#34d399" : "#6b7280" }} />
             {acc.accreditation_name}
-            {acc.year_obtained > 0 && (
+            {acc.year_obtained != null && (
               <span style={{ fontSize: "0.78rem", fontWeight: 400, color: "var(--text-secondary)", marginLeft: 4 }}>
                 depuis {acc.year_obtained}
               </span>

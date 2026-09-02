@@ -1,8 +1,11 @@
 import { guardAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { TERMINAL_CONTRIBUTION_STATUSES } from "@/lib/contribution";
 
-const ALLOWED_PURGE_STATUSES = ["Validated", "Rejected"];
+// Seuls les statuts terminaux sont purgeables. La liste vit désormais dans
+// lib/contribution.ts, avec les autres énumérations de la zone tampon.
+const ALLOWED_PURGE_STATUSES: readonly string[] = TERMINAL_CONTRIBUTION_STATUSES;
 
 export async function DELETE(request: Request) {
     const { error } = await guardAdmin();

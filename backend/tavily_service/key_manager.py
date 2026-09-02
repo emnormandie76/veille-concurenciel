@@ -72,7 +72,9 @@ class TavilyKeyManager:
     def __init__(self):
         self._lock = threading.Lock()
         self._keys: list[TavilyKeyState] = []
-        self._current_index = 0
+        # Plus de _current_index : la rotation circulaire a laissé place à la
+        # sélection de la première clé disponible (get_active_key), qui parcourt
+        # la liste à chaque appel. Le compteur ne servait plus à rien.
         self._load_keys()
         
         # Lancer la synchro initiale des quotas en arrière-plan pour toutes les clés

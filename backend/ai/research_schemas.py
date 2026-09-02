@@ -213,8 +213,8 @@ ACCREDITATION_OUTPUT_SCHEMA = {
                         "description": "Type : 'international' (EQUIS/AACSB/AMBA/BSIS/EPAS), 'state' (Grade Master/Licence/CTI), 'label' (CGE/Qualiopi/DD&RS/EESPIG/autres)"
                     },
                     "year_obtained": {
-                        "type": "integer",
-                        "description": "Année d'obtention ou de renouvellement de l'accréditation (0 si inconnue)"
+                        "type": ["integer", "null"],
+                        "description": "Année d'obtention ou de renouvellement de l'accréditation (null si inconnue, jamais 0)"
                     },
                     "is_active": {
                         "type": "boolean",

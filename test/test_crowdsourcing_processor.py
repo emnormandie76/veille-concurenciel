@@ -17,8 +17,7 @@ from backend.crowdsourcing.processor import process_crowdsourcing_ticket
 # un objet sentinelle suffit.
 FAKE_KEY_MANAGER = object()
 
-@pytest.mark.asyncio
-async def test_user_text_never_reaches_gemma():
+def test_user_text_never_reaches_gemma():
     """
     Vérifie que le commentaire utilisateur n'est jamais injecté
     dans les appels à Gemma, quelle que soit sa valeur.
@@ -52,7 +51,7 @@ async def test_user_text_never_reaches_gemma():
             {"academic_year": 2025, "currency": "EUR", "year_1_fee": 9800, "year_assumed": False, "data_conflict_warning": False},
         ]
 
-        await process_crowdsourcing_ticket("test-uuid-001", FAKE_KEY_MANAGER)
+        process_crowdsourcing_ticket("test-uuid-001", FAKE_KEY_MANAGER)
 
         # Vérifier que call_gemma a bien été appelé deux fois
         assert mock_gemma.call_count == 2
@@ -64,8 +63,7 @@ async def test_user_text_never_reaches_gemma():
                 f"ÉCHEC : user_text a été trouvé dans le prompt Gemma :\n{prompt_sent}"
             )
 
-@pytest.mark.asyncio
-async def test_incompatible_page_is_rejected():
+def test_incompatible_page_is_rejected():
     """
     Si Gemma 26B retourne compatible=false, le ticket doit passer
     en status Rejected et Gemma 31B ne doit pas être appelé.
@@ -93,7 +91,7 @@ async def test_incompatible_page_is_rejected():
         mock_extract.return_value = "L'EMLV est une école de management fondée en 1975..."
         mock_gemma.return_value = {"compatible": False, "matched_categories": [], "reason": "Page de présentation générale"}
 
-        await process_crowdsourcing_ticket("test-uuid-002", FAKE_KEY_MANAGER)
+        process_crowdsourcing_ticket("test-uuid-002", FAKE_KEY_MANAGER)
 
         # Gemma ne doit être appelé qu'une seule fois (le check de compatibilité)
         assert mock_gemma.call_count == 1, "Gemma 31B ne doit pas être appelé si la page est incompatible"
@@ -104,8 +102,7 @@ async def test_incompatible_page_is_rejected():
         # jamais repercute ici : les tests ne passaient plus depuis.
         mock_update.assert_called_once_with("test-uuid-002", "Rejected", {"reason": "Page de présentation générale"})
 
-@pytest.mark.asyncio
-async def test_valid_ticket_produces_pending_admin():
+def test_valid_ticket_produces_pending_admin():
     """
     Un ticket avec une page compatible doit produire un ticket
     en status Pending_Admin avec un JSON extrait non vide.
@@ -148,7 +145,7 @@ async def test_valid_ticket_produces_pending_admin():
             expected_json,
         ]
 
-        await process_crowdsourcing_ticket("test-uuid-003", FAKE_KEY_MANAGER)
+        process_crowdsourcing_ticket("test-uuid-003", FAKE_KEY_MANAGER)
 
         # Pas d assertion sur commit() : c est get_db_connection() lui-meme, en
         # tant que gestionnaire de contexte, qui commite — et il est mocke ici.
@@ -157,8 +154,7 @@ async def test_valid_ticket_produces_pending_admin():
         assert any("UPDATE" in sql and "Pending_Admin" in sql for sql in executed_sqls)
 
 
-@pytest.mark.asyncio
-async def test_api_error_keeps_pending_ai():
+def test_api_error_keeps_pending_ai():
     """
     Si Gemma API renvoie une erreur temporaire (ex: GemmaAPIError),
     le ticket ne doit pas être rejeté et doit rester en base sans mise à jour du statut.
@@ -188,14 +184,13 @@ async def test_api_error_keeps_pending_ai():
         mock_gemma.side_effect = GemmaAPIError("HTTP 500 Internal Server Error")
 
         with pytest.raises(GemmaAPIError):
-            await process_crowdsourcing_ticket("test-uuid-004", FAKE_KEY_MANAGER)
+            process_crowdsourcing_ticket("test-uuid-004", FAKE_KEY_MANAGER)
 
         # Vérifier que le statut n'a PAS été mis à jour
         mock_update.assert_not_called()
 
 
-@pytest.mark.asyncio
-async def test_parsing_error_rejects_ticket():
+def test_parsing_error_rejects_ticket():
     """
     Si Gemma renvoie une erreur permanente de parsing (ex: GemmaParsingError),
     le ticket est supprimé de l'Inbox et l'exception est propagée.
@@ -226,7 +221,7 @@ async def test_parsing_error_rejects_ticket():
         mock_gemma.side_effect = GemmaParsingError("JSON invalide")
 
         with pytest.raises(GemmaParsingError):
-            await process_crowdsourcing_ticket("test-uuid-005", FAKE_KEY_MANAGER)
+            process_crowdsourcing_ticket("test-uuid-005", FAKE_KEY_MANAGER)
 
         # GemmaParsingError est une erreur PERMANENTE : le ticket est supprime,
         # il ne passe pas en Rejected. Le test attendait l inverse.
@@ -265,8 +260,7 @@ async def test_gemma_client_list_parsing(mock_get_client):
     assert res == {"key": "value"}
 
 
-@pytest.mark.asyncio
-async def test_ticket_without_program_id_switches_to_multi_program():
+def test_ticket_without_program_id_switches_to_multi_program():
     """
     Un ticket Pricing/Ranking/Capacity SANS program_id ne provoque plus de rejet :
     depuis le refactor Program, il bascule en mode multi-programme, ou l IA
@@ -312,7 +306,7 @@ async def test_ticket_without_program_id_switches_to_multi_program():
             },
         ]
 
-        await process_crowdsourcing_ticket("test-uuid-006", FAKE_KEY_MANAGER)
+        process_crowdsourcing_ticket("test-uuid-006", FAKE_KEY_MANAGER)
 
         # Le chargement de la liste des programmes est la signature du mode
         # multi-programme.
@@ -325,8 +319,7 @@ async def test_ticket_without_program_id_switches_to_multi_program():
         assert any("UPDATE" in sql and "Pending_Admin" in sql for sql in executed)
 
 
-@pytest.mark.asyncio
-async def test_ticket_with_null_required_fields_is_rejected():
+def test_ticket_with_null_required_fields_is_rejected():
     """
     Vérifie qu'un ticket (ici de catégorie Capacity) dont la valeur extraite
     obligatoire est null (spots_available = null) est rejeté.
@@ -362,7 +355,7 @@ async def test_ticket_with_null_required_fields_is_rejected():
         ]
 
         with pytest.raises(GemmaParsingError) as exc_info:
-            await process_crowdsourcing_ticket("test-uuid-007", FAKE_KEY_MANAGER)
+            process_crowdsourcing_ticket("test-uuid-007", FAKE_KEY_MANAGER)
 
         assert "spots_available=None" in str(exc_info.value)
         # Erreur permanente : suppression du ticket (voir le test precedent).

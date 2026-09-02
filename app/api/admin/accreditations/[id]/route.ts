@@ -67,15 +67,21 @@ export async function PUT(
     }
 
     if (year_obtained !== undefined) {
-      const yearNum = parseInt(year_obtained);
-      const currentYear = new Date().getFullYear();
-      if (isNaN(yearNum) || yearNum < 2000 || yearNum > currentYear + 2) {
-        return NextResponse.json(
-          { error: `L'année d'obtention doit être comprise entre 2000 et ${currentYear + 2}` },
-          { status: 400 }
-        );
+      // La colonne accepte NULL depuis que l'année inconnue ne s'écrit plus 0 :
+      // une valeur vide efface l'année au lieu d'écrire une date fausse.
+      if (year_obtained === null || year_obtained === "") {
+        data.year_obtained = null;
+      } else {
+        const yearNum = parseInt(year_obtained);
+        const currentYear = new Date().getFullYear();
+        if (isNaN(yearNum) || yearNum < 2000 || yearNum > currentYear + 2) {
+          return NextResponse.json(
+            { error: `L'année d'obtention doit être comprise entre 2000 et ${currentYear + 2}` },
+            { status: 400 }
+          );
+        }
+        data.year_obtained = yearNum;
       }
-      data.year_obtained = yearNum;
     }
 
     if (is_active !== undefined) {

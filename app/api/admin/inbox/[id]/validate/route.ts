@@ -22,6 +22,7 @@
 import { guardAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { STATUS_REJECTED, STATUS_VALIDATED } from "@/lib/contribution";
 
 // ──────────────────────────────────────────────
 // Types internes pour les données JSON des tickets
@@ -97,7 +98,7 @@ interface SchoolStatsJson {
 interface AccreditationItem {
   accreditation_name: string;
   accreditation_type?: "international" | "label" | "state";
-  year_obtained?: number;
+  year_obtained?: number | null;
   is_active?: boolean;
   source_url?: string | null;
 }
@@ -108,7 +109,7 @@ interface AccreditationJson {
   // Ancien format single-object (rétrocompatibilité)
   accreditation_name?: string;
   accreditation_type?: "international" | "label" | "state";
-  year_obtained?: number;
+  year_obtained?: number | null;
   is_active?: boolean;
 }
 
@@ -158,11 +159,11 @@ export async function PUT(
       return NextResponse.json({ error: "Ticket introuvable" }, { status: 404 });
     }
 
-    if (ticket.status === "Validated") {
+    if (ticket.status === STATUS_VALIDATED) {
       return NextResponse.json({ error: "Ticket déjà validé" }, { status: 400 });
     }
 
-    if (ticket.status === "Rejected") {
+    if (ticket.status === STATUS_REJECTED) {
       return NextResponse.json(
         { error: "Impossible de valider un ticket rejeté" },
         { status: 400 }
@@ -259,37 +260,36 @@ async function validateProgramDiscovery(
   // Transaction atomique : tout réussit ou tout rollback (bdd.md §4)
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Upsert de tous les campus en parallèle
-      const campusResults = await Promise.all(
-        data.discovered_campuses.map(async (campusData) => {
-          if (!campusData.name) return null;
-          const campus = await tx.campus.upsert({
-            where: {
-              schoolId_name: {
-                schoolId: ticket.schoolId!,
-                name: campusData.name,
-              },
-            },
-            create: {
-              schoolId: ticket.schoolId!,
-              name: campusData.name,
-              city: campusData.city ?? null,
-            },
-            update: {
-              city: campusData.city ?? undefined,
-            },
-          });
-          return { campusData, campus };
-        })
-      );
-
-      // 2. Upsert des programmes au niveau école + création des ProgramCampus
-      const programCampusPromises: Promise<any>[] = [];
+      // Upserts sérialisés, et non groupés dans un Promise.all.
+      //
+      // `tx` est un client transactionnel : il ne dispose que d'UNE connexion.
+      // Lancer les upserts en parallèle dessus n'apporte aucun parallélisme
+      // réel — ils se remettent en file sur la même connexion — et, sous
+      // charge, mène au blocage ou au dépassement du délai de 60 s.
+      //
+      // Un même programme sur N campus = 1 Program + N ProgramCampus.
       const stats: Array<{ campusId: string; campusName: string; programsLinked: number }> = [];
 
-      for (const item of campusResults) {
-        if (!item) continue;
-        const { campusData, campus } = item;
+      for (const campusData of data.discovered_campuses) {
+        if (!campusData.name) continue;
+
+        const campus = await tx.campus.upsert({
+          where: {
+            schoolId_name: {
+              schoolId: ticket.schoolId!,
+              name: campusData.name,
+            },
+          },
+          create: {
+            schoolId: ticket.schoolId!,
+            name: campusData.name,
+            city: campusData.city ?? null,
+          },
+          update: {
+            city: campusData.city ?? undefined,
+          },
+        });
+
         let programsLinked = 0;
 
         if (Array.isArray(campusData.programs)) {
@@ -299,7 +299,7 @@ async function validateProgramDiscovery(
 
             // Upsert du programme au niveau école
             // @@unique([schoolId, name]) garantit la déduplication
-            const programUpsert = tx.program.upsert({
+            const program = await tx.program.upsert({
               where: {
                 schoolId_name: {
                   schoolId: ticket.schoolId!,
@@ -323,24 +323,19 @@ async function validateProgramDiscovery(
             });
 
             // Upsert ProgramCampus : associe ce programme à ce campus
-            // Enchaîné après l'upsert du programme pour avoir son id
-            programCampusPromises.push(
-              programUpsert.then((program) =>
-                tx.programCampus.upsert({
-                  where: {
-                    programId_campusId: {
-                      programId: program.id,
-                      campusId: campus.id,
-                    },
-                  },
-                  create: {
-                    programId: program.id,
-                    campusId: campus.id,
-                  },
-                  update: {}, // L'association existe déjà, rien à mettre à jour
-                })
-              )
-            );
+            await tx.programCampus.upsert({
+              where: {
+                programId_campusId: {
+                  programId: program.id,
+                  campusId: campus.id,
+                },
+              },
+              create: {
+                programId: program.id,
+                campusId: campus.id,
+              },
+              update: {}, // L'association existe déjà, rien à mettre à jour
+            });
           }
         }
 
@@ -351,13 +346,10 @@ async function validateProgramDiscovery(
         });
       }
 
-      // Exécuter tous les upserts programme+campus en parallèle
-      await Promise.all(programCampusPromises);
-
       // Marquer le ticket comme validé
       await tx.contributionInbox.update({
         where: { id: ticket.id },
-        data: { status: "Validated" },
+        data: { status: STATUS_VALIDATED },
       });
 
       return stats;
@@ -438,7 +430,7 @@ async function validatePricing(
     }),
     prisma.contributionInbox.update({
       where: { id: ticket.id },
-      data: { status: "Validated" },
+      data: { status: STATUS_VALIDATED },
     }),
   ]);
 
@@ -486,7 +478,7 @@ async function validateRanking(
     }),
     prisma.contributionInbox.update({
       where: { id: ticket.id },
-      data: { status: "Validated" },
+      data: { status: STATUS_VALIDATED },
     }),
   ]);
 
@@ -561,7 +553,7 @@ async function validateCapacity(
     }),
     prisma.contributionInbox.update({
       where: { id: ticket.id },
-      data: { status: "Validated" },
+      data: { status: STATUS_VALIDATED },
     }),
   ]);
 
@@ -621,7 +613,7 @@ async function validateSchoolStats(
     }),
     prisma.contributionInbox.update({
       where: { id: ticket.id },
-      data: { status: "Validated" },
+      data: { status: STATUS_VALIDATED },
     }),
   ]);
 
@@ -643,21 +635,42 @@ async function validateAccreditation(
   }
 
   // Normaliser : construire une liste unifiée depuis les deux formats possibles
-  // Whitelist d'éléments 'international' connus
+  //
+  // La classification se faisait par sous-chaîne : `n.includes("cti")` rangeait
+  // « Label Sélection Nationale » dans les labels d'État, parce que « sélection »
+  // contient c-t-i. On compare désormais sur des mots entiers, après découpage
+  // et retrait des accents.
+  //
+  // Ce repli ne devrait servir que pour les tickets anciens : le prompt
+  // Accreditation demande désormais accreditation_type explicitement, des deux
+  // côtés du pipeline.
   const INTERNATIONAL_NAMES = new Set(["equis", "aacsb", "amba", "epas", "bsis", "abet", "fibaa"]);
-  const STATE_NAMES = new Set(["cti", "cefdg", "grade de master", "grade de licence", "hceres"]);
+  const STATE_NAMES = new Set(["cti", "cefdg", "hceres"]);
+
+  const toWords = (name: string): string[] =>
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean);
 
   const inferType = (name: string): "international" | "label" | "state" => {
-    const n = name.toLowerCase();
-    if (INTERNATIONAL_NAMES.has(n) || INTERNATIONAL_NAMES.has(n.split(" ")[0])) return "international";
-    if (STATE_NAMES.has(n) || n.includes("grade de") || n.includes("cti")) return "state";
+    const words = toWords(name);
+    if (words.some((w) => INTERNATIONAL_NAMES.has(w))) return "international";
+    if (words.some((w) => STATE_NAMES.has(w))) return "state";
+    // « Grade de Master », « Grade de Licence », « grade master »…
+    if (words.includes("grade") && (words.includes("master") || words.includes("licence"))) {
+      return "state";
+    }
     return "label";
   };
 
   let accreditationItems: Array<{
     accreditation_name: string;
     accreditation_type: "international" | "label" | "state";
-    year_obtained: number;
+    // null et non 0 : l'année 0 entrait en production comme une donnée réelle.
+    year_obtained: number | null;
     is_active: boolean;
   }>;
 
@@ -668,7 +681,7 @@ async function validateAccreditation(
       .map((item) => ({
         accreditation_name: item.accreditation_name,
         accreditation_type: item.accreditation_type ?? inferType(item.accreditation_name),
-        year_obtained: item.year_obtained ?? 0,
+        year_obtained: item.year_obtained ?? null,
         is_active: item.is_active ?? true,
       }));
   } else if (data.accreditation_name) {
@@ -676,7 +689,7 @@ async function validateAccreditation(
     accreditationItems = [{
       accreditation_name: data.accreditation_name,
       accreditation_type: data.accreditation_type ?? inferType(data.accreditation_name),
-      year_obtained: data.year_obtained ?? 0,
+      year_obtained: data.year_obtained ?? null,
       is_active: data.is_active ?? true,
     }];
   } else {
@@ -717,7 +730,7 @@ async function validateAccreditation(
     ),
     prisma.contributionInbox.update({
       where: { id: ticket.id },
-      data: { status: "Validated" },
+      data: { status: STATUS_VALIDATED },
     }),
   ]);
 
@@ -950,7 +963,7 @@ async function validateMultiProgram(
       if (records.length > 0) {
         await tx.contributionInbox.update({
           where: { id: ticket.id },
-          data: { status: "Validated" },
+          data: { status: STATUS_VALIDATED },
         });
       }
 

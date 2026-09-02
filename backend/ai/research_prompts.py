@@ -178,7 +178,7 @@ INFORMATIONS RECHERCHÉES POUR CHAQUE ACCRÉDITATION :
    - "international" : EQUIS, AACSB, AMBA, EPAS, BSIS, ABET (organismes internationaux)
    - "state"         : Grade de Licence, Grade de Master, CTI, CEFDG (labels d'État français)
    - "label"         : CGE, EESPIG, Qualiopi, DD&RS, SD/RS, "Bienvenue en France", "Happy at School", et tous les autres
-3. Année d'obtention ou de renouvellement (year_obtained) — mettre 0 si inconnu
+3. Année d'obtention ou de renouvellement (year_obtained) — omettre le champ si inconnue
 4. Statut actif ou non (is_active) — true par défaut sauf mention contraire
 5. URL de la page source (source_url)
 
@@ -190,4 +190,6 @@ RÈGLES ABSOLUES :
 - Chaque accréditation doit être un élément distinct dans le tableau "accreditations"
 - accreditation_type est OBLIGATOIRE pour chaque entrée
 - is_active = true sauf si explicitement mentionné comme expiré/perdu/révoqué
-- Si l'année d'obtention n'est pas trouvée, mettre 0 plutôt que null"""
+- Si l'année d'obtention n'est pas trouvée, omettre le champ year_obtained
+  (surtout pas 0 : l'année 0 se retrouvait écrite en production comme une
+  donnée réelle)"""

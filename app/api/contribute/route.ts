@@ -14,19 +14,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isValidHttpsUrl, isPrivateHost, urlBelongsToDomain } from "@/lib/utils";
+import {
+  PUBLIC_CONTRIBUTION_CATEGORIES,
+  STATUS_PENDING_AI,
+} from "@/lib/contribution";
 
 // ──────────────────────────────────────────────
 // Bornes
 // ──────────────────────────────────────────────
 
-/** Doit rester aligné sur SUPPORTED_CROWDSOURCING_CATEGORIES (processor.py). */
-const ALLOWED_CATEGORIES = [
-  "Pricing",
-  "Ranking",
-  "Capacity",
-  "SchoolStats",
-  "Accreditation",
-] as const;
+// Liste de référence unique : lib/contribution.ts, en regard de
+// backend/constants.py côté Python. Elle était recopiée ici.
+const ALLOWED_CATEGORIES = PUBLIC_CONTRIBUTION_CATEGORIES;
 
 const MAX_USER_TEXT = 2000;
 const MAX_URLS = 5;
@@ -228,7 +227,7 @@ export async function POST(request: Request) {
             user_text: userText,
             urls,
             ai_category: cat as string,
-            status: "Pending_AI",
+            status: STATUS_PENDING_AI,
           },
         })
       )

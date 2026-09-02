@@ -62,6 +62,18 @@ async def lifespan(app: FastAPI):
     # (évite le blocage au démarrage si Neon est lent)
     logger.info("✅ Pool PostgreSQL (Neon) : mode lazy init")
 
+    # Jobs laissés « running » par le processus précédent. Sans cette reprise,
+    # un redémarrage en cours de job verrouillait l'école concernée pour
+    # toujours : la garde de concurrence voyait un job actif que plus personne
+    # ne ferait avancer. Suppose un seul worker backend à la fois — voir
+    # backend/pipeline_jobs.py.
+    try:
+        from backend import pipeline_jobs
+        pipeline_jobs.reap_orphaned_jobs()
+        pipeline_jobs.purge_finished_jobs()
+    except Exception as e:
+        logger.warning(f"⚠️ Reprise de l'état des jobs impossible: {e}")
+
     # Initialiser TavilyKeyManager
     try:
         app.state.tavily_manager = TavilyKeyManager()

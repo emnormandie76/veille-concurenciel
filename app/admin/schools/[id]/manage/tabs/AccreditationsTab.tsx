@@ -7,7 +7,9 @@ interface Accreditation {
   schoolId: string;
   accreditation_name: string;
   accreditation_type: "international" | "state" | "label";
-  year_obtained: number;
+  // null = année inconnue (les accréditations issues du pipeline peuvent
+  // arriver sans année publiée).
+  year_obtained: number | null;
   is_active: boolean;
 }
 
@@ -60,7 +62,7 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
     setEditingRecord(rec);
     setFormName(rec.accreditation_name);
     setFormType(rec.accreditation_type);
-    setFormYear(rec.year_obtained);
+    setFormYear(rec.year_obtained ?? new Date().getFullYear());
     setFormIsActive(rec.is_active);
     setModalError(null);
     setIsModalOpen(true);
@@ -175,7 +177,11 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
                 <span className={`badge ${acc.is_active ? "badge-active" : "badge-inactive"}`}>
                   {acc.is_active ? "Actif" : "Inactif"}
                 </span>
-                <span>Obtenue en {acc.year_obtained}</span>
+                <span>
+                  {acc.year_obtained != null
+                    ? `Obtenue en ${acc.year_obtained}`
+                    : "Année d'obtention inconnue"}
+                </span>
               </div>
             </div>
           ))}

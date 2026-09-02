@@ -21,16 +21,53 @@ model School {
   status          String                @default("ACTIVE")
   accreditations  AccreditationRecord[]
   campuses        Campus[]
+  contributions   ContributionInbox[]
+  pipelineJobs    PipelineJob[]
   programs        Program[]
   statsRecords    SchoolStatsRecord[]
 }
 
+// Etat d'avancement du pipeline (Phase 1, Phase 2, recherche ciblee).
+//
+// Cet etat vivait dans deux dictionnaires de module de backend/routers/internal.py,
+// dans un processus unique, sur un hebergeur qui redemarre. Au redemarrage, un job
+// "running" disparaissait sans jamais passer a "failed" : comme les points d'entree
+// refusent de lancer un scan quand un job tourne deja sur l'ecole, l'ecole restait
+// verrouillee sans que rien ne l'indique.
+//
+// Ecrit exclusivement par le backend Python (psycopg2), via backend/pipeline_jobs.py.
+// updated_at sert de battement de coeur : un job actif dont l'horodatage a vieilli
+// est repute mort et repasse en "failed".
+model PipelineJob {
+  id          String    @id @default(uuid())
+  schoolId    String
+  phase       String
+  // "manual" (panneau admin) | "cron" (APScheduler)
+  source      String    @default("manual")
+  // "queued" | "running" | "completed" | "failed"
+  status      String    @default("queued")
+  // Processus proprietaire du job : sert a detecter les jobs orphelins d'un
+  // redemarrage. Voir backend/pipeline_jobs.py (WORKER_ID).
+  worker_id   String?
+  progress    Json?
+  result      Json?
+  error       String?
+  started_at  DateTime  @default(now())
+  updated_at  DateTime  @default(now())
+  finished_at DateTime?
+  school      School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, status])
+  @@index([status, updated_at])
+}
+
 model Campus {
-  id              String          @id @default(uuid())
+  id              String              @id @default(uuid())
   schoolId        String
   name            String
   city            String?
-  school          School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  contributions   ContributionInbox[]
+  school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   programCampuses ProgramCampus[]
 
   @@unique([schoolId, name])
@@ -46,6 +83,7 @@ model Program {
   min_expatriation_months   Int?
   max_internship_months     Int?
   campuses                  ProgramCampus[]
+  contributions             ContributionInbox[]
   pricingRecords            PricingRecord[]
   school                    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   rankingRecords            RankingRecord[]
@@ -60,6 +98,7 @@ model ProgramCampus {
   program         Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
   campus          Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
   capacityRecords CapacityRecord[]
+  contributions   ContributionInbox[]
 
   @@unique([programId, campusId])
 }
@@ -130,7 +169,11 @@ model AccreditationRecord {
   id                 String  @id @default(uuid())
   schoolId           String
   accreditation_name String
-  year_obtained      Int
+  // Nullable : l'annee d'obtention n'est pas toujours publiee. Elle valait 0
+  // quand elle etait inconnue, et cette annee 0 partait en production comme une
+  // donnee reelle -- la colonne etait Int non nullable, il fallait bien ecrire
+  // quelque chose. "Inconnu" s'ecrit NULL.
+  year_obtained      Int?
   is_active          Boolean @default(true)
   // "international" = EQUIS, AACSB, AMBA, BSIS… | "label" = CGE, Qualiopi, DD&RS… | "state" = Grade Master, CTI…
   accreditation_type String  @default("international")
@@ -157,7 +200,24 @@ model ContributionInbox {
   createdAt             DateTime @default(now())
   submission_group_id   String?
 
+  // Relations posées apres coup. Les quatre colonnes etaient des String? sans
+  // relation : rien n'empechait un ticket de referencer une entite supprimee, et
+  // l'ecran d'arbitrage affichait alors un rattachement fantome.
+  //
+  // onDelete: SetNull, et non Cascade : la zone tampon est deliberement souple.
+  // Supprimer une ecole ne doit pas detruire les contributions qui la visaient ;
+  // le ticket se detache, l'admin voit qu'il ne pointe plus sur rien.
+  school                School?        @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  campus                Campus?        @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  program               Program?       @relation(fields: [programId], references: [id], onDelete: SetNull)
+  programCampus         ProgramCampus? @relation(fields: [programCampusId], references: [id], onDelete: SetNull)
+
   @@index([submission_group_id])
+  // Index sur les colonnes de rattachement : l'ecran d'inbox filtre sur
+  // schoolId, et une suppression d'ecole ou de programme doit trouver les
+  // tickets a detacher sans parcourir la table.
+  @@index([schoolId])
+  @@index([programId])
   // La file de traitement filtre sur status et trie sur createdAt a chaque
   // passage (toutes les minutes). Aucun index ne couvrait ces colonnes.
   @@index([status, createdAt])

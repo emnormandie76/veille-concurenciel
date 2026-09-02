@@ -5,8 +5,13 @@ Implémentation production conforme au guide gemma-python-guide.md :
   - call_gemma() avec retry backoff exponentiel (429 / RESOURCE_EXHAUSTED)
   - clean_gemma_json() : nettoyage balises Markdown
   - validate_json_structure() : vérification clés obligatoires
-  - is_content_relevant() : tri rapide Gemma 26B (Phase 2, Edge Case 11)
-  - fact_check() : fact-checking Gemma 26B (Workflow A)
+
+is_content_relevant() et fact_check() ont été retirées : elles n'étaient appelées
+nulle part. fact_check() prenait une revendication utilisateur en entrée ; la
+laisser appelable sans usage, c'était garder ouverte une porte d'injection de
+prompt pour un service que personne ne rendait. Leur code reste dans l'historique
+Git (et le modèle d'appel dans docs/architecture/gemma-python-guide.md) si le
+besoin revient.
 
 RÈGLES ABSOLUES (Règle 3) :
   - Pydantic est INTERDIT avec Gemma → prompting JSON uniquement
@@ -136,6 +141,33 @@ def validate_json_structure(data: dict, required_keys: list[str]) -> list[str]:
     return [key for key in required_keys if key not in data]
 
 
+# ── Erreurs définitives ──────────────────────────────────
+#
+# La boucle de réessai repartait sur toute exception, y compris une clé invalide
+# ou une requête malformée : trois tentatives et cinq secondes d'attente pour une
+# erreur qui ne se résoudra jamais. Le coût est double — le temps d'attente, et
+# le thread APScheduler immobilisé pendant ce temps.
+#
+# 408 (timeout) et 429 (quota) restent rejoués : ce sont les seules 4xx qui
+# peuvent se résoudre d'elles-mêmes.
+_RETRYABLE_CLIENT_CODES = (408, 429)
+
+
+def _permanent_api_error_code(error: Exception) -> int | None:
+    """
+    Retourne le code HTTP de l'erreur si elle est définitive, None sinon.
+
+    google.genai.errors.ClientError porte le code dans `.code` ; on accepte
+    aussi `.status_code`, present sur d'autres clients HTTP.
+    """
+    code = getattr(error, "code", None)
+    if not isinstance(code, int):
+        code = getattr(error, "status_code", None)
+    if isinstance(code, int) and 400 <= code < 500 and code not in _RETRYABLE_CLIENT_CODES:
+        return code
+    return None
+
+
 # ── Appel Gemma avec retry (template production) ──────────────────
 
 def call_gemma(
@@ -255,8 +287,16 @@ def call_gemma(
             time.sleep(base_delay)
 
         except Exception as e:
-            error_str = str(e)
-            # Backoff exponentiel sur erreur d'API ou de réseau (ex: 429, 500, ConnectionError)
+            permanent_code = _permanent_api_error_code(e)
+            if permanent_code is not None:
+                logger.error(
+                    f"⛔ Erreur API définitive ({permanent_code}) — aucun réessai : {e}"
+                )
+                raise GemmaAPIError(
+                    f"Erreur API Gemma définitive ({permanent_code}) : {e}"
+                ) from e
+
+            # Backoff exponentiel sur erreur d'API ou de réseau (ex: 500, 503, ConnectionError)
             delay = base_delay * (1.5 ** (attempt - 1))
             logger.error(f"❌ Erreur API inattendue (tentative {attempt}/{max_retries}): {e}")
             if attempt >= max_retries:
@@ -264,90 +304,3 @@ def call_gemma(
             time.sleep(delay)
 
     raise GemmaError(f"Échec de call_gemma après {max_retries} tentatives.")
-
-
-# ── Tri rapide Gemma 26B ──────────────────────────────────────────
-
-def is_content_relevant(raw_content: str, category: str) -> bool:
-    """
-    Tri rapide via Gemma 26B : le contenu est-il pertinent pour la catégorie ?
-
-    Détecte : paywalls, pages cookies/RGPD, contenus hors-sujet (Edge Case 11).
-
-    Returns:
-        True si le contenu est pertinent.
-        False si non-pertinent ou si l'appel échoue (skip prudent).
-
-    Référence : task.md §6.3, architecture.md §5.3, gemma-python-guide.md §3
-    """
-    system_prompt = (
-        f'Tu es un filtre de pertinence. Analyse le texte et réponds '
-        f'UNIQUEMENT avec un JSON valide : {{"relevant": true/false, "reason": "explication courte"}}.\n\n'
-        f'Critères de NON-pertinence :\n'
-        f'- Page de cookies/RGPD/consentement\n'
-        f'- Paywall ou page de connexion requise\n'
-        f'- Contenu sans rapport avec la catégorie "{category}"\n'
-        f'- Page d\'erreur 404/500'
-    )
-
-    user_content = wrap_source(raw_content, 3000)
-
-    try:
-        result = call_gemma(
-            model="models/gemma-4-26b-a4b-it",
-            system_prompt=system_prompt,
-            user_content=user_content,
-            required_keys=["relevant"],
-            max_retries=2,
-            temperature=0.1,
-        )
-    except GemmaError as e:
-        logger.warning(f"⚠️ Erreur lors du check de pertinence: {e}")
-        return False  # En cas de doute → skip (comportement sûr)
-
-    return bool(result.get("relevant", False))
-
-
-# ── Fact-checking Gemma 26B (Workflow A) ──────────────────────────
-
-def fact_check(user_claim: str, source_content: str) -> dict | None:
-    """
-    Vérifie qu'un texte source confirme la revendication de l'utilisateur.
-    Utilisé dans le Workflow A (Crowdsourcing) après Tavily extract.
-
-    Returns:
-        Dict avec: confirmed (bool), confidence (str), extracted_value (str|None), explanation (str)
-        Ou None si l'appel échoue.
-
-    Référence : task.md §7.3, gemma-python-guide.md §4
-    """
-    system_prompt = (
-        'Tu es un vérificateur de faits. Compare la REVENDICATION de l\'utilisateur '
-        'avec le TEXTE SOURCE.\n\n'
-        'Réponds UNIQUEMENT avec un JSON valide :\n'
-        '{\n'
-        '  "confirmed": true/false,\n'
-        '  "confidence": "high"/"medium"/"low",\n'
-        '  "extracted_value": "la valeur exacte trouvée dans le texte ou null",\n'
-        '  "explanation": "Pourquoi tu confirmes ou infirmes"\n'
-        '}'
-    )
-
-    # La revendication vient de l'utilisateur : elle était injectée brute et non
-    # tronquée. Elle est désormais bornée et délimitée comme le contenu scrapé.
-    user_content = (
-        f"<REVENDICATION>\n{sanitize_source(user_claim[:2000])}\n</REVENDICATION>\n\n"
-        f"{wrap_source(source_content, 4000)}"
-    )
-
-    try:
-        return call_gemma(
-            model="models/gemma-4-26b-a4b-it",
-            system_prompt=system_prompt,
-            user_content=user_content,
-            required_keys=["confirmed", "confidence"],
-            temperature=0.1,
-        )
-    except GemmaError as e:
-        logger.warning(f"⚠️ Erreur lors du fact_check: {e}")
-        return None

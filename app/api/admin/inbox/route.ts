@@ -12,6 +12,7 @@
 import { guardAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isContributionCategory, isContributionStatus } from "@/lib/contribution";
 
 export async function GET(request: Request) {
   const { error } = await guardAuth();
@@ -24,6 +25,18 @@ export async function GET(request: Request) {
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
   const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10)));
   const skip = (page - 1) * limit;
+
+  // Un filtre mal orthographié renvoyait une liste vide, indistinguable d'un
+  // « aucun ticket dans cet état ». Il est désormais refusé.
+  if (status && !isContributionStatus(status)) {
+    return NextResponse.json({ error: `Statut inconnu : ${status}` }, { status: 400 });
+  }
+  if (ai_category && !isContributionCategory(ai_category)) {
+    return NextResponse.json(
+      { error: `Catégorie inconnue : ${ai_category}` },
+      { status: 400 }
+    );
+  }
 
   // Construire le filtre dynamiquement
   const where: Record<string, unknown> = {};

@@ -25,6 +25,7 @@ import psycopg2.extras
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from backend import pipeline_jobs
 from backend.tavily_service.key_manager import QuotaExhaustedError
 
 logger = logging.getLogger("pipeline.scheduler")
@@ -63,6 +64,49 @@ def _record_job_run(job_id: str, status: str, detail: str | None = None) -> None
         "detail": detail,
         "finished_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ── Suivi des jobs cron dans la table PipelineJob ───────────────
+#
+# Auparavant register_cron_job()/complete_cron_job(), qui écrivaient dans le
+# dictionnaire de module de routers/internal.py. L'état vit maintenant en base.
+# Le suivi ne doit jamais faire tomber le cron : si la base ne répond pas, le
+# traitement continue sans job tracé (run_phase1 échouera de lui-même si la
+# base est vraiment indisponible).
+
+def _start_cron_job(school_id: str, phase: str) -> str | None:
+    """Ouvre un job cron en base. Retourne son id, ou None si l'écriture échoue."""
+    try:
+        job_id = pipeline_jobs.create_job(school_id, phase, source="cron")
+        pipeline_jobs.mark_running(job_id)
+        return job_id
+    except Exception as e:
+        logger.warning(f"⚠️ [CRON] Job non enregistré en base pour {school_id}: {e}")
+        return None
+
+
+def _finish_cron_job(job_id: str | None, status: str, result=None, error=None) -> None:
+    """Clôt un job cron en base, si son ouverture avait réussi."""
+    if not job_id:
+        return
+    try:
+        pipeline_jobs.complete_job(job_id, status, result=result, error=error)
+    except Exception as e:
+        logger.warning(f"⚠️ [CRON] Clôture du job {job_id} non enregistrée: {e}")
+
+
+def _school_is_busy(school_id: str) -> bool:
+    """
+    Vrai si un job tourne déjà sur cette école (déclenché à la main, ou par le
+    passage précédent). Empeche le cron de doubler un traitement en cours et de
+    consommer deux fois les crédits Tavily.
+    """
+    try:
+        return pipeline_jobs.get_active_job(school_id) is not None
+    except Exception as e:
+        # Base injoignable : on ne bloque pas le cron sur un contrôle de confort.
+        logger.warning(f"⚠️ [CRON] Contrôle de concurrence impossible ({e})")
+        return False
 
 # ── Singleton scheduler ───────────────────────────────────────────
 _scheduler: BackgroundScheduler | None = None
@@ -141,10 +185,11 @@ def phase1_scanner(key_manager):
             f"🏫 [CRON] Traitement {i+1}/{len(schools_without_campus)}: {school_name}"
         )
 
-        import uuid
-        from backend.routers.internal import register_cron_job, complete_cron_job
-        job_id = str(uuid.uuid4())[:8]
-        job_key = register_cron_job(job_id, school_id, "Phase 1 — Cartographie (Auto)")
+        if _school_is_busy(school_id):
+            logger.info(f"⏭️ [CRON] {school_name}: un job est déjà en cours — passée")
+            continue
+
+        job_key = _start_cron_job(school_id, "Phase 1 — Cartographie (Auto)")
 
         try:
             result = run_phase1(school_id, key_manager)
@@ -155,11 +200,11 @@ def phase1_scanner(key_manager):
                     f"{result.get('campuses_count')} campus, "
                     f"{result.get('programs_count')} programmes → Inbox créé"
                 )
-                complete_cron_job(job_key, "completed", result=result)
+                _finish_cron_job(job_key, "completed", result=result)
             else:
                 msg = result.get("message", "Échec inconnu")
                 logger.warning(f"⚠️ [CRON] {school_name}: {msg}")
-                complete_cron_job(job_key, "failed", error=msg)
+                _finish_cron_job(job_key, "failed", error=msg)
 
                 # Si quota épuisé → arrêter le job immédiatement
                 if "quota" in msg.lower() or "épuisé" in msg.lower():
@@ -168,11 +213,11 @@ def phase1_scanner(key_manager):
 
         except QuotaExhaustedError as e:
             logger.error(f"🛑 [CRON] Quota Tavily épuisé — arrêt immédiat du scanner: {e}")
-            complete_cron_job(job_key, "failed", error=str(e))
+            _finish_cron_job(job_key, "failed", error=str(e))
             break
         except Exception as e:
             logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
-            complete_cron_job(job_key, "failed", error=str(e))
+            _finish_cron_job(job_key, "failed", error=str(e))
 
         # Pause entre chaque école (sauf la dernière)
         if i < len(schools_without_campus) - 1:
@@ -240,10 +285,11 @@ def phase2_enricher(key_manager):
             f"🏫 [CRON] Traitement {i+1}/{len(schools_with_campus)}: {school_name}"
         )
 
-        import uuid
-        from backend.routers.internal import register_cron_job, complete_cron_job
-        job_id = str(uuid.uuid4())[:8]
-        job_key = register_cron_job(job_id, school_id, "Phase 2 — Enrichissement (Auto)")
+        if _school_is_busy(school_id):
+            logger.info(f"⏭️ [CRON] {school_name}: un job est déjà en cours — passée")
+            continue
+
+        job_key = _start_cron_job(school_id, "Phase 2 — Enrichissement (Auto)")
 
         try:
             result = run_phase2(school_id, key_manager)
@@ -252,11 +298,11 @@ def phase2_enricher(key_manager):
                 logger.info(
                     f"✅ [CRON] {school_name}: {result.get('tickets_created')} ticket(s) créé(s)"
                 )
-                complete_cron_job(job_key, "completed", result=result)
+                _finish_cron_job(job_key, "completed", result=result)
             else:
                 msg = result.get("message", "Échec inconnu")
                 logger.warning(f"⚠️ [CRON] {school_name}: {msg}")
-                complete_cron_job(job_key, "failed", error=msg)
+                _finish_cron_job(job_key, "failed", error=msg)
 
                 if "quota" in msg.lower() or "épuisé" in msg.lower():
                     logger.error("🛑 [CRON] Quota Tavily épuisé — arrêt de l'enricher")
@@ -264,11 +310,11 @@ def phase2_enricher(key_manager):
 
         except QuotaExhaustedError as e:
             logger.error(f"🛑 [CRON] Quota Tavily épuisé — arrêt immédiat de l'enricher: {e}")
-            complete_cron_job(job_key, "failed", error=str(e))
+            _finish_cron_job(job_key, "failed", error=str(e))
             break
         except Exception as e:
             logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
-            complete_cron_job(job_key, "failed", error=str(e))
+            _finish_cron_job(job_key, "failed", error=str(e))
 
         if i < len(schools_with_campus) - 1:
             logger.info(f"⏸️ [CRON] Pause {PAUSE_BETWEEN_SCHOOLS}s avant la prochaine école...")

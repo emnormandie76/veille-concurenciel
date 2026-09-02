@@ -11,6 +11,7 @@
 import { guardAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { STATUS_REJECTED, STATUS_VALIDATED } from "@/lib/contribution";
 
 export async function PUT(
   _request: Request,
@@ -28,14 +29,14 @@ export async function PUT(
       return NextResponse.json({ error: "Ticket introuvable" }, { status: 404 });
     }
 
-    if (ticket.status === "Validated") {
+    if (ticket.status === STATUS_VALIDATED) {
       return NextResponse.json(
         { error: "Impossible de rejeter un ticket déjà validé" },
         { status: 400 }
       );
     }
 
-    if (ticket.status === "Rejected") {
+    if (ticket.status === STATUS_REJECTED) {
       return NextResponse.json(
         { error: "Ticket déjà rejeté" },
         { status: 400 }
@@ -44,7 +45,7 @@ export async function PUT(
 
     const updated = await prisma.contributionInbox.update({
       where: { id },
-      data: { status: "Rejected" },
+      data: { status: STATUS_REJECTED },
     });
 
     return NextResponse.json({

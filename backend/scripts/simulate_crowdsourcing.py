@@ -3,7 +3,6 @@ import os
 import uuid
 import json
 import logging
-import asyncio
 
 # S'assurer que le PYTHONPATH est correct
 sys.path.append(os.path.abspath("."))
@@ -21,7 +20,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
-async def main():
+def main():
     print("=== INSPECTION DE LA BASE DE DONNEES ===")
     school_id = None
     program_id = None
@@ -83,8 +82,11 @@ async def main():
     print(f"Ticket inséré avec succès (sans programId). ID: {ticket_id}")
     
     print("\n=== EXECUTION DU TRAITEMENT ===")
+    # Le gestionnaire de cles est obligatoire : le processeur refuse d en
+    # instancier un second, qui tiendrait une comptabilite de credits parallele.
+    key_manager = TavilyKeyManager()
     try:
-        await process_crowdsourcing_ticket(ticket_id)
+        process_crowdsourcing_ticket(ticket_id, key_manager)
     except Exception as e:
         err_msg = str(e).encode('ascii', 'ignore').decode('ascii')
         print(f"Le traitement a echoue: {err_msg}")
@@ -112,4 +114,4 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding='utf-8')
     if hasattr(sys.stderr, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8')
-    asyncio.run(main())
+    main()

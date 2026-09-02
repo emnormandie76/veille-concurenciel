@@ -166,7 +166,7 @@ Structure JSON (tableau de toutes les accréditations trouvées) :
     {
       "accreditation_name": "Nom exact (ex: EQUIS, AACSB, CGE)",
       "accreditation_type": "international" | "state" | "label",
-      "year_obtained": entier ou 0 si inconnu,
+      "year_obtained": entier, ou null si inconnu (JAMAIS 0),
       "is_active": true/false,
       "source_url": "URL exacte ou null"
     }

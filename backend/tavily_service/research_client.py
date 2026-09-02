@@ -12,6 +12,7 @@ Gestion des erreurs :
   - QuotaExhaustedError (propagée depuis key_manager)
 """
 
+import os
 import time
 import logging
 from typing import Optional, Any
@@ -28,6 +29,16 @@ ESTIMATED_CREDITS = {
 
 REQUIRED_CREDITS_PRO = 250
 REQUIRED_CREDITS_MINI = 50
+
+# Nombre d'échecs CONSÉCUTIFS de get_research() tolérés avant d'abandonner.
+#
+# Le polling interceptait chaque échec en simple avertissement et poursuivait
+# jusqu'à max_wait_seconds : une tâche perdue immobilisait un thread APScheduler
+# dix minutes pleines. Le compteur repart à zéro dès qu'une réponse arrive, si
+# bien qu'un incident réseau passager reste absorbé.
+MAX_CONSECUTIVE_POLL_FAILURES = int(
+    os.environ.get("TAVILY_RESEARCH_MAX_POLL_FAILURES", 5)
+)
 
 
 class ResearchTimeoutError(Exception):
@@ -180,15 +191,25 @@ def _poll_research_task(
 ) -> dict:
     """
     Boucle de polling sur l'état de la tâche.
+
+    Abandonne après MAX_CONSECUTIVE_POLL_FAILURES échecs consécutifs : sans ce
+    plafond, une tâche perdue côté Tavily immobilisait le thread appelant
+    jusqu'à max_wait_seconds, soit dix minutes par défaut.
     """
     start_time = time.time()
     attempts = 0
+    consecutive_failures = 0
+    last_error: Exception | None = None
     while time.time() - start_time < max_wait_seconds:
         attempts += 1
         try:
             response = client.get_research(request_id=request_id)
             status = response.get("status")
             logger.info(f"⏳ Polling task {request_id} (tentative {attempts}) — statut: {status}")
+
+            # Une réponse reçue remet le compteur à zéro : seuls les échecs
+            # consécutifs comptent.
+            consecutive_failures = 0
 
             if status == "completed":
                 return response
@@ -199,7 +220,18 @@ def _poll_research_task(
         except ResearchTaskFailedError:
             raise
         except Exception as e:
-            logger.warning(f"⚠️ Erreur lors du polling de {request_id}: {e}")
+            consecutive_failures += 1
+            last_error = e
+            logger.warning(
+                f"⚠️ Erreur lors du polling de {request_id} "
+                f"({consecutive_failures}/{MAX_CONSECUTIVE_POLL_FAILURES}): {e}"
+            )
+            if consecutive_failures >= MAX_CONSECUTIVE_POLL_FAILURES:
+                raise ResearchTaskFailedError(
+                    f"La tâche {request_id} est injoignable après "
+                    f"{consecutive_failures} échecs consécutifs de polling. "
+                    f"Dernière erreur: {last_error}"
+                ) from last_error
 
         time.sleep(poll_interval)
 

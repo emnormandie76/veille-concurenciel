@@ -1,8 +1,19 @@
 import unittest
 from unittest.mock import patch
 import os
+import sys
 
-from tavily_service.key_manager import TavilyKeyManager, TavilyKeyState, QuotaExhaustedError
+# Ce fichier vivait a la racine de backend/, au milieu des modules de
+# production, et importait `tavily_service.key_manager` : il ne fonctionnait
+# qu'execute depuis backend/, et pytest (testpaths = test) ne le collectait
+# jamais. Il rejoint la suite, avec l'import absolu que la suite utilise.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from backend.tavily_service.key_manager import (  # noqa: E402
+    TavilyKeyManager,
+    TavilyKeyState,
+    QuotaExhaustedError,
+)
 
 
 class TestTavilyKeyRotation(unittest.TestCase):

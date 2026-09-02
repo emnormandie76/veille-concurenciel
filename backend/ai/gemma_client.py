@@ -200,7 +200,14 @@ def call_gemma(
                     raise GemmaParsingError(f"Réponse tronquée avec finish_reason={finish_reason}")
 
             # ── Extraction et nettoyage ───────────────────────────
-            raw_text = response.text
+            # `response.text` vaut None quand Gemma ne renvoie aucune part
+            # textuelle (filtre de securite, finish_reason inattendu). Sans ce
+            # `or ""`, la garde ci-dessous entrait bien dans sa branche mais
+            # plantait dessus : len(None) leve un TypeError, et le bloc except
+            # plus bas fait raw_text[:300], qui leve le meme. La garde censee
+            # absorber une reponse vide etait donc precisement ce qui cassait,
+            # en emportant le retry prevu juste en dessous.
+            raw_text = response.text or ""
             if not raw_text or len(raw_text.strip()) < 5:
                 logger.warning(f"Réponse vide ou trop courte ({len(raw_text)} chars)")
                 if attempt < max_retries:

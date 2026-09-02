@@ -13,10 +13,17 @@ base Neon**, qui est sur un palier gratuit.
 
 ## Pile technique
 
-- **Framework** : Next.js App Router (Route Handlers `app/api/v1/...`)
+- **Framework** : Next.js App Router (Route Handlers `app/api/v1/...`) — `next@16.3.4`
 - **Langage** : TypeScript
-- **Accès BDD** : Prisma ORM
+- **Accès BDD** : Prisma ORM — `prisma@7.10.0`
 - **Hébergement cible** : Vercel (non déployé à ce jour)
+
+> **La montée en `next@16.3.4` (1er septembre 2026) n'est pas cosmétique pour
+> cette API.** Les versions antérieures portaient un avis de *bypass de
+> middleware / proxy en App Router*. Or le plafond de 60 req/min décrit
+> ci-dessous vit dans `proxy.ts`, donc dans le middleware : le contourner, c'était
+> aspirer la base Neon sans jamais croiser un 429. Voir
+> [`architecture.md`](architecture.md), *Sécurité des dépendances*.
 
 ---
 

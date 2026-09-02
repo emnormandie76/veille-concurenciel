@@ -48,6 +48,8 @@ prisma/dev.db-journal
 .superpowers/
 .agents/
 docs/skills/
+AGENTS.md
+CLAUDE.md
 
 # Artefacts de build TypeScript (propres a chaque machine)
 *.tsbuildinfo

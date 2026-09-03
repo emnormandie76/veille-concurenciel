@@ -57,23 +57,61 @@ class MockCursor:
         return None
 
     def fetchall(self):
+        # L'aiguillage se fait du plus spécifique au plus général, et c'est
+        # nécessaire : la requête ProgramCampus contient elle aussi « program »
+        # et tombait dans la branche des programmes, où elle recevait des lignes
+        # dépourvues de program_campus_id. Tester Capacity hors ligne revenait
+        # alors à déboguer un faux problème. Même piège pour la lecture des
+        # RankingRecord, dont le WHERE porte sur "programId".
         q = self.last_query.lower()
+
+        if "programcampus" in q:
+            return [
+                {
+                    "program_campus_id": "mock-pc-1-id",
+                    "program_id": "mock-prog-1-id",
+                    "campus_id": "mock-campus-1-id",
+                    "program_name": "Programme Grande École",
+                    "campus_name": "Campus Lille",
+                },
+                {
+                    "program_campus_id": "mock-pc-2-id",
+                    "program_id": "mock-prog-2-id",
+                    "campus_id": "mock-campus-2-id",
+                    "program_name": "Bachelor in Business Administration",
+                    "campus_name": "Campus Nice",
+                },
+            ]
+
+        # Tables de production : la simulation part d'une base vide, tout est
+        # donc « nouveau » et chaque extraction produit un ticket.
+        if any(
+            table in q
+            for table in (
+                "rankingrecord", "pricingrecord", "capacityrecord",
+                "schoolstatsrecord", "accreditationrecord",
+            )
+        ):
+            return []
+
         if "program" in q:
             return [
                 {
                     "id": "mock-prog-1-id",
                     "name": "Programme Grande École",
+                    "schoolId": "mock-school-id",
                     "campusId": "mock-campus-1-id",
                     "campus_name": "Campus Lille"
                 },
                 {
                     "id": "mock-prog-2-id",
                     "name": "Bachelor in Business Administration",
+                    "schoolId": "mock-school-id",
                     "campusId": "mock-campus-2-id",
                     "campus_name": "Campus Nice"
                 }
             ]
-        elif "school" in q:
+        if "school" in q:
             return [("mock-school-id", self.school_name, self.domain, 2)]
         return []
 

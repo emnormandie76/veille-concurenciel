@@ -1,0 +1,23 @@
+-- Le rapport Tavily Research integral est joint au ticket.
+--
+-- Le pipeline n'envoie plus de output_schema a Tavily : ce parametre
+-- n'ecourtait pas seulement la mise en forme, il ecourtait la recherche.
+-- L'agent cessait de chercher des qu'il pouvait remplir les champs `required`
+-- du schema. Mesure sur une meme question : 1 classement issu d'une source
+-- avec le schema, 10 classements issus de 14 sources sans lui.
+--
+-- Tavily redige donc desormais un rapport, et Gemini le structure. Ce rapport
+-- est conserve ici, et ce n'est pas de l'archivage :
+--
+--   * l'admin arbitre sur pieces. Le ticket portait un JSON creux, sans rien
+--     pour le verifier ; le rapport porte les URL, les contradictions entre
+--     sources et ce que la recherche n'a pas trouve.
+--   * la donnee reste re-extractible. Un schema qui evolue se rejoue sur le
+--     texte conserve, sans repayer un appel `pro` (25 credits estimes) ni
+--     attendre les 100 a 240 secondes d'une nouvelle recherche.
+--
+-- Nullable, et sans valeur par defaut : les tickets deja en base n'ont pas de
+-- rapport, et les tickets de crowdsourcing n'en auront jamais.
+--
+-- AlterTable
+ALTER TABLE "ContributionInbox" ADD COLUMN "raw_report" TEXT;

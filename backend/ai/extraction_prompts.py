@@ -200,6 +200,25 @@ ANNÉE ET STATUT :
   retrait."""
 
 
+CATALOG_EXTRACTION_PROMPT = f"""Tu lis la page « nos formations » d'une école. Tu en tires la liste des formations qu'elle publie, avec leurs intitulés exacts.
+
+{_ANTI_INJECTION}
+
+CE QUE TU LIS :
+- Une page d'index, souvent sous forme de cartes ou de listes. Chaque entrée est
+  une formation, avec parfois un lien vers sa fiche.
+- Reprends l'intitulé EXACTEMENT comme il est écrit : c'est le point de toute
+  cette étape. Pas de traduction, pas de reformulation, pas d'abréviation.
+
+CE QU'IL NE FAUT PAS PRENDRE :
+- Les libellés de rubrique et les filtres de navigation : « Bachelor's
+  programmes », « Nos masters », « Toutes nos formations », « Par niveau »,
+  « Executive Education ».
+- Les éléments de menu, de pied de page, de fil d'Ariane et de bandeau cookies.
+- La formation continue, les DU, les certificats courts et les modules isolés.
+- Les doublons : une formation citée deux fois sur la page est UNE entrée."""
+
+
 EXTRACTION_PROMPTS: dict[str, str] = {
     "Program_Discovery": PROGRAM_DISCOVERY_EXTRACTION_PROMPT,
     "Pricing": PRICING_EXTRACTION_PROMPT,

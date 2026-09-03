@@ -199,6 +199,15 @@ model ContributionInbox {
   program_name_mismatch Boolean  @default(false)
   createdAt             DateTime @default(now())
   submission_group_id   String?
+  // Rapport Tavily Research integral, tel que l'agent l'a redige.
+  //
+  // Le pipeline n'envoie plus de output_schema : Tavily redige, Gemini
+  // structure. Conserver le texte source a deux usages, et les deux comptent.
+  // L'admin arbitre sur pieces au lieu d'arbitrer sur un JSON creux : le
+  // rapport porte les URL, les contradictions entre sources et ce que la
+  // recherche n'a pas trouve. Et la donnee reste re-extractible si le schema
+  // evolue, sans repayer un appel `pro` a 25 credits estimes.
+  raw_report            String?
 
   // Relations posées apres coup. Les quatre colonnes etaient des String? sans
   // relation : rien n'empechait un ticket de referencer une entite supprimee, et

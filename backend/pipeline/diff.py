@@ -7,12 +7,23 @@ afin de ne pas inonder l'Inbox de l'Admin si la donnée n'a pas changé.
 Référence : task.md §6.2, Edge Case 10
 """
 
-def has_data_changed(new_data: dict, existing_record: dict | None) -> bool:
+def has_data_changed(
+    new_data: dict,
+    existing_record: dict | None,
+    compared_fields: list[str] | None = None,
+) -> bool:
     """
     Compare le JSON extrait (new_data) avec les données en BDD (existing_record).
     Retourne True s'il y a un changement, False sinon.
     Si existing_record est None, cela signifie qu'il n'y a pas de donnée existante, donc ça a changé.
     Gère les valeurs de nouvelles données manquantes.
+
+    compared_fields restreint la comparaison à une liste de clés. Sans ce
+    paramètre, une extraction qui porte des champs absents de la table — le
+    `scope` d'un classement, son `program_hint`, le libellé d'origine du
+    palmarès — les compare à un `None` systématique et conclut « changé » à
+    chaque passage du cron. Les appelants qui écrivent dans une table rigide
+    passent donc la liste de ses colonnes.
     """
     if existing_record is None:
         return True
@@ -21,7 +32,9 @@ def has_data_changed(new_data: dict, existing_record: dict | None) -> bool:
     for key, new_value in new_data.items():
         if key in ("source_url", "year_assumed", "data_conflict_warning"):
             continue
-            
+        if compared_fields is not None and key not in compared_fields:
+            continue
+
         old_value = existing_record.get(key)
         
         # S'assurer de comparer sur le même type si possible (ex: float vs int)

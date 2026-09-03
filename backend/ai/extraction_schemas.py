@@ -479,6 +479,45 @@ ACCREDITATION_EXTRACTION_SCHEMA = {
 }
 
 
+# ── Phase 1 · passe catalogue ─────────────────────────────────────
+#
+# Ne vise aucune table : c'est une étape intermédiaire. La liste produite ici
+# devient la référence passée au prompt Program_Discovery, pour que le modèle
+# RATTACHE les formations du rapport au lieu d'en inventer les intitulés.
+#
+# Le premier essai extrayait ces titres par expression régulière taillée pour le
+# balisage d'un site précis. Ça ne généralise pas — d'où un schéma et un modèle,
+# qui lisent une page quelle que soit sa mise en forme.
+CATALOG_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "programs": {
+            "type": "array",
+            "description": "Formations diplômantes listées par la page catalogue.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Intitulé exact tel qu'il figure sur la page.",
+                    },
+                    "url": {
+                        "type": ["string", "null"],
+                        "description": "Lien vers la fiche de la formation, si la page en donne un.",
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+        "catalog_url": {
+            "type": ["string", "null"],
+            "description": "URL de la page d'index effectivement lue.",
+        },
+    },
+    "required": ["programs"],
+}
+
+
 # ── Aiguillage par catégorie ──────────────────────────────────────
 #
 # Plancher de qualité par catégorie (voir gemini_client.MODEL_LADDER).

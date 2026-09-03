@@ -675,9 +675,11 @@ def _write_ranking_tickets(
 
     existing = _get_existing_rankings([p["id"] for p in programs])
     group_id = str(uuid.uuid4())
+    emitted_keys: set[tuple] = set()
     created = 0
     skipped_school_scope = 0
     skipped_unmatched = 0
+    skipped_duplicate_key = 0
     unchanged = 0
 
     for entry in rankings:
@@ -693,6 +695,19 @@ def _write_ranking_tickets(
             continue
 
         key = (program["id"], entry.get("academic_year"), entry.get("ranking_name"))
+
+        # Deux entrées d'une même extraction peuvent viser la MÊME ligne future :
+        # RankingRecord est unique sur (programId, academic_year, ranking_name),
+        # et l'enum rabat tous les palmarès hors liste sur « Autre ». Observé sur
+        # un rapport réel : trois « Autre » 2025 pour le même programme.
+        # Émettre trois tickets pour une seule ligne ferait valider l'admin trois
+        # fois, chaque validation écrasant la précédente. Le premier gagne ; les
+        # suivants restent lisibles dans raw_report, joint à chaque ticket.
+        if key in emitted_keys:
+            skipped_duplicate_key += 1
+            continue
+        emitted_keys.add(key)
+
         if not has_data_changed(entry, existing.get(key), DB_FIELDS_BY_CATEGORY["Ranking"]):
             unchanged += 1
             continue
@@ -711,8 +726,9 @@ def _write_ranking_tickets(
 
     logger.info(
         "🏆 Ranking : %d classements extraits → %d tickets "
-        "(%d inchangés, %d au niveau école, %d non rattachés)",
-        len(rankings), created, unchanged, skipped_school_scope, skipped_unmatched,
+        "(%d inchangés, %d au niveau école, %d non rattachés, %d doublons de clé)",
+        len(rankings), created, unchanged, skipped_school_scope,
+        skipped_unmatched, skipped_duplicate_key,
     )
     return created
 

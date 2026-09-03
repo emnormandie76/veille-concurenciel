@@ -121,15 +121,35 @@ def _record_real_usage(key_manager, api_key: str, response: dict, fallback: int)
     return credits
 
 
+def _bare_host(value: str | None) -> str:
+    """
+    Ramène une valeur de domaine à un hôte comparable.
+
+    La colonne `School.official_domain` n'est pas propre en production : une
+    école y porte « www.em-normandie.com », une autre « em-strasbourg.com/fr »
+    — avec un chemin. Comparées telles quelles, la première rejetait ses propres
+    sous-domaines et la seconde ne pouvait correspondre à AUCUNE URL, ce qui
+    aurait désactivé l'ancrage catalogue en silence pour cette école.
+
+    On retire donc le schéma, le port, le chemin et le « www. » de tête, des
+    deux côtés de la comparaison.
+    """
+    host = (value or "").strip().lower()
+    host = host.split("://")[-1]
+    host = host.split("/")[0].split("?")[0].split("#")[0]
+    host = host.split(":")[0].strip(".")
+    return host[4:] if host.startswith("www.") else host
+
+
 def _score_candidate(url: str, title: str, official_domain: str) -> int:
     """Note une URL candidate au rôle de page catalogue."""
     parsed = urlparse(url)
-    host = (parsed.netloc or "").lower().split(":")[0]
-    domain = official_domain.lower().lstrip(".")
+    host = _bare_host(parsed.netloc)
+    domain = _bare_host(official_domain)
     # Le domaine doit être le SUFFIXE de l'hôte, pas une sous-chaîne : les
     # sous-domaines de l'école comptent (en.em-normandie.com), un hôte tiers qui
     # contient son nom ne compte pas.
-    if host != domain and not host.endswith("." + domain):
+    if not domain or (host != domain and not host.endswith("." + domain)):
         return -1
 
     score = 0

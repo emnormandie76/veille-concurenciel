@@ -176,6 +176,11 @@ def _clean_extracted(extracted: dict) -> tuple[dict, dict]:
     result["discovered_campuses"] = kept_campuses
 
     counters = {
+        # `campuses_seen` compte ce que le modèle a RENDU, avant filtrage. Sans
+        # lui, un échec total est indiagnosticable : on ne sait pas distinguer
+        # « le rapport ne nommait aucun campus » de « tous les campus ont été
+        # écartés faute de formations », qui appellent des corrections opposées.
+        "campuses_seen": len(campuses),
         "rejected_generic_labels": rejected_labels,
         "rejected_empty_campuses": empty_campuses,
     }
@@ -363,10 +368,22 @@ def run_phase1_research(
     extracted, rejects = _clean_extracted(extracted)
 
     if not extracted["discovered_campuses"]:
-        logger.error(f"❌ Aucun campus exploitable après filtrage pour {school_name}")
+        # Deux causes très différentes se cachent derrière le même symptôme, et
+        # le message doit dire laquelle : soit le rapport ne nommait aucun
+        # campus, soit il en nommait sans jamais dire ce qu'on y enseigne — cas
+        # observé sur Em Normandie, où l'agent n'avait consulté que les pages de
+        # description de campus et le signalait lui-même dans ses evidence gaps.
+        if rejects["campuses_seen"]:
+            detail = (
+                f"{rejects['campuses_seen']} campus trouvés, aucun avec de formation "
+                f"rattachée : {rejects['rejected_empty_campuses']}"
+            )
+        else:
+            detail = "le rapport ne nomme aucun campus"
+        logger.error("❌ Aucun campus exploitable pour %s — %s", school_name, detail)
         return {
             "success": False,
-            "message": "Aucun campus avec au moins une formation valide",
+            "message": f"Aucun campus avec au moins une formation valide — {detail}",
             **rejects,
         }
 

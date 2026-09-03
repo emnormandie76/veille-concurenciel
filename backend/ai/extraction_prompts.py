@@ -51,8 +51,15 @@ CE QUI EST UNE FORMATION, CE QUI N'EN EST PAS :
   modules isolés.
 
 RATTACHEMENT AUX CAMPUS :
-- Un campus sans aucune formation n'est pas un résultat exploitable. Si le
-  rapport mentionne un campus sans dire ce qu'on y enseigne, ne le rends pas.
+- Rends TOUS les campus que le rapport nomme, chacun avec les formations que le
+  rapport y rattache explicitement.
+- Si le rapport nomme un campus sans dire ce qu'on y enseigne, rends-le QUAND
+  MÊME, avec un tableau `programs` vide. Ne le supprime pas de ta sortie : le
+  pipeline décide ensuite quoi en faire, et une sortie vide rendrait la cause
+  indiagnosticable.
+- N'invente aucun rattachement. Si le rapport ne dit pas qu'une formation est
+  enseignée sur un campus donné, ne l'y place pas — même si l'école propose
+  cette formation par ailleurs.
 - Une même formation enseignée sur trois campus apparaît dans les trois.
 - Quand le rapport signale un désaccord entre sources sur le nombre de campus,
   reprends-le dans confidence_notes plutôt que de trancher toi-même.

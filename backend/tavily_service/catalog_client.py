@@ -124,8 +124,12 @@ def _record_real_usage(key_manager, api_key: str, response: dict, fallback: int)
 def _score_candidate(url: str, title: str, official_domain: str) -> int:
     """Note une URL candidate au rôle de page catalogue."""
     parsed = urlparse(url)
-    host = (parsed.netloc or "").lower()
-    if official_domain.lower() not in host:
+    host = (parsed.netloc or "").lower().split(":")[0]
+    domain = official_domain.lower().lstrip(".")
+    # Le domaine doit être le SUFFIXE de l'hôte, pas une sous-chaîne : les
+    # sous-domaines de l'école comptent (en.em-normandie.com), un hôte tiers qui
+    # contient son nom ne compte pas.
+    if host != domain and not host.endswith("." + domain):
         return -1
 
     score = 0

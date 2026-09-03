@@ -306,6 +306,7 @@ class ModelRegistry:
         now = time.time()
         today = _pacific_day_key()
         with self._lock:
+            states = [self._states[model_id] for model_id, _ in self._ladder]
             return [
                 {
                     "model": state.model_id,
@@ -313,14 +314,13 @@ class ModelRegistry:
                     "disabled": state.disabled,
                     "disabled_reason": state.disabled_reason,
                     "cooling_for": max(0.0, round(state.cooldown_until - now, 1)),
+                    # Le compteur d'hier ne dit rien du budget d'aujourd'hui.
                     "requests_today": (
                         state.requests_today if state.day_key == today else 0
                     ),
                     "last_error": state.last_error,
                 }
-                for _, state in (
-                    (model_id, self._states[model_id]) for model_id, _ in self._ladder
-                )
+                for state in states
             ]
 
 

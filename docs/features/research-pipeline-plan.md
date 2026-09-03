@@ -133,16 +133,32 @@ GET https://api.tavily.com/research/abc-123
 → Pendant l'exécution :
 { "status": "in_progress" }
 
-→ Une fois terminé (30-120 secondes) :
+→ Une fois terminé (100-240 secondes en `pro`) :
 {
   "status": "completed",
-  "report": "..." ou { structured JSON },
+  "content": "...",              // le rapport rédigé — la clé s'appelle `content`
+  "created_at": "...",
+  "response_time": 187.4,
+  "request_id": "abc-123",
   "sources": [
     { "title": "Frais de scolarité - EMLV", "url": "https://emlv.fr/tarifs" },
     ...
   ]
 }
 ```
+
+> ⚠️ **Six clés, pas une de plus.** La réponse `/research` porte exactement
+> `content`, `sources`, `status`, `created_at`, `response_time`, `request_id`.
+> Cette page a longtemps décrit un champ `report` et un champ `credits` : ni
+> l'un ni l'autre n'existe. Le code lit correctement `content` et l'expose sous
+> la clé `"report"` de son propre dictionnaire de retour — c'était la doc qui
+> était fausse, pas le client.
+>
+> Conséquence sur les crédits : le coût réel d'un appel Research n'est lisible
+> nulle part. `include_usage: true` fonctionne sur `/search`, `/extract` et
+> `/map`, pas sur `/research`, et `GET /usage` n'est pas temps réel. Le seul
+> endpoint dont le coût compte est le seul qui ne le déclare pas ;
+> `ESTIMATED_CREDITS` est une estimation assumée.
 
 ### 3.2. Paramètres clés
 
@@ -545,7 +561,8 @@ def create_research_task(
     )
 
     return {
-        "report": result.get("report", ""),
+        # `content` et non `report` : voir l'encadré de la section 3.1.
+        "report": result.get("content", ""),
         "sources": result.get("sources", []),
         "credits_used": credits_used,
         "status": "completed",

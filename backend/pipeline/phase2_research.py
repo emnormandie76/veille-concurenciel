@@ -314,7 +314,6 @@ def _run_research_and_extract(
     key_manager,
     official_domain: str,
     dry_run: bool,
-    system_prompt: Optional[str] = None,
     label: str = "",
 ) -> tuple[Optional[dict], str, list[str]]:
     """
@@ -360,7 +359,7 @@ def _run_research_and_extract(
 
     try:
         extracted = extract_structured(
-            system_prompt=system_prompt or get_extraction_prompt(category),
+            system_prompt=get_extraction_prompt(category),
             source_text=report,
             json_schema=get_extraction_schema(category),
             min_tier=get_min_tier(category),

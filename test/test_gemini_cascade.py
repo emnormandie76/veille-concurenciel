@@ -297,6 +297,33 @@ class TestCascade(GeminiCascadeTestCase):
                 )
         self.assertEqual(len(client.models.calls), 3)
 
+    def test_499_cancelled_continues_the_cascade(self):
+        """
+        499 CANCELLED ne dit rien de la validité de la requête : il dit que cet
+        appel-ci n'est pas allé au bout. Observé en production, où il faisait
+        avorter toute la cascade alors que sept modèles sains attendaient.
+        """
+        cancelled = FakeAPIError(499, "499 CANCELLED. The operation was cancelled.")
+        _, calls = self._extract(
+            {
+                "models/high-a": cancelled,
+                "models/mid-a": FakeResponse('{"items": []}'),
+            }
+        )
+        self.assertEqual(calls, ["models/high-a", "models/mid-a"])
+        snapshot = {row["model"]: row for row in self.registry.snapshot()}
+        self.assertFalse(snapshot["models/high-a"]["disabled"])
+
+    def test_408_timeout_continues_the_cascade(self):
+        timeout = FakeAPIError(408, "408 Request Timeout")
+        _, calls = self._extract(
+            {
+                "models/high-a": timeout,
+                "models/mid-a": FakeResponse('{"items": []}'),
+            }
+        )
+        self.assertEqual(calls, ["models/high-a", "models/mid-a"])
+
     def test_permanent_client_error_stops_the_cascade(self):
         """
         400 / 401 / 403 : requête ou clé invalide. Descendre l'échelle ne

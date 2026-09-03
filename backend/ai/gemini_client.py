@@ -121,6 +121,16 @@ DEFAULT_TIMEOUT_MS = 120_000
 # Le modèle produit du JSON, jamais de la prose : température au plancher.
 EXTRACTION_TEMPERATURE = 0.1
 
+# 4xx qui ne condamnent PAS la requête. Le reste des 4xx (400, 401, 403, 404)
+# signale une requête ou une clé invalide : les rejouer huit fois de suite ne
+# ferait que répéter la même erreur, donc la cascade s'arrête. Ces trois-là
+# disent seulement que cet appel-ci n'a pas abouti :
+#   408 Request Timeout
+#   429 déjà traité plus haut, listé ici pour que la lecture soit complète
+#   499 CANCELLED — renvoyé par l'API Gemini quand l'appel est interrompu.
+#       Observé en production : un 499 faisait avorter toute la cascade.
+TRANSIENT_CLIENT_CODES = frozenset({408, 499})
+
 
 # ── Exceptions ────────────────────────────────────────────────────
 
@@ -632,6 +642,20 @@ def extract_structured(
             if code == 503 or "unavailable" in message.lower():
                 reg.cool_down(
                     model_id, UNAVAILABLE_COOLDOWN_SECONDS, "503 UNAVAILABLE"
+                )
+                continue
+
+            if isinstance(code, int) and code in TRANSIENT_CLIENT_CODES:
+                # Ces 4xx-là ne disent RIEN sur la validité de la requête : elles
+                # disent que cet appel-ci n'est pas allé au bout. Observé en
+                # production sur un rapport de 6 400 caractères — un 499
+                # CANCELLED a fait avorter toute la cascade alors que sept
+                # modèles sains attendaient derrière.
+                reg.cool_down(
+                    model_id, UNAVAILABLE_COOLDOWN_SECONDS, f"{code} transitoire"
+                )
+                logger.warning(
+                    "⚠️ %s sur %s (transitoire) — modèle suivant", code, model_id
                 )
                 continue
 

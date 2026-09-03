@@ -537,10 +537,25 @@ EXTRACTION_SCHEMAS: dict[str, dict] = {
     "Accreditation": ACCREDITATION_EXTRACTION_SCHEMA,
 }
 
+# `min_tier` est un PLANCHER, pas un point de départ. La cascade part toujours
+# du haut de MODEL_LADDER ; ce réglage dit seulement jusqu'où elle a le droit de
+# descendre.
+#
+# Ces trois catégories étaient à "high", ce qui confondait les deux notions et
+# ne laissait que trois modèles éligibles. Mesuré en production le 2026-09-03 :
+# 3.8-flash et 3.7-flash ont répondu 503 sur quasiment chaque appel de la
+# journée, et un run de Phase 1 a échoué entièrement quand 3.6-flash a lâché à
+# son tour — alors que cinq modèles sains attendaient plus bas.
+#
+# "mid" garde le refus du flash-lite pour les extractions à arbitrages, et rien
+# n'indique que ce soit un sacrifice : sur la tâche réelle d'extraction de
+# classements, 3-flash-preview a rendu 13 classements et 3.5-flash 10, contre 9
+# pour 3.7-flash. Les paliers hauts sont plus rares, pas nécessairement
+# meilleurs ici.
 MIN_TIER_BY_CATEGORY: dict[str, str] = {
-    "Program_Discovery": "high",
-    "Ranking": "high",
-    "Pricing": "high",
+    "Program_Discovery": "mid",
+    "Ranking": "mid",
+    "Pricing": "mid",
     "SchoolStats": "low",
     "Accreditation": "low",
     "Capacity": "low",

@@ -21,10 +21,32 @@ from backend.tavily_service.key_manager import QuotaExhaustedError, is_quota_err
 
 logger = logging.getLogger("pipeline.research_client")
 
-# Crédits estimés par modèle (pour le tracking key_manager)
+# Crédits ESTIMÉS par modèle. C'est une estimation, pas une mesure, et il faut
+# la lire comme telle.
+#
+# Le code lisait `result.get("credits")` avant de retomber ici : cette clé
+# n'existe pas. La réponse /research a exactement six clés — content, sources,
+# status, created_at, response_time, request_id. Le forfait ci-dessous était
+# donc utilisé à TOUS les coups, sous l'apparence d'une lecture.
+#
+# Il n'existe aucun moyen de connaître le coût réel d'un appel Research :
+#   * `include_usage: true` fait revenir un objet `usage` sur /search, /extract
+#     et /map — vérifié : 1 crédit pour un search de 5 résultats, 1 crédit pour
+#     un extract de 2 URLs en advanced, 0 pour un map qui ne rend rien. Sur
+#     /research, aucun champ `usage`, ni en mini ni en pro.
+#   * GET /usage n'est pas temps réel : après des appels qui déclaraient
+#     eux-mêmes leurs crédits, les quatre compteurs sont revenus identiques au
+#     crédit près.
+#
+# Autrement dit, le seul endpoint dont le coût compte vraiment est précisément
+# celui qui ne le déclare pas. L'estimation est assumée. Ne bâtis aucune
+# logique fine de rotation dessus : le compteur local du key manager fait
+# autorité, et son `max()` est volontaire.
+#
+# Fourchettes annoncées par Tavily : 4-15 crédits en mini, 15-50 en pro.
 ESTIMATED_CREDITS = {
-    "mini": 10,   # Moyenne estimée 4-15
-    "pro": 25,    # Moyenne estimée 15-50
+    "mini": 10,
+    "pro": 25,
 }
 
 REQUIRED_CREDITS_PRO = 250
@@ -68,7 +90,15 @@ def create_research_task(
         query: Question de recherche (prompt dynamique)
         key_manager: Instance de TavilyKeyManager
         include_domains: Domaines prioritaires (soft preference)
-        output_schema: JSON Schema pour forcer le format de sortie
+        output_schema: DÉPRÉCIÉ — ne plus remplir en production.
+            Ce paramètre n'écourtait pas seulement la mise en forme, il
+            écourtait la RECHERCHE : l'agent cessait de chercher dès qu'il
+            pouvait remplir les champs `required` du schéma. Mesuré sur une
+            même question : 1 classement issu d'une source avec le schéma,
+            10 classements issus de 14 sources sans lui. La structuration se
+            fait désormais en aval, par backend/ai/gemini_client.py.
+            Le paramètre reste dans la signature pour ne pas casser les
+            appelants ; aucun code de production ne le remplit.
         model: "mini" (4-15 crédits) ou "pro" (15+ crédits)
         max_wait_seconds: Timeout global du polling (défaut: 600s = 10min — Research pro peut être lent)
         poll_interval: Intervalle entre les GET de polling (défaut: 5s)
@@ -76,9 +106,9 @@ def create_research_task(
 
     Returns:
         {
-            "report": str | dict,     # Rapport textuel ou JSON (si output_schema)
+            "report": str | dict,     # Rapport textuel (dict seulement si output_schema)
             "sources": list[dict],    # [{"title": ..., "url": ...}]
-            "credits_used": int,      # Estimation des crédits consommés
+            "credits_used": int,      # ESTIMATION — jamais une lecture, voir ESTIMATED_CREDITS
             "status": "completed",
             "request_id": str
         }
@@ -143,11 +173,11 @@ def create_research_task(
                 poll_interval=poll_interval,
             )
 
-            # ── 3. Déterminer les crédits et enregistrer l'utilisation ──
-            credits_consumed = result.get("credits") or result.get("credits_used")
-            if not credits_consumed:
-                credits_consumed = ESTIMATED_CREDITS.get(model, 25)
-
+            # ── 3. Enregistrer l'utilisation ESTIMÉE ───────────────────
+            # Aucune lecture n'est tentée : la réponse /research ne porte pas
+            # le coût de l'appel, même avec include_usage. Voir le commentaire
+            # de ESTIMATED_CREDITS.
+            credits_consumed = ESTIMATED_CREDITS.get(model, 25)
             key_manager.record_usage(api_key, credits=credits_consumed)
 
             return {

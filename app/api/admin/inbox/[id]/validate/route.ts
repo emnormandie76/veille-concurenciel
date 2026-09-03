@@ -65,17 +65,49 @@ interface PricingJson {
   data_conflict_warning?: boolean;
 }
 
-interface RankingJson {
+// Format liste (nouveau) — le pipeline émet un ticket par classement, mais un
+// ticket peut aussi porter le tableau complet. Les deux se valident.
+interface RankingItem {
   ranking_name: string;
   rank: number;
   academic_year: number;
+  // Libellé d'origine du palmarès, conservé quand ranking_name vaut « Autre ».
+  ranking_label?: string | null;
+  scope?: "program" | "school";
+  program_hint?: string | null;
+  total_ranked?: number | null;
   source_url?: string | null;
   data_conflict_warning?: boolean;
 }
 
-interface CapacityJson {
+interface RankingJson {
+  // Nouveau format : tableau de classements
+  rankings?: RankingItem[];
+  // Ancien format single-object (rétrocompatibilité)
+  ranking_name?: string;
+  rank?: number;
+  academic_year?: number;
+  source_url?: string | null;
+  data_conflict_warning?: boolean;
+}
+
+// Une entrée par voie d'admission : SESAME, ACCÈS, Parcoursup, admissions
+// parallèles. CapacityRecord n'a qu'une ligne par (programCampus, année) — la
+// recomposition se fait ici, à la validation, sous l'œil de l'admin.
+interface CapacityItem {
   spots_available: number;
   academic_year: number;
+  admission_channel?: string | null;
+  source_url?: string | null;
+  year_assumed?: boolean;
+}
+
+interface CapacityJson {
+  // Nouveau format : tableau de voies d'admission
+  capacities?: CapacityItem[];
+  // Ancien format single-object (rétrocompatibilité)
+  spots_available?: number;
+  academic_year?: number;
   source_url?: string | null;
   year_assumed?: boolean;
 }
@@ -439,50 +471,109 @@ async function validatePricing(
 
 // ──────────────────────────────────────────────
 // Ranking — Upsert RankingRecord [programId, academic_year, ranking_name]
+// ⚠️ Le ticket peut contenir une LISTE de classements (nouveau format) ou un
+//    objet unique (ancien format — rétrocompatibilité). Même logique que
+//    validateAccreditation, qui gère les deux depuis plus longtemps.
+//
+// La base est unique sur (programId, academic_year, ranking_name) : elle sait
+// stocker N classements par programme et par an. C'est le schéma envoyé à
+// Tavily qui n'en laissait passer qu'un — le modèle de données et le schéma
+// d'extraction ne se parlaient pas.
 // ──────────────────────────────────────────────
 
 async function validateRanking(
   ticket: { id: string; programId: string | null },
   data: RankingJson
 ) {
-  if (!ticket.programId) {
+  const programId = ticket.programId;
+  if (!programId) {
     return NextResponse.json({ error: "programId manquant pour un ticket Ranking" }, { status: 400 });
   }
-  if (!data.ranking_name || !data.rank || !data.academic_year) {
-    return NextResponse.json({ error: "ranking_name, rank et academic_year sont requis" }, { status: 400 });
+
+  // Normaliser : construire une liste unifiée depuis les deux formats possibles
+  let rankingItems: RankingItem[];
+
+  if (Array.isArray(data.rankings) && data.rankings.length > 0) {
+    rankingItems = data.rankings;
+  } else if (data.ranking_name != null) {
+    rankingItems = [
+      {
+        ranking_name: data.ranking_name,
+        rank: data.rank as number,
+        academic_year: data.academic_year as number,
+        source_url: data.source_url ?? null,
+        data_conflict_warning: data.data_conflict_warning,
+      },
+    ];
+  } else {
+    return NextResponse.json(
+      { error: "rankings[] ou ranking_name est requis" },
+      { status: 400 }
+    );
   }
 
-  // Upsert et clôture du ticket dans UNE SEULE transaction. Séparés, un échec
+  // Un rang commence à 1 : contrairement à spots_available, 0 n'est pas une
+  // valeur signifiante ici, et une entrée incomplète ne doit pas passer.
+  const invalid = rankingItems.find(
+    (item) => !item.ranking_name || !item.rank || !item.academic_year
+  );
+  if (invalid) {
+    return NextResponse.json(
+      { error: "ranking_name, rank et academic_year sont requis pour chaque classement" },
+      { status: 400 }
+    );
+  }
+
+  // Dédoublonner sur la clé d'unicité : deux entrées identiques dans le même
+  // tableau feraient échouer la transaction Prisma sur une contrainte violée.
+  const byKey = new Map<string, RankingItem>();
+  for (const item of rankingItems) {
+    byKey.set(`${item.academic_year}::${item.ranking_name}`, item);
+  }
+  const uniqueItems = [...byKey.values()];
+
+  // Upserts et clôture du ticket dans UNE SEULE transaction. Séparés, un échec
   // du second appel laissait la donnée écrite et le ticket ouvert : l'admin
   // revalidait et écrasait.
-  const [record] = await prisma.$transaction([
-    prisma.rankingRecord.upsert({
-      where: {
-        programId_academic_year_ranking_name: {
-          programId: ticket.programId,
-          academic_year: data.academic_year,
-          ranking_name: data.ranking_name,
+  const results = await prisma.$transaction([
+    ...uniqueItems.map((item) =>
+      prisma.rankingRecord.upsert({
+        where: {
+          programId_academic_year_ranking_name: {
+            programId,
+            academic_year: item.academic_year,
+            ranking_name: item.ranking_name,
+          },
         },
-      },
-      create: {
-        programId: ticket.programId,
-        academic_year: data.academic_year,
-        ranking_name: data.ranking_name,
-        rank: data.rank,
-        source_url: data.source_url ?? null,
-      },
-      update: {
-        rank: data.rank,
-        source_url: data.source_url ?? null,
-      },
-    }),
+        create: {
+          programId,
+          academic_year: item.academic_year,
+          ranking_name: item.ranking_name,
+          rank: item.rank,
+          source_url: item.source_url ?? null,
+        },
+        update: {
+          rank: item.rank,
+          source_url: item.source_url ?? null,
+        },
+      })
+    ),
     prisma.contributionInbox.update({
       where: { id: ticket.id },
       data: { status: STATUS_VALIDATED },
     }),
   ]);
 
-  return NextResponse.json({ message: "RankingRecord créé/mis à jour", record });
+  // Le dernier élément est la mise à jour du ticket, pas un enregistrement.
+  const records = results.slice(0, uniqueItems.length);
+
+  return NextResponse.json({
+    message: `${records.length} RankingRecord(s) créé(s)/mis à jour`,
+    count: records.length,
+    records,
+    // Compatibilité de forme avec l'ancienne réponse à un seul enregistrement.
+    record: records[0],
+  });
 }
 
 // ──────────────────────────────────────────────
@@ -492,14 +583,115 @@ async function validateRanking(
 // Sinon on le résout depuis (programId, campusId) (crowdsourcing).
 // ──────────────────────────────────────────────
 
+// Libellés désignant un total déjà agrégé par la source. Une entrée « toutes
+// voies » vaut pour l'année entière : l'additionner aux voies détaillées
+// compterait deux fois les mêmes places.
+const TOTAL_CHANNEL_RE = /^(toutes?\s+(les\s+)?voies(\s+confondues)?|total(\s+g[ée]n[ée]ral)?|all\s+channels?)$/i;
+
+/**
+ * Recompose une capacité par année à partir des voies d'admission extraites.
+ *
+ * Le pipeline extrait une entrée par concours (SESAME, ACCÈS, Parcoursup…)
+ * parce que c'est ainsi que les places sont publiées, et il n'additionne
+ * jamais lui-même : CapacityRecord n'a qu'une ligne par (programCampus, année),
+ * et la somme est un arbitrage, pas une donnée.
+ *
+ * Règle, volontairement simple pour rester explicable à l'admin :
+ *   - une seule entrée pour l'année → on la prend ;
+ *   - un total explicite parmi plusieurs entrées → on prend ce total seul ;
+ *   - sinon → somme des voies.
+ * L'admin garde le dernier mot : le corps de la requête est prioritaire sur
+ * ai_extracted_json, il peut donc envoyer le chiffre qu'il a arbitré.
+ */
+function foldCapacities(items: CapacityItem[]): Array<{
+  academic_year: number;
+  spots_available: number;
+  source_url: string | null;
+  method: "single" | "declared_total" | "sum";
+  channels: number;
+}> {
+  const byYear = new Map<number, CapacityItem[]>();
+  for (const item of items) {
+    const list = byYear.get(item.academic_year) ?? [];
+    list.push(item);
+    byYear.set(item.academic_year, list);
+  }
+
+  return [...byYear.entries()].map(([academic_year, entries]) => {
+    const sourceUrl = entries.find((e) => e.source_url)?.source_url ?? null;
+
+    if (entries.length === 1) {
+      return {
+        academic_year,
+        spots_available: entries[0].spots_available,
+        source_url: sourceUrl,
+        method: "single" as const,
+        channels: 1,
+      };
+    }
+
+    const declaredTotals = entries.filter((e) =>
+      TOTAL_CHANNEL_RE.test((e.admission_channel ?? "").trim())
+    );
+    if (declaredTotals.length === 1) {
+      return {
+        academic_year,
+        spots_available: declaredTotals[0].spots_available,
+        source_url: declaredTotals[0].source_url ?? sourceUrl,
+        method: "declared_total" as const,
+        channels: entries.length,
+      };
+    }
+
+    return {
+      academic_year,
+      spots_available: entries.reduce((sum, e) => sum + e.spots_available, 0),
+      source_url: sourceUrl,
+      method: "sum" as const,
+      channels: entries.length,
+    };
+  });
+}
+
 async function validateCapacity(
   ticket: { id: string; programId: string | null; programCampusId: string | null; campusId: string | null },
   data: CapacityJson
 ) {
+  // Normaliser : construire une liste unifiée depuis les deux formats possibles.
+  //
+  // L'ordre des branches compte. Le chiffre explicite passe AVANT le tableau,
+  // et il couvre deux cas d'un coup : un ticket d'ancien format, et un ticket
+  // de nouveau format dont l'admin a saisi le total lui-même dans le
+  // formulaire. Le corps de la requête écrase ai_extracted_json ; si le tableau
+  // primait, l'arbitrage humain serait recalculé puis jeté en silence — l'exact
+  // contraire de ce que la boucle de validation existe pour garantir.
   // == null et non !valeur : 0 place (formation fermée) est une donnée valide.
-  if (data.spots_available == null || !data.academic_year) {
+  let capacityItems: CapacityItem[];
+
+  if (data.spots_available != null && data.academic_year) {
+    capacityItems = [
+      {
+        spots_available: data.spots_available,
+        academic_year: data.academic_year,
+        source_url: data.source_url ?? null,
+        year_assumed: data.year_assumed,
+      },
+    ];
+  } else if (Array.isArray(data.capacities) && data.capacities.length > 0) {
+    capacityItems = data.capacities.filter(
+      (item) => item && item.spots_available != null && !!item.academic_year
+    );
+    if (capacityItems.length === 0) {
+      return NextResponse.json(
+        { error: "Aucune capacité valide dans le ticket (spots_available et academic_year requis)" },
+        { status: 400 }
+      );
+    }
+  } else {
     return NextResponse.json({ error: "spots_available et academic_year sont requis" }, { status: 400 });
   }
+
+  const folded = foldCapacities(capacityItems);
 
   // Résoudre programCampusId
   let programCampusId = ticket.programCampusId;
@@ -529,35 +721,55 @@ async function validateCapacity(
     programCampusId = pc.id;
   }
 
-  // Upsert et clôture du ticket dans UNE SEULE transaction. Séparés, un échec
+  // Upserts et clôture du ticket dans UNE SEULE transaction. Séparés, un échec
   // du second appel laissait la donnée écrite et le ticket ouvert : l'admin
   // revalidait et écrasait.
-  const [record] = await prisma.$transaction([
-    prisma.capacityRecord.upsert({
-      where: {
-        programCampusId_academic_year: {
-          programCampusId,
-          academic_year: data.academic_year,
+  const resolvedProgramCampusId = programCampusId;
+  const results = await prisma.$transaction([
+    ...folded.map((entry) =>
+      prisma.capacityRecord.upsert({
+        where: {
+          programCampusId_academic_year: {
+            programCampusId: resolvedProgramCampusId,
+            academic_year: entry.academic_year,
+          },
         },
-      },
-      create: {
-        programCampusId,
-        academic_year: data.academic_year,
-        spots_available: data.spots_available,
-        source_url: data.source_url ?? null,
-      },
-      update: {
-        spots_available: data.spots_available,
-        source_url: data.source_url ?? null,
-      },
-    }),
+        create: {
+          programCampusId: resolvedProgramCampusId,
+          academic_year: entry.academic_year,
+          spots_available: entry.spots_available,
+          source_url: entry.source_url,
+        },
+        update: {
+          spots_available: entry.spots_available,
+          source_url: entry.source_url,
+        },
+      })
+    ),
     prisma.contributionInbox.update({
       where: { id: ticket.id },
       data: { status: STATUS_VALIDATED },
     }),
   ]);
 
-  return NextResponse.json({ message: "CapacityRecord créé/mis à jour", record });
+  // Le dernier élément est la mise à jour du ticket, pas un enregistrement.
+  const records = results.slice(0, folded.length);
+
+  return NextResponse.json({
+    message: `${records.length} CapacityRecord(s) créé(s)/mis à jour`,
+    count: records.length,
+    records,
+    // Comment chaque année a été recomposée : l'admin doit pouvoir voir qu'un
+    // chiffre est une somme de voies et non un total publié.
+    breakdown: folded.map((entry) => ({
+      academic_year: entry.academic_year,
+      spots_available: entry.spots_available,
+      method: entry.method,
+      channels: entry.channels,
+    })),
+    // Compatibilité de forme avec l'ancienne réponse à un seul enregistrement.
+    record: records[0],
+  });
 }
 
 // ──────────────────────────────────────────────

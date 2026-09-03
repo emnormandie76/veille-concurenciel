@@ -33,6 +33,23 @@ from google.genai import types
 logger = logging.getLogger("pipeline.gemma")
 
 
+# ── Timeout des appels au SDK ─────────────────────────────────────
+#
+# Aucun timeout n'etait pose. Mesure sur models/gemma-4-26b-a4b-it : 23 s pour
+# un prompt trivial, 73 s sur 9 000 caracteres, et des 504 DEADLINE_EXCEEDED
+# intermittents. Le SDK google-genai retente en interne via tenacity AVANT que
+# les 3 tentatives de call_gemma ne s'ajoutent par-dessus : un appel pouvait
+# immobiliser un thread APScheduler plus de dix minutes.
+#
+# 120 s laisse 64 % de marge sur le pire cas mesure. Le plafond total reste
+# max_retries x timeout, soit six minutes par defaut au lieu de rien du tout.
+#
+# Le pipeline de recherche n'appelle plus ce module (voir backend/ai/gemini_client.py),
+# mais backend/crowdsourcing/processor.py, lui, l'appelle vraiment, a chaque
+# minute de cron.
+DEFAULT_TIMEOUT_MS = int(os.environ.get("GEMMA_TIMEOUT_MS", 120_000))
+
+
 # ── Délimitation du contenu non fiable ────────────────────────────
 #
 # Le contenu scrapé est interpolé dans un gabarit qui se termine par
@@ -178,6 +195,7 @@ def call_gemma(
     max_retries: int = 3,
     base_delay: float = 2.0,
     temperature: float = 0.1,
+    timeout_ms: int = DEFAULT_TIMEOUT_MS,
 ) -> dict:
     """
     Appelle un modèle Gemma avec retry, nettoyage JSON et validation structurelle.
@@ -190,6 +208,9 @@ def call_gemma(
         max_retries: Nombre max de tentatives (défaut: 3).
         base_delay: Délai initial avant retry en secondes (défaut: 2s).
         temperature: Température du modèle (défaut: 0.1 pour la précision d'extraction).
+        timeout_ms: Timeout d'un appel au SDK, en millisecondes (défaut: 120 s).
+            Sans lui, un modèle lent immobilisait un thread APScheduler
+            indéfiniment — voir DEFAULT_TIMEOUT_MS.
 
     Returns:
         Le dictionnaire JSON extrait.
@@ -215,6 +236,7 @@ def call_gemma(
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
                     temperature=temperature,
+                    http_options=types.HttpOptions(timeout=timeout_ms),
                 )
             )
 

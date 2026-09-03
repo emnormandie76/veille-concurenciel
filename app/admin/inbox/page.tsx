@@ -945,6 +945,14 @@ function ProgramDiscoveryForm({
 // Référence : task.md §3.3, architecture.md §5.3
 // ──────────────────────────────────────────────
 
+// Une voie d'admission d'un ticket Capacity au nouveau format.
+interface CapacityChannel {
+  spots_available: number;
+  academic_year?: number | null;
+  admission_channel?: string | null;
+  source_url?: string | null;
+}
+
 function GenericForm({
   ticket,
   onValidate,
@@ -966,11 +974,60 @@ function GenericForm({
 
   const fields = getFieldsForCategory(ticket.ai_category);
 
+  // Capacity nouveau format : le pipeline extrait une entrée par voie
+  // d'admission (SESAME, ACCÈS, Parcoursup…), parce que c'est ainsi que les
+  // places sont publiées. CapacityRecord n'en garde qu'une par année, et la
+  // recomposition est un arbitrage — donc humain. Les voies sont affichées
+  // ici ; laisser « Places disponibles » vide fait appliquer la règle par
+  // défaut du serveur (total publié s'il existe, somme sinon), et y saisir un
+  // chiffre prime sur le tableau.
+  const capacityChannels = (
+    (ticket.ai_extracted_json as { capacities?: CapacityChannel[] } | null)?.capacities ?? []
+  ).filter((item) => item && item.spots_available != null);
+
   return (
     <div>
       <h3 style={{ fontSize: "1rem", marginBottom: "16px" }}>
         {CATEGORY_ICONS[ticket.ai_category]} Données extraites — {ticket.ai_category}
       </h3>
+
+      {capacityChannels.length > 0 && (
+        <div
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: "6px",
+            padding: "12px 14px",
+            marginBottom: "16px",
+            fontSize: "13px",
+          }}
+        >
+          <strong style={{ display: "block", marginBottom: "8px" }}>
+            🎓 Voies d&apos;admission détectées ({capacityChannels.length})
+          </strong>
+          <ul style={{ margin: 0, paddingLeft: "18px" }}>
+            {capacityChannels.map((item, idx) => (
+              <li key={idx} style={{ marginBottom: "4px" }}>
+                <strong>{item.spots_available}</strong> place(s)
+                {item.admission_channel ? ` — ${item.admission_channel}` : ""}
+                {item.academic_year ? ` (${item.academic_year})` : ""}
+                {item.source_url && (
+                  <>
+                    {" — "}
+                    <a href={item.source_url} target="_blank" rel="noopener noreferrer">
+                      source
+                    </a>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p style={{ margin: "8px 0 0", color: "var(--muted, #666)" }}>
+            Laisser « Places disponibles » vide applique la règle par défaut :
+            le total publié s&apos;il en existe un, la somme des voies sinon.
+            Un chiffre saisi ici fait autorité.
+          </p>
+        </div>
+      )}
 
       <div className="field-grid">
         {fields.map(({ key, label, type, required }) => (

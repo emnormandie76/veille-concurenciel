@@ -260,6 +260,38 @@ async def test_gemma_client_list_parsing(mock_get_client):
     assert res == {"key": "value"}
 
 
+@pytest.mark.asyncio
+@patch("backend.ai.gemma_client.get_client")
+async def test_gemma_client_multi_object_list_is_rejected(mock_get_client):
+    """
+    Une liste de PLUSIEURS objets n'est plus reduite a son premier element.
+
+    L'ancien code gardait parsed_data[0] et jetait le reste avec un simple
+    warning : l'extraction repartait amputee sans que rien n'echoue. On exige
+    desormais un echec franc, quitte a perdre le ticket plutot que sa moitie.
+    """
+    from backend.ai.gemma_client import call_gemma, GemmaParsingError
+    from unittest.mock import MagicMock
+
+    mock_client = MagicMock()
+    mock_get_client.return_value = mock_client
+
+    mock_response = MagicMock()
+    mock_response.candidates = [MagicMock()]
+    mock_response.candidates[0].finish_reason.name = "STOP"
+    mock_response.text = '[{"key": "premier"}, {"key": "second"}]'
+    mock_client.models.generate_content.return_value = mock_response
+
+    with pytest.raises(GemmaParsingError, match="liste de 2 objets"):
+        call_gemma(
+            model="models/gemma-4-26b-a4b-it",
+            system_prompt="Test system prompt",
+            user_content="Test user content",
+            required_keys=["key"],
+            max_retries=1,
+        )
+
+
 def test_ticket_without_program_id_switches_to_multi_program():
     """
     Un ticket Pricing/Ranking/Capacity SANS program_id ne provoque plus de rejet :

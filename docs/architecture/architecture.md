@@ -229,24 +229,34 @@ appVC/
 │   ├── .env                            # Variables d'env Python (DATABASE_URL, GEMINI_API_KEY, TAVILY_API_KEYS, INTERNAL_TOKEN)
 │   ├── requirements.txt
 │   ├── main.py                         # Point d'entrée FastAPI (/health + montage routers)
+│   ├── pipeline_jobs.py                # Suivi d'exécution des jobs de pipeline (état, progression)
+│   │
+│   ├── scripts/                        # Scripts de simulation hors production
+│   │   ├── __init__.py
+│   │   ├── simulate_phase1_research.py
+│   │   ├── simulate_phase2_research.py
+│   │   └── simulate_crowdsourcing.py
 │   │
 │   ├── ai/                             ← étape 4
 │   │   ├── __init__.py
-│   │   ├── gemma_client.py             # Module Gemma (call_gemma, clean_json, validate, fact_check)
-│   │   ├── research_prompts.py         # Builders de prompts dynamiques pour Tavily Research
-│   │   └── research_schemas.py         # JSON Schemas pour output_schema Research
+│   │   ├── gemma_client.py             # Module Gemma (call_gemma, clean_json, validate, fact_check) — crowdsourcing
+│   │   ├── gemini_client.py            # Cascade Gemini : 8 modèles, registre de session, garde RPM, plancher min_tier
+│   │   ├── extraction_prompts.py       # System prompts d'extraction rapport → JSON (6 catégories + catalogue)
+│   │   ├── extraction_schemas.py       # JSON Schemas d'extraction (un objet = une ligne Prisma)
+│   │   └── research_prompts.py         # Builders de briefs de recherche pour Tavily Research
 │   │
 │   ├── tavily_service/                 ← étape 4
 │   │   ├── __init__.py
+│   │   ├── catalog_client.py           # Ancrage catalogue : trouve et lit la page /programmes d'une école
 │   │   ├── client.py                   # Client Tavily (crawl/search/extract — crowdsourcing)
 │   │   ├── key_manager.py              # TavilyKeyManager (rotation de clés Greedy, quota guard)
 │   │   └── research_client.py          # Client Tavily Research (create task + polling)
 │   │
 │   ├── pipeline/                       ← étape 5-6
 │   │   ├── __init__.py
-│   │   ├── phase1_research.py          # run_phase1_research() : Tavily Research → JSON/Gemma fallback → Inbox
-│   │   ├── phase2_research.py          # run_phase2_research() : Research par catégorie → diff → Inbox
-│   │   └── diff.py                     # has_data_changed() : comparaison vs production
+│   │   ├── phase1_research.py          # run_phase1_research() : catalogue → rapport Research → extraction Gemini → Inbox
+│   │   ├── phase2_research.py          # run_phase2_research() : rapport par catégorie → extraction Gemini → diff → Inbox
+│   │   └── diff.py                     # has_data_changed(new, existing, compared_fields) : comparaison vs production
 │   │
 │   ├── crowdsourcing/                  ← étape 7
 │   │   ├── __init__.py
@@ -278,6 +288,9 @@ appVC/
 │
 └── test/
     ├── test_pipeline.py                # POC initial du pipeline (Tavily + Gemma)
+    ├── test_gemini_cascade.py          # Cascade Gemini : 429/503/timeouts, registre de session, plancher de qualité
+    ├── test_contribution_enums.py      # Enums de contribution partagés Python/TypeScript
+    ├── test_tavily_key_rotation.py     # Rotation des clés Tavily et garde de quota
     └── test_crowdsourcing_processor.py # Tests unitaires du crowdsourcing et du client Gemma robustifié
 ```
 
@@ -695,10 +708,18 @@ CRON ──► Lire Programs WHERE school.status = "ACTIVE"
 | `SchoolStats` | École | `SchoolStatsRecord` | mini |
 | `Accreditation` | École — **liste complète** | `AccreditationRecord` (N upserts) | mini |
 | `Pricing` | Programme (unique par école) | `PricingRecord` | pro |
-| `Ranking` | Programme (unique par école) | `RankingRecord` | pro |
+| `Ranking` | École — **liste complète** | `RankingRecord` (N upserts) | pro |
 | `Capacity` | ProgramCampus (varie par campus) | `CapacityRecord` | mini |
 
-Les JSON Schemas par catégorie sont définis dans `research_schemas.py`. Voir `research-pipeline-plan.md` §8 pour les détails.
+`Ranking` est passée du niveau programme au niveau école : un classement nomme une
+école bien plus souvent qu'un parcours précis, et un rapport unique couvre tous les
+programmes. Cela remplace N appels Research par un seul, puis découpe le rapport en
+un ticket par couple (année, classement, programme).
+
+Les JSON Schemas d'extraction sont définis dans `extraction_schemas.py`, les prompts
+correspondants dans `extraction_prompts.py`. Ils ne sont plus passés en `output_schema`
+à Tavily : l'agent rend un rapport rédigé, que Gemini convertit ensuite en JSON. Voir
+`research-pipeline-plan.md` §8 pour les détails.
 
 ---
 

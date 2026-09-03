@@ -94,8 +94,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   Accreditation: "🏅 Accréditations",
 };
 
-const PROGRAM_CATEGORIES = ["Pricing", "Ranking", "Capacity"];
-const SCHOOL_CATEGORIES = ["SchoolStats", "Accreditation"];
+// Ranking est collecte au niveau ecole : un seul appel Research couvre tous les
+// programmes, et le rapport est ensuite decoupe en un ticket par classement.
+// Voir SCHOOL_LEVEL_CATEGORIES dans backend/pipeline/phase2_research.py.
+const PROGRAM_CATEGORIES = ["Pricing", "Capacity"];
+const SCHOOL_CATEGORIES = ["SchoolStats", "Accreditation", "Ranking"];
 
 export default function CronMonitoringPage() {
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);

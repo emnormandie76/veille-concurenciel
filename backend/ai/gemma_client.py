@@ -275,10 +275,27 @@ def call_gemma(
             parsed_data = json.loads(clean_text)
 
             # --- Robustesse au format Liste JSON ---
+            # Un modele emballe parfois son unique objet dans un tableau : le
+            # deballer est sans perte. Plusieurs objets, en revanche, sont
+            # plusieurs reponses ; n'en garder qu'une jetait silencieusement les
+            # autres, avec un simple warning pour trace. On retente, puis on
+            # echoue franchement plutot que de rendre une extraction amputee.
             if isinstance(parsed_data, list):
-                if len(parsed_data) > 0 and isinstance(parsed_data[0], dict):
-                    logger.warning("⚠️ Le modèle a renvoyé une liste. Extraction du premier dictionnaire.")
+                if len(parsed_data) == 1 and isinstance(parsed_data[0], dict):
+                    logger.warning("⚠️ Le modèle a renvoyé une liste d'un seul objet. Déballage.")
                     parsed_data = parsed_data[0]
+                elif len(parsed_data) > 1:
+                    logger.warning(
+                        f"⚠️ Le modèle a renvoyé {len(parsed_data)} objets là où un seul "
+                        f"est attendu — en garder un seul perdrait les autres."
+                    )
+                    if attempt < max_retries:
+                        time.sleep(base_delay)
+                        continue
+                    raise GemmaParsingError(
+                        f"Le modèle a renvoyé une liste de {len(parsed_data)} objets "
+                        f"après {max_retries} tentatives ; un seul objet est attendu."
+                    )
                 else:
                     raise GemmaParsingError("Le JSON extrait est une liste vide ou ne contient pas de dictionnaire.")
             elif not isinstance(parsed_data, dict):

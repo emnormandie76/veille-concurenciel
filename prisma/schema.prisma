@@ -82,7 +82,14 @@ model Program {
   is_expatriation_mandatory Boolean          @default(false)
   min_expatriation_months   Int?
   max_internship_months     Int?
+  // La phrase que la fiche pose AU-DESSUS de la liste par annee, et qui la
+  // contredit parfois : l'IBBA enumere Paris 1, Dublin 2, Dubai 3, Oxford 4
+  // puis ouvre par « Paris reste accessible chaque annee, avec au moins une
+  // annee obligatoire sur l'un des campus internationaux ». Conservee en clair,
+  // pour l'admin qui arbitre ; aucune requete ne s'appuie dessus.
+  campus_policy_note        String?
   campuses                  ProgramCampus[]
+  placements                ProgramPlacement[]
   contributions             ContributionInbox[]
   pricingRecords            PricingRecord[]
   school                    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
@@ -99,8 +106,82 @@ model ProgramCampus {
   campus          Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
   capacityRecords CapacityRecord[]
   contributions   ContributionInbox[]
+  attachments     ProgramCampusAttachment[]
 
   @@unique([programId, campusId])
+}
+
+// Le detail annee par annee d'un rattachement programme <-> campus.
+//
+// Les fiches d'EM Normandie publient une section « Campus de rattachement » qui
+// donne le lieu ANNEE PAR ANNEE, et le meme campus y revient sur plusieurs
+// annees : le Bachelor en Management en 3 ans nomme Le Havre en 1re, en 2e et
+// en 3e annee. La ligne ProgramCampus, unique sur (programId, campusId), ne
+// peut pas porter cette repetition ; elle est ici deportee sur une table fille.
+//
+// ProgramCampus garde donc son identite et son unicite : c'est elle qui porte
+// CapacityRecord (unique sur (programCampusId, academic_year)), que la Phase 2
+// enumere et que l'ecran admin manipule. Rien de tout cela ne bouge.
+//
+// ZERO ligne ici = le sens actuel, inchange : « ce programme est ouvert sur ce
+// campus », sans decoupage par annee. Les fiches qui publient un simple choix
+// de campus (l'alternance du Bachelor : Caen, Le Havre ou Paris) n'en creent
+// aucune. La migration est donc purement additive : aucune ligne existante ne
+// change de sens.
+model ProgramCampusAttachment {
+  id              String        @id @default(uuid())
+  programCampusId String
+  // 1 pour la 1re annee, 2 pour la 2e... Une plage annoncee en bloc
+  // (« 4e et 5e annees ») donne une ligne par annee.
+  study_year      Int
+  // "INITIAL" | "ALTERNANCE" | "ANY". ANY quand la fiche ne distingue pas les
+  // deux regimes sur cette annee — c'est le cas le plus courant. La 3e annee du
+  // Bachelor, elle, publie deux listes de campus differentes, une par regime.
+  regime          String        @default("ANY")
+  // Langues d'enseignement attachees au couple (annee, campus) : Le Havre en
+  // 1re annee est en anglais OU en francais, Paris en francais seulement.
+  languages       String[]      @default([])
+  note            String?
+  source_url      String?
+  programCampus   ProgramCampus @relation(fields: [programCampusId], references: [id], onDelete: Cascade)
+
+  @@unique([programCampusId, study_year, regime])
+}
+
+// Un lieu d'etudes annonce par la fiche qui n'est PAS un campus de l'ecole.
+//
+// « Universite partenaire », « UniLaSalle Rouen », « Campus de Paris +
+// International », « Lyon, Milan, Londres » : les fiches melangent, dans le
+// meme champ, des campus du parc et des destinations qui n'en sont pas. Les
+// creer dans Campus ferait entrer chez l'ecole des lieux qui ne lui
+// appartiennent pas — et Campus alimente la liste des campus partout ailleurs.
+//
+// Cette table les REJETTE du parc tout en les conservant. Un programme dont le
+// seul lieu est ici (le MS Agroalimentaire, sur « UniLaSalle Rouen ») se
+// retrouve sans ProgramCampus : la Phase 2 ne lui genere aucune tache Capacity
+// et l'import de crowdsourcing l'ecarte deja avec « aucun campus rattache ».
+// C'est le comportement voulu : on ne connait pas les places de l'ecole sur le
+// campus d'un tiers.
+model ProgramPlacement {
+  id         String  @id @default(uuid())
+  programId  String
+  // 0 = annee non precisee (« Campus de Paris + International », qui ne dit pas
+  // quand). Sentinelle et non NULL : sous PostgreSQL deux NULL sont distincts,
+  // et un @@unique nullable laisserait entrer le meme lieu deux fois.
+  study_year Int     @default(0)
+  regime     String  @default("ANY")
+  // Le libelle tel que la fiche l'ecrit, sans normalisation.
+  label      String
+  // "PARTNER" (Universite partenaire, UniLaSalle Rouen, Institut Lyfe)
+  // "REGION"  (International, Europe, Quebec (Region))
+  // "REMOTE"  (Online, e-learning)
+  // "UNSPECIFIED"
+  kind       String  @default("UNSPECIFIED")
+  note       String?
+  source_url String?
+  program    Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, study_year, regime, label])
 }
 
 model PricingRecord {

@@ -2,12 +2,27 @@
 backend/pipeline/campus_attachment.py — Des enonces de lieu aux lignes des trois tables
 
 Ce module ne parle a personne : ni reseau, ni base, ni Gemini. Il prend la
-sortie du schema `Campus_Attachment` et la liste des campus REELS d'une ecole,
-et il rend les lignes que l'on ecrirait dans `ProgramCampus`,
-`ProgramCampusAttachment` et `ProgramPlacement`.
+sortie du schema `Campus_Attachment`, la liste des campus REELS d'une ecole, et
+le markdown des pages deja lues, et il rend les lignes que l'on ecrirait dans
+`ProgramCampus`, `ProgramCampusAttachment` et `ProgramPlacement`.
 
 Il n'est branche nulle part. `backend/scripts/simulate_campus_attachment.py`
 est son seul appelant, et il ecrit des fichiers JSON.
+
+## Trois regles, puis deux gardes
+
+Les trois regles ci-dessous decident de la FORME des lignes. Les deux gardes
+de `apply_page_guards` decident de leur EXISTENCE, en confrontant ce que le
+modele affirme a ce que la page porte — le modele propose, la page dispose.
+Elles ne peuvent qu'ecarter, jamais completer : ce qu'elles laissent passer
+est plus sur, ce qu'elles retirent devient une ligne manquante, qui se voit,
+et non une ligne fausse, qui ne se voit pas. Mesure du 4 septembre sur les
+deux ecoles : 148 lignes dont 35 en defaut avant, 121 dont 10 apres, et les
+lignes fausses passent de 26 a 4.
+
+Elles ne s'appliquent que si `pages` est fourni a `build_rows` : sans pages,
+la sortie est celle d'avant les gardes, ce qui rend leur effet mesurable et
+pas seulement annonce.
 
 ## Les trois regles que ce fichier applique
 
@@ -103,8 +118,15 @@ from typing import Any, Iterable, Optional
 # Zones telles que le schema les declare. FIELD et INDEX_CARD portent la meme
 # affirmation — l'encart a champs nommes — publiee a deux endroits.
 FIELD_ZONES = frozenset({"FIELD", "INDEX_CARD"})
+INDEX_CARD_ZONE = "INDEX_CARD"
 SECTION_ZONE = "SECTION"
 PROSE_ZONE = "PROSE"
+
+# Zone INTERNE, jamais produite par le modele : une section dont la page ne
+# publie pas l'annee. Elle vaut affirmation de lieu (elle entre dans l'union
+# ProgramCampus) et pas affirmation d'annee (elle n'entre pas dans les lignes
+# filles). Voir `apply_page_guards`, garde 2.
+SECTION_UNDATED_ZONE = "SECTION_UNDATED"
 
 VALID_ZONES = frozenset({"FIELD", "INDEX_CARD", "SECTION", "PROSE"})
 VALID_REGIMES = frozenset({"ANY", "INITIAL", "ALTERNANCE"})
@@ -303,6 +325,318 @@ def match_campus(label: Optional[str], campus_folds: dict[str, str]) -> Optional
     return None
 
 
+# ── Ce que la PAGE dit — verifie en Python, jamais affirme par le modele ──
+#
+# Les deux gardes de ce bloc partagent une meme forme : le modele propose, la
+# page dispose. Elles ne lisent que le markdown deja lu par le collecteur, ne
+# font aucun appel, et ne peuvent qu'ECARTER — jamais completer. Le sens de
+# l'erreur qui subsiste est donc « ligne manquante », pas « ligne fausse ».
+
+# Un lien markdown : [texte d'ancrage](href "titre optionnel"). Le texte
+# d'ancrage n'est PAS un mot : sur les pages d'index d'EM Normandie, une carte
+# entiere — titre, « Campus », valeur, « Rythme » — tient dans l'ancrage d'un
+# seul lien. C'est ce qui rend la garde 1 possible : la carte a des bords.
+_MD_LINK = re.compile(
+    r"""\[([^\[\]]*)\]\(\s*(<[^>]*>|[^()\s]+)\s*(?:"[^"]*"|'[^']*')?\s*\)""",
+    re.S,
+)
+_MD_DECOR = re.compile(r"[*_`~#]+")
+_ASSET_SUFFIX = re.compile(
+    r"\.(?:pdf|jpe?g|png|gif|svg|webp|avif|ico|zip|docx?|xlsx?|pptx?|mp[34]|css|js)$",
+    re.IGNORECASE,
+)
+_UNUSABLE_SCHEME = ("#", "mailto:", "tel:", "javascript:", "data:")
+
+# Marqueurs d'annee. Liste fermee, et volontairement etroite : un marqueur qui
+# manque coute une ligne fille en moins, un marqueur de trop rouvre exactement
+# le defaut qu'on ferme.
+_YEAR_RANGE = re.compile(
+    r"\b([1-9])\s*(?:res?|eres?|ers?|es?|emes?|nde?s?)?\s*(?:et|ou|a|,|/|-)\s*"
+    r"([1-9])\s*(?:res?|eres?|ers?|es?|emes?|nde?s?)?\s*ann"
+)
+_YEAR_ORDINAL = re.compile(r"\b([1-9])\s*(?:res?|eres?|ers?|es?|emes?|nde?s?)\b[\s\-]*ann")
+_YEAR_LABELLED = re.compile(r"\bann[e]?es?\s*(?:n[o°]?\s*)?([1-9])\b")
+_YEAR_EN_PREFIX = re.compile(r"\byear\s*([1-9])\b")
+_YEAR_EN_SUFFIX = re.compile(r"\b([1-9])(?:st|nd|rd|th)\s+year\b")
+_YEAR_WORDS = {
+    "premiere": 1, "deuxieme": 2, "troisieme": 3, "quatrieme": 4, "cinquieme": 5,
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+}
+_YEAR_WORD_PATTERNS = tuple(
+    (re.compile(r"\b" + word + r"\s+(?:ann|year)"), value)
+    for word, value in _YEAR_WORDS.items()
+)
+
+# Titres de section qui declarent un RATTACHEMENT, par opposition a un titre
+# qui decrit le CONTENU d'une annee (« Annee 1 : Pre-MSc »). Liste FERMEE, pour
+# la meme raison que _REGION_LABELS : une liste ouverte finirait par accepter
+# n'importe quel titre portant le mot campus.
+_ATTACHMENT_HEADING_MARKERS = (
+    "rattachement", "affectation", "assignment", "allocation",
+)
+_ATTACHMENT_HEADING_SUBJECT = ("campus", "site", "lieu", "location")
+_HEADING_LINE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
+# Le fil d'Ariane rendu par Tavily : « 2. Nom de la page », sans lien pour
+# l'element courant. C'est souvent la seule occurrence du titre exact.
+_BREADCRUMB_LINE = re.compile(r"^\s{0,3}\d+\.\s+(?!\[)(.+?)\s*$", re.MULTILINE)
+
+
+def _fold_plain(text: Optional[str]) -> str:
+    """Comme `fold_label`, mais en otant d'abord la decoration markdown."""
+    return fold_label(_MD_DECOR.sub(" ", text or ""))
+
+
+def _href_is_usable(href: str) -> bool:
+    """
+    Vrai si ce href peut mener a une fiche.
+
+    Ecarte l'ancre interne, le mailto, l'asset — et surtout la QUERY STRING :
+    les quatre rubriques thematiques d'Em Lyon pointent vers une facette
+    `/fr/programmes?title=&domain%5B6%5D=6...`, qui est une recherche, pas une
+    fiche.
+    """
+    href = (href or "").strip().strip("<>")
+    if not href or href.lower().startswith(_UNUSABLE_SCHEME):
+        return False
+    if "?" in href or "#" in href.split("/")[-1]:
+        return False
+    path = href.split("?")[0].rstrip("/")
+    if _ASSET_SUFFIX.search(path):
+        return False
+    return bool(path)
+
+
+def published_years(text: str) -> frozenset[int]:
+    """
+    Annees d'etudes que ce texte de page NOMME explicitement.
+
+    « 4e et 5e annees » en rend deux ; « Annee 1 : Pre-MSc » en rend une ;
+    « Duree 12 mois » n'en rend aucune, et c'est tout l'objet de la garde 2.
+    """
+    folded = _fold_plain(text)
+    years: set[int] = set()
+    for first, second in _YEAR_RANGE.findall(folded):
+        years.update({int(first), int(second)})
+    for pattern in (_YEAR_ORDINAL, _YEAR_LABELLED, _YEAR_EN_PREFIX, _YEAR_EN_SUFFIX):
+        years.update(int(m) for m in pattern.findall(folded))
+    for pattern, value in _YEAR_WORD_PATTERNS:
+        if pattern.search(folded):
+            years.add(value)
+    return frozenset(years)
+
+
+def has_attachment_heading(text: str) -> bool:
+    """
+    Vrai si la page porte un titre qui declare ou l'on est rattache.
+
+    « ## Campus de rattachement » (EM Normandie) et « #### Campus d'affectation »
+    (Em Lyon) le sont ; « ## Annee 1 : Pre-MSc » ne l'est pas — c'est un titre
+    de programme d'annee. La difference est exactement celle qui separe une
+    table de rattachement d'un plan de cursus.
+    """
+    for raw in _HEADING_LINE.findall(text or ""):
+        heading = _fold_plain(raw)
+        if any(marker in heading for marker in _ATTACHMENT_HEADING_MARKERS) and any(
+            subject in heading for subject in _ATTACHMENT_HEADING_SUBJECT
+        ):
+            return True
+    return False
+
+
+def page_identities(text: str) -> frozenset[str]:
+    """
+    Cles repliees sous lesquelles cette page se nomme elle-meme.
+
+    Titres de niveau 1 a 6 et elements du fil d'Ariane. Sert a rattacher un
+    `program_name` rendu par le modele a la page d'ou il vient, puisque le
+    schema d'extraction ne porte pas de `source_url` fiable — les 40 lignes
+    d'Em Lyon de la sortie du 4 septembre l'ont toutes vide.
+    """
+    found = set()
+    for pattern in (_HEADING_LINE, _BREADCRUMB_LINE):
+        for raw in pattern.findall(text or ""):
+            folded = _fold_plain(raw)
+            if len(folded) >= 5:
+                found.add(folded)
+    return frozenset(found)
+
+
+@dataclass(frozen=True)
+class PageEvidence:
+    """
+    Ce que les pages lues portent reellement. Construit une fois par ecole.
+
+    `cards` : cle repliee d'un titre -> les cartes ou ce titre est le texte
+    d'un lien. Une carte est le couple (ancrage replie, href). Un titre qui
+    n'est le texte d'aucun lien n'a AUCUNE carte : c'est le cas des cinq
+    rubriques d'Em Lyon, dont le seul lien est un « Decouvrir » separe du
+    titre par le blurb et les puces.
+    """
+
+    cards: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
+    identities: dict[str, frozenset[str]] = field(default_factory=dict)
+    years: dict[str, frozenset[int]] = field(default_factory=dict)
+    attachment_headings: frozenset[str] = frozenset()
+
+    def pages_for(self, program_name: str) -> list[str]:
+        """Pages lues qui se nomment comme ce programme, ou que sa carte vise."""
+        key = _fold_plain(program_name)
+        targets = {href.rstrip("/") for _, href in self.cards.get(key, ())}
+        return sorted(
+            url
+            for url, names in self.identities.items()
+            if key in names or url.rstrip("/") in targets
+        )
+
+    def pages_of(self, program_name: str, source_url: Optional[str]) -> list[str]:
+        """
+        Pages sur lesquelles confronter un enonce de ce programme.
+
+        Le `source_url` rendu par le modele fait foi QUAND il designe une page
+        reellement lue — c'est le cas des 199 enonces du corpus. Sinon on
+        retombe sur les pages qui se nomment comme le programme, parce qu'un
+        enonce sans page identifiable ne peut rien prouver.
+        """
+        if source_url and source_url in self.identities:
+            return [source_url]
+        return self.pages_for(program_name)
+
+    def backing_cards(self, program_name: str, label: str) -> list[str]:
+        """
+        Hrefs des cartes qui portent A LA FOIS ce titre et ce lieu.
+
+        C'est la garde 1, reduite a son enonce : une carte d'index n'est un
+        programme que si son lien mene a une fiche — et la carte, c'est
+        l'ancrage du lien, pas le voisinage typographique.
+        """
+        title = _fold_plain(program_name)
+        place = fold_label(label)
+        if not title or not place:
+            return []
+        return sorted(
+            {href for anchor, href in self.cards.get(title, ()) if place in anchor}
+        )
+
+
+def build_page_evidence(pages: dict[str, str]) -> PageEvidence:
+    """
+    Depouille les pages deja lues. Aucun appel, aucune lecture de sens : des
+    liens, des titres, des marqueurs d'annee.
+    """
+    cards: dict[str, list[tuple[str, str]]] = {}
+    identities: dict[str, frozenset[str]] = {}
+    years: dict[str, frozenset[int]] = {}
+    with_heading: set[str] = set()
+
+    for url, text in (pages or {}).items():
+        identities[url] = page_identities(text)
+        years[url] = published_years(text)
+        if has_attachment_heading(text):
+            with_heading.add(url)
+        for anchor, href in _MD_LINK.findall(text or ""):
+            href = href.strip().strip("<>")
+            if not _href_is_usable(href):
+                continue
+            folded_anchor = _fold_plain(anchor)
+            for line in anchor.split("\n"):
+                title = _fold_plain(line)
+                if len(title) >= 5:
+                    cards.setdefault(title, []).append((folded_anchor, href))
+
+    return PageEvidence(
+        cards={key: tuple(value) for key, value in cards.items()},
+        identities=identities,
+        years=years,
+        attachment_headings=frozenset(with_heading),
+    )
+
+
+# Mots qui, dans un encart, ne font que relier deux lieux. Fermes eux aussi.
+_JOINING_WORDS = frozenset({"et", "ou", "and", "or", "-", "/", ",", "&", "+"})
+# Separateurs internes : « Caen, Le Havre » enumere deux lieux, et la virgule
+# interne n'est pas retiree par `fold_label`, qui ne touche qu'aux bords.
+_INNER_SEPARATOR = re.compile(r"[,;·•/&+]")
+
+
+def split_multi_campus_label(
+    label: Optional[str], campus_folds: dict[str, str]
+) -> list[str]:
+    """
+    Decoupe un encart qui enumere plusieurs campus DU PARC, ou rend [].
+
+    « Caen Le Havre Paris Dublin Oxford » est publie comme une seule valeur dans
+    l'encart des deux fiches PGE. Le modele l'a rendu tel quel, et il en est
+    sorti une ligne `ProgramPlacement` dont le `label` ne designe aucun lieu.
+    Sur la carte d'index de la meme ecole il l'a bien decoupe, d'ou des
+    `ProgramCampus` corrects — par redondance, pas par robustesse.
+
+    Le decoupage est rendu sur si, et seulement si, la LISTE DES CAMPUS le
+    borne : on avance de gauche a droite en prenant a chaque pas le plus long
+    nom de campus qui commence ici, et on n'accepte le resultat que si la
+    chaine entiere est couverte par des campus et des mots de liaison. « Le
+    Havre » est donc lu en un seul lieu, et une chaine qui laisse le moindre
+    residu — « Lyon, France », « UniLaSalle Rouen », « campus Institut Lyfe avec
+    une experience internationale » — est laissee intacte.
+
+    La regle ne peut RIEN inventer : elle ne rend que des noms deja presents
+    dans la liste passee en parametre. C'est ce qui la separe du decoupage
+    d'une expression melant conjonction et disjonction (F14), qui n'a pas
+    d'analyse unique et n'est pas tente ici.
+
+    >>> folds = {"caen": "Caen", "le havre": "Le Havre", "paris": "Paris"}
+    >>> split_multi_campus_label("Caen Le Havre Paris", folds)
+    ['Caen', 'Le Havre', 'Paris']
+    >>> split_multi_campus_label("Lyon, France", folds)
+    []
+    """
+    folded = fold_label(label)
+    if not folded or not campus_folds:
+        return []
+    words = [w for w in _INNER_SEPARATOR.sub(" ", folded).split(" ") if w]
+    if len(words) < 2:
+        return []
+    longest = max((len(key.split(" ")) for key in campus_folds), default=1)
+
+    found: list[str] = []
+    position = 0
+    while position < len(words):
+        if words[position] in _JOINING_WORDS:
+            position += 1
+            continue
+        matched = False
+        for size in range(min(longest, len(words) - position), 0, -1):
+            candidate = " ".join(words[position : position + size])
+            if candidate in campus_folds:
+                found.append(campus_folds[candidate])
+                position += size
+                matched = True
+                break
+        if not matched:
+            return []
+
+    # Un seul campus, c'est le travail de `match_campus`, pas celui-ci.
+    if len(found) < 2:
+        return []
+    seen: list[str] = []
+    for name in found:
+        if name not in seen:
+            seen.append(name)
+    return seen
+
+
+def campus_names_of(label: Optional[str], campus_folds: dict[str, str]) -> list[str]:
+    """
+    Campus du parc que ce libelle designe : zero, un, ou plusieurs.
+
+    Une seule porte, pour que l'union `ProgramCampus` et le diagnostic F8
+    lisent la meme chose d'un encart multi-lieux.
+    """
+    matched = match_campus(label, campus_folds)
+    if matched is not None:
+        return [matched]
+    return split_multi_campus_label(label, campus_folds)
+
+
 @dataclass
 class Statement:
     """Un enonce de lieu, normalise et rattache a sa zone."""
@@ -383,6 +717,122 @@ def parse_statements(raw: Any) -> tuple[list[Statement], list[dict]]:
     return kept, rejected
 
 
+def apply_page_guards(
+    statements: list[Statement], evidence: PageEvidence
+) -> tuple[list[Statement], list[dict]]:
+    """
+    Confronte chaque enonce a la page. Rend (retenus, ecartes).
+
+    Deux gardes, deux verdicts differents, et la difference est le fond du
+    sujet — l'une nie l'existence du programme, l'autre nie seulement l'annee.
+
+    **Garde 1 — une carte d'index n'est un programme que si son lien mene a une
+    fiche.** Un enonce de zone `INDEX_CARD` est REJETE si aucune carte de la
+    page ne porte a la fois le titre du programme et le lieu affirme. Sur la
+    page catalogue d'Em Lyon, cinq rubriques — Gouvernance, Strategie,
+    Management, Marketing, « Grades Masters & MSc » — sont typographiquement
+    des cartes : un titre, un blurb, des puces dont une nomme « Paris ou
+    Lyon », un lien « Decouvrir ». Elles n'en sont pas : le lien porte le mot
+    « Decouvrir », pas le titre, et il vise une facette de recherche.
+
+    Le raccourci « jeter tout programme dont les lignes ne viennent que de
+    INDEX_CARD » est FAUX et il a ete mesure : il tue les cinq rubriques, mais
+    aussi neuf programmes legitimes d'EM Normandie que seule leur carte fait
+    connaitre, leur fiche n'ayant pas ete lue. C'est la carte qu'il faut
+    qualifier, pas la zone.
+
+    **Garde 2 — `SECTION` ne fait naitre une ligne-annee que si la page publie
+    l'annee ET declare un rattachement.** Un enonce de zone `SECTION` est
+    DEGRADE en `SECTION_UNDATED` si la page ne nomme pas son `study_year`, ou
+    si aucune page du programme ne porte un titre de rattachement. Degrade, et
+    non rejete : la page dit bien le lieu, elle ne dit pas l'annee. L'enonce
+    garde donc son arete `ProgramCampus` et perd sa ligne fille — c'est
+    exactement « zero ligne fille = le sens actuel, inchange ».
+
+    Les trois Masteres Specialises d'Em Lyon sont le cas qui l'a motivee : des
+    programmes de 12 mois, sans une seule mention d'annee, a qui le modele a
+    donne six lignes `study_year = 1`. Deux d'entre eux portent pourtant bien
+    un titre « Campus d'affectation » : le titre seul ne suffit donc pas, et
+    c'est le marqueur d'annee qui tranche.
+    """
+    kept: list[Statement] = []
+    dropped: list[dict] = []
+
+    for stmt in statements:
+        if stmt.zone == INDEX_CARD_ZONE:
+            if stmt.label is None or not evidence.backing_cards(
+                stmt.program_name, stmt.label
+            ):
+                dropped.append({
+                    "guard": "card_without_fiche",
+                    "program": stmt.program_name,
+                    "zone": stmt.zone,
+                    "label": stmt.label,
+                    "verbatim": stmt.verbatim,
+                    "effect": "enonce rejete : aucune carte liee a une fiche ne porte ce titre et ce lieu",
+                })
+                continue
+            kept.append(stmt)
+            continue
+
+        if stmt.zone == SECTION_ZONE:
+            pages = evidence.pages_of(stmt.program_name, stmt.source_url)
+            years: frozenset[int] = frozenset()
+            for url in pages:
+                years |= evidence.years.get(url, frozenset())
+            declared = any(u in evidence.attachment_headings for u in pages)
+            reason = None
+            if not pages:
+                reason = "page_not_identified"
+            elif not declared:
+                reason = "no_attachment_heading"
+            elif stmt.study_year > 0 and stmt.study_year not in years:
+                reason = f"year_not_published:{stmt.study_year}"
+            if reason is None:
+                kept.append(stmt)
+                continue
+            if stmt.label is None:
+                # Une annee sans lieu ET sans preuve d'annee n'affirme rien du
+                # tout : elle ne merite meme pas un conflit `year_without_place`.
+                dropped.append({
+                    "guard": "section_unconfirmed",
+                    "program": stmt.program_name,
+                    "zone": stmt.zone,
+                    "study_year": stmt.study_year,
+                    "reason": reason,
+                    "verbatim": stmt.verbatim,
+                    "effect": "enonce rejete : ni lieu, ni annee publiee",
+                })
+                continue
+            dropped.append({
+                "guard": "section_unconfirmed",
+                "program": stmt.program_name,
+                "zone": stmt.zone,
+                "study_year": stmt.study_year,
+                "label": stmt.label,
+                "reason": reason,
+                "verbatim": stmt.verbatim,
+                "effect": "zone degradee : arete ProgramCampus conservee, aucune ligne fille",
+            })
+            kept.append(
+                Statement(
+                    program_name=stmt.program_name,
+                    zone=SECTION_UNDATED_ZONE,
+                    study_year=0,
+                    regime=stmt.regime,
+                    label=stmt.label,
+                    languages=stmt.languages,
+                    verbatim=stmt.verbatim,
+                    source_url=stmt.source_url,
+                )
+            )
+            continue
+
+        kept.append(stmt)
+
+    return kept, dropped
+
+
 def absorb_any_regime(rows: list[dict], key_fields: tuple[str, ...]) -> list[dict]:
     """
     Applique la regle 2 : pour une meme cle, ANY et un regime nomme ne
@@ -438,6 +888,7 @@ def build_program_rows(
     section = [s for s in statements if s.zone == SECTION_ZONE]
     fieldish = [s for s in statements if s.zone in FIELD_ZONES]
     prose = [s for s in statements if s.zone == PROSE_ZONE]
+    undated = [s for s in statements if s.zone == SECTION_UNDATED_ZONE]
     has_section = bool(section)
 
     conflicts: list[dict] = []
@@ -460,14 +911,18 @@ def build_program_rows(
                 "source_url": stmt.source_url,
             })
             continue
-        matched = match_campus(stmt.label, campus_folds)
-        if matched is not None:
-            entry = campus_seen.setdefault(
-                fold_label(matched), {"zones": set(), "spellings": [], "source_url": None}
-            )
-            entry["zones"].add(stmt.zone)
-            entry["spellings"].append(stmt.label)
-            entry["source_url"] = entry["source_url"] or stmt.source_url
+        # Un encart peut enumerer plusieurs campus du parc dans une seule
+        # valeur. `campus_names_of` tente le decoupage apres l'echec de
+        # `match_campus`, et ne rend que des noms deja dans la liste fournie.
+        names = campus_names_of(stmt.label, campus_folds)
+        if names:
+            for name in names:
+                entry = campus_seen.setdefault(
+                    fold_label(name), {"zones": set(), "spellings": [], "source_url": None}
+                )
+                entry["zones"].add(stmt.zone)
+                entry["spellings"].append(name)
+                entry["source_url"] = entry["source_url"] or stmt.source_url
         else:
             placement_statements.append(stmt)
 
@@ -483,14 +938,14 @@ def build_program_rows(
     # ── F8 : desaccords entre l'encart et la section ─────────────────
     if has_section:
         section_folds = {
-            fold_label(match_campus(s.label, campus_folds))
+            fold_label(name)
             for s in section
-            if match_campus(s.label, campus_folds)
+            for name in campus_names_of(s.label, campus_folds)
         }
         field_folds = {
-            fold_label(match_campus(s.label, campus_folds))
+            fold_label(name)
             for s in fieldish
-            if match_campus(s.label, campus_folds)
+            for name in campus_names_of(s.label, campus_folds)
         }
         for fold in sorted(field_folds - section_folds):
             if fold not in campus_folds:
@@ -614,7 +1069,7 @@ def build_program_rows(
         "program": program_name,
         "campus_policy_note": policy_note,
         "has_section": has_section,
-        "has_prose_only": bool(prose) and not has_section and not fieldish,
+        "has_prose_only": bool(prose) and not has_section and not fieldish and not undated,
         "program_campus": program_campus,
         "program_campus_attachment": attachment_rows,
         "program_placement": placement_rows,
@@ -626,12 +1081,18 @@ def build_program_rows(
 def build_rows(
     raw: Any,
     campuses: list[str],
+    pages: Optional[dict[str, str]] = None,
 ) -> dict:
     """
     Sortie complete pour une ecole : les lignes des trois tables, programme par
     programme, plus ce qui a ete rejete et ce qui se contredit.
 
     `campuses` est la liste des campus REELS de l'ecole, passee explicitement.
+
+    `pages` est le markdown des pages LUES, {url: texte}. Quand il est fourni,
+    les deux gardes de `apply_page_guards` s'appliquent : le modele propose, la
+    page dispose. Quand il ne l'est pas, la sortie est celle d'avant les
+    gardes — c'est ce qui permet de mesurer l'ecart plutot que de l'annoncer.
     """
     campus_folds: dict[str, str] = {}
     for name in campuses:
@@ -640,6 +1101,11 @@ def build_rows(
             campus_folds.setdefault(folded, name.strip())
 
     statements, rejected = parse_statements(raw)
+
+    evidence = build_page_evidence(pages) if pages else None
+    guarded: list[dict] = []
+    if evidence is not None:
+        statements, guarded = apply_page_guards(statements, evidence)
 
     policies: dict[str, str] = {}
     for item in (raw.get("policies") if isinstance(raw, dict) else None) or []:
@@ -666,10 +1132,13 @@ def build_rows(
         "campuses_supplied": [campus_folds[f] for f in sorted(campus_folds)],
         "programs": programs,
         "rejected_statements": rejected,
+        "guarded_statements": guarded,
+        "pages_checked": len(pages or {}),
         "totals": {
             "programs": len(programs),
             "statements_kept": len(statements),
             "statements_rejected": len(rejected),
+            "statements_guarded": len(guarded),
             "program_campus": sum(len(p["program_campus"]) for p in programs),
             "program_campus_attachment": sum(
                 len(p["program_campus_attachment"]) for p in programs

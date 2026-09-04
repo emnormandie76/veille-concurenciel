@@ -19,13 +19,18 @@ from backend.pipeline.campus_attachment import (  # noqa: E402
     KIND_REGION,
     KIND_REMOTE,
     KIND_UNSPECIFIED,
+    _href_is_usable,
     absorb_any_regime,
+    build_page_evidence,
     build_rows,
     classify_kind,
     fold_label,
+    has_attachment_heading,
     match_campus,
     parse_statements,
     pick_spelling,
+    published_years,
+    split_multi_campus_label,
 )
 from backend.tavily_service.client import (  # noqa: E402
     is_rooted_on_page,
@@ -645,6 +650,385 @@ class TestEmptyResponsesAreNotCached(unittest.TestCase):
         self.assertFalse(_is_worth_caching("extract", ""))
         self.assertFalse(_is_worth_caching("gemini", {"statements": []}))
         self.assertTrue(_is_worth_caching("gemini", {"statements": [{"a": 1}]}))
+
+# ── Fixtures de PAGE ─────────────────────────────────────────────
+#
+# Recopiees mot pour mot du markdown rendu par /extract et conserve dans
+# tmp/dry-cache. Elles sont la matiere des deux gardes : ce sont ces textes,
+# et pas la sortie du modele, qui decident.
+
+# La page catalogue d'Em Lyon. Une rubrique d'executive education est
+# typographiquement une carte — titre, blurb, puces dont une nomme les lieux —
+# mais son lien porte le mot « Decouvrir » et vise une facette de recherche.
+EM_LYON_CATALOG_PAGE = """# Nos programmes
+
+Gouvernance
+
+Ces formations vous aident a comprendre et a gerer les enjeux strategiques lies a la gouvernance d'entreprise.
+
+* Gouvernance durable et responsabilite societale
+* Paris ou Lyon
+
+[Decouvrir](https://em-lyon.com/fr/programmes?title=&target=All&domain%5B6%5D=6&duration_custom=month)
+
+Grades Masters & Masters of Science (MSc)
+
+Des programmes d'excellence ouverts aux etudiants francais et internationaux.
+
+* Campus Lyon ou Paris et a l'international
+
+[Decouvrir](/fr/programmes-master "Grades Master & MSc")
+"""
+
+# Une page d'index d'EM Normandie. Ici la carte ENTIERE tient dans l'ancrage
+# d'un seul lien : titre, « Campus », valeur. C'est ce qui lui donne des bords.
+EM_NORMANDIE_INDEX_PAGE = """# Mastere Specialise, Master of Science
+
+* ## Finance
+
+  + [sur dossier
+
+    ### MSc Banking, Finance and FinTech
+
+    Anglais
+
+    Post Bac+3/4
+
+    Niveau
+
+    Bac +5
+
+    Campus
+
+    Oxford
+
+    Rythme
+
+    Presentiel
+
+    En savoir +](https://www.em-normandie.com/programmes/votre-formation-en-finance/msc-banking-finance-and-fintech)
+"""
+
+# Un Mastere Specialise d'Em Lyon : douze mois, pas une seule mention d'annee,
+# et pourtant un titre « Campus d'affectation » — qui parle de CHOIX de campus,
+# pas de repartition par annee.
+EM_LYON_MS_PAGE = """1. Accueil
+2. Mastere Specialise Juriste Manager International
+
+Campus
+
+Lyon ou Paris
+
+Duree
+
+12 mois
+
+Rythme
+
+Alternance
+
+#### Campus d'affectation
+
+Le programme en parcours alternance est ouvert pour la rentree de septembre 2025 sur les campus de Paris et Lyon.
+"""
+
+# Le PGE en 5 ans : un vrai titre de rattachement, et les annees nommees.
+EM_NORMANDIE_PGE_PAGE = """1. Accueil
+2. Programme Grande Ecole en 5 ans
+
+## Campus de rattachement
+
++ **1re annee**
+   Caen ou Paris - cours en francais ou en anglais
+   Dubai, Dublin ou Oxford - cours en anglais
++ **2e annee**
+   Caen ou Paris - cours en francais ou en anglais
++ **4e et 5e annees**
+   en fonction de l'orientation choisie
+"""
+
+# Le MSc 2-year Programme : les annees SONT publiees, mais sous des titres qui
+# decrivent le contenu de l'annee. Aucun titre de rattachement.
+EM_NORMANDIE_TWO_YEAR_PAGE = """1. Accueil
+2. MSc 2-year Programme
+
+## Annee 1 : Pre-MSc
+
+Effectuez votre annee sur le campus de Paris et rencontrez plus de 1000 etudiants internationaux.
+
+## Annee 2 : MSc Track de votre choix
+
+Cette annee s'effectue sur le campus ou la specialisation est dispensee.
+
++ [**MSc Creative and Cultural Industries**](/programmes/votre-formation-en-marketing-digital/msc-creative-and-cultural-industry) - Caen
+"""
+
+
+class TestPageEvidenceReading(unittest.TestCase):
+    """Ce que le depouillement lit dans une page, avant toute decision."""
+
+    def test_published_years_reads_a_range_written_as_one_bullet(self):
+        # « 4e et 5e annees » nomme DEUX annees dans un seul intitule.
+        self.assertEqual(
+            published_years(EM_NORMANDIE_PGE_PAGE), frozenset({1, 2, 4, 5})
+        )
+
+    def test_a_twelve_month_programme_publishes_no_year(self):
+        # C'est le fait qui rend fausses les six lignes-annees des trois MS.
+        self.assertEqual(published_years(EM_LYON_MS_PAGE), frozenset())
+
+    def test_year_headings_of_a_curriculum_are_read_as_years(self):
+        self.assertEqual(
+            published_years(EM_NORMANDIE_TWO_YEAR_PAGE), frozenset({1, 2})
+        )
+
+    def test_a_price_or_a_date_is_not_a_year(self):
+        self.assertEqual(
+            published_years("Frais de scolarite : 34 900 EUR (annee academique 2026-2027)"),
+            frozenset(),
+        )
+
+    def test_attachment_heading_is_recognised_in_both_wordings(self):
+        self.assertTrue(has_attachment_heading(EM_NORMANDIE_PGE_PAGE))
+        self.assertTrue(has_attachment_heading(EM_LYON_MS_PAGE))
+
+    def test_a_year_heading_is_not_an_attachment_heading(self):
+        # « ## Annee 1 : Pre-MSc » decrit le contenu d'une annee, pas un
+        # rattachement. C'est toute la difference entre une table et un cursus.
+        self.assertFalse(has_attachment_heading(EM_NORMANDIE_TWO_YEAR_PAGE))
+
+    def test_a_facet_url_is_not_a_fiche(self):
+        self.assertFalse(
+            _href_is_usable(
+                "https://em-lyon.com/fr/programmes?title=&target=All&domain%5B6%5D=6"
+            )
+        )
+        self.assertFalse(_href_is_usable("#main-content"))
+        self.assertFalse(_href_is_usable("/sites/default/files/msc-esg.jpg"))
+        self.assertTrue(
+            _href_is_usable(
+                "https://www.em-normandie.com/programmes/votre-formation-en-finance/msc-banking-finance-and-fintech"
+            )
+        )
+
+
+class TestCardMustLeadToAFiche(unittest.TestCase):
+    """
+    Garde 1. Les cinq rubriques d'Em Lyon tombent, les programmes que seule
+    leur carte fait connaitre restent.
+    """
+
+    def test_a_rubric_whose_title_is_not_a_link_has_no_card(self):
+        evidence = build_page_evidence({"cat": EM_LYON_CATALOG_PAGE})
+        self.assertEqual(evidence.backing_cards("Gouvernance", "Lyon"), [])
+        self.assertEqual(
+            evidence.backing_cards("Grades Masters & Masters of Science (MSc)", "Paris"),
+            [],
+        )
+
+    def test_a_real_card_carries_its_title_and_its_campus(self):
+        evidence = build_page_evidence({"idx": EM_NORMANDIE_INDEX_PAGE})
+        self.assertEqual(
+            evidence.backing_cards("MSc Banking, Finance and FinTech", "Oxford"),
+            [
+                "https://www.em-normandie.com/programmes/votre-formation-en-finance/"
+                "msc-banking-finance-and-fintech"
+            ],
+        )
+
+    def test_a_card_that_does_not_name_the_campus_backs_nothing(self):
+        evidence = build_page_evidence({"idx": EM_NORMANDIE_INDEX_PAGE})
+        self.assertEqual(
+            evidence.backing_cards("MSc Banking, Finance and FinTech", "Caen"), []
+        )
+
+    def test_the_five_rubrics_produce_no_row_at_all(self):
+        raw = {
+            "statements": [
+                stmt("Gouvernance", "INDEX_CARD", 0, "ANY", "Lyon"),
+                stmt("Gouvernance", "INDEX_CARD", 0, "ANY", "Paris"),
+                stmt("Grades Masters & Masters of Science (MSc)", "INDEX_CARD", 0, "ANY", "Lyon"),
+            ]
+        }
+        rows = build_rows(raw, EM_LYON_CAMPUSES, pages={"cat": EM_LYON_CATALOG_PAGE})
+        self.assertEqual(rows["totals"]["programs"], 0)
+        self.assertEqual(rows["totals"]["program_campus"], 0)
+        self.assertEqual(rows["totals"]["statements_guarded"], 3)
+        self.assertTrue(
+            all(g["guard"] == "card_without_fiche" for g in rows["guarded_statements"])
+        )
+
+    def test_the_shortcut_that_would_kill_nine_real_programmes_is_not_taken(self):
+        # Le raccourci « jeter tout programme dont les lignes ne viennent que
+        # d'INDEX_CARD » tue les rubriques ET ce programme, dont la fiche n'a
+        # pas ete lue. C'est la carte qu'on qualifie, pas la zone.
+        raw = {
+            "statements": [
+                stmt(
+                    "MSc Banking, Finance and FinTech", "INDEX_CARD", 0, "ANY", "Oxford",
+                    verbatim="Campus\n\nOxford",
+                )
+            ]
+        }
+        rows = build_rows(
+            raw, EM_NORMANDIE_CAMPUSES, pages={"idx": EM_NORMANDIE_INDEX_PAGE}
+        )
+        program = program_of(rows, "MSc Banking, Finance and FinTech")
+        self.assertEqual(
+            [r["campusName"] for r in program["program_campus"]], ["Oxford"]
+        )
+        self.assertEqual(rows["totals"]["statements_guarded"], 0)
+
+
+class TestSectionYearMustBePublished(unittest.TestCase):
+    """
+    Garde 2. Une section ne fait naitre une ligne-annee que si la page publie
+    l'annee ET declare un rattachement. Sinon la zone est DEGRADEE : l'arete
+    reste, la ligne fille disparait.
+    """
+
+    MS_STATEMENTS = {
+        "statements": [
+            stmt("Mastere Specialise Juriste Manager International", "SECTION", 1, "ANY",
+                 "Lyon", verbatim="De Septembre a Aout : Lyon ou Paris",
+                 url="ms-juriste"),
+            stmt("Mastere Specialise Juriste Manager International", "SECTION", 1, "ANY",
+                 "Paris", verbatim="De Septembre a Aout : Lyon ou Paris",
+                 url="ms-juriste"),
+        ]
+    }
+
+    def test_without_the_guard_a_one_year_programme_invents_two_year_rows(self):
+        rows = build_rows(self.MS_STATEMENTS, EM_LYON_CAMPUSES)
+        self.assertEqual(rows["totals"]["program_campus_attachment"], 2)
+
+    def test_with_the_guard_the_edge_stays_and_the_year_rows_go(self):
+        rows = build_rows(
+            self.MS_STATEMENTS, EM_LYON_CAMPUSES, pages={"ms-juriste": EM_LYON_MS_PAGE}
+        )
+        program = program_of(rows, "Mastere Specialise Juriste Manager International")
+        # Le lieu est publie : les deux aretes restent, c'est le sens actuel.
+        self.assertEqual(
+            [r["campusName"] for r in program["program_campus"]], ["Lyon", "Paris"]
+        )
+        # L'annee ne l'est pas : zero ligne fille, et zero conflit invente.
+        self.assertEqual(program["program_campus_attachment"], [])
+        self.assertFalse(program["has_section"])
+        self.assertEqual(program["conflicts"], [])
+        reasons = {g["reason"] for g in rows["guarded_statements"]}
+        self.assertEqual(reasons, {"year_not_published:1"})
+
+    def test_a_real_attachment_section_still_produces_its_rows(self):
+        raw = {
+            "statements": [
+                stmt("Programme Grande Ecole en 5 ans", "SECTION", 1, "ANY", "Caen",
+                     languages=["FR", "EN"], url="pge5"),
+                stmt("Programme Grande Ecole en 5 ans", "SECTION", 2, "ANY", "Caen",
+                     languages=["FR", "EN"], url="pge5"),
+            ]
+        }
+        rows = build_rows(
+            raw, EM_NORMANDIE_CAMPUSES, pages={"pge5": EM_NORMANDIE_PGE_PAGE}
+        )
+        program = program_of(rows, "Programme Grande Ecole en 5 ans")
+        self.assertEqual(
+            [(r["campusName"], r["study_year"]) for r in program["program_campus_attachment"]],
+            [("Caen", 1), ("Caen", 2)],
+        )
+        self.assertEqual(rows["totals"]["statements_guarded"], 0)
+
+    def test_a_curriculum_plan_is_not_an_attachment_section(self):
+        # Les annees sont bien publiees ; le titre de rattachement, non. La
+        # ligne annee 2 est deduite d'une liste de programmes VOISINS.
+        raw = {
+            "statements": [
+                stmt("MSc 2-year Programme", "SECTION", 1, "ANY", "Paris",
+                     verbatim="Effectuez votre annee sur le campus de Paris",
+                     url="two-year"),
+                stmt("MSc 2-year Programme", "SECTION", 2, "ANY", "Caen",
+                     verbatim="MSc Creative and Cultural Industries - Caen",
+                     url="two-year"),
+            ]
+        }
+        rows = build_rows(
+            raw, EM_NORMANDIE_CAMPUSES, pages={"two-year": EM_NORMANDIE_TWO_YEAR_PAGE}
+        )
+        program = program_of(rows, "MSc 2-year Programme")
+        self.assertEqual(program["program_campus_attachment"], [])
+        self.assertEqual(
+            sorted(r["campusName"] for r in program["program_campus"]), ["Caen", "Paris"]
+        )
+        self.assertEqual(
+            {g["reason"] for g in rows["guarded_statements"]}, {"no_attachment_heading"}
+        )
+
+    def test_a_year_without_place_and_without_proof_leaves_no_conflict(self):
+        raw = {
+            "statements": [
+                stmt("Mastere Specialise Juriste Manager International", "SECTION", 4,
+                     "ANY", None, verbatim="en fonction du parcours", url="ms-juriste")
+            ]
+        }
+        rows = build_rows(
+            raw, EM_LYON_CAMPUSES, pages={"ms-juriste": EM_LYON_MS_PAGE}
+        )
+        self.assertEqual(rows["totals"]["conflicts"], 0)
+        self.assertEqual(rows["totals"]["statements_guarded"], 1)
+
+    def test_the_guards_are_off_when_no_page_is_supplied(self):
+        # Le collecteur doit pouvoir rejouer la sortie d'AVANT les gardes, sans
+        # quoi leur effet ne serait qu'annonce.
+        rows = build_rows(self.MS_STATEMENTS, EM_LYON_CAMPUSES, pages=None)
+        self.assertEqual(rows["totals"]["statements_guarded"], 0)
+        self.assertEqual(rows["guarded_statements"], [])
+
+
+class TestMultiCampusFieldIsSplitByTheCampusList(unittest.TestCase):
+    """
+    L'encart des deux fiches PGE publie cinq lieux dans une seule valeur. Le
+    decoupage n'est sur que parce que la liste des campus le borne.
+    """
+
+    FOLDS = {"caen": "Caen", "le havre": "Le Havre", "paris": "Paris",
+             "dublin": "Dublin", "oxford": "Oxford", "dubai": "Dubai"}
+
+    def test_a_fully_covered_string_is_split(self):
+        self.assertEqual(
+            split_multi_campus_label("Caen Le Havre Paris Dublin Oxford", self.FOLDS),
+            ["Caen", "Le Havre", "Paris", "Dublin", "Oxford"],
+        )
+
+    def test_the_longest_campus_name_wins(self):
+        # « Le Havre » est un lieu, pas deux.
+        self.assertEqual(
+            split_multi_campus_label("Caen Le Havre", self.FOLDS), ["Caen", "Le Havre"]
+        )
+
+    def test_a_string_with_any_residue_is_left_intact(self):
+        for label in ("Lyon, France", "UniLaSalle Rouen",
+                      "campus Institut Lyfe avec une experience internationale",
+                      "Paris et New York ou Londres"):
+            self.assertEqual(split_multi_campus_label(label, self.FOLDS), [], label)
+
+    def test_a_single_campus_is_not_this_rule_s_business(self):
+        self.assertEqual(split_multi_campus_label("Paris", self.FOLDS), [])
+
+    def test_the_pge_field_no_longer_produces_a_placeless_placement(self):
+        raw = {
+            "statements": [
+                stmt("Programme Grande Ecole en 2 ou 3 ans", "FIELD", 0, "ANY",
+                     "Caen Le Havre Paris Dublin Oxford",
+                     verbatim="Caen Le Havre Paris Dublin Oxford")
+            ]
+        }
+        rows = build_rows(raw, EM_NORMANDIE_CAMPUSES)
+        program = program_of(rows, "Programme Grande Ecole en 2 ou 3 ans")
+        self.assertEqual(program["program_placement"], [])
+        self.assertEqual(
+            sorted(r["campusName"] for r in program["program_campus"]),
+            ["Caen", "Dublin", "Le Havre", "Oxford", "Paris"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

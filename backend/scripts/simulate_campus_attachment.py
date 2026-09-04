@@ -357,6 +357,15 @@ def main() -> int:
         action="store_true",
         help="Ne pas lire les pages d'index (elles portent les cartes, plus riches que certaines fiches)",
     )
+    parser.add_argument(
+        "--no-page-guards",
+        action="store_true",
+        help=(
+            "Ne PAS confronter la sortie du modele aux pages lues. Sert a "
+            "rejouer la sortie d'avant les gardes depuis le meme cache, donc a "
+            "mesurer leur effet au lieu de l'annoncer."
+        ),
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -390,7 +399,7 @@ def main() -> int:
     logger.info("📄 %d page(s) rendues", len(pages))
 
     raw, failures = run_extraction(pages, args.batch_size, args.page_chars, args.cache_dir)
-    rows = build_rows(raw, args.campus)
+    rows = build_rows(raw, args.campus, pages=None if args.no_page_guards else pages)
 
     rows["run"] = {
         "school": args.school_name,
@@ -400,6 +409,7 @@ def main() -> int:
         "pages_read": sorted(pages),
         "pages_requested": to_read,
         "tavily_credits_this_run": credits,
+        "page_guards": not args.no_page_guards,
         "extraction_failures": failures,
         "wrote_to_database": False,
     }

@@ -304,3 +304,175 @@ def extract_from_urls(
             key_manager.mark_exhausted(api_key)
         logger.error(f"❌ Erreur Tavily extract: {e}")
         return ""
+
+
+# ── /map — cartographie enracinee sur la page catalogue ──────────
+#
+# `crawl_school_website` ci-dessus est un CRAWL : il lit le contenu des pages.
+# /map ne lit rien, il enumere des URL — c'est l'etape de decouverte, et elle
+# n'existait pas dans ce fichier.
+#
+# Enracinement : TOUJOURS la page catalogue, JAMAIS la racine du domaine.
+# Mesure du 4 septembre 2026 sur em-normandie.com : depuis la racine, /map rend
+# 114 URL dont 2 seulement sous /programmes, et ce sont deux pages thematiques.
+# Enracine sur la page catalogue, le meme appel en rend 61. La racine n'est pas
+# un point de depart degrade, c'est un point de depart faux — d'ou le refus
+# explicite de map_program_pages() plutot qu'un simple avertissement.
+MAP_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_MAP_TIMEOUT_SECONDS", 120))
+
+# /map n'est PAS facture a l'appel mais a la page decouverte : deux appels ont
+# coute 11 credits pendant la campagne du 4 septembre. Un `record_usage(1)` en
+# dur sous-compterait d'un facteur cinq. On lit donc le cout declare.
+MAP_FALLBACK_CREDITS = 5
+
+# Meme marge de securite que la passe catalogue : les endpoints de decouverte
+# coutent l'unite, le key manager raisonne en reserve.
+MAP_REQUIRED_CREDITS = 5
+
+# Nombre de cles essayees avant d'abandonner la cartographie.
+#
+# Les trois wrappers ci-dessus abandonnent des la premiere cle refusee, et
+# c'est tolerable pour eux : un /search rate, c'est un resultat en moins. /map
+# est l'etape de DECOUVERTE — si elle rend zero URL, il n'y a plus rien a
+# lire ensuite et toute la passe s'arrete.
+#
+# Le refus n'est d'ailleurs pas fiable a l'avance : mesure le 4 septembre 2026,
+# le compteur local d'une cle annoncait 48 credits restants quand l'API
+# refusait deja l'appel (« exceeds your plan's set usage limit »). Le compteur
+# Tavily n'est pas temps reel, donc `required_credits` ne peut pas ecarter
+# cette cle : seule la reponse de l'API le dit. On la marque et on passe a la
+# suivante.
+MAP_KEY_ATTEMPTS = 3
+
+
+def record_reported_usage(key_manager, api_key: str, response: dict, fallback: int) -> int:
+    """
+    Alimente le compteur du key manager avec le cout REEL de l'appel.
+
+    `include_usage: true` fait revenir un objet `usage` portant les credits
+    factures ; il fonctionne sur /search, /extract et /map. `fallback` sert
+    quand la reponse ne le declare pas.
+
+    catalog_client._record_real_usage fait la meme chose, pour la meme raison.
+    Les deux ne sont pas fusionnees ici : cette copie-la est sur le chemin chaud
+    de la Phase 1 et la reunir est un changement a part entiere.
+    """
+    credits = fallback
+    usage = response.get("usage") if isinstance(response, dict) else None
+    if isinstance(usage, dict):
+        reported = usage.get("credits")
+        if isinstance(reported, (int, float)):
+            credits = int(reported)
+    key_manager.record_usage(api_key, credits=credits)
+    return credits
+
+
+def is_rooted_on_page(url: str) -> bool:
+    """
+    Vrai si l'URL designe une PAGE et non la racine d'un domaine.
+
+    « https://www.em-normandie.com/ » et « em-normandie.com » sont des racines ;
+    « https://www.em-normandie.com/programmes » est une page.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url if "://" in (url or "") else f"https://{url or ''}")
+    return bool(parsed.netloc) and len([p for p in (parsed.path or "").split("/") if p]) > 0
+
+
+def map_program_pages(
+    catalog_url: str,
+    key_manager,
+    instructions: Optional[str] = None,
+    max_depth: int = 1,
+    limit: int = 200,
+) -> tuple[list[str], int]:
+    """
+    Enumere les URL de fiches formation atteignables depuis une page catalogue.
+
+    Args:
+        catalog_url: URL de la page d'index des formations. Une racine de
+            domaine est REFUSEE (voir le commentaire de section).
+        key_manager: Instance de TavilyKeyManager
+        instructions: Consigne de cartographie. Sans elle, /map suit surtout la
+            navigation ; la campagne du 3 septembre a obtenu 48 URL avec, et 2
+            sans, sur la meme racine.
+        max_depth: Profondeur de suivi des liens depuis la racine choisie.
+        limit: Plafond d'URL rendues.
+
+    Returns:
+        (URL triees et dedoublonnees, credits consommes). Une liste vide n'est
+        pas une erreur : l'appelant se rabat sur les cartes d'index.
+
+    Cette fonction ne leve pas, sauf QuotaExhaustedError comme ses voisines.
+    """
+    from tavily import TavilyClient
+    from backend.tavily_service.key_manager import QuotaExhaustedError
+
+    if not is_rooted_on_page(catalog_url):
+        # Refus et non repli : partir de la racine rend un resultat *plausible*
+        # (114 URL) et faux (2 fiches). Un appel qui echoue franchement coute
+        # moins cher qu'un appel qui reussit mal.
+        logger.error(
+            "❌ /map refuse : '%s' est une racine de domaine. "
+            "La cartographie s'enracine sur la page catalogue.",
+            catalog_url,
+        )
+        return [], 0
+
+    params = {
+        "url": catalog_url,
+        "max_depth": max_depth,
+        "limit": limit,
+        "include_usage": True,
+        "timeout": MAP_TIMEOUT_SECONDS,
+    }
+    if instructions:
+        params["instructions"] = instructions
+
+    for attempt in range(1, MAP_KEY_ATTEMPTS + 1):
+        api_key = key_manager.get_active_key(required_credits=MAP_REQUIRED_CREDITS)
+        client = TavilyClient(api_key=api_key)
+
+        logger.info(
+            "🗺️ Tavily map: %s (max_depth=%d, essai %d/%d)",
+            catalog_url, max_depth, attempt, MAP_KEY_ATTEMPTS,
+        )
+
+        try:
+            result = client.map(**params)
+        except QuotaExhaustedError:
+            raise
+        except Exception as e:
+            if is_quota_error(e):
+                logger.warning(
+                    f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
+                )
+                key_manager.mark_exhausted(api_key)
+                continue
+            error_str = str(e)
+            if "timeout" in error_str.lower() or "timed out" in error_str.lower():
+                logger.warning(f"⏱️ Timeout Tavily map {catalog_url}")
+            else:
+                logger.error(f"❌ Erreur Tavily map {catalog_url}: {e}")
+            return [], 0
+
+        credits = record_reported_usage(
+            key_manager, api_key, result, fallback=MAP_FALLBACK_CREDITS
+        )
+
+        raw = result.get("results", []) if isinstance(result, dict) else []
+        urls = sorted({u for u in raw if isinstance(u, str) and u.strip()})
+        if not urls:
+            # Pas une panne : le site peut bloquer la cartographie. L'appelant a
+            # les cartes d'index, qui sont de toute facon la source la plus riche.
+            logger.warning("⚠️ Tavily map %s — aucune URL rendue", catalog_url)
+
+        logger.info("✅ Map termine : %d URL, %d credit(s)", len(urls), credits)
+        return urls, credits
+
+    logger.error(
+        "❌ /map abandonne apres %d cle(s) refusee(s) pour quota : %s",
+        MAP_KEY_ATTEMPTS, catalog_url,
+    )
+    return [], 0

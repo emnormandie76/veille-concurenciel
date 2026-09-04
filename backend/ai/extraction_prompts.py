@@ -226,6 +226,73 @@ CE QU'IL NE FAUT PAS PRENDRE :
 - Les doublons : une formation citée deux fois sur la page est UNE entrée."""
 
 
+CAMPUS_ATTACHMENT_EXTRACTION_PROMPT = f"""Tu releves ou se deroulent les formations d'une ecole. Tu lis des fiches formation et des cartes de page d'index, et tu recopies chaque LIEU annonce, avec l'annee, le regime et la langue qui l'accompagnent.
+
+{_ANTI_INJECTION}
+
+TU RECOPIES, TU NE SYNTHETISES PAS :
+- Chaque bloc source est precede de « ## Source: <url> » puis de son titre. Un
+  bloc = une fiche ou une page d'index. Plusieurs fiches arrivent dans le meme
+  texte : ne les melange jamais, `program_name` et `source_url` les separent.
+- Ne deduis aucun lieu. Si la page ne nomme pas de campus, tu ne rends aucun
+  enonce pour ce programme — une sortie vide est un resultat.
+- Ne complete pas une annee manquante par une autre annee, ni une langue par
+  celle du voisin.
+
+LES DEUX ZONES, QUI NE DISENT PAS LA MEME CHOSE :
+- L'encart a champs nommes porte une etiquette « Campus » et sa valeur : c'est
+  `zone = "FIELD"`, et il ne parle JAMAIS d'annee, donc `study_year = 0`.
+- La section « Campus de rattachement » decoupe par annee : c'est
+  `zone = "SECTION"`, avec `study_year` >= 1.
+- Une carte de page d'index porte le meme encart, mais sur la liste : c'est
+  `zone = "INDEX_CARD"`, `study_year = 0`.
+- Un lieu nomme au fil du texte est `zone = "PROSE"`.
+- Les deux zones se CONTREDISENT sur certaines fiches : un campus est dans
+  l'encart et absent de la section, un autre l'inverse. C'est normal et c'est
+  attendu. Ne corrige rien, ne complete rien, ne supprime rien : recopie les
+  deux zones telles qu'elles sont. L'arbitrage se fait apres toi.
+
+UN ENONCE = UN LIEU :
+- « Caen Le Havre Paris Dublin » dans un encart donne QUATRE objets.
+- « Dubai, Dublin ou Oxford - cours en anglais » donne TROIS objets, chacun
+  avec languages = ["EN"] et le meme verbatim.
+- « Lyon - Campus emlyon et Ecole Centrale » donne DEUX objets, « Lyon » et
+  « Ecole Centrale ».
+- Une expression que tu ne sais pas decouper sans choisir a la place de l'ecole
+  — « Paris et New York ou Londres ou Rome et International » — reste ENTIERE
+  dans un seul objet. Mal decouper est pire que ne pas decouper.
+
+LE LIBELLE, TEL QUEL :
+- Recopie le lieu comme la page l'ecrit. « Universite partenaire » reste
+  « Universite partenaire », « Online » reste « Online », « UniLaSalle Rouen »
+  reste « UniLaSalle Rouen ».
+- Tu n'as PAS a savoir si un lieu est un campus de l'ecole. Shanghai, Milan,
+  International et Le Havre se recopient de la meme facon. Le tri est fait
+  apres, avec la liste des campus reels — ne l'anticipe pas et n'ecarte rien.
+- Pas de traduction, pas de correction d'orthographe, pas de « Campus de »
+  ajoute devant une ville qui n'en porte pas.
+
+ANNEE ET REGIME :
+- Une plage annoncee en bloc — « 4e et 5e annees » — donne un objet PAR annee.
+- Une annee nommee dont la page dit explicitement qu'aucun lieu n'est fixe
+  (« 4e et 5e annees : en fonction de l'orientation choisie ») donne un objet
+  avec label = null. C'est la seule situation ou label est null.
+- `regime` ne vaut 'INITIAL' ou 'ALTERNANCE' que si la page publie DEUX listes
+  de lieux differentes pour la meme annee. Une fiche entierement en alternance
+  n'oppose aucune liste : son regime est 'ANY'.
+
+LANGUES :
+- Codes courts en majuscules : FR, EN, ES, DE, IT, ZH.
+- « cours en anglais ou en francais » donne ["EN","FR"] sur cet enonce-la
+  seulement. Tableau vide quand la page ne dit rien : le vide est une reponse.
+
+LA PHRASE DE CONTRAINTE :
+- Une phrase qui pose une regle au-dessus de la liste — « Paris reste
+  accessible chaque annee, avec au moins une annee obligatoire sur l'un des
+  campus internationaux » — n'est pas un enonce de lieu. Elle va dans
+  `policies`, recopiee telle quelle.
+- N'y mets pas une simple description de campus ni un argument commercial."""
+
 EXTRACTION_PROMPTS: dict[str, str] = {
     "Program_Discovery": PROGRAM_DISCOVERY_EXTRACTION_PROMPT,
     "Pricing": PRICING_EXTRACTION_PROMPT,
@@ -233,6 +300,7 @@ EXTRACTION_PROMPTS: dict[str, str] = {
     "Capacity": CAPACITY_EXTRACTION_PROMPT,
     "SchoolStats": SCHOOL_STATS_EXTRACTION_PROMPT,
     "Accreditation": ACCREDITATION_EXTRACTION_PROMPT,
+    "Campus_Attachment": CAMPUS_ATTACHMENT_EXTRACTION_PROMPT,
 }
 
 

@@ -518,6 +518,171 @@ CATALOG_EXTRACTION_SCHEMA = {
 }
 
 
+# ── Phase 1 · rattachement programme <-> lieu ─────────────────────
+#
+# Tables visees : ProgramCampus (inchangee), ProgramCampusAttachment
+# (@@unique[programCampusId, study_year, regime]) et ProgramPlacement
+# (@@unique[programId, study_year, regime, label]).
+#
+# ## Pourquoi un tableau plat d'ENONCES et pas trois tableaux
+#
+# La regle 1 du fichier — un objet du schema = une ligne future en base — se
+# heurte ici a trois tables. La resoudre en demandant au modele de choisir sa
+# table reviendrait a lui faire trancher `kind`, or c'est precisement ce qu'il
+# ne peut pas savoir : « Shanghai » est un campus d'Em Lyon, « Milan » ne l'est
+# pas, et la fiche les publie dans le meme champ avec le meme separateur.
+#
+# Le modele rend donc UN enonce de lieu par objet — sa forme minimale telle
+# qu'elle est publiee — et l'aiguillage vers les trois tables se fait ensuite,
+# en Python, avec la liste des campus reels de l'ecole. Un objet reste bien une
+# ligne : c'est sa table de destination qui est calculee.
+#
+# ## `zone` est le champ qui rend F8 observable
+#
+# Les deux fiches PGE d'EM Normandie se contredisent entre leur encart et leur
+# section « Campus de rattachement », dans les deux sens a la fois : Le Havre
+# est dans l'encart et absent de la section, Dubai est dans la section et
+# absent de l'encart. Sans `zone`, les deux affirmations arrivent melangees et
+# la contradiction devient invisible — on ne peut plus ni arbitrer, ni compter
+# les desaccords. C'est le seul champ du schema qui n'existe pas pour la base
+# mais pour la mesure.
+CAMPUS_STATEMENT_ZONES = ["FIELD", "INDEX_CARD", "SECTION", "PROSE"]
+
+CAMPUS_STATEMENT_REGIMES = ["ANY", "INITIAL", "ALTERNANCE"]
+
+CAMPUS_ATTACHMENT_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "statements": {
+            "type": "array",
+            "description": (
+                "Un objet par ENONCE DE LIEU elementaire. Une ligne « Dubai, "
+                "Dublin ou Oxford - cours en anglais » vaut TROIS objets, un "
+                "par lieu, portant la meme langue et le meme verbatim."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "program_name": {
+                        "type": "string",
+                        "description": (
+                            "Intitule exact du programme tel qu'il est ecrit "
+                            "sur la page. Jamais un libelle de rubrique."
+                        ),
+                    },
+                    "zone": {
+                        "type": "string",
+                        "enum": CAMPUS_STATEMENT_ZONES,
+                        "description": (
+                            "Ou l'enonce est publie. 'FIELD' : encart a champs "
+                            "nommes de la fiche (etiquette Campus). "
+                            "'INDEX_CARD' : carte de la page d'index. "
+                            "'SECTION' : section « Campus de rattachement », "
+                            "celle qui donne l'annee. 'PROSE' : au fil du "
+                            "texte. Ne devine JAMAIS cette valeur : elle dit "
+                            "d'ou tu lis, pas ce que tu crois."
+                        ),
+                    },
+                    "study_year": {
+                        "type": "integer",
+                        "description": (
+                            "1 pour la 1re annee, 2 pour la 2e... 0 quand "
+                            "l'enonce ne nomme aucune annee — c'est le cas de "
+                            "tout l'encart. Une plage annoncee en bloc "
+                            "(« 4e et 5e annees ») donne un objet par annee."
+                        ),
+                    },
+                    "regime": {
+                        "type": "string",
+                        "enum": CAMPUS_STATEMENT_REGIMES,
+                        "description": (
+                            "'INITIAL' ou 'ALTERNANCE' UNIQUEMENT quand la "
+                            "page publie deux listes de lieux distinctes pour "
+                            "cette annee. 'ANY' partout ailleurs, y compris "
+                            "quand la page dit « formation initiale » sans "
+                            "opposer de seconde liste."
+                        ),
+                    },
+                    "label": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Le lieu TEL QUE LA PAGE L'ECRIT : « Le Havre », "
+                            "« Universite partenaire », « Online », "
+                            "« UniLaSalle Rouen », « International ». Ne "
+                            "traduis pas, ne corrige pas l'orthographe, "
+                            "n'ajoute pas « Campus de ». Une expression que tu "
+                            "ne sais pas decouper (« Paris et New York ou "
+                            "Londres ») reste ENTIERE dans un seul objet. "
+                            "null UNIQUEMENT quand la page nomme une annee et "
+                            "declare explicitement n'en publier aucun lieu."
+                        ),
+                    },
+                    "languages": {
+                        "type": "array",
+                        "description": (
+                            "Langues d'enseignement attachees a CET enonce, en "
+                            "code court majuscule : FR, EN, ES, DE, IT, ZH. "
+                            "« cours en anglais ou en francais » donne "
+                            "['EN','FR']. Tableau vide si la page ne le dit "
+                            "pas pour ce lieu — n'herite jamais de la langue "
+                            "d'une autre annee."
+                        ),
+                        "items": {"type": "string"},
+                    },
+                    "verbatim": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "La ligne source, recopiee telle quelle, sans "
+                            "reformulation. C'est la piece qui permet de "
+                            "verifier l'objet sans rouvrir la page."
+                        ),
+                    },
+                    "source_url": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "URL de la page d'ou vient l'enonce, reprise du "
+                            "marqueur « ## Source: » qui precede le bloc."
+                        ),
+                    },
+                },
+                "required": ["program_name", "zone", "study_year", "regime", "label"],
+            },
+        },
+        "policies": {
+            "type": "array",
+            "description": (
+                "Les phrases qui posent une CONTRAINTE au-dessus de la liste "
+                "des lieux, sans etre elles-memes une liste de lieux. Une "
+                "seule observee sur 51 enonces, celle de l'IBBA. Vide le plus "
+                "souvent."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "program_name": {
+                        "type": "string",
+                        "description": "Programme concerne, meme intitule que dans statements.",
+                    },
+                    "policy_note": {
+                        "type": "string",
+                        "description": (
+                            "La phrase recopiee telle quelle. Elle va dans "
+                            "Program.campus_policy_note, que l'admin lit ; "
+                            "aucune requete ne s'appuie dessus."
+                        ),
+                    },
+                    "source_url": {
+                        "type": ["string", "null"],
+                        "description": "URL de la page qui porte la phrase.",
+                    },
+                },
+                "required": ["program_name", "policy_note"],
+            },
+        },
+    },
+    "required": ["statements"],
+}
+
 # ── Aiguillage par catégorie ──────────────────────────────────────
 #
 # Plancher de qualité par catégorie (voir gemini_client.MODEL_LADDER).
@@ -535,6 +700,7 @@ EXTRACTION_SCHEMAS: dict[str, dict] = {
     "Capacity": CAPACITY_EXTRACTION_SCHEMA,
     "SchoolStats": SCHOOL_STATS_EXTRACTION_SCHEMA,
     "Accreditation": ACCREDITATION_EXTRACTION_SCHEMA,
+    "Campus_Attachment": CAMPUS_ATTACHMENT_EXTRACTION_SCHEMA,
 }
 
 # `min_tier` est un PLANCHER, pas un point de départ. La cascade part toujours
@@ -559,6 +725,12 @@ MIN_TIER_BY_CATEGORY: dict[str, str] = {
     "SchoolStats": "low",
     "Accreditation": "low",
     "Capacity": "low",
+    # Lecture d'encart, pas synthese : le modele recopie une etiquette et sa
+    # valeur, et le seul arbitrage (campus du parc ou lieu d'un tiers) lui est
+    # retire — il est fait en Python avec la liste des campus reels. Rien ici
+    # ne justifie le budget rare des paliers hauts, d'autant que la collecte
+    # groupe plusieurs fiches par appel pour tenir le portillon de 12 s.
+    "Campus_Attachment": "low",
 }
 
 # Catégories dont l'extraction rend un tableau : le pipeline crée alors un

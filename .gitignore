@@ -53,3 +53,6 @@ CLAUDE.md
 
 # Artefacts de build TypeScript (propres a chaque machine)
 *.tsbuildinfo
+
+# Sorties seches et cache de collecte (propres a chaque machine)
+tmp/

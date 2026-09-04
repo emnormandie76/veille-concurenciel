@@ -25,6 +25,7 @@ from backend.ai.gemma_client import (
     GemmaParsingError,
 )
 from backend.tavily_service.key_manager import QuotaExhaustedError
+from backend.pipeline.program_identity import match_program
 from backend.constants import (
     PUBLIC_CONTRIBUTION_CATEGORIES,
     STATUS_FAILED,
@@ -386,21 +387,26 @@ def _fetch_school_programs(school_id: str) -> list[dict]:
 
 def _match_program_name(extracted_name: str, known_programs: list[dict]) -> dict:
     """
-    Fuzzy-match un nom de programme extrait avec les programmes connus.
-    
+    Apparie un nom de programme extrait avec les programmes connus de l'ecole.
+
     Retourne un dict :
     {
         "matched_program_id": str ou None,
         "matched_program_name": str ou None,
         "match_confidence": "exact" | "fuzzy" | "none"
     }
+
+    L'appariement approche est delegue a `match_program`, qui refuse d'apparier
+    des qu'une clause rend plusieurs candidats. Un non-apparie ressort en
+    `unmatched_programs` et l'admin voit le nom sans proposition ; un mauvais
+    appariement lui presente un programme plausible et faux, qu'il valide.
     """
     if not extracted_name or not known_programs:
         return {"matched_program_id": None, "matched_program_name": None, "match_confidence": "none"}
-    
+
     extracted_lower = extracted_name.strip().lower()
-    
-    # Phase 1 : Match exact (insensible à la casse)
+
+    # Phase 1 : Match exact (insensible a la casse)
     for prog in known_programs:
         if prog["name"].strip().lower() == extracted_lower:
             return {
@@ -408,51 +414,17 @@ def _match_program_name(extracted_name: str, known_programs: list[dict]) -> dict
                 "matched_program_name": prog["name"],
                 "match_confidence": "exact"
             }
-    
-    # Phase 2 : Match par inclusion (un nom contient l'autre)
-    for prog in known_programs:
-        prog_lower = prog["name"].strip().lower()
-        if extracted_lower in prog_lower or prog_lower in extracted_lower:
-            return {
-                "matched_program_id": prog["id"],
-                "matched_program_name": prog["name"],
-                "match_confidence": "fuzzy"
-            }
-    
-    # Phase 3 : Match par mots-clés communs (Jaccard similarity >= 0.4)
-    stop_words = {"de", "du", "des", "le", "la", "les", "en", "et", "in", "of", "the", "and", "&", "-", "–"}
-    
-    def tokenize(name: str) -> set:
-        words = set(name.strip().lower().replace("'", " ").replace("'", " ").split())
-        return words - stop_words
-    
-    extracted_tokens = tokenize(extracted_name)
-    if not extracted_tokens:
-        return {"matched_program_id": None, "matched_program_name": None, "match_confidence": "none"}
-    
-    best_match = None
-    best_score = 0.0
-    
-    for prog in known_programs:
-        prog_tokens = tokenize(prog["name"])
-        if not prog_tokens:
-            continue
-        
-        intersection = extracted_tokens & prog_tokens
-        union = extracted_tokens | prog_tokens
-        score = len(intersection) / len(union) if union else 0
-        
-        if score > best_score:
-            best_score = score
-            best_match = prog
-    
-    if best_match and best_score >= 0.4:
+
+    # Phase 2 : appariement approche, borne par les clauses de program_identity.
+    # Toute clause ambigue rend AMBIGU/... et n'apparie rien.
+    _clause, hits = match_program(extracted_name, known_programs)
+    if len(hits) == 1:
         return {
-            "matched_program_id": best_match["id"],
-            "matched_program_name": best_match["name"],
+            "matched_program_id": hits[0]["id"],
+            "matched_program_name": hits[0]["name"],
             "match_confidence": "fuzzy"
         }
-    
+
     return {"matched_program_id": None, "matched_program_name": None, "match_confidence": "none"}
 
 

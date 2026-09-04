@@ -468,3 +468,83 @@ def test_missing_ticket_does_not_crash():
 
         statements = [c[0][0] for c in cur.execute.call_args_list]
         assert not any("DELETE" in s or "UPDATE" in s for s in statements)
+
+
+# --- Appariement des noms de programme ---------------------------------------
+# Les noms ci-dessous sont ceux d'EM Normandie en base le 2026-09-04, recopies
+# tels quels. L'ancienne heuristique (inclusion de sous-chaine, puis Jaccard
+# >= 0.4) en appariait six a tort, silencieusement.
+
+_EN_PROGRAMS = [
+    {"id": "p1", "name": "Bachelor Management"},
+    {"id": "p2", "name": "Bachelor Management International"},
+    {"id": "p3", "name": "International Bachelor in Business Administration"},
+    {"id": "p4", "name": "Master of Science (MSc) - Banking, Finance and FinTech"},
+    {"id": "p5", "name": "Programme Grande École"},
+]
+
+
+def _match(name):
+    from backend.crowdsourcing.processor import _match_program_name
+
+    return _match_program_name(name, _EN_PROGRAMS)
+
+
+def test_match_program_name_garde_les_appariements_justes():
+    """Les conventions d'ecriture du site doivent continuer d'etre reconnues."""
+    assert _match("Bachelor Management")["match_confidence"] == "exact"
+
+    for name, expected in [
+        ("Bachelor en Management", "Bachelor Management"),
+        ("Bachelor en Management en 3 ans", "Bachelor Management"),
+        ("Programme Grande École en 5 ans", "Programme Grande École"),
+        ("MSc Banking, Finance and FinTech",
+         "Master of Science (MSc) - Banking, Finance and FinTech"),
+        ("IBBA (International Bachelor in Business Administration)",
+         "International Bachelor in Business Administration"),
+    ]:
+        result = _match(name)
+        assert result["matched_program_name"] == expected, name
+        assert result["match_confidence"] == "fuzzy"
+
+
+def test_match_program_name_prend_le_bon_frere_et_non_le_premier():
+    """Deux programmes repondent par inclusion : c'est le plus proche qui gagne.
+
+    L'ancienne phase 2 rendait le PREMIER candidat de la liste, triee par nom,
+    donc « Bachelor Management » plutot que « Bachelor Management International ».
+    """
+    for name in (
+        "Bachelor Management International en 1 an",
+        "L'alternance du Bachelor Management International",
+    ):
+        assert _match(name)["matched_program_name"] == "Bachelor Management International", name
+
+
+def test_match_program_name_refuse_un_diplome_different():
+    """Un doctorat ne doit pas etre attache a un bachelor, ni un MSc non plus.
+
+    Ces trois-la passaient : les deux premiers a Jaccard exactement 0.400, le
+    troisieme par inclusion de sous-chaine. Aucun seuil ne les separe des
+    appariements justes, qui valent 0.429 — d'ou le refus par clause fermee.
+    """
+    for name in (
+        "Doctorate in Business Administration",
+        "MSc International Events Management",
+        "Bachelor Management, Data et IA Responsables",
+    ):
+        result = _match(name)
+        assert result["match_confidence"] == "none", f"{name} -> {result}"
+        assert result["matched_program_id"] is None
+
+
+def test_match_program_name_refuse_une_clause_ambigue():
+    """Si plusieurs programmes repondent a la meme clause, on n'apparie rien."""
+    jumeaux = [
+        {"id": "a", "name": "Programme Grande École"},
+        {"id": "b", "name": "Programme Grande Ecole"},
+    ]
+    from backend.crowdsourcing.processor import _match_program_name
+
+    result = _match_program_name("Programme Grande École en 5 ans", jumeaux)
+    assert result["match_confidence"] == "none"

@@ -8,21 +8,19 @@
  * réaffirmer. `app/api/admin/inbox/[id]/attachments/route.ts` est son seul
  * appelant applicatif.
  *
- * Il n'importe ni Prisma, ni Next, ni rien qui parle au réseau. Les deux
- * fonctions qui touchent la base reçoivent leur client transactionnel en
- * paramètre, typé structurellement par `AttachmentTx` : un vrai `tx` Prisma le
- * satisfait, un double d'essai aussi. Ce n'est pas une coquetterie de test,
- * c'est le seul moyen de prouver le module aujourd'hui — la migration
- * `20260904120000_program_campus_attachment` n'étant PAS appliquée,
- * `ProgramCampusAttachment` n'existe pas en base et tout appel qui la vise
- * échoue. La coupure passe donc exactement là où passe la frontière du
- * prouvable :
+ * Il n'importe ni Prisma, ni Next, ni rien qui parle au réseau. Les fonctions
+ * qui touchent la base reçoivent leur client transactionnel en paramètre, typé
+ * structurellement par `AttachmentTx` ou `PolicyNoteTx` : un vrai `tx` Prisma
+ * les satisfait, un double d'essai aussi.
  *
- *   - `resolveAttachmentEdges()` ne lit que `ProgramCampus`, qui existe depuis
- *     `20260901120000_program_campus_refactor` : prouvable contre la vraie base,
- *     et prouvé, dans une transaction volontairement annulée ;
- *   - `applyAttachmentPlan()` vise la table absente : prouvé en test, contre un
- *     double qui enregistre les appels.
+ * La migration `20260904120000_program_campus_attachment` est appliquée depuis
+ * le 15 septembre 2026, et le chemin a écrit pour de vrai par la route : 26
+ * lignes sur un premier ticket, puis 26 `unchanged` et aucune écriture sur un
+ * second ticket portant la même charge. Les arêtes (51) et les
+ * `CapacityRecord` (7) n'ont pas bougé.
+ *
+ * Le même fichier porte, depuis, l'écriture de `Program.campus_policy_note` —
+ * voir la section « Les notes de politique de campus » en fin de fichier.
  *
  * ## La règle qui commande tout le reste
  *
@@ -139,7 +137,12 @@ export interface AttachmentConflict {
     | "absorbed_any"
     | "merged_tracks"
     | "track_disagreement"
-    | "regime_conflict";
+    | "regime_conflict"
+    // Notes de politique de campus
+    | "program_missing"
+    | "program_outside_school"
+    | "merged_notes"
+    | "note_disagreement";
   effect: string;
   program?: string | null;
   campus?: string | null;
@@ -712,6 +715,272 @@ export async function applyAttachmentPlan(
         note: write.note,
         source_url: write.source_url,
       },
+    });
+  }
+  return {
+    created: plan.create.length,
+    updated: plan.update.length,
+    unchanged: plan.unchanged.length,
+  };
+}
+
+// ──────────────────────────────────────────────
+// Le bloc qui oriente un ticket
+// ──────────────────────────────────────────────
+
+/**
+ * Vrai si la charge porte un bloc `campus_attachments`.
+ *
+ * C'est ce qui oriente un ticket `Program_Discovery` : un tel ticket s'écrit
+ * par `PUT /api/admin/inbox/[id]/attachments`, jamais par la validation
+ * `Program_Discovery`. Le formulaire répéteur n'en voit rien et enverrait
+ * `discovered_campuses: []`, que cette validation accepte — le ticket serait
+ * clôturé sans une ligne écrite. La route de validation et l'écran d'Inbox
+ * lisent ce même prédicat.
+ */
+export function hasCampusAttachmentBlock(json: unknown): boolean {
+  return (
+    !!json &&
+    typeof json === "object" &&
+    !Array.isArray(json) &&
+    Array.isArray((json as Record<string, unknown>).campus_attachments)
+  );
+}
+
+// ──────────────────────────────────────────────
+// Les notes de politique de campus
+//
+// `Program.campus_policy_note` : la phrase que la fiche pose AU-DESSUS de la
+// liste par année, et qui la nuance. L'IBBA énumère Paris 1, Dublin 2, Dubaï 3,
+// Oxford 4, puis ouvre par « Paris reste accessible chaque année, avec au moins
+// une année obligatoire sur l'un des campus internationaux ». Les quatre lignes
+// seules se liraient comme un itinéraire imposé ; la note dit qu'il ne l'est pas.
+//
+// Même discipline que les lignes-années, et plus serrée encore :
+//
+//   - le type ne connaît que `program.findUnique` et `program.update`, et
+//     `update` n'accepte que `{ campus_policy_note: string }` : ni `create`, ni
+//     `upsert`, ni `delete`, ni aucune autre colonne de `Program` ;
+//   - `string` et non `string | null` : ce chemin ne peut pas EFFACER une note.
+//     Une fiche qui ne la publie plus ne touche à rien ;
+//   - le programme doit appartenir à l'école du ticket, vérifié ici : une note
+//     n'a pas d'arête pour servir de contrôle d'appartenance ;
+//   - deux fiches d'un même programme qui publient deux phrases différentes
+//     n'écrivent rien (`note_disagreement`) ; la même phrase deux fois en fait
+//     une (`merged_notes`).
+// ──────────────────────────────────────────────
+
+/** Une note du lot, telle que le ticket la porte. */
+export interface PolicyNoteClaim {
+  programId: string;
+  note: string;
+  program: string | null;
+  fiche: string | null;
+}
+
+/** Une note dont le programme a été trouvé, avec la note actuelle en base. */
+export interface ResolvedPolicyNote extends PolicyNoteClaim {
+  current: string | null;
+}
+
+export interface PlannedNoteWrite {
+  programId: string;
+  note: string;
+  program: string | null;
+  fiche: string | null;
+  before?: string;
+}
+
+export interface PolicyNotePlan {
+  create: PlannedNoteWrite[];
+  update: PlannedNoteWrite[];
+  unchanged: PlannedNoteWrite[];
+  conflicts: AttachmentConflict[];
+}
+
+/** Lit le bloc `campus_policy_notes`. Un `programId` est exigé, jamais deviné. */
+export function parsePolicyNoteClaims(raw: unknown): {
+  claims: PolicyNoteClaim[];
+  conflicts: AttachmentConflict[];
+} {
+  const claims: PolicyNoteClaim[] = [];
+  const conflicts: AttachmentConflict[] = [];
+  const container = (raw ?? {}) as Record<string, unknown>;
+  const rows = Array.isArray(container.campus_policy_notes) ? container.campus_policy_notes : [];
+
+  for (const [index, entry] of rows.entries()) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      conflicts.push({
+        type: "malformed_row",
+        detail: `note ${index} : objet attendu`,
+        effect: "aucune note écrite ; l'entrée n'est pas lisible",
+      });
+      continue;
+    }
+    const row = entry as Record<string, unknown>;
+    const program = cleanText(row.program);
+    const fiche = cleanText(row.fiche);
+    const programId = cleanText(row.programId);
+    if (!programId) {
+      conflicts.push({
+        type: "unresolved_reference",
+        program,
+        fiche,
+        detail: `note ${index} : programId est requis`,
+        effect: "aucune note écrite ; ce module ne rapproche pas les noms",
+      });
+      continue;
+    }
+    const note = cleanText(row.note);
+    if (!note) {
+      conflicts.push({
+        type: "malformed_row",
+        program,
+        fiche,
+        programId,
+        detail: `note ${index} : texte vide`,
+        effect: "aucune note écrite ; ce chemin n'efface jamais une note",
+      });
+      continue;
+    }
+    claims.push({ programId, note, program, fiche });
+  }
+  return { claims, conflicts };
+}
+
+/** Une même phrase pour un programme en fait une ; deux phrases n'en font aucune. */
+export function foldPolicyNotes(claims: PolicyNoteClaim[]): {
+  claims: PolicyNoteClaim[];
+  conflicts: AttachmentConflict[];
+} {
+  const buckets = new Map<string, PolicyNoteClaim[]>();
+  for (const claim of claims) {
+    const bucket = buckets.get(claim.programId);
+    if (bucket) bucket.push(claim);
+    else buckets.set(claim.programId, [claim]);
+  }
+
+  const kept: PolicyNoteClaim[] = [];
+  const conflicts: AttachmentConflict[] = [];
+  for (const bucket of buckets.values()) {
+    const first = bucket[0];
+    if (bucket.length === 1) {
+      kept.push(first);
+      continue;
+    }
+    const fiches = [...new Set(bucket.map((c) => c.fiche).filter((f): f is string => !!f))].sort();
+    if (new Set(bucket.map((c) => c.note)).size > 1) {
+      conflicts.push({
+        type: "note_disagreement",
+        program: first.program,
+        fiches,
+        effect: "aucune note écrite ; deux fiches du même programme publient deux phrases",
+      });
+      continue;
+    }
+    kept.push(first);
+    conflicts.push({
+      type: "merged_notes",
+      program: first.program,
+      fiches,
+      effect: "une seule note écrite ; les fiches publient la même phrase",
+    });
+  }
+  return { claims: kept, conflicts };
+}
+
+/** Lecture puis fusion, sans base. */
+export function foldPolicyNoteClaims(raw: unknown): {
+  claims: PolicyNoteClaim[];
+  conflicts: AttachmentConflict[];
+} {
+  const parsed = parsePolicyNoteClaims(raw);
+  const folded = foldPolicyNotes(parsed.claims);
+  return { claims: folded.claims, conflicts: [...parsed.conflicts, ...folded.conflicts] };
+}
+
+export interface PolicyNoteTx {
+  program: {
+    findUnique(args: {
+      where: { id: string };
+      select: { id: true; schoolId: true; campus_policy_note: true };
+    }): Promise<{ id: string; schoolId: string; campus_policy_note: string | null } | null>;
+    update(args: {
+      where: { id: string };
+      data: { campus_policy_note: string };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+  };
+}
+
+/**
+ * Trouve chaque programme et sa note actuelle. Un programme absent, ou d'une
+ * autre école que le ticket, n'écrit rien.
+ */
+export async function resolvePolicyNotePrograms(
+  tx: PolicyNoteTx,
+  claims: PolicyNoteClaim[],
+  schoolId: string | null
+): Promise<{ resolved: ResolvedPolicyNote[]; conflicts: AttachmentConflict[] }> {
+  const resolved: ResolvedPolicyNote[] = [];
+  const conflicts: AttachmentConflict[] = [];
+  for (const claim of claims) {
+    const program = await tx.program.findUnique({
+      where: { id: claim.programId },
+      select: { id: true, schoolId: true, campus_policy_note: true },
+    });
+    if (!program) {
+      conflicts.push({
+        type: "program_missing",
+        program: claim.program,
+        fiche: claim.fiche,
+        programId: claim.programId,
+        effect: "aucune note écrite ; ce programme n'existe pas et ce chemin n'en crée aucun",
+      });
+      continue;
+    }
+    if (!schoolId || program.schoolId !== schoolId) {
+      conflicts.push({
+        type: "program_outside_school",
+        program: claim.program,
+        fiche: claim.fiche,
+        programId: claim.programId,
+        effect: "aucune note écrite ; ce programme n'appartient pas à l'école du ticket",
+      });
+      continue;
+    }
+    resolved.push({ ...claim, current: program.campus_policy_note });
+  }
+  return { resolved, conflicts };
+}
+
+/** create si la base n'a pas de note, unchanged si elle a la même, update avec l'avant sinon. */
+export function planPolicyNoteWrites(resolved: ResolvedPolicyNote[]): PolicyNotePlan {
+  const plan: PolicyNotePlan = { create: [], update: [], unchanged: [], conflicts: [] };
+  for (const claim of resolved) {
+    const write: PlannedNoteWrite = {
+      programId: claim.programId,
+      note: claim.note,
+      program: claim.program,
+      fiche: claim.fiche,
+    };
+    if (claim.current === null) plan.create.push(write);
+    else if (claim.current === claim.note) plan.unchanged.push(write);
+    else plan.update.push({ ...write, before: claim.current });
+  }
+  return plan;
+}
+
+/** Un `update` par note à créer ou à changer. Rien pour les inchangées. */
+export async function applyPolicyNotePlan(
+  tx: PolicyNoteTx,
+  plan: PolicyNotePlan
+): Promise<{ created: number; updated: number; unchanged: number }> {
+  for (const write of [...plan.create, ...plan.update]) {
+    await tx.program.update({
+      where: { id: write.programId },
+      data: { campus_policy_note: write.note },
+      select: { id: true },
     });
   }
   return {

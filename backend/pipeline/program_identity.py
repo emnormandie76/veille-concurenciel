@@ -33,6 +33,10 @@ decoupent simplement pas au meme endroit. Le site decoupe par VOIE D'ACCES
 
 **1. `fold_campus_name` — la cle d'un campus, des deux cotes.**
 
+Definie dans `campus_attachment.py`, qui s'en sert depuis que la liste des
+campus du collecteur vient de la table `Campus`, et reexportee ici : le
+collecteur et l'appariement lisent un nom de campus par la meme porte.
+
 `fold_label()` replie deja les accents et la casse. Il ne suffit pas ici, pour
 deux raisons mesurees sur la base reelle :
 
@@ -130,16 +134,14 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable, Optional
 
-from backend.pipeline.campus_attachment import fold_label
+from backend.pipeline.campus_attachment import fold_campus_name, fold_label
 
-# Toute la plage des tirets Unicode, ramenee au tiret ASCII. U+2011 (trait
-# d'union insecable) est le cas reel : la base ecrit « Campus Saint-Etienne »
-# avec lui, et NFD ne le touche pas.
+# Toute la plage des tirets Unicode, ramenee au tiret ASCII, pour les NOMS DE
+# PROGRAMME. Les noms de campus passent par `fold_campus_name`, qui fait le meme
+# repli.
 _DASHES = re.compile(r"[‐-―−]")
 # Apostrophes typographiques — « l'Innovation » des Masteres Specialises.
 _APOSTROPHES = re.compile(r"[‘’ʼ]")
-# Le mot « campus » quand il fait partie du NOM du campus, aux deux bords.
-_CAMPUS_WORD = re.compile(r"^campus\s+|\s+campus$")
 # La base ecrit « Master of Science (MSc) - X », le site « MSc X ».
 _DEGREE_HEAD = re.compile(r"^master of science \(msc\)\s*-?\s*")
 _NON_ALNUM = re.compile(r"[^0-9a-z]+")
@@ -171,22 +173,6 @@ MATCH_ACRONYM = "A2"
 MATCH_VARIANT = "B"
 MATCH_ABSENT = "ABSENT"
 MATCH_AMBIGUOUS = "AMBIGU"
-
-
-def fold_campus_name(name: Optional[str]) -> str:
-    """
-    Cle d'un nom de campus, applicable des DEUX cotes.
-
-    >>> fold_campus_name("Lyon campus")
-    'lyon'
-    >>> fold_campus_name("Campus Bhubaneswar")
-    'bhubaneswar'
-    >>> fold_campus_name("Campus Saint‑Etienne") == fold_campus_name("Saint-Etienne")
-    True
-    """
-    if not name:
-        return ""
-    return _CAMPUS_WORD.sub("", _DASHES.sub("-", fold_label(name))).strip()
 
 
 def canon_program_name(name: Optional[str]) -> tuple[str, ...]:

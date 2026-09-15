@@ -65,6 +65,23 @@ autant que les variantes saines — et il en invente un. Le nombre ne mesure rie
 Ce qui compte : les champs qualitatifs remplis et la conformité des intitulés au
 catalogue.
 
+## Le rattachement campus, après la découverte
+
+Le rapport Research ne dit pas quelle formation est enseignée sur quel campus :
+cette donnée vit dans l'encart des fiches du site. `run_phase1_research()` lance
+donc, après la découverte et quel qu'en soit le sort, la collecte de
+`backend/pipeline/campus_attachment_collector.py` : /map enraciné sur la page
+catalogue trouvée plus haut, /extract des fiches, extraction Gemini, lignes
+confrontées aux `Program`, `Campus` et arêtes RÉELS de l'école.
+
+Elle produit au plus un ticket `Program_Discovery` portant `campus_attachments`,
+en `Pending_Admin` : rien n'est écrit sans validation admin. Et ce ticket n'est
+déposé que si le plan de la route a quelque chose à créer ou à mettre à jour —
+une école déjà à jour ne remplit pas l'Inbox à chaque passe. Elle ne dépense
+rien quand l'école n'a aucun `Program` en base (EMLV, Essec), aucun `Campus`,
+ou aucune page catalogue. Son échec ne fait jamais échouer la Phase 1 : il
+remonte dans `campus_attachments` du résultat.
+
 Référence : dossier « Le rapport avant le schéma », sections 03, 04 et 11.
 """
 
@@ -246,6 +263,84 @@ def run_phase1_research(
 ) -> dict:
     """
     Orchestrateur complet de la Phase 1 via Tavily Research pour une école.
+
+    La découverte d'abord, inchangée ; puis le rattachement campus, dont le
+    résumé part dans `campus_attachments`. Le second n'est jamais lancé en
+    `dry_run` : il consommerait des crédits réels.
+    """
+    context: dict = {}
+    result = _run_program_discovery(school_id, key_manager, dry_run, progress_callback, context)
+    if dry_run or "school" not in context:
+        return result
+    result["campus_attachments"] = _run_campus_attachment_step(
+        school_id, key_manager, context, progress_callback
+    )
+    return result
+
+
+def _run_campus_attachment_step(
+    school_id: str,
+    key_manager,
+    context: dict,
+    progress_callback: Callable[[dict], None] | None,
+) -> dict:
+    """
+    Le rattachement campus d'une école : au plus un ticket, jamais d'exception.
+
+    L'état de la base est relu ici, après la découverte : la liste des campus
+    passée au collecteur est celle de la table `Campus`, et le plan qui décide
+    du dépôt compare aux lignes-années déjà écrites.
+    """
+    from backend.db import get_db_connection
+    from backend.pipeline.campus_attachment_collector import (
+        LiveCollectorIO,
+        insert_attachment_ticket,
+        read_school_snapshot,
+        run_campus_attachment_step,
+    )
+
+    school_name = context["school"]["name"]
+
+    def progress(action: str) -> None:
+        if progress_callback:
+            progress_callback({"current_action": action, "school": school_name, "category": CATEGORY})
+
+    def emit(payload: dict, urls: list[str]) -> str:
+        with get_db_connection() as conn:
+            return insert_attachment_ticket(conn, school_id, payload, urls)
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                snapshot = read_school_snapshot(cur, school_id)
+        if snapshot is None:
+            return {"status": "skipped", "reason": "school_not_found", "ticket_id": None}
+        return run_campus_attachment_step(
+            snapshot,
+            LiveCollectorIO(key_manager),
+            context.get("catalog_urls") or [],
+            emit,
+            progress=progress,
+        )
+    except Exception as e:
+        # La découverte a déjà rendu son résultat : ce pas ne doit pas le faire
+        # échouer après coup. L'échec est rendu, pas avalé.
+        logger.error("❌ Rattachement campus abandonné pour %s : %s", school_name, e)
+        return {"status": "failed", "error": str(e)[:400], "ticket_id": None}
+
+
+def _run_program_discovery(
+    school_id: str,
+    key_manager,
+    dry_run: bool,
+    progress_callback: Callable[[dict], None] | None,
+    context: dict,
+) -> dict:
+    """
+    La découverte des campus et programmes — la Phase 1 telle qu'elle était.
+
+    `context` reçoit l'école lue en base et les pages catalogue trouvées : le
+    rattachement campus en a besoin, et les relire coûterait un /search.
     """
     from backend.db import get_db_connection
 
@@ -275,6 +370,7 @@ def run_phase1_research(
             school_name = school["name"]
             official_domain = school["official_domain"]
             logger.info(f"📚 École: {school_name} ({official_domain})")
+            context["school"] = dict(school)
 
     # ── 2. Passe catalogue (facultative) ────────────────────────────
     catalog_titles: list[str] = []
@@ -289,6 +385,7 @@ def run_phase1_research(
         catalog = fetch_catalog(school_name, official_domain, key_manager)
         if catalog and catalog.has_content:
             catalog_urls = catalog.urls
+            context["catalog_urls"] = list(catalog.urls)
             catalog_titles = _extract_catalog_titles(catalog.content, school_name)
         else:
             logger.info(

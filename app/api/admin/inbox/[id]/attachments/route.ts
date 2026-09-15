@@ -23,17 +23,17 @@
  * deux dans la même fonction, c'est attendre la modification qui alignera l'un
  * sur l'autre « par symétrie ».
  *
- * **3. Tant que la migration n'est pas appliquée, cette route est inerte.**
- * `ProgramCampusAttachment` existe dans le client Prisma et pas en base : tout
- * appel qui la vise échoue. Placé dans `validateProgramDiscovery`, cet échec
- * ferait échouer la transaction ENTIÈRE et donc les upserts de Campus, Program
- * et ProgramCampus qui, eux, fonctionnent. Une table absente casserait le seul
- * chemin d'écriture qui marche. Ici, rien ne se produit tant que personne
- * n'appelle.
+ * **3. Une écriture neuve ne doit pas pouvoir faire tomber une ancienne.**
+ * Placée dans `validateProgramDiscovery`, une erreur sur la table fille ferait
+ * échouer la transaction ENTIÈRE, donc les upserts de Campus, Program et
+ * ProgramCampus. C'est ce qui s'est mesuré tant que la migration n'était pas
+ * appliquée (`P2021`) ; elle l'est depuis le 15 septembre 2026, la séparation
+ * reste.
  *
  * Le précédent est dans le dépôt : `create-programs/route.ts` est déjà une
  * route sœur qui agit sur le même ticket, avec le même `guardAuth` et la même
- * `prisma.$transaction`.
+ * `prisma.$transaction`. Et `validate/route.ts` refuse désormais un ticket qui
+ * porte `campus_attachments`, en nommant cette route.
  *
  * ## Ce que la route garantit
  *
@@ -41,6 +41,12 @@
  * aucune ligne n'est supprimée. Tout ce qui n'est pas écrit est nommé dans
  * `conflicts`, et tout ce qui reste en base sans être réaffirmé est nommé dans
  * `stale`. Les règles elles-mêmes sont dans `lib/campus-attachment.ts`.
+ *
+ * Le même ticket peut porter `campus_policy_notes` : la note de politique de
+ * campus d'un programme EXISTANT de l'école du ticket. Le type `PolicyNoteTx`
+ * n'ouvre que `program.findUnique` et `program.update` sur cette seule
+ * colonne, sans jamais l'effacer. Aucun `Program` ni `Campus` n'est créé par
+ * cette route.
  */
 
 import { NextResponse } from "next/server";
@@ -49,11 +55,16 @@ import { guardAuth } from "@/lib/auth";
 import { STATUS_REJECTED, STATUS_VALIDATED } from "@/lib/contribution";
 import {
   applyAttachmentPlan,
+  applyPolicyNotePlan,
   foldAttachmentClaims,
+  foldPolicyNoteClaims,
   planAttachmentWrites,
+  planPolicyNoteWrites,
   readExistingAttachments,
   resolveAttachmentEdges,
+  resolvePolicyNotePrograms,
   type AttachmentTx,
+  type PolicyNoteTx,
 } from "@/lib/campus-attachment";
 
 export async function PUT(
@@ -112,12 +123,14 @@ export async function PUT(
     }
 
     // Les trois règles déjà tranchées, hors base : lecture, absorption ANY,
-    // fusion des affirmations identiques.
+    // fusion des affirmations identiques. Et, pour les notes, lecture et fusion.
     const folded = foldAttachmentClaims(rawJson);
+    const foldedNotes = foldPolicyNoteClaims(rawJson);
 
     const result = await prisma.$transaction(
       async (tx) => {
         const db: AttachmentTx = tx;
+        const noteDb: PolicyNoteTx = tx;
 
         // LA règle : résolution par findUnique, refus si l'arête manque.
         const { resolved, conflicts: edgeConflicts } = await resolveAttachmentEdges(
@@ -129,6 +142,14 @@ export async function PUT(
         const plan = planAttachmentWrites(resolved, existing);
         const counts = await applyAttachmentPlan(db, plan);
 
+        const { resolved: notes, conflicts: programConflicts } = await resolvePolicyNotePrograms(
+          noteDb,
+          foldedNotes.claims,
+          ticket.schoolId
+        );
+        const notePlan = planPolicyNoteWrites(notes);
+        const noteCounts = await applyPolicyNotePlan(noteDb, notePlan);
+
         await tx.contributionInbox.update({
           where: { id: ticket.id },
           data: { status: STATUS_VALIDATED },
@@ -137,20 +158,36 @@ export async function PUT(
         return {
           counts,
           plan,
-          conflicts: [...folded.conflicts, ...edgeConflicts, ...plan.conflicts],
+          noteCounts,
+          notePlan,
+          conflicts: [
+            ...folded.conflicts,
+            ...edgeConflicts,
+            ...plan.conflicts,
+            ...foldedNotes.conflicts,
+            ...programConflicts,
+          ],
         };
       },
       { timeout: 60000 }
     );
 
     return NextResponse.json({
-      message: `${result.counts.created} ligne(s) créée(s), ${result.counts.updated} mise(s) à jour, ${result.counts.unchanged} inchangée(s)`,
+      message:
+        `${result.counts.created} ligne(s) créée(s), ${result.counts.updated} mise(s) à jour, ` +
+        `${result.counts.unchanged} inchangée(s) ; ${result.noteCounts.created + result.noteCounts.updated} note(s) écrite(s)`,
       written: result.counts,
       created: result.plan.create,
       updated: result.plan.update,
       unchanged: result.plan.unchanged,
       // Conservées, jamais supprimées : voir l'en-tête de lib/campus-attachment.ts.
       stale: result.plan.stale,
+      policy_notes: {
+        written: result.noteCounts,
+        created: result.notePlan.create,
+        updated: result.notePlan.update,
+        unchanged: result.notePlan.unchanged,
+      },
       conflicts: result.conflicts,
     });
   } catch (err) {

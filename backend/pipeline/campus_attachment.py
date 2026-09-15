@@ -6,8 +6,19 @@ sortie du schema `Campus_Attachment`, la liste des campus REELS d'une ecole, et
 le markdown des pages deja lues, et il rend les lignes que l'on ecrirait dans
 `ProgramCampus`, `ProgramCampusAttachment` et `ProgramPlacement`.
 
-Il n'est branche nulle part. `backend/scripts/simulate_campus_attachment.py`
-est son seul appelant, et il ecrit des fichiers JSON.
+Il ne fait aucun appel lui-meme. `backend/pipeline/campus_attachment_collector.py`
+l'enchaine a la lecture des pages, pour la sortie seche
+(`backend/scripts/simulate_campus_attachment.py`) comme pour la Phase 1.
+
+## La liste des campus vient de la table `Campus`
+
+`build_rows()` recoit les noms tels que la base les ecrit, et c'est ce qui
+oblige a replier la cle d'un campus plus fort que celle d'un libelle :
+`fold_campus_name()` ramene les tirets Unicode au tiret ASCII et retire le mot
+« campus » aux deux bords. Sans elle, « Campus Saint‑Etienne » (U+2011) et
+« Lyon campus » ne reconnaitraient jamais « Saint-Etienne » ni « Lyon ». Deux
+noms de la base qui se replient sur la meme cle ne reconnaissent plus rien :
+ils sont rendus dans `campus_key_collisions`, jamais fusionnes en silence.
 
 ## Trois regles, puis deux gardes
 
@@ -142,6 +153,15 @@ _WHITESPACE = re.compile(r"\s+")
 # « Quebec (Region) » garde ses parentheses internes, qui portent du sens.
 _EDGE_PUNCT = re.compile(r"^[\s\-–—,;:.·•*]+|[\s\-–—,;:.·•*]+$")
 
+# Toute la plage des tirets Unicode, plus le signe moins, ramenee au tiret
+# ASCII. U+2011 (trait d'union insecable) est le cas reel : la base ecrit
+# « Campus Saint‑Etienne » avec lui, et NFD ne le touche pas — ce n'est pas un
+# diacritique, aucun repli d'accents ne le rattrape.
+_DASHES = re.compile(r"[‐-―−]")
+# Le mot « campus » quand il fait partie du NOM du campus, aux deux bords :
+# Em Lyon ecrit en base « Campus Bhubaneswar » comme « Lyon campus ».
+_CAMPUS_WORD = re.compile(r"^campus\s+|\s+campus$")
+
 # Marqueurs d'enseignement a distance. Cherches en sous-chaine : « Blended
 # learning E-learning » est une valeur reellement publiee par EM Normandie.
 _REMOTE_MARKERS = (
@@ -219,6 +239,27 @@ def fold_label(label: Optional[str]) -> str:
     return stripped.casefold()
 
 
+def fold_campus_name(name: Optional[str]) -> str:
+    """
+    Cle d'un nom de campus, applicable des DEUX cotes : le nom que la table
+    `Campus` porte et le libelle que la fiche publie.
+
+    `fold_label()` plus deux replis mesures sur la base reelle : les tirets
+    Unicode ramenes au tiret ASCII, et le mot « campus » retire aux deux bords.
+    « Le Havre » reste un seul lieu : seul un « campus » de bord est retire.
+
+    >>> fold_campus_name("Lyon campus")
+    'lyon'
+    >>> fold_campus_name("Campus Bhubaneswar")
+    'bhubaneswar'
+    >>> fold_campus_name("Campus Saint‑Étienne") == fold_campus_name("Saint-Etienne")
+    True
+    """
+    if not name:
+        return ""
+    return _CAMPUS_WORD.sub("", _DASHES.sub("-", fold_label(name))).strip()
+
+
 def _accent_count(text: str) -> int:
     """Nombre de diacritiques d'une chaine — sert a departager deux orthographes."""
     return sum(1 for ch in unicodedata.normalize("NFD", text) if unicodedata.combining(ch))
@@ -293,6 +334,9 @@ def match_campus(label: Optional[str], campus_folds: dict[str, str]) -> Optional
     """
     Nom du campus du parc que ce libelle designe, ou None.
 
+    `campus_folds` est cle par `fold_campus_name()`, et le libelle l'est de
+    meme : c'est ce qui fait reconnaitre « Lyon » par « Lyon campus ».
+
     Deux passes, dans cet ordre :
 
       1. la cle repliee telle quelle — « DUBAI » reconnait « Dubai » ;
@@ -311,15 +355,18 @@ def match_campus(label: Optional[str], campus_folds: dict[str, str]) -> Optional
     folded = fold_label(label)
     if not folded:
         return None
-    if folded in campus_folds:
-        return campus_folds[folded]
+    key = fold_campus_name(label)
+    if key in campus_folds:
+        return campus_folds[key]
 
+    # La reduction d'affixes lit le libelle replie ordinaire : « campus de »
+    # est un prefixe a oter entier, pas un mot « campus » de bord.
     reduced = folded
     for prefix in _CAMPUS_PREFIXES:
         if reduced.startswith(prefix):
             reduced = reduced[len(prefix):].strip()
             break
-    reduced = fold_label(_TRAILING_CLAUSE.sub("", reduced))
+    reduced = fold_campus_name(_TRAILING_CLAUSE.sub("", reduced))
     if reduced and reduced in campus_folds:
         return campus_folds[reduced]
     return None
@@ -589,7 +636,9 @@ def split_multi_campus_label(
     >>> split_multi_campus_label("Lyon, France", folds)
     []
     """
-    folded = fold_label(label)
+    # Tirets unifies comme dans les cles : « Saint‑Etienne » ecrit avec U+2011
+    # doit rester un seul mot, egal a la cle « saint-etienne ».
+    folded = _DASHES.sub("-", fold_label(label))
     if not folded or not campus_folds:
         return []
     words = [w for w in _INNER_SEPARATOR.sub(" ", folded).split(" ") if w]
@@ -880,10 +929,9 @@ def build_program_rows(
     """
     Lignes des trois tables pour UN programme.
 
-    `campus_folds` : cle repliee -> nom du campus tel que l'ecole l'ecrit. C'est
-    la liste des campus REELS, passee en parametre explicite. Demain elle
-    viendra de la table `Campus` ; aujourd'hui c'est ce qui debloque `kind`
-    sans la base.
+    `campus_folds` : cle `fold_campus_name()` -> nom du campus tel que la table
+    `Campus` l'ecrit. C'est la liste des campus REELS ; `campusName` rend donc
+    le nom de la base, pas celui de la page.
     """
     section = [s for s in statements if s.zone == SECTION_ZONE]
     fieldish = [s for s in statements if s.zone in FIELD_ZONES]
@@ -918,7 +966,7 @@ def build_program_rows(
         if names:
             for name in names:
                 entry = campus_seen.setdefault(
-                    fold_label(name), {"zones": set(), "spellings": [], "source_url": None}
+                    fold_campus_name(name), {"zones": set(), "spellings": [], "source_url": None}
                 )
                 entry["zones"].add(stmt.zone)
                 entry["spellings"].append(name)
@@ -938,12 +986,12 @@ def build_program_rows(
     # ── F8 : desaccords entre l'encart et la section ─────────────────
     if has_section:
         section_folds = {
-            fold_label(name)
+            fold_campus_name(name)
             for s in section
             for name in campus_names_of(s.label, campus_folds)
         }
         field_folds = {
-            fold_label(name)
+            fold_campus_name(name)
             for s in fieldish
             for name in campus_names_of(s.label, campus_folds)
         }
@@ -974,7 +1022,7 @@ def build_program_rows(
         if matched is None:
             continue
         grouped.setdefault(
-            (fold_label(matched), stmt.study_year, stmt.regime), []
+            (fold_campus_name(matched), stmt.study_year, stmt.regime), []
         ).append(stmt)
 
     for (fold, year, regime), group in grouped.items():
@@ -1087,18 +1135,29 @@ def build_rows(
     Sortie complete pour une ecole : les lignes des trois tables, programme par
     programme, plus ce qui a ete rejete et ce qui se contredit.
 
-    `campuses` est la liste des campus REELS de l'ecole, passee explicitement.
+    `campuses` est la liste des campus REELS de l'ecole : les noms de la table
+    `Campus`, tels quels. `--campus` ne sert plus qu'a rejouer le cache.
+
+    Deux noms qui se replient sur la meme cle — « Paris » et « Paris campus »
+    pour une meme ecole, que `@@unique([schoolId, name])` laisse coexister —
+    ne reconnaissent plus RIEN : un choix entre les deux serait un
+    appariement devine. Ils sont rendus dans `campus_key_collisions`, et leurs
+    lignes tombent en ProgramPlacement, le sens sur.
 
     `pages` est le markdown des pages LUES, {url: texte}. Quand il est fourni,
     les deux gardes de `apply_page_guards` s'appliquent : le modele propose, la
     page dispose. Quand il ne l'est pas, la sortie est celle d'avant les
     gardes — c'est ce qui permet de mesurer l'ecart plutot que de l'annoncer.
     """
-    campus_folds: dict[str, str] = {}
+    names_by_key: dict[str, list[str]] = {}
     for name in campuses:
-        folded = fold_label(name)
-        if folded:
-            campus_folds.setdefault(folded, name.strip())
+        key = fold_campus_name(name)
+        if key:
+            names_by_key.setdefault(key, [])
+            if name.strip() not in names_by_key[key]:
+                names_by_key[key].append(name.strip())
+    campus_folds = {key: names[0] for key, names in names_by_key.items() if len(names) == 1}
+    collisions = {key: sorted(names) for key, names in sorted(names_by_key.items()) if len(names) > 1}
 
     statements, rejected = parse_statements(raw)
 
@@ -1128,7 +1187,7 @@ def build_rows(
                 build_program_rows(name, [], campus_folds, note)
             )
 
-    return {
+    output = {
         "campuses_supplied": [campus_folds[f] for f in sorted(campus_folds)],
         "programs": programs,
         "rejected_statements": rejected,
@@ -1147,3 +1206,8 @@ def build_rows(
             "conflicts": sum(len(p["conflicts"]) for p in programs),
         },
     }
+    # Rendu seulement quand il y a lieu : une sortie sans collision garde la
+    # forme exacte d'avant, ce qui laisse comparer les rejeux octet pour octet.
+    if collisions:
+        output["campus_key_collisions"] = collisions
+    return output

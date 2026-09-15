@@ -1,0 +1,2710 @@
+{
+ "_doc": "Cas partages par test/test_attachment_plan.py et test/campus-attachment.test.ts. Chaque cas fixe le plan que la route calculerait ; les deux implementations doivent le rendre. Les attendus sont ecrits a la main. 'corpus' renvoie au bloc corpus : les 33 affirmations du 4 septembre avec les identifiants reels, et les 26 lignes ecrites le 15 septembre 2026.",
+ "corpus": {
+  "school_id": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+  "edges": [
+   {
+    "id": "59e188e5-0ef1-4c4c-95e6-753e91d822ef",
+    "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+    "campusId": "9909ac50-c040-4938-af47-30d2cce6928e"
+   },
+   {
+    "id": "b26beb3d-610f-431e-ba14-8c5b995fba93",
+    "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+    "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb"
+   },
+   {
+    "id": "c0b3c2cd-2ab5-420e-a00d-089f6f2dfb63",
+    "programId": "3d3708b9-513f-4a09-a868-f6605c74f8b6",
+    "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1"
+   },
+   {
+    "id": "606a6336-0571-4f3f-8fcc-895a6a879bd7",
+    "programId": "3d3708b9-513f-4a09-a868-f6605c74f8b6",
+    "campusId": "9909ac50-c040-4938-af47-30d2cce6928e"
+   },
+   {
+    "id": "1ce65021-9ad9-4ce4-90e2-de875c30694d",
+    "programId": "3d3708b9-513f-4a09-a868-f6605c74f8b6",
+    "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb"
+   },
+   {
+    "id": "5a7e2815-b22e-42b7-8801-7c1cfc5271fe",
+    "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+    "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb"
+   },
+   {
+    "id": "a63f6804-eb2c-492f-b65a-876b1ef92dec",
+    "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+    "campusId": "2e803127-a3c5-4ba5-83e4-d3cbe0f3215c"
+   },
+   {
+    "id": "0a2e0004-6052-49d5-8153-15b3f4c17941",
+    "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+    "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f"
+   },
+   {
+    "id": "bc0bbb47-be92-4e09-9176-e68ebdb84bc9",
+    "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+    "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe"
+   },
+   {
+    "id": "ca13bf6f-36a2-4326-a67b-887721b7a2d1",
+    "programId": "3dd8a8a0-995f-46de-ba68-4d452af60fd3",
+    "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1"
+   },
+   {
+    "id": "7721a973-3c62-4cc2-b257-4582630ba76b",
+    "programId": "083f2111-776b-4196-8a09-ffc2c902d202",
+    "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1"
+   },
+   {
+    "id": "c59397c8-df54-41b0-bac1-367329fea246",
+    "programId": "083f2111-776b-4196-8a09-ffc2c902d202",
+    "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe"
+   },
+   {
+    "id": "f5e7ee16-e7b7-4433-a123-1e746550aaf9",
+    "programId": "30fa2259-4bdc-436b-809d-c0923298619a",
+    "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f"
+   },
+   {
+    "id": "2f60f4dc-de1d-4d30-8c40-21478b6a6017",
+    "programId": "30fa2259-4bdc-436b-809d-c0923298619a",
+    "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe"
+   },
+   {
+    "id": "6baaacbf-e2be-445b-b3cf-80008620a998",
+    "programId": "0f596da4-1035-4175-8eaf-56d46ea0fbf1",
+    "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1"
+   },
+   {
+    "id": "7d165473-3099-4d8c-8b28-9342f59dbdda",
+    "programId": "0f596da4-1035-4175-8eaf-56d46ea0fbf1",
+    "campusId": "9909ac50-c040-4938-af47-30d2cce6928e"
+   },
+   {
+    "id": "feebfc73-0c42-419b-9682-38dd7b979011",
+    "programId": "0f596da4-1035-4175-8eaf-56d46ea0fbf1",
+    "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb"
+   },
+   {
+    "id": "e872abff-5fe2-4cca-bee1-1b8545257b28",
+    "programId": "c71c6fa0-21dc-4887-915d-53a68906daf3",
+    "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe"
+   },
+   {
+    "id": "9fa6350d-3c04-47c4-91e2-ea4be726c547",
+    "programId": "ce760db9-6e22-4be7-87af-3f328c2cb917",
+    "campusId": "9909ac50-c040-4938-af47-30d2cce6928e"
+   },
+   {
+    "id": "f0b7b5b7-5ca3-4d69-88e3-125a73055640",
+    "programId": "a199418e-babc-42dc-a44e-debea560f55d",
+    "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1"
+   },
+   {
+    "id": "144fd28f-3f42-4341-baf5-90fc40097482",
+    "programId": "6479669e-8b51-4d1c-9031-1d33e1069b0a",
+    "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb"
+   },
+   {
+    "id": "b3d21897-63b8-4012-b766-8ceb88065126",
+    "programId": "7765b8b5-cf90-46fe-9252-341efed9c087",
+    "campusId": "9909ac50-c040-4938-af47-30d2cce6928e"
+   },
+   {
+    "id": "332ff33b-5baa-418e-9c05-0a00bd1b14a6",
+    "programId": "8acf9637-ab24-4d5d-84ad-da41a8e18ab9",
+    "campusId": "9909ac50-c040-4938-af47-30d2cce6928e"
+   },
+   {
+    "id": "5fa5dce9-acb8-4132-baa6-08b015f24801",
+    "programId": "bf622298-4b93-483d-a59e-38ffd3cac6ee",
+    "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb"
+   },
+   {
+    "id": "3f51b008-6a03-4012-beaf-f6f79e7dad7e",
+    "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+    "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1"
+   },
+   {
+    "id": "82a9c1d8-4b04-4290-93a0-6286e1c45185",
+    "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+    "campusId": "9909ac50-c040-4938-af47-30d2cce6928e"
+   },
+   {
+    "id": "fa6825e4-0167-4968-a9c0-3e7cc7e559ad",
+    "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+    "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb"
+   },
+   {
+    "id": "3c863d01-f77c-41e2-8132-8f8adc2c4cbf",
+    "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+    "campusId": "2e803127-a3c5-4ba5-83e4-d3cbe0f3215c"
+   },
+   {
+    "id": "ee49f6ce-66f0-4f3b-9620-8597a92cd262",
+    "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+    "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f"
+   },
+   {
+    "id": "d0cf9b5b-86bc-4cf1-a37c-9cf3824324ba",
+    "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+    "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe"
+   }
+  ],
+  "programs": [
+   {
+    "id": "38dd257f-e501-47d2-8e0b-71af000106cc",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "3d3708b9-513f-4a09-a868-f6605c74f8b6",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "3dd8a8a0-995f-46de-ba68-4d452af60fd3",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "083f2111-776b-4196-8a09-ffc2c902d202",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "30fa2259-4bdc-436b-809d-c0923298619a",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "0f596da4-1035-4175-8eaf-56d46ea0fbf1",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "c71c6fa0-21dc-4887-915d-53a68906daf3",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "ce760db9-6e22-4be7-87af-3f328c2cb917",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "a199418e-babc-42dc-a44e-debea560f55d",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "6479669e-8b51-4d1c-9031-1d33e1069b0a",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "7765b8b5-cf90-46fe-9252-341efed9c087",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "8acf9637-ab24-4d5d-84ad-da41a8e18ab9",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "bf622298-4b93-483d-a59e-38ffd3cac6ee",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "91b64058-6b59-418c-ab2a-09db24372b1e",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   }
+  ],
+  "ticket": {
+   "campus_attachments": [
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1",
+     "program": "Bachelor Management",
+     "campus": "Caen",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 3,
+     "regime": "ALTERNANCE",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f",
+     "program": "Bachelor Management",
+     "campus": "Dublin",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "9909ac50-c040-4938-af47-30d2cce6928e",
+     "program": "Bachelor Management",
+     "campus": "Le Havre",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "9909ac50-c040-4938-af47-30d2cce6928e",
+     "program": "Bachelor Management",
+     "campus": "Le Havre",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "9909ac50-c040-4938-af47-30d2cce6928e",
+     "program": "Bachelor Management",
+     "campus": "Le Havre",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 3,
+     "regime": "ALTERNANCE",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "9909ac50-c040-4938-af47-30d2cce6928e",
+     "program": "Bachelor Management",
+     "campus": "Le Havre",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 3,
+     "regime": "INITIAL",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb",
+     "program": "Bachelor Management",
+     "campus": "Paris",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb",
+     "program": "Bachelor Management",
+     "campus": "Paris",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "38dd257f-e501-47d2-8e0b-71af000106cc",
+     "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb",
+     "program": "Bachelor Management",
+     "campus": "Paris",
+     "fiche": "Bachelor en Management en 3 ans",
+     "study_year": 3,
+     "regime": "ALTERNANCE",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+    },
+    {
+     "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+     "campusId": "2e803127-a3c5-4ba5-83e4-d3cbe0f3215c",
+     "program": "International Bachelor in Business Administration",
+     "campus": "Dubaï",
+     "fiche": "IBBA (International Bachelor in Business Administration)",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba-international-bachelor-business-administration"
+    },
+    {
+     "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+     "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f",
+     "program": "International Bachelor in Business Administration",
+     "campus": "Dublin",
+     "fiche": "IBBA (International Bachelor in Business Administration)",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba-international-bachelor-business-administration"
+    },
+    {
+     "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+     "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe",
+     "program": "International Bachelor in Business Administration",
+     "campus": "Oxford",
+     "fiche": "IBBA (International Bachelor in Business Administration)",
+     "study_year": 4,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba-international-bachelor-business-administration"
+    },
+    {
+     "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+     "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb",
+     "program": "International Bachelor in Business Administration",
+     "campus": "Paris",
+     "fiche": "IBBA (International Bachelor in Business Administration)",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba-international-bachelor-business-administration"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1",
+     "program": "Programme Grande École",
+     "campus": "Caen",
+     "fiche": "Programme Grande École en 2 ou 3 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "2e803127-a3c5-4ba5-83e4-d3cbe0f3215c",
+     "program": "Programme Grande École",
+     "campus": "Dubaï",
+     "fiche": "Programme Grande École en 2 ou 3 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f",
+     "program": "Programme Grande École",
+     "campus": "Dublin",
+     "fiche": "Programme Grande École en 2 ou 3 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe",
+     "program": "Programme Grande École",
+     "campus": "Oxford",
+     "fiche": "Programme Grande École en 2 ou 3 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb",
+     "program": "Programme Grande École",
+     "campus": "Paris",
+     "fiche": "Programme Grande École en 2 ou 3 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1",
+     "program": "Programme Grande École",
+     "campus": "Caen",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1",
+     "program": "Programme Grande École",
+     "campus": "Caen",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "7ad83de9-4451-458e-a04e-dc85fddf70d1",
+     "program": "Programme Grande École",
+     "campus": "Caen",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "2e803127-a3c5-4ba5-83e4-d3cbe0f3215c",
+     "program": "Programme Grande École",
+     "campus": "Dubaï",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "2e803127-a3c5-4ba5-83e4-d3cbe0f3215c",
+     "program": "Programme Grande École",
+     "campus": "Dubaï",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "2e803127-a3c5-4ba5-83e4-d3cbe0f3215c",
+     "program": "Programme Grande École",
+     "campus": "Dubaï",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f",
+     "program": "Programme Grande École",
+     "campus": "Dublin",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f",
+     "program": "Programme Grande École",
+     "campus": "Dublin",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "d05bf2a8-bc11-4d94-bd19-f2d91bfba82f",
+     "program": "Programme Grande École",
+     "campus": "Dublin",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe",
+     "program": "Programme Grande École",
+     "campus": "Oxford",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe",
+     "program": "Programme Grande École",
+     "campus": "Oxford",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "3c8c2a98-4abc-4d90-9bf5-545a0e5ec9fe",
+     "program": "Programme Grande École",
+     "campus": "Oxford",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb",
+     "program": "Programme Grande École",
+     "campus": "Paris",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb",
+     "program": "Programme Grande École",
+     "campus": "Paris",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    },
+    {
+     "programId": "91b64058-6b59-418c-ab2a-09db24372b1e",
+     "campusId": "31110ebd-7f81-4413-b74d-54a439454bbb",
+     "program": "Programme Grande École",
+     "campus": "Paris",
+     "fiche": "Programme Grande École en 5 ans",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+    }
+   ],
+   "campus_policy_notes": [
+    {
+     "programId": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+     "program": "International Bachelor in Business Administration",
+     "fiche": "IBBA (International Bachelor in Business Administration)",
+     "note": "Paris reste accessible chaque année, avec au moins une année obligatoire sur l’un des campus internationaux."
+    }
+   ]
+  },
+  "written": [
+   {
+    "id": "1605a5fd-7662-4e90-b0e5-03dac807012a",
+    "programCampusId": "0a2e0004-6052-49d5-8153-15b3f4c17941",
+    "study_year": 2,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba-international-bachelor-business-administration"
+   },
+   {
+    "id": "39c8ce36-c97c-437b-9ef7-893724c5fe90",
+    "programCampusId": "3c863d01-f77c-41e2-8132-8f8adc2c4cbf",
+    "study_year": 1,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "fc49c917-7e94-471a-9862-6f80c472e6e3",
+    "programCampusId": "3c863d01-f77c-41e2-8132-8f8adc2c4cbf",
+    "study_year": 2,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "e18ecdfa-38d3-4e9b-ab97-135859c27c5e",
+    "programCampusId": "3c863d01-f77c-41e2-8132-8f8adc2c4cbf",
+    "study_year": 3,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+   },
+   {
+    "id": "621f187b-26f1-4ba6-b5ae-3832065083cf",
+    "programCampusId": "3f51b008-6a03-4012-beaf-f6f79e7dad7e",
+    "study_year": 1,
+    "regime": "ANY",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "d4e8859d-36a3-4104-84a8-c824435f0af9",
+    "programCampusId": "3f51b008-6a03-4012-beaf-f6f79e7dad7e",
+    "study_year": 2,
+    "regime": "ANY",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "91848428-7d80-4628-a0ea-da3c8e63fccd",
+    "programCampusId": "3f51b008-6a03-4012-beaf-f6f79e7dad7e",
+    "study_year": 3,
+    "regime": "ANY",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+   },
+   {
+    "id": "5d8c2ceb-608a-41b9-abc2-553f8d6037e9",
+    "programCampusId": "59e188e5-0ef1-4c4c-95e6-753e91d822ef",
+    "study_year": 1,
+    "regime": "ANY",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+   },
+   {
+    "id": "144541fc-b6f2-4fa5-a77c-0011234c81d0",
+    "programCampusId": "59e188e5-0ef1-4c4c-95e6-753e91d822ef",
+    "study_year": 2,
+    "regime": "ANY",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+   },
+   {
+    "id": "37088129-0617-4fe4-ba33-6da772dfd930",
+    "programCampusId": "59e188e5-0ef1-4c4c-95e6-753e91d822ef",
+    "study_year": 3,
+    "regime": "ALTERNANCE",
+    "languages": [
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+   },
+   {
+    "id": "dc2da57d-7f4e-433e-83b2-7cc7c10ef2c5",
+    "programCampusId": "59e188e5-0ef1-4c4c-95e6-753e91d822ef",
+    "study_year": 3,
+    "regime": "INITIAL",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+   },
+   {
+    "id": "66bcc263-8f9d-486b-8628-4ea606941085",
+    "programCampusId": "5a7e2815-b22e-42b7-8801-7c1cfc5271fe",
+    "study_year": 1,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba-international-bachelor-business-administration"
+   },
+   {
+    "id": "4ffa9d82-b74b-41a1-bb98-24468e298b1c",
+    "programCampusId": "a63f6804-eb2c-492f-b65a-876b1ef92dec",
+    "study_year": 3,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba-international-bachelor-business-administration"
+   },
+   {
+    "id": "8a51d13f-4718-47e7-97dd-6426d03cfd1e",
+    "programCampusId": "b26beb3d-610f-431e-ba14-8c5b995fba93",
+    "study_year": 1,
+    "regime": "ANY",
+    "languages": [
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+   },
+   {
+    "id": "033e889a-41a5-4f5a-bd82-16533d6b47b2",
+    "programCampusId": "b26beb3d-610f-431e-ba14-8c5b995fba93",
+    "study_year": 2,
+    "regime": "ANY",
+    "languages": [
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+   },
+   {
+    "id": "e9981f43-4bc3-466f-8070-90261feada4e",
+    "programCampusId": "b26beb3d-610f-431e-ba14-8c5b995fba93",
+    "study_year": 3,
+    "regime": "ALTERNANCE",
+    "languages": [
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+   },
+   {
+    "id": "eeab2fa0-3097-44f1-822a-9903c8223ee4",
+    "programCampusId": "bc0bbb47-be92-4e09-9176-e68ebdb84bc9",
+    "study_year": 4,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba-international-bachelor-business-administration"
+   },
+   {
+    "id": "0e17c342-c869-47f1-b516-99db6d8d0987",
+    "programCampusId": "d0cf9b5b-86bc-4cf1-a37c-9cf3824324ba",
+    "study_year": 1,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "f8dbc16a-fa5e-4e0e-92b9-05d13dd0e85d",
+    "programCampusId": "d0cf9b5b-86bc-4cf1-a37c-9cf3824324ba",
+    "study_year": 2,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "7ec7dac4-5035-4d49-9e62-54afe87d4e48",
+    "programCampusId": "d0cf9b5b-86bc-4cf1-a37c-9cf3824324ba",
+    "study_year": 3,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+   },
+   {
+    "id": "9d7d490b-0b1a-40a0-8c0e-910d35324389",
+    "programCampusId": "ee49f6ce-66f0-4f3b-9620-8597a92cd262",
+    "study_year": 1,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "4650fbb1-b48d-4234-a9ea-869c87aeec49",
+    "programCampusId": "ee49f6ce-66f0-4f3b-9620-8597a92cd262",
+    "study_year": 2,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "0fba523b-144a-4f5d-bacc-19952581026c",
+    "programCampusId": "ee49f6ce-66f0-4f3b-9620-8597a92cd262",
+    "study_year": 3,
+    "regime": "ANY",
+    "languages": [
+     "EN"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+   },
+   {
+    "id": "7c4ba2cc-76e7-40f0-9641-fac0730b3766",
+    "programCampusId": "fa6825e4-0167-4968-a9c0-3e7cc7e559ad",
+    "study_year": 1,
+    "regime": "ANY",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "e21353f1-d329-4e1f-ae0b-8ad76a3d4a22",
+    "programCampusId": "fa6825e4-0167-4968-a9c0-3e7cc7e559ad",
+    "study_year": 2,
+    "regime": "ANY",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   },
+   {
+    "id": "1ed1c3d1-a56c-45ae-b6c5-6e985db2ec8c",
+    "programCampusId": "fa6825e4-0167-4968-a9c0-3e7cc7e559ad",
+    "study_year": 3,
+    "regime": "ANY",
+    "languages": [
+     "EN",
+     "FR"
+    ],
+    "note": null,
+    "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"
+   }
+  ],
+  "programs_note_written": [
+   {
+    "id": "38dd257f-e501-47d2-8e0b-71af000106cc",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "3d3708b9-513f-4a09-a868-f6605c74f8b6",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "160d91e0-df52-4f98-bf15-eafba3417bd8",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": "Paris reste accessible chaque année, avec au moins une année obligatoire sur l’un des campus internationaux."
+   },
+   {
+    "id": "3dd8a8a0-995f-46de-ba68-4d452af60fd3",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "083f2111-776b-4196-8a09-ffc2c902d202",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "30fa2259-4bdc-436b-809d-c0923298619a",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "0f596da4-1035-4175-8eaf-56d46ea0fbf1",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "c71c6fa0-21dc-4887-915d-53a68906daf3",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "ce760db9-6e22-4be7-87af-3f328c2cb917",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "a199418e-babc-42dc-a44e-debea560f55d",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "6479669e-8b51-4d1c-9031-1d33e1069b0a",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "7765b8b5-cf90-46fe-9252-341efed9c087",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "8acf9637-ab24-4d5d-84ad-da41a8e18ab9",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "bf622298-4b93-483d-a59e-38ffd3cac6ee",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   },
+   {
+    "id": "91b64058-6b59-418c-ab2a-09db24372b1e",
+    "schoolId": "fe46bddf-0d27-49d2-a9f8-df90a5c3b033",
+    "campus_policy_note": null
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "corpus reel, premiere passe : 26 lignes et la note de l'IBBA a ecrire",
+   "school_id": "corpus",
+   "edges": "corpus",
+   "programs": "corpus",
+   "ticket": "corpus",
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 26,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 1,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "edge_missing": 2,
+     "merged_tracks": 5
+    },
+    "writes": 27
+   }
+  },
+  {
+   "name": "corpus reel, lignes deja ecrites en production : seule la note reste a ecrire",
+   "school_id": "corpus",
+   "edges": "corpus",
+   "programs": "corpus",
+   "ticket": "corpus",
+   "existing": "corpus_written",
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 26,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 1,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "edge_missing": 2,
+     "merged_tracks": 5
+    },
+    "writes": 1
+   }
+  },
+  {
+   "name": "corpus reel, lignes et note deja en base : rien a ecrire, aucun ticket",
+   "school_id": "corpus",
+   "edges": "corpus",
+   "programs": "corpus_note_written",
+   "ticket": "corpus",
+   "existing": "corpus_written",
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 26,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 1
+    },
+    "conflicts": {
+     "edge_missing": 2,
+     "merged_tracks": 5
+    },
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "langues changees : update, rien d'autre",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 1,
+      "regime": "ANY",
+      "languages": [
+       "EN",
+       "FR"
+      ],
+      "note": null,
+      "source_url": "https://x/f1"
+     }
+    ]
+   },
+   "existing": [
+    {
+     "id": "r1",
+     "programCampusId": "edge-p1-c1",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://x/f1"
+    }
+   ],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 1,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {},
+    "writes": 1
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "ordre des langues sans importance : unchanged",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 1,
+      "regime": "ANY",
+      "languages": [
+       "FR",
+       "EN"
+      ],
+      "note": null,
+      "source_url": "https://x/f1"
+     }
+    ]
+   },
+   "existing": [
+    {
+     "id": "r1",
+     "programCampusId": "edge-p1-c1",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN",
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://x/f1"
+    }
+   ],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 1,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {},
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "source_url changee seule : update",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 1,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": "https://x/nouvelle"
+     }
+    ]
+   },
+   "existing": [
+    {
+     "id": "r1",
+     "programCampusId": "edge-p1-c1",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": "https://x/f1"
+    }
+   ],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 1,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {},
+    "writes": 1
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "ligne que la page ne publie plus : stale, jamais une ecriture",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 1,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [
+    {
+     "id": "r1",
+     "programCampusId": "edge-p1-c1",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": null
+    },
+    {
+     "id": "r2",
+     "programCampusId": "edge-p1-c1",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": null
+    }
+   ],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 1,
+     "stale": 1
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {},
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "arete non touchee par la passe : aucun stale",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 1,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [
+    {
+     "id": "r1",
+     "programCampusId": "edge-p1-c1",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": null
+    },
+    {
+     "id": "r9",
+     "programCampusId": "edge-p2-c1",
+     "study_year": 1,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": null
+    }
+   ],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 1,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {},
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "deux fiches en desaccord : rien n'est ecrit",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F-5ans",
+      "study_year": 3,
+      "regime": "ANY",
+      "languages": [
+       "EN",
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     },
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F-2ou3ans",
+      "study_year": 3,
+      "regime": "ANY",
+      "languages": [
+       "EN"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "track_disagreement": 1
+    },
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "deux fiches identiques : une ligne, source_url la plus petite",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F-5ans",
+      "study_year": 3,
+      "regime": "ANY",
+      "languages": [
+       "EN"
+      ],
+      "note": null,
+      "source_url": "https://x/b"
+     },
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F-2ou3ans",
+      "study_year": 3,
+      "regime": "ANY",
+      "languages": [
+       "EN"
+      ],
+      "note": null,
+      "source_url": "https://x/a"
+     }
+    ]
+   },
+   "existing": [
+    {
+     "id": "r1",
+     "programCampusId": "edge-p1-c1",
+     "study_year": 3,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": "https://x/a"
+    }
+   ],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 1,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "merged_tracks": 1
+    },
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "ANY et regime nomme dans une meme fiche : ANY absorbe",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 3,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     },
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 3,
+      "regime": "INITIAL",
+      "languages": [
+       "EN"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 1,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "absorbed_any": 1
+    },
+    "writes": 1
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "ANY et regime nomme venus de DEUX fiches : absorbe aussi, sur tout le lot",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F-a",
+      "study_year": 3,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     },
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F-b",
+      "study_year": 3,
+      "regime": "ALTERNANCE",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 1,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "absorbed_any": 1
+    },
+    "writes": 1
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "la production porte deja le genre oppose : regime_conflict, et la ligne en base reste",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 1,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [
+    {
+     "id": "r1",
+     "programCampusId": "edge-p1-c1",
+     "study_year": 1,
+     "regime": "INITIAL",
+     "languages": [
+      "FR"
+     ],
+     "note": null,
+     "source_url": null
+    }
+   ],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 1
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "regime_conflict": 1
+    },
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "arete absente : edge_missing, aucune ecriture",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-2",
+      "campusId": "campus-2",
+      "program": "program-2",
+      "campus": "campus-2",
+      "fiche": "F2",
+      "study_year": 1,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "edge_missing": 1
+    },
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "entrees illisibles : refusees, jamais reparees",
+   "ticket": {
+    "campus_attachments": [
+     "pas un objet",
+     {
+      "programId": null,
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 1,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     },
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 0,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     },
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": 1,
+      "regime": "CONTINUE",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     },
+     {
+      "programId": "program-1",
+      "campusId": "campus-1",
+      "program": "program-1",
+      "campus": "campus-1",
+      "fiche": "F1",
+      "study_year": true,
+      "regime": "ANY",
+      "languages": [
+       "FR"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "malformed_row": 4,
+     "unresolved_reference": 1
+    },
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "regime absent : vaut ANY",
+   "ticket": {
+    "campus_attachments": [
+     {
+      "programId": "program-1",
+      "campusId": "campus-2",
+      "program": "program-1",
+      "campus": "campus-2",
+      "fiche": "F1",
+      "study_year": 2,
+      "regime": null,
+      "languages": [
+       "EN"
+      ],
+      "note": null,
+      "source_url": null
+     }
+    ]
+   },
+   "existing": [
+    {
+     "id": "r1",
+     "programCampusId": "edge-p1-c2",
+     "study_year": 2,
+     "regime": "ANY",
+     "languages": [
+      "EN"
+     ],
+     "note": null,
+     "source_url": null
+    }
+   ],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 1,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {},
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "note : creee si la base n'en a pas, mise a jour si elle differe",
+   "ticket": {
+    "campus_attachments": [],
+    "campus_policy_notes": [
+     {
+      "programId": "program-1",
+      "program": "P1",
+      "fiche": "F1",
+      "note": "Nouvelle phrase."
+     },
+     {
+      "programId": "program-2",
+      "program": "P2",
+      "fiche": "F2",
+      "note": "Nouvelle phrase."
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 1,
+     "update": 1,
+     "unchanged": 0
+    },
+    "conflicts": {},
+    "writes": 2
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "note identique en base : unchanged",
+   "ticket": {
+    "campus_policy_notes": [
+     {
+      "programId": "program-2",
+      "program": "P2",
+      "fiche": "F2",
+      "note": "Ancienne phrase."
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 1
+    },
+    "conflicts": {},
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "notes : deux phrases differentes n'ecrivent rien, la meme phrase deux fois en fait une",
+   "ticket": {
+    "campus_policy_notes": [
+     {
+      "programId": "program-1",
+      "program": "P1",
+      "fiche": "F-a",
+      "note": "Une phrase."
+     },
+     {
+      "programId": "program-1",
+      "program": "P1",
+      "fiche": "F-b",
+      "note": "Une autre phrase."
+     },
+     {
+      "programId": "program-2",
+      "program": "P2",
+      "fiche": "F-a",
+      "note": "La meme."
+     },
+     {
+      "programId": "program-2",
+      "program": "P2",
+      "fiche": "F-b",
+      "note": "La meme."
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 1,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "merged_notes": 1,
+     "note_disagreement": 1
+    },
+    "writes": 1
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "notes : programme inconnu, d'une autre ecole, sans identifiant ou sans texte",
+   "ticket": {
+    "campus_policy_notes": [
+     {
+      "programId": "program-inconnu",
+      "program": "?",
+      "fiche": "F",
+      "note": "Phrase."
+     },
+     {
+      "programId": "program-autre-ecole",
+      "program": "Autre",
+      "fiche": "F",
+      "note": "Phrase."
+     },
+     {
+      "programId": null,
+      "program": "Sans id",
+      "fiche": "F",
+      "note": "Phrase."
+     },
+     {
+      "programId": "program-1",
+      "program": "P1",
+      "fiche": "F",
+      "note": "   "
+     }
+    ]
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {
+     "malformed_row": 1,
+     "program_missing": 1,
+     "program_outside_school": 1,
+     "unresolved_reference": 1
+    },
+    "writes": 0
+   }
+  },
+  {
+   "school_id": "school-1",
+   "edges": [
+    {
+     "id": "edge-p1-c1",
+     "programId": "program-1",
+     "campusId": "campus-1"
+    },
+    {
+     "id": "edge-p1-c2",
+     "programId": "program-1",
+     "campusId": "campus-2"
+    },
+    {
+     "id": "edge-p2-c1",
+     "programId": "program-2",
+     "campusId": "campus-1"
+    }
+   ],
+   "programs": [
+    {
+     "id": "program-1",
+     "schoolId": "school-1",
+     "campus_policy_note": null
+    },
+    {
+     "id": "program-2",
+     "schoolId": "school-1",
+     "campus_policy_note": "Ancienne phrase."
+    },
+    {
+     "id": "program-autre-ecole",
+     "schoolId": "school-2",
+     "campus_policy_note": null
+    }
+   ],
+   "name": "un ticket sans aucun des deux blocs ne produit rien",
+   "ticket": {
+    "discovered_campuses": []
+   },
+   "existing": [],
+   "expected": {
+    "attachments": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0,
+     "stale": 0
+    },
+    "policy_notes": {
+     "create": 0,
+     "update": 0,
+     "unchanged": 0
+    },
+    "conflicts": {},
+    "writes": 0
+   }
+  }
+ ]
+}

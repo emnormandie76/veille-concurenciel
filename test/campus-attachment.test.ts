@@ -22,15 +22,23 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 import {
   applyAttachmentPlan,
+  applyPolicyNotePlan,
   foldAttachmentClaims,
+  foldPolicyNoteClaims,
+  hasCampusAttachmentBlock,
   planAttachmentWrites,
+  planPolicyNoteWrites,
   readExistingAttachments,
   resolveAttachmentEdges,
+  resolvePolicyNotePrograms,
   type AttachmentTx,
   type ExistingAttachment,
+  type PolicyNoteTx,
 } from "../lib/campus-attachment";
 
 // ── Identifiants réels, recopiés de la base (Em Normandie) ────────────────
@@ -521,4 +529,244 @@ test("un ticket sans bloc campus_attachments ne produit rien et ne lève pas", a
   assert.equal(signature(out.plan), 0);
   assert.deepEqual(out.conflicts, []);
   assert.deepEqual(out.calls, []);
+});
+
+// ── Les cas partagés avec la suite Python ────────────────────────────────
+//
+// `backend/pipeline/attachment_plan.py` porte ce plan en Python : la Phase 1
+// doit savoir si un ticket a quelque chose à écrire avant de le déposer, et
+// elle n'a aucun canal vers cette application. Les deux implémentations lisent
+// `test/fixtures/attachment_plan_cases.json`, où chaque plan attendu est écrit
+// à la main, et doivent le rendre toutes les deux.
+
+interface FixtureProgram {
+  id: string;
+  schoolId: string;
+  campus_policy_note: string | null;
+}
+
+interface FixtureCase {
+  name: string;
+  school_id: string;
+  edges: Array<{ id: string; programId: string; campusId: string }> | string;
+  programs: FixtureProgram[] | string;
+  ticket: unknown;
+  existing: ExistingAttachment[] | string;
+  expected: unknown;
+}
+
+function loadSharedCases() {
+  const file = path.join(process.cwd(), "test", "fixtures", "attachment_plan_cases.json");
+  const doc = JSON.parse(fs.readFileSync(file, "utf-8"));
+  const corpus = doc.corpus;
+  const refs: Record<string, unknown> = {
+    corpus_written: corpus.written,
+    corpus_note_written: corpus.programs_note_written,
+  };
+  const resolve = (field: string, value: unknown) =>
+    value === "corpus" ? corpus[field] : typeof value === "string" && value in refs ? refs[value] : value;
+
+  return (doc.cases as FixtureCase[]).map((c) => ({
+    name: c.name,
+    schoolId: resolve("school_id", c.school_id) as string,
+    edges: resolve("edges", c.edges) as Array<{ id: string; programId: string; campusId: string }>,
+    programs: resolve("programs", c.programs) as FixtureProgram[],
+    ticket: resolve("ticket", c.ticket),
+    existing: resolve("existing", c.existing) as ExistingAttachment[],
+    expected: c.expected,
+  }));
+}
+
+/**
+ * Double générique : arêtes, lignes et programmes d'un cas. Toute méthode hors
+ * des types `AttachmentTx` et `PolicyNoteTx` lève.
+ */
+function sharedTx(
+  edges: Array<{ id: string; programId: string; campusId: string }>,
+  existing: ExistingAttachment[],
+  programs: FixtureProgram[]
+) {
+  const calls: string[] = [];
+  const rows = existing.map((r) => ({ ...r, languages: [...r.languages] }));
+  const byPair = new Map(edges.map((e) => [`${e.programId} ${e.campusId}`, e.id]));
+  const byProgram = new Map(programs.map((p) => [p.id, { ...p }]));
+
+  const guard = <T extends object>(name: string, allowed: string[], target: T): T =>
+    new Proxy(target, {
+      get(obj, prop, receiver) {
+        if (typeof prop === "string" && !allowed.includes(prop)) {
+          throw new Error(`${name}.${prop} appelé : hors du type déclaré`);
+        }
+        return Reflect.get(obj, prop, receiver);
+      },
+    });
+
+  const tx = {
+    programCampus: guard("programCampus", ["findUnique"], {
+      findUnique(args: { where: { programId_campusId: { programId: string; campusId: string } } }) {
+        const { programId, campusId } = args.where.programId_campusId;
+        const id = byPair.get(`${programId} ${campusId}`);
+        return Promise.resolve(id ? { id } : null);
+      },
+    }),
+    programCampusAttachment: guard("programCampusAttachment", ["findMany", "upsert"], {
+      findMany(args: { where: { programCampusId: { in: string[] } } }) {
+        return Promise.resolve(
+          rows.filter((r) => args.where.programCampusId.in.includes(r.programCampusId)).map((r) => ({ ...r }))
+        );
+      },
+      upsert(args: { where: { programCampusId_study_year_regime: { programCampusId: string } } }) {
+        calls.push(`attachment.upsert ${args.where.programCampusId_study_year_regime.programCampusId}`);
+        return Promise.resolve({ id: "upserted" });
+      },
+    }),
+    program: guard("program", ["findUnique", "update"], {
+      findUnique(args: { where: { id: string } }) {
+        const found = byProgram.get(args.where.id);
+        return Promise.resolve(
+          found ? { id: found.id, schoolId: found.schoolId, campus_policy_note: found.campus_policy_note } : null
+        );
+      },
+      update(args: { where: { id: string }; data: Record<string, unknown> }) {
+        calls.push(`program.update ${args.where.id} ${Object.keys(args.data).join(",")}`);
+        const found = byProgram.get(args.where.id);
+        if (found) found.campus_policy_note = args.data.campus_policy_note as string;
+        return Promise.resolve({ id: args.where.id });
+      },
+    }),
+  };
+  return { tx: tx as unknown as AttachmentTx & PolicyNoteTx, calls, byProgram };
+}
+
+/** Le chemin complet de la route, lignes-années puis notes, sur un double. */
+async function runRoutePlan(
+  ticket: unknown,
+  schoolId: string | null,
+  rec: ReturnType<typeof sharedTx>
+) {
+  const folded = foldAttachmentClaims(ticket);
+  const { resolved, conflicts: edgeConflicts } = await resolveAttachmentEdges(rec.tx, folded.claims);
+  const existing = await readExistingAttachments(rec.tx, resolved);
+  const plan = planAttachmentWrites(resolved, existing);
+
+  const foldedNotes = foldPolicyNoteClaims(ticket);
+  const { resolved: notes, conflicts: programConflicts } = await resolvePolicyNotePrograms(
+    rec.tx,
+    foldedNotes.claims,
+    schoolId
+  );
+  const notePlan = planPolicyNoteWrites(notes);
+
+  const conflicts = countBy([
+    ...folded.conflicts,
+    ...edgeConflicts,
+    ...plan.conflicts,
+    ...foldedNotes.conflicts,
+    ...programConflicts,
+  ]);
+  return {
+    plan,
+    notePlan,
+    summary: {
+      attachments: {
+        create: plan.create.length,
+        update: plan.update.length,
+        unchanged: plan.unchanged.length,
+        stale: plan.stale.length,
+      },
+      policy_notes: {
+        create: notePlan.create.length,
+        update: notePlan.update.length,
+        unchanged: notePlan.unchanged.length,
+      },
+      conflicts: Object.fromEntries(Object.entries(conflicts).sort(([a], [b]) => (a < b ? -1 : 1))),
+      writes: plan.create.length + plan.update.length + notePlan.create.length + notePlan.update.length,
+    },
+  };
+}
+
+test("cas partagés avec Python : chaque plan attendu, écrit à la main, est rendu", async () => {
+  const cases = loadSharedCases();
+  assert.ok(cases.length >= 20);
+  for (const c of cases) {
+    const rec = sharedTx(c.edges, c.existing, c.programs);
+    const { summary } = await runRoutePlan(c.ticket, c.schoolId, rec);
+    assert.deepEqual(summary, c.expected, c.name);
+  }
+});
+
+// ── Les notes de politique de campus ─────────────────────────────────────
+
+const IBBA_NOTE =
+  "Paris reste accessible chaque année, avec au moins une année obligatoire sur l’un des campus internationaux.";
+const EM_NORMANDIE_ID = "school-em-normandie";
+
+function notesTx(current: string | null, schoolId = EM_NORMANDIE_ID) {
+  return sharedTx([], [], [{ id: P_IBBA, schoolId, campus_policy_note: current }]);
+}
+
+test("note de l'IBBA : un seul update, qui ne touche que campus_policy_note", async () => {
+  const rec = notesTx(null);
+  const ticket = {
+    campus_attachments: [],
+    campus_policy_notes: [{ programId: P_IBBA, program: PROGRAM_LABEL[P_IBBA], fiche: F_IBBA, note: IBBA_NOTE }],
+  };
+  const { notePlan } = await runRoutePlan(ticket, EM_NORMANDIE_ID, rec);
+  const counts = await applyPolicyNotePlan(rec.tx, notePlan);
+
+  assert.deepEqual(counts, { created: 1, updated: 0, unchanged: 0 });
+  assert.deepEqual(rec.calls, [`program.update ${P_IBBA} campus_policy_note`]);
+  assert.equal(rec.byProgram.get(P_IBBA)?.campus_policy_note, IBBA_NOTE);
+});
+
+test("une note ne crée aucun programme : le double lève sur program.create et program.upsert", () => {
+  const rec = notesTx(null);
+  const program = rec.tx.program as unknown as Record<string, unknown>;
+  assert.throws(() => program.create, /hors du type déclaré/);
+  assert.throws(() => program.upsert, /hors du type déclaré/);
+  assert.throws(() => program.delete, /hors du type déclaré/);
+});
+
+test("une note mise à jour rend l'avant ; rejouée, elle n'émet plus aucun update", async () => {
+  const rec = notesTx("Ancienne phrase.");
+  const ticket = { campus_policy_notes: [{ programId: P_IBBA, program: "IBBA", fiche: F_IBBA, note: IBBA_NOTE }] };
+
+  const first = await runRoutePlan(ticket, EM_NORMANDIE_ID, rec);
+  assert.equal(first.notePlan.update[0].before, "Ancienne phrase.");
+  await applyPolicyNotePlan(rec.tx, first.notePlan);
+
+  const second = await runRoutePlan(ticket, EM_NORMANDIE_ID, rec);
+  await applyPolicyNotePlan(rec.tx, second.notePlan);
+  assert.equal(second.notePlan.unchanged.length, 1);
+  assert.equal(rec.calls.filter((c) => c.startsWith("program.update")).length, 1);
+});
+
+test("ce chemin n'efface jamais une note : une fiche sans note ne touche à rien", async () => {
+  const rec = notesTx(IBBA_NOTE);
+  const { notePlan, summary } = await runRoutePlan({ campus_attachments: [] }, EM_NORMANDIE_ID, rec);
+  await applyPolicyNotePlan(rec.tx, notePlan);
+
+  assert.equal(summary.writes, 0);
+  assert.deepEqual(rec.calls, []);
+  assert.equal(rec.byProgram.get(P_IBBA)?.campus_policy_note, IBBA_NOTE);
+});
+
+test("un programme d'une autre école ne reçoit pas la note, même avec son vrai identifiant", async () => {
+  const rec = notesTx(null, "une-autre-ecole");
+  const ticket = { campus_policy_notes: [{ programId: P_IBBA, program: "IBBA", fiche: F_IBBA, note: IBBA_NOTE }] };
+  const { summary } = await runRoutePlan(ticket, EM_NORMANDIE_ID, rec);
+
+  assert.equal(summary.writes, 0);
+  assert.deepEqual(summary.conflicts, { program_outside_school: 1 });
+});
+
+// ── Le bloc qui oriente un ticket ────────────────────────────────────────
+
+test("hasCampusAttachmentBlock reconnaît la charge de la collecte, et elle seule", () => {
+  assert.equal(hasCampusAttachmentBlock({ campus_attachments: [] }), true);
+  assert.equal(hasCampusAttachmentBlock({ campus_attachments: CORPUS, campus_policy_notes: [] }), true);
+  assert.equal(hasCampusAttachmentBlock({ discovered_campuses: [] }), false);
+  assert.equal(hasCampusAttachmentBlock({ campus_attachments: "non" }), false);
+  assert.equal(hasCampusAttachmentBlock(null), false);
+  assert.equal(hasCampusAttachmentBlock([{ campus_attachments: [] }]), false);
 });

@@ -16,6 +16,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { CONTRIBUTION_CATEGORIES, CONTRIBUTION_STATUSES } from "@/lib/contribution";
+import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
 
 // ──────────────────────────────────────────────
 // Types
@@ -498,7 +499,19 @@ export default function InboxPage() {
 
             {/* ── Formulaire par catégorie ── */}
             <div className="form-section">
-              {selectedTicket.ai_category === "Program_Discovery" ? (
+              {selectedTicket.ai_category === "Program_Discovery" &&
+              hasCampusAttachmentBlock(selectedTicket.ai_extracted_json) ? (
+                // Même catégorie, autre charge : ces lignes s'écrivent par la
+                // route voisine, jamais par le formulaire répéteur.
+                <CampusAttachmentsForm
+                  ticket={selectedTicket}
+                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+                  onWritten={() => {
+                    fetchTickets();
+                    setSelectedTicket((prev) => (prev ? { ...prev, status: "Validated" } : null));
+                  }}
+                />
+              ) : selectedTicket.ai_category === "Program_Discovery" ? (
                 <ProgramDiscoveryForm
                   ticket={selectedTicket}
                   onValidate={handleValidate}
@@ -934,6 +947,271 @@ function ProgramDiscoveryForm({
           disabled={loading || campuses.length === 0}
         >
           {loading ? "Validation en cours..." : "✓ Valider — Créer Campus & Programmes"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Rattachement campus — lignes-années et notes de politique de campus
+//
+// Un ticket Program_Discovery qui porte `campus_attachments` vient de la
+// collecte de la Phase 1. Il ne crée ni Campus, ni Program, ni arête : chaque
+// ligne se pose sur une arête ProgramCampus existante, et une ligne dont
+// l'arête manque ressort en conflit `edge_missing`. L'admin retire ici ce
+// qu'il refuse ; le corps envoyé prime sur le JSON du ticket.
+// ──────────────────────────────────────────────
+
+interface CampusAttachmentClaim {
+  programId: string | null;
+  campusId: string | null;
+  program?: string | null;
+  campus?: string | null;
+  fiche?: string | null;
+  study_year: number;
+  regime?: string | null;
+  languages?: string[];
+  note?: string | null;
+  source_url?: string | null;
+}
+
+interface CampusPolicyNoteClaim {
+  programId: string | null;
+  program?: string | null;
+  fiche?: string | null;
+  note: string;
+}
+
+interface WriteCounts {
+  created: number;
+  updated: number;
+  unchanged: number;
+}
+
+interface AttachmentWriteResult {
+  message?: string;
+  written?: WriteCounts;
+  stale?: Array<{ program: string | null; campus: string | null; study_year: number; regime: string }>;
+  policy_notes?: { written: WriteCounts };
+  conflicts?: Array<{
+    type: string;
+    program?: string | null;
+    campus?: string | null;
+    study_year?: number;
+    regime?: string;
+    effect: string;
+  }>;
+}
+
+function CampusAttachmentsForm({
+  ticket,
+  disabled,
+  onWritten,
+}: {
+  ticket: Ticket;
+  disabled: boolean;
+  onWritten: () => void;
+}) {
+  const initial = ticket.ai_extracted_json as {
+    campus_attachments?: CampusAttachmentClaim[];
+    campus_policy_notes?: CampusPolicyNoteClaim[];
+    collector?: {
+      unresolved_claims?: unknown[];
+      placements_not_written?: number;
+      pages_read?: number;
+      plan_at_collection?: {
+        attachments?: { create: number; update: number; unchanged: number };
+        policy_notes?: { create: number; update: number; unchanged: number };
+      };
+    };
+  } | null;
+  const planned = initial?.collector?.plan_at_collection;
+
+  const [rows, setRows] = useState<CampusAttachmentClaim[]>(() =>
+    [...(initial?.campus_attachments ?? [])].sort((a, b) =>
+      `${a.program} ${a.campus} ${a.study_year} ${a.regime}`.localeCompare(
+        `${b.program} ${b.campus} ${b.study_year} ${b.regime}`
+      )
+    )
+  );
+  const [notes, setNotes] = useState<CampusPolicyNoteClaim[]>(initial?.campus_policy_notes ?? []);
+  const [writing, setWriting] = useState(false);
+  const [result, setResult] = useState<AttachmentWriteResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const removed =
+    (initial?.campus_attachments?.length ?? 0) - rows.length +
+    (initial?.campus_policy_notes?.length ?? 0) - notes.length;
+
+  const handleWrite = async () => {
+    setWriting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch(`/api/admin/inbox/${ticket.id}/attachments`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campus_attachments: rows, campus_policy_notes: notes }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur lors de l'écriture");
+      setResult(data);
+      onWritten();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setWriting(false);
+    }
+  };
+
+  const conflictsByType = (result?.conflicts ?? []).reduce<Record<string, number>>((acc, c) => {
+    acc[c.type] = (acc[c.type] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div>
+      <h3 style={{ margin: "0 0 8px", fontSize: "1rem" }}>
+        🧭 Rattachement campus — {rows.length} ligne(s)-année(s), {notes.length} note(s)
+      </h3>
+      {planned && (
+        <p style={{ fontSize: "0.85rem", margin: "0 0 8px" }}>
+          Au moment de la collecte : {planned.attachments?.create ?? 0} ligne(s) à créer,{" "}
+          {planned.attachments?.update ?? 0} à mettre à jour, {planned.attachments?.unchanged ?? 0} déjà
+          en base ; {(planned.policy_notes?.create ?? 0) + (planned.policy_notes?.update ?? 0)} note(s) à
+          écrire. La route recalcule ce plan au moment d&apos;écrire.
+        </p>
+      )}
+      <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", margin: "0 0 12px" }}>
+        Aucune arête n&apos;est créée : une ligne dont l&apos;arête ProgramCampus manque n&apos;est pas
+        écrite. Aucune ligne n&apos;est supprimée.
+        {initial?.collector?.placements_not_written
+          ? ` ${initial.collector.placements_not_written} lieu(x) hors parc collecté(s) ne sont pas proposé(s) : ProgramPlacement n'a pas de chemin d'écriture.`
+          : ""}
+        {initial?.collector?.unresolved_claims?.length
+          ? ` ${initial.collector.unresolved_claims.length} ligne(s) sans programme ou campus en base sont écartée(s) (voir le JSON brut).`
+          : ""}
+      </p>
+
+      {rows.length > 0 && (
+        <div className="table-container" style={{ marginBottom: "12px" }}>
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Programme</th>
+                <th>Campus</th>
+                <th>Année</th>
+                <th>Régime</th>
+                <th>Langues</th>
+                <th>Fiche</th>
+                {!disabled && <th />}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={`${row.programId}-${row.campusId}-${row.study_year}-${row.regime}-${row.fiche}-${index}`}>
+                  <td>{row.program ?? row.programId}</td>
+                  <td>{row.campus ?? row.campusId}</td>
+                  <td>{row.study_year}</td>
+                  <td>{row.regime ?? "ANY"}</td>
+                  <td>{(row.languages ?? []).join(", ") || "—"}</td>
+                  <td style={{ fontSize: "0.75rem" }}>
+                    {row.source_url ? (
+                      <a href={row.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
+                        {row.fiche ?? "source"}
+                      </a>
+                    ) : (
+                      row.fiche ?? "—"
+                    )}
+                  </td>
+                  {!disabled && (
+                    <td>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        title="Retirer cette ligne avant l'écriture"
+                        onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {notes.map((note, index) => (
+        <div key={`${note.programId}-${index}`} className="campus-block">
+          <div className="campus-block-header">
+            <strong>📝 Note de politique de campus — {note.program ?? note.programId}</strong>
+            {!disabled && (
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={() => setNotes((prev) => prev.filter((_, i) => i !== index))}
+              >
+                Retirer
+              </button>
+            )}
+          </div>
+          <p style={{ margin: 0, fontSize: "0.9rem" }}>« {note.note} »</p>
+        </div>
+      ))}
+
+      {removed > 0 && !disabled && (
+        <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+          {removed} élément(s) retiré(s) : ils ne seront pas écrits.
+        </p>
+      )}
+
+      {error && <div className="alert alert-danger">❌ {error}</div>}
+
+      {result && (
+        <div className="alert alert-success" style={{ display: "block" }}>
+          <div>✅ {result.message}</div>
+          {Object.keys(conflictsByType).length > 0 && (
+            <div style={{ fontSize: "0.8rem", marginTop: "6px" }}>
+              Non écrit ou fusionné :{" "}
+              {Object.entries(conflictsByType)
+                .map(([type, count]) => `${type} ×${count}`)
+                .join(" · ")}
+            </div>
+          )}
+          {(result.stale?.length ?? 0) > 0 && (
+            <div style={{ fontSize: "0.8rem", marginTop: "6px" }}>
+              {result.stale!.length} ligne(s) en base non réaffirmée(s), conservée(s) :{" "}
+              {result.stale!.map((s) => `${s.program} · ${s.campus} · année ${s.study_year}`).join(" ; ")}
+            </div>
+          )}
+        </div>
+      )}
+
+      <details style={{ marginTop: "12px" }}>
+        <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+          Voir JSON brut complet
+        </summary>
+        <pre style={{
+          background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
+          borderRadius: "var(--radius)", padding: "12px", fontSize: "0.75rem",
+          overflow: "auto", maxHeight: "200px", marginTop: "8px",
+        }}>
+          {JSON.stringify(ticket.ai_extracted_json, null, 2)}
+        </pre>
+      </details>
+
+      {!disabled && (
+        <button
+          id="btn-write-campus-attachments"
+          className="btn btn-primary"
+          style={{ width: "100%", marginTop: "16px" }}
+          onClick={handleWrite}
+          disabled={writing || rows.length + notes.length === 0}
+        >
+          {writing
+            ? "Écriture en cours..."
+            : `✓ Écrire ${rows.length} ligne(s)-année(s) et ${notes.length} note(s)`}
         </button>
       )}
     </div>

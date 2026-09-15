@@ -23,6 +23,7 @@ import { guardAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STATUS_REJECTED, STATUS_VALIDATED } from "@/lib/contribution";
+import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
 
 // ──────────────────────────────────────────────
 // Types internes pour les données JSON des tickets
@@ -198,6 +199,23 @@ export async function PUT(
     if (ticket.status === STATUS_REJECTED) {
       return NextResponse.json(
         { error: "Impossible de valider un ticket rejeté" },
+        { status: 400 }
+      );
+    }
+
+    // Un ticket de rattachement campus ne se valide pas ici. Le formulaire
+    // répéteur n'en voit rien et enverrait `discovered_campuses: []`, que
+    // `validateProgramDiscovery` accepte : le ticket serait clôturé sans une
+    // ligne écrite, et la route voisine le refuserait ensuite comme déjà
+    // validé. On lit la charge ENREGISTRÉE, pas le corps : c'est elle que le
+    // corps du formulaire masque.
+    if (ticket.ai_category === "Program_Discovery" && hasCampusAttachmentBlock(ticket.ai_extracted_json)) {
+      return NextResponse.json(
+        {
+          error:
+            "Ce ticket porte un bloc campus_attachments : il s'écrit par PUT /api/admin/inbox/[id]/attachments. " +
+            "La validation Program_Discovery le clôturerait sans rien écrire.",
+        },
         { status: 400 }
       );
     }

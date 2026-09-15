@@ -24,6 +24,7 @@ from backend.pipeline.campus_attachment import (  # noqa: E402
     build_page_evidence,
     build_rows,
     classify_kind,
+    fold_campus_name,
     fold_label,
     has_attachment_heading,
     match_campus,
@@ -37,13 +38,24 @@ from backend.tavily_service.client import (  # noqa: E402
     map_program_pages,
     record_reported_usage,
 )
-from backend.scripts.simulate_campus_attachment import (  # noqa: E402
+from backend.pipeline.campus_attachment_collector import (  # noqa: E402
     _is_worth_caching,
     looks_like_program_page,
 )
 
 EM_NORMANDIE_CAMPUSES = ["Caen", "Le Havre", "Paris", "Dublin", "Oxford", "Dubai"]
 EM_LYON_CAMPUSES = ["Lyon", "Paris", "Saint-Etienne", "Shanghai", "Mumbai"]
+
+# Les six noms de la table `Campus` pour Em Lyon, recopies de la base. Le
+# trait d'union de Saint‑Étienne est U+2011, insecable : c'est la graphie reelle.
+EM_LYON_CAMPUSES_IN_DB = [
+    "Campus Bhubaneswar",
+    "Campus Saint‑Étienne",
+    "Lyon campus",
+    "Mumbai campus",
+    "Paris campus",
+    "Shanghai campus",
+]
 
 
 def stmt(program, zone, year, regime, label, languages=None, verbatim=None, url=None):
@@ -1028,6 +1040,96 @@ class TestMultiCampusFieldIsSplitByTheCampusList(unittest.TestCase):
             sorted(r["campusName"] for r in program["program_campus"]),
             ["Caen", "Dublin", "Le Havre", "Oxford", "Paris"],
         )
+
+
+# ── La liste des campus lue dans la table Campus ─────────────────
+
+class TestCampusListFromTheDatabase(unittest.TestCase):
+    """
+    `build_rows()` recoit les noms de la table `Campus` tels quels. Les deux
+    pieges connus de la base reelle doivent etre couverts : le trait d'union
+    insecable de « Campus Saint‑Étienne », et le mot « campus » place dans le
+    nom, devant comme derriere. Le cache ne les exerce pas tous — aucune fiche
+    lue ne nomme Saint-Étienne ni Bhubaneswar —, d'ou ces cas.
+    """
+
+    def test_the_campus_key_folds_both_traps(self):
+        self.assertEqual(fold_campus_name("Campus Saint‑Étienne"), "saint-etienne")
+        self.assertEqual(fold_campus_name("Saint-Étienne"), "saint-etienne")
+        self.assertEqual(fold_campus_name("Lyon campus"), "lyon")
+        self.assertEqual(fold_campus_name("Campus Bhubaneswar"), "bhubaneswar")
+        # Seul un « campus » de bord part : « Le Havre » reste un lieu entier.
+        self.assertEqual(fold_campus_name("Le Havre"), "le havre")
+
+    def test_site_labels_recognise_the_db_names(self):
+        folds = {fold_campus_name(n): n for n in EM_LYON_CAMPUSES_IN_DB}
+        cases = {
+            "Lyon": "Lyon campus",
+            "LYON": "Lyon campus",
+            "Saint-Étienne": "Campus Saint‑Étienne",
+            "Saint‑Étienne": "Campus Saint‑Étienne",
+            "Saint-Etienne": "Campus Saint‑Étienne",
+            "Bhubaneswar": "Campus Bhubaneswar",
+            "campus de Shanghai": "Shanghai campus",
+            "Paris, avec une expérience internationale": "Paris campus",
+            "Campus Mumbai": "Mumbai campus",
+        }
+        for label, expected in cases.items():
+            self.assertEqual(match_campus(label, folds), expected, label)
+
+    def test_a_multi_campus_field_splits_on_db_names_including_u2011(self):
+        folds = {fold_campus_name(n): n for n in EM_LYON_CAMPUSES_IN_DB}
+        self.assertEqual(
+            split_multi_campus_label("Lyon Saint‑Étienne Paris", folds),
+            ["Lyon campus", "Campus Saint‑Étienne", "Paris campus"],
+        )
+
+    def test_rows_carry_the_db_name_and_nothing_falls_into_placement(self):
+        raw = {
+            "statements": [
+                stmt("Global BBA", "FIELD", 0, "ANY", "Lyon"),
+                stmt("Global BBA", "FIELD", 0, "ANY", "Saint-Étienne"),
+                stmt("Global BBA", "PROSE", 0, "ANY", "campus de Shanghai"),
+                stmt("Global BBA", "PROSE", 0, "ANY", "Bhubaneswar"),
+            ]
+        }
+        rows = build_rows(raw, EM_LYON_CAMPUSES_IN_DB)
+        program = program_of(rows, "Global BBA")
+        self.assertEqual(program["program_placement"], [])
+        self.assertEqual(
+            sorted(r["campusName"] for r in program["program_campus"]),
+            ["Campus Bhubaneswar", "Campus Saint‑Étienne", "Lyon campus", "Shanghai campus"],
+        )
+        self.assertNotIn("campus_key_collisions", rows)
+
+    def test_a_section_year_line_resolves_on_a_db_name(self):
+        raw = {
+            "statements": [
+                stmt("PGE", "SECTION", 1, "ANY", "Saint-Étienne", ["FR"]),
+                stmt("PGE", "FIELD", 0, "ANY", "Lyon campus"),
+            ]
+        }
+        rows = build_rows(raw, EM_LYON_CAMPUSES_IN_DB)
+        program = program_of(rows, "PGE")
+        self.assertEqual(
+            [(r["campusName"], r["study_year"]) for r in program["program_campus_attachment"]],
+            [("Campus Saint‑Étienne", 1)],
+        )
+        # F8 lit les memes cles : Lyon est dans l'encart seul, Saint-Étienne
+        # dans la section seule, et chacun est nomme sous son nom de base.
+        self.assertEqual(
+            sorted((c["type"], c["campus"]) for c in program["conflicts"]),
+            [("field_only", "Lyon campus"), ("section_only", "Campus Saint‑Étienne")],
+        )
+
+    def test_two_db_names_on_one_key_recognise_nothing_and_are_named(self):
+        raw = {"statements": [stmt("MSc", "FIELD", 0, "ANY", "Paris")]}
+        rows = build_rows(raw, ["Paris", "Paris campus", "Lyon campus"])
+        self.assertEqual(rows["campus_key_collisions"], {"paris": ["Paris", "Paris campus"]})
+        self.assertEqual(rows["campuses_supplied"], ["Lyon campus"])
+        program = program_of(rows, "MSc")
+        self.assertEqual(program["program_campus"], [])
+        self.assertEqual([r["label"] for r in program["program_placement"]], ["Paris"])
 
 
 if __name__ == "__main__":

@@ -1,12 +1,14 @@
 /**
- * scripts/dump-program-identity.ts — Les arêtes réelles d'une école, en JSON
+ * scripts/dump-program-identity.ts — L'état réel d'une école, en JSON
  *
- * LECTURE SEULE. Trois `findMany`, aucun `create`, `update`, `upsert` ni
- * `delete`. Aucune migration n'est appliquée ni requise : le script ne lit que
- * `School`, `Campus`, `Program` et `ProgramCampus`, qui existent en base
- * depuis `20260901120000_program_campus_refactor`. Il ne touche donc pas aux
- * colonnes de `20260904120000_program_campus_attachment`, écrite et non
- * appliquée.
+ * LECTURE SEULE. Un `findMany` imbriqué, aucun `create`, `update`, `upsert` ni
+ * `delete`. Il lit `School`, `Campus`, `Program` et `ProgramCampus`, et —
+ * depuis que `20260904120000_program_campus_attachment` est appliquée (15
+ * septembre 2026) — `Program.campus_policy_note` et les lignes
+ * `ProgramCampusAttachment`. C'est l'instantané que
+ * `backend/pipeline/campus_attachment_collector.snapshot_from_dump()` lit pour
+ * rejouer la Phase 1 sur cache : la liste des campus, les aretes, et ce qui est
+ * déjà écrit.
  *
  * Pourquoi un script Node et pas du Python, alors que tout le pipeline lit la
  * base en psycopg2 : depuis ce poste, le port 5432 de Neon est injoignable en
@@ -37,8 +39,25 @@ async function main() {
         select: {
           id: true,
           name: true,
+          campus_policy_note: true,
           campuses: {
-            select: { id: true, programId: true, campusId: true },
+            select: {
+              id: true,
+              programId: true,
+              campusId: true,
+              attachments: {
+                select: {
+                  id: true,
+                  programCampusId: true,
+                  study_year: true,
+                  regime: true,
+                  languages: true,
+                  note: true,
+                  source_url: true,
+                },
+                orderBy: [{ study_year: "asc" }, { regime: "asc" }],
+              },
+            },
           },
         },
         orderBy: { name: "asc" },
@@ -47,17 +66,18 @@ async function main() {
     orderBy: { name: "asc" },
   });
 
-  // Les arêtes remontent à plat : c'est la forme qu'attend
-  // `resolve_attachment_rows()`, et elle rend le compte lisible.
+  // Les arêtes et les lignes-années remontent à plat : c'est la forme
+  // qu'attend `resolve_attachment_rows()`, et elle rend le compte lisible.
   const payload = schools.map((school) => ({
     id: school.id,
     name: school.name,
     official_domain: school.official_domain,
     campuses: school.campuses,
-    programs: school.programs.map(({ id, name }) => ({ id, name })),
+    programs: school.programs.map(({ id, name, campus_policy_note }) => ({ id, name, campus_policy_note })),
     edges: school.programs.flatMap((p) =>
       p.campuses.map((e) => ({ id: e.id, programId: e.programId, campusId: e.campusId }))
     ),
+    attachments: school.programs.flatMap((p) => p.campuses.flatMap((e) => e.attachments)),
   }));
 
   const json = JSON.stringify(payload, null, 1);
@@ -65,8 +85,10 @@ async function main() {
   if (out) {
     fs.writeFileSync(out, json, "utf-8");
     for (const s of payload) {
+      const notes = s.programs.filter((p) => p.campus_policy_note !== null).length;
       console.log(
-        `${s.name} : ${s.campuses.length} campus, ${s.programs.length} programmes, ${s.edges.length} aretes`
+        `${s.name} : ${s.campuses.length} campus, ${s.programs.length} programmes, ${s.edges.length} aretes, ` +
+          `${s.attachments.length} lignes-annees, ${notes} note(s)`
       );
     }
     console.log(`ecrit : ${out}`);

@@ -1,8 +1,13 @@
 """
 backend/tavily/client.py — Client Tavily Unifié (Étape 5.1)
 
-Fonctions de crawl, search et extract via Tavily Python SDK.
+Fonctions search, extract et map via Tavily Python SDK.
 Utilise le TavilyKeyManager pour la rotation automatique des clés.
+
+crawl_school_website() a été retirée le 28 septembre 2026 : héritée de la Phase 1
+d'origine (crawl + Gemma), elle n'était plus appelée nulle part depuis que la
+découverte passe par Tavily Research. La découverte des fiches formation passe
+par map_program_pages().
 
 Référence : architecture.md §4.1, task.md §5.1
 """
@@ -17,16 +22,14 @@ logger = logging.getLogger("pipeline.tavily_client")
 
 # ── Timeouts des appels Tavily (Edge Case 14 : réponse vide ou lente) ────
 #
-# Ces trois constantes étaient déclarées et n'apparaissaient nulle part ailleurs
-# dans le fichier : les requêtes partaient sans limite explicite, dans un thread
+# Ces constantes étaient déclarées et n'apparaissaient nulle part ailleurs dans
+# le fichier : les requêtes partaient sans limite explicite, dans un thread
 # APScheduler. Elles sont désormais passées aux appels du SDK.
 #
-# Les valeurs affichées avant (15 / 10 / 15 s) n'ont jamais été appliquées et
-# sont hors d'atteinte pour ces appels — un crawl de profondeur 2 ne tient pas
-# en 15 s. On reprend donc les valeurs effectives (celles du SDK), qui ne
-# changent rien au comportement observé mais rendent le réglage réel et
-# ajustable par l'environnement.
-CRAWL_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_CRAWL_TIMEOUT_SECONDS", 150))
+# Les valeurs affichées avant (10 / 15 s) n'ont jamais été appliquées. On reprend
+# donc les valeurs effectives (celles du SDK), qui ne changent rien au
+# comportement observé mais rendent le réglage réel et ajustable par
+# l'environnement. MAP_TIMEOUT_SECONDS est déclaré plus bas, avec /map.
 SEARCH_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_SEARCH_TIMEOUT_SECONDS", 60))
 EXTRACT_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_EXTRACT_TIMEOUT_SECONDS", 30))
 
@@ -45,102 +48,6 @@ def split_extractable_urls(urls: list[str] | None) -> tuple[list[str], list[str]
     """
     all_urls = list(urls or [])
     return all_urls[:EXTRACT_MAX_URLS], all_urls[EXTRACT_MAX_URLS:]
-
-
-def crawl_school_website(
-    official_domain: str,
-    key_manager,
-    max_depth: int = 2,
-) -> str:
-    """
-    Crawle le site officiel d'une école pour extraire le contenu des formations.
-
-    Utilise Tavily crawl avec :
-    - select_paths=["/formations/.*", "/programmes/.*", "/nos-formations/.*"]
-    - instructions orientées vers les campus et programmes
-    - max_depth=2 pour couvrir les sous-pages
-
-    Args:
-        official_domain: Domaine de l'école (ex: "emlv.fr")
-        key_manager: Instance de TavilyKeyManager
-        max_depth: Profondeur de crawl (défaut: 2)
-
-    Returns:
-        Contenu Markdown consolidé de toutes les pages crawlées.
-        Retourne "" si le crawl échoue ou retourne vide (Edge Case 14).
-
-    Référence : architecture.md §4.1 (crawl), task.md §5.1
-    """
-    from tavily import TavilyClient
-    from backend.tavily_service.key_manager import QuotaExhaustedError
-
-    url = f"https://{official_domain}"
-
-    api_key = key_manager.get_active_key(required_credits=5)
-    client = TavilyClient(api_key=api_key)
-
-    logger.info(f"🔍 Tavily crawl: {url} (max_depth={max_depth})")
-
-    try:
-        result = client.crawl(
-            url=url,
-            max_depth=max_depth,
-            select_paths=[
-                "/formations/.*",
-                "/programmes/.*",
-                "/nos-formations/.*",
-                "/programme/.*",
-                "/formation/.*",
-                "/cursus/.*",
-                "/offre-de-formation/.*",
-            ],
-            instructions=(
-                "Find all academic programs (formations), campuses, admission exams, "
-                "alternance options, and expatriation requirements. "
-                "Focus on official program names and campus locations."
-            ),
-            timeout=CRAWL_TIMEOUT_SECONDS,
-        )
-
-        # Enregistrer l'utilisation (1 crédit pour le crawl)
-        key_manager.record_usage(api_key, credits=1)
-
-        # Consolider les résultats en un seul texte Markdown
-        pages = result.get("results", []) if isinstance(result, dict) else []
-        if not pages:
-            logger.warning(f"⚠️ Tavily crawl {url} — aucune page retournée (Edge Case 14)")
-            return ""
-
-        content_parts = []
-        for page in pages:
-            page_url = page.get("url", "")
-            page_content = page.get("raw_content") or page.get("content", "")
-            if page_content and len(page_content.strip()) > 100:
-                content_parts.append(f"## Source: {page_url}\n\n{page_content}")
-
-        consolidated = "\n\n---\n\n".join(content_parts)
-        logger.info(
-            f"✅ Crawl terminé: {len(pages)} pages, {len(consolidated)} chars au total"
-        )
-        return consolidated
-
-    except QuotaExhaustedError:
-        raise
-    except Exception as e:
-        if is_quota_error(e):
-            # research_client.py etait le seul a marquer la cle. Sans cet
-            # appel, une cle refusee par l API (402/429) restait selectionnee
-            # et etait reinterrogee en boucle par les appels suivants.
-            logger.warning(
-                f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
-            )
-            key_manager.mark_exhausted(api_key)
-        error_str = str(e)
-        if "timeout" in error_str.lower() or "timed out" in error_str.lower():
-            logger.warning(f"⏱️ Timeout Tavily crawl {url} (Edge Case 14)")
-        else:
-            logger.error(f"❌ Erreur Tavily crawl {url}: {e}")
-        return ""
 
 
 def search_web(
@@ -308,9 +215,9 @@ def extract_from_urls(
 
 # ── /map — cartographie enracinee sur la page catalogue ──────────
 #
-# `crawl_school_website` ci-dessus est un CRAWL : il lit le contenu des pages.
-# /map ne lit rien, il enumere des URL — c'est l'etape de decouverte, et elle
-# n'existait pas dans ce fichier.
+# /map ne lit rien, il enumere des URL : c'est l'etape de decouverte des fiches
+# formation. (Un crawl, lui, lit le contenu des pages ; celui de la Phase 1
+# d'origine a ete retire, la decouverte passant par Tavily Research.)
 #
 # Enracinement : TOUJOURS la page catalogue, JAMAIS la racine du domaine.
 # Mesure du 4 septembre 2026 sur em-normandie.com : depuis la racine, /map rend

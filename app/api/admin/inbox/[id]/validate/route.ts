@@ -22,7 +22,7 @@
 import { guardAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { STATUS_REJECTED, STATUS_VALIDATED } from "@/lib/contribution";
+import { STATUS_REJECTED, STATUS_VALIDATED, isParkedResearchReport } from "@/lib/contribution";
 import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
 
 // ──────────────────────────────────────────────
@@ -199,6 +199,22 @@ export async function PUT(
     if (ticket.status === STATUS_REJECTED) {
       return NextResponse.json(
         { error: "Impossible de valider un ticket rejeté" },
+        { status: 400 }
+      );
+    }
+
+    // Un rapport Research rangé n'a rien à valider : son extraction a échoué,
+    // le formulaire enverrait `discovered_campuses: []`, et le ticket clôturé
+    // ne serait plus repris par la Phase 1 — qui repaierait Research. Le rejeter
+    // reste possible, et c'est la façon de dire « ne le reprenez pas ».
+    if (isParkedResearchReport(ticket.ai_extracted_json)) {
+      return NextResponse.json(
+        {
+          error:
+            "Ce ticket conserve un rapport Research dont l'extraction a échoué. " +
+            "La prochaine Phase 1 de l'école le reprendra sans repayer Research ; " +
+            "rejetez-le pour qu'il ne soit pas repris.",
+        },
         { status: 400 }
       );
     }

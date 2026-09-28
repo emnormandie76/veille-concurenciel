@@ -89,3 +89,21 @@ export const STATUS_PENDING_ADMIN: ContributionStatus = "Pending_Admin";
 export const STATUS_VALIDATED: ContributionStatus = "Validated";
 export const STATUS_REJECTED: ContributionStatus = "Rejected";
 export const STATUS_FAILED: ContributionStatus = "Failed";
+
+/**
+ * Marque d'un ticket `Program_Discovery` qui ne porte qu'un rapport Research en
+ * attente d'extraction : la Phase 1 l'a rangé en `Failed` après un échec Gemini,
+ * et sa prochaine passe pour l'école le reprendra sans repayer Research. Même
+ * valeur que `PARKED_REPORT_REASON` dans backend/pipeline/phase1_research.py.
+ */
+export const PARKED_RESEARCH_REPORT = "research_report_parked";
+
+/** Vrai si la charge enregistrée est celle d'un rapport Research rangé. */
+export function isParkedResearchReport(json: unknown): boolean {
+  return (
+    json !== null &&
+    typeof json === "object" &&
+    !Array.isArray(json) &&
+    (json as Record<string, unknown>).parked_reason === PARKED_RESEARCH_REPORT
+  );
+}

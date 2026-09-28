@@ -91,6 +91,17 @@ rien quand l'école n'a aucun `Program` en base (EMLV, Essec), aucun `Campus`,
 ou aucune page catalogue. Son échec ne fait jamais échouer la Phase 1 : il
 remonte dans `campus_attachments` du résultat.
 
+## Un rapport Research n'est payé qu'une fois
+
+Research coûte environ 25 crédits ; l'extraction Gemini qui suit, rien. Le
+2026-09-28, deux découvertes ont échoué sur des 503 Gemini et leurs rapports
+sont partis avec l'échec : le rapport n'était enregistré qu'avec le ticket, donc
+après une extraction réussie. Quand l'extraction échoue, le rapport est
+désormais rangé dans un ticket `Failed` (`raw_report`, colonne faite pour qu'une
+donnée reste « re-extractible sans repayer un appel pro »). La passe suivante de
+la même école le reprend au lieu de rappeler Research, tant qu'il a moins de
+`PARKED_REPORT_MAX_AGE_DAYS` jours ; une extraction réussie le consomme.
+
 Référence : dossier « Le rapport avant le schéma », sections 03, 04 et 11.
 """
 
@@ -117,12 +128,22 @@ from backend.ai.extraction_schemas import (
     get_min_tier,
 )
 from backend.ai.research_prompts import build_phase1_research_input
+from backend.constants import STATUS_FAILED
 from backend.tavily_service.catalog_client import fetch_catalog
 from backend.tavily_service.research_client import create_research_task
 
 logger = logging.getLogger("pipeline.phase1_research")
 
 CATEGORY = "Program_Discovery"
+
+# Marque, dans ai_extracted_json, d'un ticket qui ne porte qu'un rapport Research
+# en attente d'extraction. Relue par la route /validate, qui refuse de le
+# clôturer (lib/contribution.ts, PARKED_RESEARCH_REPORT).
+PARKED_REPORT_REASON = "research_report_parked"
+
+# Au-delà, le rapport rangé n'est plus repris : une passe paie de nouveau
+# Research. Une semaine couvre une panne Gemini sans servir un catalogue périmé.
+PARKED_REPORT_MAX_AGE_DAYS = 7
 
 # Libellés de rubrique observés en sortie sous output_schema. Ce ne sont pas des
 # formations, ce sont des entrées de menu — et la route de validation les
@@ -345,6 +366,124 @@ def _run_campus_attachment_step(
         return {"status": "failed", "error": str(e)[:400], "ticket_id": None}
 
 
+def _load_parked_report(school_id: str) -> dict | None:
+    """
+    Le dernier rapport Research rangé pour cette école, s'il est assez récent.
+
+    Rend `{"id", "raw_report", "urls", "createdAt"}` ou None. Ne lève jamais : si
+    la lecture échoue, la passe paie Research comme avant.
+    """
+    from backend.db import get_db_connection
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT id, raw_report, urls, "createdAt"
+                    FROM "ContributionInbox"
+                    WHERE "schoolId" = %s
+                      AND ai_category = %s
+                      AND source_type = 'Automated_AI'
+                      AND status = %s
+                      AND COALESCE(raw_report, '') <> ''
+                      AND ai_extracted_json->>'parked_reason' = %s
+                      AND "createdAt" > now() - (%s * interval '1 day')
+                    ORDER BY "createdAt" DESC
+                    LIMIT 1
+                    """,
+                    (school_id, CATEGORY, STATUS_FAILED, PARKED_REPORT_REASON,
+                     PARKED_REPORT_MAX_AGE_DAYS),
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except Exception as e:
+        logger.warning(f"⚠️ Lecture d'un rapport Research rangé impossible : {e}")
+        return None
+
+
+def _park_report(
+    school_id: str,
+    report_content: str,
+    source_urls: list[str],
+    error: str,
+    parked: dict | None,
+) -> str | None:
+    """
+    Range le rapport d'une extraction échouée, ou note l'échec sur le rapport déjà
+    rangé qu'on vient de reprendre. Rend l'id du ticket, None si l'écriture a
+    échoué — ce qui ne doit jamais masquer l'échec d'extraction lui-même.
+    """
+    from backend.db import get_db_connection
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                if parked:
+                    cur.execute(
+                        """
+                        UPDATE "ContributionInbox"
+                        SET ai_extracted_json = ai_extracted_json || jsonb_build_object(
+                                'last_error', %s::text,
+                                'extraction_attempts',
+                                COALESCE((ai_extracted_json->>'extraction_attempts')::int, 1) + 1)
+                        WHERE id = %s
+                        """,
+                        (error[:500], parked["id"]),
+                    )
+                    return parked["id"]
+                ticket_id = str(uuid.uuid4())
+                cur.execute(
+                    """
+                    INSERT INTO "ContributionInbox"
+                        (id, source_type, "schoolId", ai_category, ai_extracted_json,
+                         status, urls, "createdAt", raw_report)
+                    VALUES (%s, 'Automated_AI', %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        ticket_id,
+                        school_id,
+                        CATEGORY,
+                        json.dumps({
+                            "parked_reason": PARKED_REPORT_REASON,
+                            "last_error": error[:500],
+                            "extraction_attempts": 1,
+                        }),
+                        STATUS_FAILED,
+                        source_urls,
+                        datetime.now(timezone.utc),
+                        report_content,
+                    ),
+                )
+                return ticket_id
+    except Exception as e:
+        logger.error(f"❌ Rapport Research non rangé, il sera repayé : {e}")
+        return None
+
+
+def _extraction_failed(
+    school_id: str,
+    school_name: str,
+    message: str,
+    report_content: str,
+    source_urls: list[str],
+    parked: dict | None,
+) -> dict:
+    """Résultat d'échec d'extraction, après avoir rangé le rapport."""
+    ticket_id = _park_report(school_id, report_content, source_urls, message, parked)
+    if ticket_id:
+        logger.warning(
+            f"📦 Rapport Research de {school_name} rangé (ticket #{ticket_id[:8]}) : "
+            f"la prochaine passe le reprendra sans repayer Research"
+        )
+    return {
+        "success": False,
+        "message": message,
+        "parked_report_ticket_id": ticket_id,
+        "research_report_reused": parked is not None,
+    }
+
+
 def _run_program_discovery(
     school_id: str,
     key_manager,
@@ -409,50 +548,69 @@ def _run_program_discovery(
                 official_domain,
             )
 
-    # ── 3. Tavily Research ──────────────────────────────────────────
-    if progress_callback:
-        progress_callback({"current_action": "Recherche Tavily Research en cours...", "school": school_name, "category": CATEGORY})
+    # ── 3. Tavily Research, ou le rapport déjà payé ────────────────
+    # Une extraction échouée a pu laisser un rapport rangé : le reprendre
+    # économise ~25 crédits et 100 à 240 secondes. Jamais en dry_run.
+    parked = None if dry_run else _load_parked_report(school_id)
 
-    query = build_phase1_research_input(school_name, official_domain)
-
-    try:
-        # Pas d'output_schema : c'est LA ligne supprimée de ce fichier. Le
-        # prompt et include_domains restent — tous deux mesurés bénéfiques.
-        research_result = create_research_task(
-            query=query,
-            key_manager=key_manager,
-            include_domains=[official_domain],
-            model="pro",
-            dry_run=dry_run
+    if parked:
+        logger.info(
+            f"♻️ Rapport Research rangé le {parked['createdAt']:%Y-%m-%d %H:%M} repris pour "
+            f"{school_name} (ticket #{parked['id'][:8]}) — Research n'est pas rappelé"
         )
-    except Exception as e:
-        logger.error(f"❌ Échec appel Tavily Research pour {official_domain}: {e}")
-        return {"success": False, "message": f"Erreur Tavily Research: {e}"}
+        if progress_callback:
+            progress_callback({
+                "current_action": "Reprise du rapport Research déjà payé",
+                "school": school_name,
+                "category": CATEGORY,
+            })
+        report_content = parked["raw_report"]
+        source_urls = list(parked.get("urls") or [])
+    else:
+        if progress_callback:
+            progress_callback({"current_action": "Recherche Tavily Research en cours...", "school": school_name, "category": CATEGORY})
 
-    if dry_run:
-        return {
-            "success": True,
-            "message": "[DRY RUN] Tâche simulée avec succès",
-            "report": research_result["report"],
-            "sources": research_result["sources"]
-        }
+        query = build_phase1_research_input(school_name, official_domain)
+
+        try:
+            # Pas d'output_schema : c'est LA ligne supprimée de ce fichier. Le
+            # prompt et include_domains restent — tous deux mesurés bénéfiques.
+            research_result = create_research_task(
+                query=query,
+                key_manager=key_manager,
+                include_domains=[official_domain],
+                model="pro",
+                dry_run=dry_run
+            )
+        except Exception as e:
+            logger.error(f"❌ Échec appel Tavily Research pour {official_domain}: {e}")
+            return {"success": False, "message": f"Erreur Tavily Research: {e}"}
+
+        if dry_run:
+            return {
+                "success": True,
+                "message": "[DRY RUN] Tâche simulée avec succès",
+                "report": research_result["report"],
+                "sources": research_result["sources"]
+            }
+
+        report_content = research_result.get("report")
+        if isinstance(report_content, dict):
+            # Ne devrait plus survenir sans output_schema, toléré par prudence.
+            report_content = json.dumps(report_content, ensure_ascii=False)
+        report_content = report_content or ""
+
+        if not report_content.strip():
+            logger.error(f"❌ Rapport Research vide pour {school_name}")
+            return {"success": False, "message": "Rapport Tavily Research vide"}
+
+        sources = research_result.get("sources", [])
+        source_urls = [s.get("url") for s in sources if s.get("url")]
 
     # ── 4. Extraction Gemini ────────────────────────────────────────
     if progress_callback:
         progress_callback({"current_action": "Analyse et structuration du résultat", "school": school_name, "category": CATEGORY})
 
-    report_content = research_result.get("report")
-    if isinstance(report_content, dict):
-        # Ne devrait plus survenir sans output_schema, toléré par prudence.
-        report_content = json.dumps(report_content, ensure_ascii=False)
-    report_content = report_content or ""
-
-    if not report_content.strip():
-        logger.error(f"❌ Rapport Research vide pour {school_name}")
-        return {"success": False, "message": "Rapport Tavily Research vide"}
-
-    sources = research_result.get("sources", [])
-    source_urls = [s.get("url") for s in sources if s.get("url")]
     logger.info(
         "📄 Rapport Phase 1 : %d caractères, %d sources", len(report_content), len(source_urls)
     )
@@ -468,14 +626,23 @@ def _run_program_discovery(
         )
     except ExtractionUnavailable as e:
         logger.error(f"❌ Extraction indisponible pour {school_name}: {e}")
-        return {"success": False, "message": f"Extraction Gemini indisponible: {e}"}
+        return _extraction_failed(
+            school_id, school_name, f"Extraction Gemini indisponible: {e}",
+            report_content, source_urls, parked,
+        )
     except GeminiError as e:
         logger.error(f"❌ Extraction échouée pour {school_name}: {e}")
-        return {"success": False, "message": f"Extraction Gemini échouée: {e}"}
+        return _extraction_failed(
+            school_id, school_name, f"Extraction Gemini échouée: {e}",
+            report_content, source_urls, parked,
+        )
 
     if not isinstance(extracted, dict):
         logger.error(f"❌ Extraction Phase 1 : objet attendu, {type(extracted).__name__} reçu")
-        return {"success": False, "message": "Extraction Phase 1 de forme inattendue"}
+        return _extraction_failed(
+            school_id, school_name, "Extraction Phase 1 de forme inattendue",
+            report_content, source_urls, parked,
+        )
 
     # ── 5. Garde-fous ───────────────────────────────────────────────
     extracted, rejects = _clean_extracted(extracted)
@@ -545,6 +712,13 @@ def _run_program_discovery(
                     report_content,
                 )
             )
+            if parked:
+                # Consommé : le ticket créé porte le même rapport. Même
+                # transaction, pour qu'il ne soit jamais repris deux fois.
+                cur.execute(
+                    'DELETE FROM "ContributionInbox" WHERE id = %s AND status = %s',
+                    (parked["id"], STATUS_FAILED),
+                )
 
     logger.info(
         f"✅ Phase 1 via Research terminée pour {school_name}: "
@@ -561,5 +735,6 @@ def _run_program_discovery(
         "programs_count": programs_count,
         "qualified_programs_count": qualified_programs,
         "catalog_titles_count": len(catalog_titles),
+        "research_report_reused": parked is not None,
         **rejects,
     }

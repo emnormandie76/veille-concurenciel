@@ -11,6 +11,8 @@ Règles :
   - Max 1 école à la fois (pas de parallélisme → économie Free Tier)
   - Pause de 30s entre deux écoles
   - Le scheduler est démarré/arrêté dans le lifespan FastAPI (main.py)
+  - Hors production, phase1_scanner et phase2_enricher ne sont PAS inscrits :
+    voir research_cron_enabled(). Le traitement Crowdsourcing l'est toujours.
 
 Référence : task.md §5.4, architecture.md §2.2 (APScheduler)
 """
@@ -48,6 +50,50 @@ PHASE1_INITIAL_DELAY_MINUTES = int(
 CROWDSOURCING_INTERVAL_MINUTES = int(
     os.environ.get("CRON_CROWDSOURCING_INTERVAL_MINUTES", 1)
 )
+
+# Valeurs reconnues pour CRON_RESEARCH_ENABLED.
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
+
+
+def research_cron_enabled() -> tuple[bool, str]:
+    """
+    Les deux jobs qui PAIENT Research doivent-ils etre inscrits ?
+
+    Rend `(active, raison)`, la raison etant journalisee au demarrage.
+
+    Lancer le backend sur un poste de developpement demarrait phase1_scanner,
+    qui passait 5 minutes plus tard sur toutes les ecoles ACTIVE sans campus :
+    le 2026-09-28, EMLV et Essec, environ 28 a 30 credits Tavily chacune, sans
+    que personne n'ait clique. Phase2_enricher, lui, paie Research pour chaque
+    programme valide. Aucun des deux ne doit tourner parce qu'un developpeur a
+    demarre uvicorn.
+
+    Par defaut, ils ne sont donc inscrits qu'en production (`ENVIRONMENT`,
+    deja [PROD — REQUIS], voir .env.example). `CRON_RESEARCH_ENABLED` force
+    l'un ou l'autre choix. Une valeur non reconnue desactive, bruyamment : une
+    faute de frappe doit couter une passe de cron, pas des credits.
+
+    Le traitement Crowdsourcing n'est pas concerne : il n'agit que sur des
+    tickets que quelqu'un a deposes.
+    """
+    raw = os.environ.get("CRON_RESEARCH_ENABLED", "").strip().lower()
+    if raw in _TRUTHY:
+        return True, "CRON_RESEARCH_ENABLED=%s" % raw
+    if raw in _FALSY:
+        return False, "CRON_RESEARCH_ENABLED=%s" % raw
+    if raw:
+        return False, (
+            "CRON_RESEARCH_ENABLED=%r non reconnue (attendu true/false) : "
+            "jobs Research desactives par prudence" % raw
+        )
+    environment = os.environ.get("ENVIRONMENT", "development").strip().lower()
+    if environment in ("production", "prod"):
+        return True, "ENVIRONMENT=%s" % environment
+    return False, (
+        "ENVIRONMENT=%s : hors production, les jobs Research ne sont pas "
+        "inscrits (CRON_RESEARCH_ENABLED=true pour les forcer)" % environment
+    )
 
 # ── Registre du dernier passage de chaque job ─────────────────────
 # Un job périodique qui échoue ne doit pas se contenter d'une ligne de log :
@@ -338,30 +384,35 @@ def start_scheduler(key_manager):
         logger.warning("⚠️ Scheduler déjà en cours — skip")
         return
 
-    # ── Job Phase 1 ──────────────────────────────────────────────
-    scheduler.add_job(
-        func=phase1_scanner,
-        trigger=IntervalTrigger(
-            hours=PHASE1_INTERVAL_HOURS,
-            # Sans next_run_time, un intervalle de 168h repousse le premier
-            # passage a une semaine apres chaque redemarrage.
-            start_date=datetime.now() + timedelta(minutes=PHASE1_INITIAL_DELAY_MINUTES),
-        ),
-        args=[key_manager],
-        id="phase1_scanner",
-        name=f"Phase 1 Scanner (toutes les {PHASE1_INTERVAL_HOURS}h)",
-        replace_existing=True,
-    )
+    research_enabled, research_reason = research_cron_enabled()
 
-    # ── Job Phase 2 ──────────────────────────────────────────────
-    scheduler.add_job(
-        func=phase2_enricher,
-        trigger=IntervalTrigger(hours=PHASE2_INTERVAL_HOURS),
-        args=[key_manager],
-        id="phase2_enricher",
-        name=f"Phase 2 Enricher (toutes les {PHASE2_INTERVAL_HOURS}h)",
-        replace_existing=True,
-    )
+    if research_enabled:
+        # ── Job Phase 1 ──────────────────────────────────────────
+        scheduler.add_job(
+            func=phase1_scanner,
+            trigger=IntervalTrigger(
+                hours=PHASE1_INTERVAL_HOURS,
+                # Sans next_run_time, un intervalle de 168h repousse le premier
+                # passage a une semaine apres chaque redemarrage.
+                start_date=datetime.now() + timedelta(minutes=PHASE1_INITIAL_DELAY_MINUTES),
+            ),
+            args=[key_manager],
+            id="phase1_scanner",
+            name=f"Phase 1 Scanner (toutes les {PHASE1_INTERVAL_HOURS}h)",
+            replace_existing=True,
+        )
+
+        # ── Job Phase 2 ──────────────────────────────────────────
+        scheduler.add_job(
+            func=phase2_enricher,
+            trigger=IntervalTrigger(hours=PHASE2_INTERVAL_HOURS),
+            args=[key_manager],
+            id="phase2_enricher",
+            name=f"Phase 2 Enricher (toutes les {PHASE2_INTERVAL_HOURS}h)",
+            replace_existing=True,
+        )
+    else:
+        logger.warning(f"⏸️ Jobs Research non inscrits — {research_reason}")
 
     # ── Job Crowdsourcing ────────────────────────────────────────
     from backend.crowdsourcing.processor import process_pending_submissions
@@ -375,10 +426,15 @@ def start_scheduler(key_manager):
     )
 
     scheduler.start()
-    logger.info(
-        f"✅ Scheduler démarré: "
+    research_part = (
         f"Phase1({PHASE1_INTERVAL_HOURS}h, 1er passage dans {PHASE1_INITIAL_DELAY_MINUTES}min), "
         f"Phase2({PHASE2_INTERVAL_HOURS}h), "
+        if research_enabled
+        else "Phase1/Phase2 désactivés, "
+    )
+    logger.info(
+        f"✅ Scheduler démarré ({research_reason}): "
+        f"{research_part}"
         f"Crowdsourcing({CROWDSOURCING_INTERVAL_MINUTES}m)"
     )
 
@@ -420,4 +476,7 @@ def get_scheduler_status() -> dict:
         "has_failure": any(
             run.get("status") == "failed" for run in _last_job_runs.values()
         ),
+        # Pourquoi phase1_scanner et phase2_enricher manquent a `jobs`, le cas
+        # echeant : l'absence doit se lire, pas se deviner.
+        "research_cron": dict(zip(("enabled", "reason"), research_cron_enabled())),
     }

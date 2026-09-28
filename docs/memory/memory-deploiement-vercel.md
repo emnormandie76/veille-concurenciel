@@ -213,7 +213,7 @@ Deux variables à poser **sur l'hébergeur du backend**, pas sur Vercel :
 
 | Variable | Valeur | Conséquence si oubliée |
 |----------|--------|------------------------|
-| `ENVIRONMENT` | `production` | Tant qu'elle ne vaut pas `production`, `/docs`, `/redoc` **et** `/openapi.json` restent **ouverts** et publient la surface complète de l'API interne, routes `/internal/*` comprises. |
+| `ENVIRONMENT` | `production` | Tant qu'elle ne vaut pas `production`, `/docs`, `/redoc` **et** `/openapi.json` restent **ouverts** et publient la surface complète de l'API interne, routes `/internal/*` comprises. Elle décide aussi du cron : hors production, `phase1_scanner` et `phase2_enricher` ne sont pas inscrits (forçage : `CRON_RESEARCH_ENABLED`). |
 | `ALLOWED_ORIGINS` | `https://votre-domaine.vercel.app` | En production, si elle est absente, **aucune origine croisée n'est acceptée** et une erreur est journalisée au démarrage. |
 
 À noter : les appels Next.js → FastAPI sont des appels **serveur à serveur**.

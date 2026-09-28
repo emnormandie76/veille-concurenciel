@@ -10,6 +10,10 @@
 > Le détail de ce qui a été corrigé est reporté dans la documentation
 > d'architecture : [`architecture.md`](../architecture/architecture.md),
 > [`bdd.md`](../architecture/bdd.md), [`API-rest.md`](../architecture/API-rest.md).
+>
+> **Revu le 28 septembre 2026** : dix migrations au lieu de cinq, cron Research
+> réservé à la production, nouvelles variables backend. Les sections 3, 7, 10 et
+> 11 ont été mises à jour.
 
 ---
 
@@ -97,10 +101,19 @@ changement de leur défaut.
 
 ## 3. Base de données et migrations
 
-L'historique de migrations a été remis en phase avec le schéma à l'étape 2, et
-un index a été ajouté ensuite. **Cinq migrations** existent aujourd'hui, dont
+L'historique de migrations a été remis en phase avec le schéma à l'étape 2.
+**Dix migrations** existent au 28 septembre 2026, dont
 `20260901120000_program_campus_refactor`, écrite à la main pour préserver les
-données.
+données, et `20260904120000_program_campus_attachment`, strictement additive.
+Toutes sont appliquées sur la base Neon actuelle ; la liste commentée est dans
+[`bdd.md`](../architecture/bdd.md) §4.
+
+> **Depuis un réseau qui coupe le port 5432** (celui du poste de développement),
+> `migrate deploy` échoue en `P1001`. La migration du 15 septembre 2026 a été
+> appliquée par le port 443 : SQL et ligne `_prisma_migrations` dans une seule
+> transaction, checksum = sha256 des octets de `migration.sql`, après une
+> répétition en `ROLLBACK`. **Ne jamais lancer `migrate dev`, `migrate reset` ni
+> `db push`** contre une base Neon réelle.
 
 ### Marche à suivre, dans cet ordre
 
@@ -118,6 +131,7 @@ données.
    ```bash
    npx prisma migrate resolve --applied 20260901120000_program_campus_refactor
    npx prisma migrate resolve --applied 20260901160000_inbox_status_index
+   # … et chaque migration suivante que la base contient déjà
    ```
 
    Vérifier d'abord que la base correspond bien au schéma :
@@ -226,7 +240,7 @@ La variable ne concerne que d'éventuels appels directs depuis un navigateur.
 
 | Fonctionnalité | Où elle vit | Conséquence |
 |----------------|-------------|-------------|
-| `phase1_scanner` (cartographie) | APScheduler, backend FastAPI | rien à faire côté Vercel |
+| `phase1_scanner` (cartographie) | APScheduler, backend FastAPI | rien à faire côté Vercel — **inscrit seulement si `ENVIRONMENT=production`** (ou `CRON_RESEARCH_ENABLED=true`) sur l'hébergeur du backend |
 | `phase2_enricher` (enrichissement) | idem | idem |
 | `crowdsourcing_processor` | idem, toutes les minutes | **les contributions publiques ne seront traitées que si le backend tourne.** Sans lui, les tickets s'accumulent en `Pending_AI`. |
 
@@ -290,6 +304,12 @@ Pour éviter de rejouer des corrections déjà faites :
   vérifié (étapes 2 et suivantes).
 - ✅ `/docs`, `/redoc`, `/openapi.json` se ferment sur `ENVIRONMENT=production`
   (étape 5).
+- ✅ L'état des passes du pipeline vit en base (`PipelineJob`) : un redémarrage
+  du backend ne laisse plus d'école verrouillée par un job fantôme.
+- ✅ Les jobs cron qui paient Research ne s'inscrivent qu'en production : lancer
+  le backend en local ne dépense plus de crédits (septembre 2026).
+- ✅ Un rapport Research dont l'extraction échoue est conservé et repris, au lieu
+  d'être repayé (septembre 2026).
 
 ---
 
@@ -305,10 +325,16 @@ Pour éviter de rejouer des corrections déjà faites :
    compris — détail dans [`architecture.md`](../architecture/architecture.md),
    *Contrôles d'exécution non automatisés*.
 2. **CSP à nonce**, pour retirer `'unsafe-inline'` de `script-src`.
-3. **Les 114 avertissements ESLint** (étape 6, §3.1).
+3. **Les avertissements ESLint** : 114 au 2 septembre, **124 au 28 septembre
+   2026** — la dette monte avec le code ajouté (étape 6, §3.1).
 4. **Le prompt d'extraction multi-programme** ne restitue pas le campus : les
    capacités des programmes multi-campus sont écartées et signalées plutôt
    qu'écrites au hasard (étape 3, §3.5).
+5. **La CI ne lance pas les tests TypeScript** (`npm run test:ts`, 36 tests),
+   dont ceux qui prouvent que l'écriture du rattachement campus ne crée aucune
+   arête.
+6. **Vérifier `ENVIRONMENT=production` sur l'hébergeur du backend** avant tout
+   déploiement : sans elle, le cron ne tourne plus du tout.
 
 ---
 

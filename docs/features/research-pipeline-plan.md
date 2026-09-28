@@ -35,6 +35,29 @@
 >   thread dix minutes.
 > - Troncatures incohérentes : 25 000 caractères en multi-programme, 80 000 en
 >   mono-programme, sans justification apparente.
+>
+> ## Mise à jour — 28 septembre 2026
+>
+> **Les cinq limites ci-dessus sont corrigées** : la Phase 1 vérifie que
+> l'extraction rend un objet ; `response.text` à `None` est traité comme une
+> réponse vide ; Gemma ne rejoue plus que 408 et 429 parmi les 4xx ; Research
+> abandonne après `TAVILY_RESEARCH_MAX_POLL_FAILURES` (5) échecs d'attente
+> consécutifs ; les trois plafonds de `processor.py` (80 000 / 25 000 / 25 000)
+> sont documentés et délibérés.
+>
+> **Le flux décrit en §6.3 et §8 n'est plus celui du code.** Research ne reçoit
+> plus d'`output_schema` : ce paramètre écourtait la recherche elle-même (1
+> classement issu d'une source avec lui, 10 issus de 14 sources sans lui). Research
+> rédige un rapport, conservé dans `ContributionInbox.raw_report`, et la **cascade
+> Gemini** (et non Gemma 26B) le convertit en JSON natif selon
+> `backend/ai/extraction_schemas.py`. Les schémas du §8 vivent donc côté extraction.
+>
+> **Depuis ce plan :** Ranking est passé au niveau école (un rapport, puis un
+> ticket par classement) ; la Phase 1 lit d'abord la page catalogue de l'école
+> (`catalog_client.py`) ; un rapport dont l'extraction échoue est rangé et repris
+> sans repayer Research ; les jobs Research du cron ne tournent qu'en production ;
+> et la Phase 1 peut enchaîner, sur demande, la collecte du rattachement campus.
+> Référence à jour : `architecture/architecture.md` §4 et §5.
 
 
 > **Version :** 1.0 — 29 mai 2026  
@@ -632,6 +655,10 @@ def _poll_research_task(
 
 ### 6.3. `backend/pipeline/phase1_research.py`
 
+> ⚠️ **Flux remplacé** : plus d'`output_schema` ni de repli Gemma 26B. Catalogue →
+> Research → cascade Gemini, rapport rangé en cas d'échec. Voir
+> `architecture/architecture.md` §5.1.
+
 **Orchestrateur Phase 1 via Research :**
 
 ```python
@@ -716,6 +743,10 @@ L'ancien `PIPELINE_STRATEGIES` définissait des domaines stricts par catégorie 
 ---
 
 ### 6.5. Modifications du Scheduler (`jobs.py`)
+
+> ⚠️ `USE_RESEARCH_PIPELINE` n'existe plus : Research est le seul pipeline. Et
+> depuis le 28 septembre 2026, `phase1_scanner` et `phase2_enricher` ne sont
+> inscrits qu'en production (`research_cron_enabled()`).
 
 ```python
 # Nouvelle variable d'env à ajouter dans backend/.env :
@@ -949,6 +980,9 @@ RÈGLES :
 ---
 
 ## 8. Schemas JSON (output_schema)
+
+> ⚠️ **Ces schémas ne sont plus envoyés à Tavily.** Ils servent à l'extraction
+> Gemini (`response_json_schema`), définis dans `backend/ai/extraction_schemas.py`.
 
 Les JSON Schemas sont passés à Tavily Research pour forcer un format de sortie structuré. Si ça fonctionne, on obtient du JSON directement sans passer par Gemma.
 

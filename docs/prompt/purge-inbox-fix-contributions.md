@@ -1,5 +1,12 @@
 # 🗑️ Plan d'Implémentation — Purge Inbox + Fix Contributions Invalides
 
+> **📁 Document historique — ne pas exécuter.** Consigne donnée à un agent le 1er juillet 2026,
+> conservée pour la trace des décisions. Le code a évolué depuis ; la référence
+> actuelle est [`docs/architecture/architecture.md`](../architecture/architecture.md)
+> (revue le 28 septembre 2026).
+> Implémenté : `DELETE /api/admin/inbox/purge` (ADMIN) et suppression des
+> tickets à URL invalide (`TavilyExtractionError`).
+
 > **Version :** 1.0 — 1er juillet 2026  
 > **Objectif :** Ajouter un bouton de purge des tickets traités dans admin/inbox + supprimer automatiquement les tickets de contributions dont l'URL est invalide  
 > **Destinataire :** Agent IA développeur pour exécution  

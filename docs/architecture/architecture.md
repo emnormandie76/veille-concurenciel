@@ -1,7 +1,12 @@
 # Architecture Complète — School Data Pipeline (Partie 1 : Système)
 
-> **Version :** 1.2 — 9 juillet 2026
-> **Statut :** Mis à jour — Refactorisation Modèle de Données (Program→School+ProgramCampus) + Extraction Accréditations en liste + Corrections routes API
+> **Version :** 2.0 — 28 septembre 2026
+> **Statut :** Aligné sur le code de la branche `newresearch` (commit `bedb5d2`).
+> Depuis la v1.2 : Tavily Research rédige un rapport que Gemini structure (plus
+> d'`output_schema`) ; cascade Gemini à paliers ; rattachement campus année par
+> année (`ProgramCampusAttachment`) ; vraies clés étrangères et énumérations
+> gardées sur l'Inbox ; suivi des jobs (`PipelineJob`) ; cron Research réservé à
+> la production ; rapport Research conservé quand son extraction échoue.
 
 ---
 
@@ -35,9 +40,9 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 │                             │         │                             │
 │  • Zone Consultation (pub)  │         │  • Pipeline IA              │
 │  • Zone Crowdsourcing (pub) │  Token  │    - Tavily Research (pro)  │
-│  • Zone API Docs (pub)      │◄───────►│    - Gemma 26B (fallback)   │
+│  • Zone API Docs (pub)      │◄───────►│    - Gemini/Gemma (JSON)    │
 │  • Zone Admin (protégée)    │ interne │  • APScheduler (Cron)       │
-│  • API REST publique v1     │         │  • psycopg2 / SQLAlchemy    │
+│  • API REST publique v1     │         │  • psycopg2 (pool)          │
 │  • Prisma ORM               │         │                             │
 │  • NextAuth.js              │         │                             │
 └──────────┬──────────────────┘         └──────────┬──────────────────┘
@@ -58,8 +63,8 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 | Frontend + API publique | Next.js (App Router, TypeScript) | Vercel | Generous, pas de limite bloquante |
 | Backend IA + Cron | FastAPI (Python) | Koyeb EcoFree 24/7 | Redémarrages possibles (Edge Case 15) |
 | Base de données | PostgreSQL + Prisma ORM | Neon.tech | 500MB stockage |
-| Recherche web | Tavily API (research/extract) | SaaS | 1000 crédits/mois (avec key cycling Greedy) |
-| IA Extraction | Gemma 4 26B (fallback JSON) + 31B (crowdsourcing) via google-genai | Google AI Studio | Rate limits RPM (Edge Case 7) |
+| Recherche web | Tavily API (`research`, `search`, `extract`, `map`) | SaaS | 1000 crédits/mois par clé, rotation Greedy sur plusieurs clés |
+| IA Extraction | **Pipeline** : cascade Gemini à 3 paliers qui structure les rapports Tavily (`gemini_client.py`) · **Crowdsourcing** : Gemma 4 26B (compatibilité) et 31B (extraction) (`gemma_client.py`) · SDK `google-genai` | Google AI Studio | ~5 requêtes/min par clé (espacement 12 s), quotas journaliers par modèle |
 | Auth | NextAuth.js (Credentials Provider) | Vercel | — |
 | Cache API | Vercel Edge Cache (ISR) | Vercel | `revalidate = 3600` |
 
@@ -82,7 +87,11 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 - **API interne :** FastAPI expose quelques endpoints sécurisés par jeton Bearer partagé pour les actions manuelles de l'Admin :
   - `POST /internal/trigger-scan/{school_id}` — Relancer un scan Phase 1
   - `POST /internal/trigger-enrichment/{school_id}` — Relancer la Phase 2
-  - `GET /internal/pipeline-status` — État du pipeline, crédits Tavily, **connexion BDD réelle** et **état des jobs périodiques**
+  - `POST /internal/trigger-targeted-research/{school_id}` — Recherche ciblée lancée depuis `/admin/cron` : Phase 1, ou Phase 2 sur un programme et des catégories choisis. Porte `collect_campus_attachments` (faux par défaut, voir §5.4)
+  - `POST /internal/research-test/{school_id}` — Pipeline Research en `dry_run` : rend le rapport sans rien écrire
+  - `GET /internal/pipeline-status` — État du pipeline, crédits Tavily, **connexion BDD réelle** et **état des jobs périodiques** (dont `research_cron` : pourquoi les jobs Research sont inscrits ou non)
+
+  `GET /health` (hors `/internal`, sans jeton) sert de sonde de disponibilité.
 
 > **Nom du jeton : `INTERNAL_API_TOKEN`.** Ce secret a porté trois noms de part
 > et d'autre de la même frontière de confiance — Next.js envoyait
@@ -97,201 +106,132 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 
 ### 2.4. Arborescence Complète du Projet
 
-> Les fichiers marqués `← étape X` sont à créer lors de l'étape correspondante dans `task.md`.
-> Les fichiers sans marquage existent déjà ou font partie du scaffolding initial (étape 0).
+> Relevée sur le dépôt le 28 septembre 2026. Les fichiers de travail locaux
+> (`tmp/`, `backend/.venv/`, `.next/`) ne sont pas suivis par git.
 
 ```
 appVC/
 │
-├── .env.local                          # Variables d'env Next.js (DATABASE_URL, NEXTAUTH_*, FASTAPI_INTERNAL_TOKEN)
-├── .gitignore
-├── next.config.ts
-├── package.json
-├── tsconfig.json
+├── .env.local                          # Variables Next.js (DATABASE_URL, DIRECT_URL, NEXTAUTH_*, FASTAPI_URL, INTERNAL_API_TOKEN…) — modèle : .env.example
+├── .env.example                        # Référence commentée de TOUTES les variables, Next.js et backend
+├── next.config.ts                      # En-têtes de sécurité (§10.4)
+├── proxy.ts                            # Middleware Next 16 : limitation de débit + protection /admin/* (§3.6)
+├── prisma.config.ts                    # Prisma 7 : connexion des migrations (DIRECT_URL, repli DATABASE_URL)
+├── eslint.config.mjs
+├── package.json                        # scripts : dev, build, lint, typecheck, test (pytest), test:ts (node --test)
+├── pytest.ini
 │
 ├── prisma/
-│   ├── schema.prisma                   ← étape 1 (tous les modèles : User, School, Campus, Program, *Record, Inbox)
-│   └── seed.ts                         ← étape 1 (création du premier Admin)
+│   ├── schema.prisma                   # 14 modèles — référence : bdd.md
+│   ├── seed.ts                         # Premier compte ADMIN (SEED_ADMIN_PASSWORD obligatoire)
+│   └── migrations/                     # 10 migrations, écrites et relues à la main
 │
 ├── app/                                # ── NEXT.JS (App Router) ──────────────────
-│   ├── globals.css
-│   ├── layout.tsx                      # Layout racine (metadata SEO, font Inter)
-│   ├── page.tsx                        ← étape 8 (page d'accueil : recherche d'écoles)
-│   │
-│   ├── schools/
-│   │   └── [id]/
-│   │       ├── page.tsx                ← étape 8 (fiche école : campus, stats, accréditations)
-│   │       └── programs/
-│   │           └── [pid]/
-│   │               └── page.tsx        ← étape 8 (détail programme : tarifs, classements, capacité)
-│   │
-│   ├── contribute/
-│   │   └── page.tsx                    ← étape 7 (formulaire crowdsourcing : arborescence + multi-catégorie)
-│   │
-│   ├── api-docs/
-│   │   └── page.tsx                    ← étape 10 (documentation interactive API REST v1)
-│   │
+│   ├── layout.tsx · page.tsx           # Accueil : recherche d'écoles
+│   ├── schools/[id]/page.tsx           # Fiche école : campus, stats, accréditations
+│   ├── schools/[id]/programs/[pid]/page.tsx   # Détail programme : tarifs, classements, capacité
+│   ├── contribute/page.tsx             # Formulaire crowdsourcing (arborescence + multi-catégorie)
+│   ├── api-docs/page.tsx               # Documentation de l'API REST v1
+│   ├── (admin-auth)/admin/login/page.tsx      # Connexion (groupe de routes hors layout admin)
 │   ├── admin/
-│   │   ├── login/
-│   │   │   └── page.tsx                ← étape 1 (page de connexion NextAuth)
-│   │   ├── inbox/
-│   │   │   └── page.tsx                ← étape 3 (validation ContributionInbox, Super Ticket)
-│   │   ├── schools/
-│   │   │   ├── page.tsx                ← étape 2 (CRUD écoles : liste + ajout/modif/suppression)
-│   │   │   └── [id]/
-│   │   │       └── campuses/
-│   │   │           └── page.tsx        ← étape 2 (CRUD campus de l'école)
-│   │   ├── cron/
-│   │   │   └── page.tsx                ← étape 11 (monitoring pipeline, recherche manuelle)
-│   │   └── users/
-│   │       └── page.tsx                ← étape 2 (gestion modérateurs, Admin uniquement)
+│   │   ├── inbox/page.tsx              # Arbitrage des tickets ; panneau d'écriture du rattachement campus
+│   │   ├── schools/page.tsx            # CRUD écoles
+│   │   ├── schools/[id]/campuses/page.tsx     # CRUD campus
+│   │   ├── schools/[id]/manage/page.tsx       # Gestion d'une école : programmes, tarifs, classements, capacités, stats, accréditations
+│   │   ├── schools/[id]/manage/components/    # ProgramSelector, YearSelector
+│   │   ├── schools/[id]/manage/tabs/          # 7 onglets : infos, accréditations, stats, campus & programmes, tarifs, classements, capacités
+│   │   ├── cron/page.tsx               # Suivi du pipeline, recherche ciblée, case « collecte campus »
+│   │   └── users/page.tsx              # Comptes (ADMIN)
 │   │
-│   └── api/                            # ── API ROUTES NEXT.JS ────────────────────
-│       ├── auth/
-│       │   └── [...nextauth]/
-│       │       └── route.ts            ← étape 1 (NextAuth Credentials Provider)
-│       │
-│       ├── admin/                      # Routes protégées (session NextAuth obligatoire)
-│       │   ├── schools/
-│       │   │   ├── route.ts            ← étape 2 (GET liste, POST créer)
-│       │   │   └── [id]/
-│       │   │       ├── route.ts        ← étape 2 (PUT modifier, DELETE supprimer avec double confirmation)
-│       │   │       └── campuses/
-│       │   │           └── route.ts    ← étape 2 (GET liste, POST créer)
-│       │   ├── campuses/
-│       │   │   └── [id]/
-│       │   │       └── route.ts        ← étape 2 (PUT modifier, DELETE supprimer)
-│       │   ├── inbox/
-│       │   │   ├── route.ts            ← étape 3 (GET liste paginée + filtres)
-│       │   │   ├── purge/
-│       │   │   │   └── route.ts        # DELETE — purge des tickets Validated/Rejected (protégé session)
-│       │   │   └── [id]/
-│       │   │       ├── route.ts        ← étape 3 (GET détail)
-│       │   │       ├── validate/
-│       │   │       │   └── route.ts    ← étape 3 (PUT valider → upsert tables rigides)
-│       │   │       └── reject/
-│       │   │           └── route.ts    ← étape 3 (PUT rejeter)
-│       │   └── users/
-│       │       ├── route.ts            ← étape 2 (GET liste, POST créer modérateur)
-│       │       └── [id]/
-│       │           └── route.ts        ← étape 2 (DELETE supprimer modérateur)
-│       │
-│       ├── contribute/
-│       │   └── route.ts                ← étape 7 (POST soumission crowdsourcing)
-│       │
-│       ├── schools/                    # Routes publiques (frontend consultation)
-│       │   ├── route.ts                ← étape 8 (GET écoles actives + recherche)
-│       │   └── [id]/
-│       │       └── route.ts            ← étape 8 (GET détail école)
-│       │
-│       └── v1/                         # ── API REST PUBLIQUE (v1) ────────────────
-│           ├── schools/
-│           │   ├── route.ts            ← étape 9 (GET liste paginée ?search=&page=&limit=)
-│           │   └── [id]/
-│           │       ├── route.ts        ← étape 9 (GET détail école)
-│           │       ├── stats/
-│           │       │   └── route.ts    ← étape 9 (GET stats école ?year=)
-│           │       ├── accreditations/
-│           │       │   └── route.ts    ← étape 9 (GET accréditations)
-│           │       ├── campuses/
-│           │       │   └── route.ts    ← étape 9 (GET campus + programmes)
-│           │       ├── programs/
-│           │       │   └── route.ts    ← étape 9 (GET programmes ?campus_id=)
-│           │       └── pricing/
-│           │           └── route.ts    ← étape 9 (GET tarifs école ?year=)
-│           ├── campuses/
-│           │   └── [id]/
-│           │       └── route.ts        ← étape 9 (GET détail campus)
-│           ├── programs/
-│           │   ├── route.ts            ← étape 9 (GET recherche globale ?search=&alternance=)
-│           │   └── [id]/
-│           │       ├── route.ts        ← étape 9 (GET détail programme)
-│           │       ├── pricing/
-│           │       │   └── route.ts    ← étape 9 (GET historique tarifaire ?year=)
-│           │       ├── rankings/
-│           │       │   └── route.ts    ← étape 9 (GET classements ?year=&ranking_name=)
-│           │       └── capacity/
-│           │           └── route.ts    ← étape 9 (GET places ?year=)
-│           ├── rankings/
-│           │   └── route.ts            ← étape 9 (GET tableau global ?ranking_name=&year=)
-│           └── compare/
-│               └── programs/
-│                   └── route.ts        ← étape 9 (GET comparaison ?ids=uuid1,uuid2)
+│   └── api/                            # ── ROUTES API ────────────────────────────
+│       ├── auth/[...nextauth]/         # NextAuth, Credentials Provider
+│       ├── contribute/                 # POST soumission crowdsourcing (publique, limitée)
+│       ├── schools/ · schools/[id]/ · schools/[id]/programs/[pid]/   # Lectures du site public
+│       ├── v1/                         # API REST publique en lecture — 15 routes, voir §8
+│       └── admin/                      # 33 routes, toutes gardées par guardAuth ou guardAdmin
+│           ├── inbox/                  # GET liste ; purge/ (DELETE, ADMIN)
+│           │   └── [id]/               # GET · validate/ (PUT) · reject/ (PUT) · create-programs/ (POST)
+│           │                           #   · attachments/ (PUT, rattachement campus — §5.4)
+│           ├── schools/ · schools/[id]/            # CRUD école ; manage/ (lecture agrégée)
+│           │   └── [id]/{campuses,programs,pricing,rankings,capacities,accreditations,stats,stats/[recordId]}/
+│           ├── campuses/[id]/ · programs/[id]/ · programs/[id]/{pricing,rankings}/
+│           ├── pricing/[id]/ · rankings/[id]/ · capacities/[id]/ · accreditations/[id]/
+│           ├── program-campuses/[id]/capacity/
+│           ├── schools-with-programs/ · pipeline-status/
+│           ├── trigger-research/       # POST → FastAPI trigger-targeted-research (ADMIN)
+│           └── users/ · users/[id]/ · users/[id]/password/
 │
 ├── lib/                                # ── UTILITAIRES NEXT.JS ───────────────────
-│   ├── prisma.ts                       ← étape 1 (singleton Prisma Client)
-│   ├── auth.ts                         ← étape 1 (config NextAuth, session helpers)
-│   └── utils.ts                        ← étape 2 (fonctions utilitaires partagées)
-│
-├── middleware.ts                        ← étape 1 (protection routes /admin/*, sauf /admin/login)
+│   ├── prisma.ts                       # Client Prisma singleton, adaptateur Neon en WebSocket (443)
+│   ├── auth.ts                         # NextAuth + guardAuth / guardAdmin
+│   ├── password.ts                     # Politique de mot de passe (12 à 72 octets)
+│   ├── rate-limit.ts                   # Limitation de débit unique (Upstash, repli mémoire)
+│   ├── internal-api.ts                 # Appels vers FastAPI (INTERNAL_API_TOKEN)
+│   ├── contribution.ts                 # Énumérations partagées (statuts, catégories) + marque « rapport rangé »
+│   ├── campus-attachment.ts            # Plan et écriture du rattachement campus (types AttachmentTx, PolicyNoteTx)
+│   ├── trigger-research.ts             # Corps d'une recherche ciblée (interrupteur de collecte)
+│   └── utils.ts
 │
 ├── backend/                            # ── FASTAPI (Python) ──────────────────────
-│   ├── .env                            # Variables d'env Python (DATABASE_URL, GEMINI_API_KEY, TAVILY_API_KEYS, INTERNAL_TOKEN)
-│   ├── requirements.txt
-│   ├── main.py                         # Point d'entrée FastAPI (/health + montage routers)
-│   ├── pipeline_jobs.py                # Suivi d'exécution des jobs de pipeline (état, progression)
+│   ├── requirements.txt · requirements.lock.txt · requirements-dev.txt
+│   ├── main.py                         # Point d'entrée : lifespan (jobs, clés Tavily, scheduler), /health, CORS
+│   ├── db.py                           # Pool psycopg2 (initialisation sous verrou)
+│   ├── constants.py                    # Énumérations partagées avec lib/contribution.ts
+│   ├── pipeline_jobs.py                # Table PipelineJob : état, progression, reprise des jobs orphelins, purge
 │   │
-│   ├── scripts/                        # Scripts de simulation hors production
-│   │   ├── __init__.py
-│   │   ├── simulate_phase1_research.py
-│   │   ├── simulate_phase2_research.py
-│   │   └── simulate_crowdsourcing.py
+│   ├── ai/
+│   │   ├── gemini_client.py            # Cascade Gemini : 8 modèles, 3 paliers, registre de session, garde RPM, plancher min_tier
+│   │   ├── gemma_client.py             # Gemma (crowdsourcing) + wrap_source(), SEUL chemin d'injection de contenu externe
+│   │   ├── extraction_prompts.py       # Prompts rapport → JSON (6 catégories, catalogue, rattachement campus)
+│   │   ├── extraction_schemas.py       # Schémas d'extraction + MIN_TIER_BY_CATEGORY
+│   │   └── research_prompts.py         # Briefs de recherche envoyés à Tavily Research
 │   │
-│   ├── ai/                             ← étape 4
-│   │   ├── __init__.py
-│   │   ├── gemma_client.py             # Module Gemma (call_gemma, clean_json, validate, fact_check) — crowdsourcing
-│   │   ├── gemini_client.py            # Cascade Gemini : 8 modèles, registre de session, garde RPM, plancher min_tier
-│   │   ├── extraction_prompts.py       # System prompts d'extraction rapport → JSON (6 catégories + catalogue)
-│   │   ├── extraction_schemas.py       # JSON Schemas d'extraction (un objet = une ligne Prisma)
-│   │   └── research_prompts.py         # Builders de briefs de recherche pour Tavily Research
+│   ├── tavily_service/
+│   │   ├── research_client.py          # Tavily Research : création de tâche + attente
+│   │   ├── catalog_client.py           # Ancrage catalogue : trouve et lit la page « nos formations »
+│   │   ├── client.py                   # search_web · extract_from_urls · map_program_pages (/map enraciné sur le catalogue)
+│   │   └── key_manager.py              # TavilyKeyManager : rotation Greedy, garde de quota
 │   │
-│   ├── tavily_service/                 ← étape 4
-│   │   ├── __init__.py
-│   │   ├── catalog_client.py           # Ancrage catalogue : trouve et lit la page /programmes d'une école
-│   │   ├── client.py                   # Client Tavily (crawl/search/extract — crowdsourcing)
-│   │   ├── key_manager.py              # TavilyKeyManager (rotation de clés Greedy, quota guard)
-│   │   └── research_client.py          # Client Tavily Research (create task + polling)
+│   ├── pipeline/
+│   │   ├── phase1_research.py          # Découverte des campus et programmes ; rattachement campus sur demande
+│   │   ├── phase2_research.py          # Enrichissement par catégorie → diff → Inbox
+│   │   ├── diff.py                     # has_data_changed() : ticket seulement si la donnée a bougé
+│   │   ├── campus_attachment_collector.py  # Collecte du rattachement : /map → /extract → Gemini → lignes
+│   │   ├── campus_attachment.py        # Règles pures : gardes de page, F8, régime, libellés, clé de campus
+│   │   ├── program_identity.py         # Appariement fiche du site → Program (clauses fermées)
+│   │   └── attachment_plan.py          # Plan d'écriture, porté de lib/campus-attachment.ts
 │   │
-│   ├── pipeline/                       ← étape 5-6
-│   │   ├── __init__.py
-│   │   ├── phase1_research.py          # run_phase1_research() : catalogue → rapport Research → extraction Gemini → Inbox
-│   │   ├── phase2_research.py          # run_phase2_research() : rapport par catégorie → extraction Gemini → diff → Inbox
-│   │   └── diff.py                     # has_data_changed(new, existing, compared_fields) : comparaison vs production
-│   │
-│   ├── crowdsourcing/                  ← étape 7
-│   │   ├── __init__.py
-│   │   └── processor.py               # Traitement tickets User_Submission (extract → fact-check → extraction)
-│   │                                  # ⚠️ Contient les constantes intégrées : PIPELINE_STRATEGIES, CROWDSOURCING_COMPATIBILITY_CHECK,
-│   │                                  #    et tous les system prompts par catégorie (anciennement dans backend/ai/prompts.py
-│   │                                  #    et backend/tavily_service/strategies.py, supprimés lors du refactoring)
-│   │
-│   ├── routers/                        ← étape 4
-│   │   ├── __init__.py
-│   │   └── internal.py                 # Routes /internal/* (trigger-scan, trigger-enrichment, pipeline-status)
-│   │
-│   ├── scheduler/                      ← étape 5
-│   │   ├── __init__.py
-│   │   └── jobs.py                     # APScheduler : phase1_scanner, phase2_enricher
-│   │
-│   └── db.py                           ← étape 4 (connexion PostgreSQL, pool)
+│   ├── crowdsourcing/processor.py      # Tickets User_Submission : extract → compatibilité → extraction
+│   ├── routers/internal.py             # Routes /internal/* (§2.3)
+│   ├── scheduler/jobs.py               # APScheduler : phase1_scanner, phase2_enricher (production), crowdsourcing
+│   ├── utils/academic_year.py
+│   └── scripts/                        # Hors production : simulations et rejeux sur cache
+│       ├── simulate_phase1_research.py · simulate_phase2_research.py · simulate_crowdsourcing.py
+│       ├── simulate_campus_attachment.py       # Collecte du rattachement en sortie sèche
+│       ├── resolve_program_identity.py         # Confrontation fiches ↔ Program sur un dump
+│       └── replay_phase1_campus_attachment.py  # Le pas de Phase 1, rejoué sur cache
+│
+├── scripts/dump-program-identity.ts    # Dump en lecture seule : écoles, campus, programmes, arêtes, lignes-années
 │
 ├── docs/                               # ── DOCUMENTATION ─────────────────────────
-│   ├── agent-prompt.md                 # Prompt de démarrage pour les agents IA
+│   ├── architecture/                   # architecture.md (CE FICHIER), bdd.md, API-rest.md, task.md, gemma-python-guide.md
+│   ├── features/                       # Plans et comptes rendus de chantiers
+│   ├── memory/                         # Décisions durables et déploiement
+│   ├── prompt/                         # Consignes historiques données à des agents
+│   ├── testing/                        # Procédures de test manuel et de simulation
 │   ├── cahier-des-charges-school-pipeline.md
-│   ├── edgecase.md                     # 15 edge cases + mitigations
-│   └── architecture/
-│       ├── architecture.md             # CE FICHIER — architecture complète
-│       ├── bdd.md                      # Schéma Prisma détaillé
-│       ├── API-rest.md                 # Spec 15 endpoints API v1
-│       ├── gemma-python-guide.md       # Guide intégration Gemma/Gemini
-│       └── task.md                     # Plan de tâches séquentiel (12 étapes)
+│   └── edgecase.md
 │
-└── test/
-    ├── test_pipeline.py                # POC initial du pipeline (Tavily + Gemma)
-    ├── test_gemini_cascade.py          # Cascade Gemini : 429/503/timeouts, registre de session, plancher de qualité
-    ├── test_contribution_enums.py      # Enums de contribution partagés Python/TypeScript
-    ├── test_tavily_key_rotation.py     # Rotation des clés Tavily et garde de quota
-    └── test_crowdsourcing_processor.py # Tests unitaires du crowdsourcing et du client Gemma robustifié
+├── test/                               # pytest (npm test) et node --test (npm run test:ts)
+│   ├── test_gemini_cascade.py · test_tavily_key_rotation.py · test_contribution_enums.py
+│   ├── test_crowdsourcing_processor.py
+│   ├── test_campus_attachment.py · test_campus_attachment_collector.py
+│   ├── test_program_identity.py · test_attachment_plan.py
+│   ├── test_phase1_collection_switch.py · test_phase1_parked_report.py · test_scheduler_research_gate.py
+│   ├── campus-attachment.test.ts · contribution.test.ts · trigger-research.test.ts
+│   └── fixtures/attachment_plan_cases.json    # 21 cas lus par les deux suites
+│
+└── .github/workflows/ci.yml            # §10 bis
 ```
 
 ---
@@ -310,14 +250,19 @@ appVC/
               (N) Campus   │          (N) Program    │ (dédupliqué par école)
                            ▼                         ▼
                         Campus ◄──── ProgramCampus ──► Program
-                                      (table jointure)     │
-                                           │               ├── PricingRecord (niveau école)
-                                           │               └── RankingRecord (niveau école)
-                                           │
-                                           └── CapacityRecord (niveau campus)
+                                      (arête)              │
+                                         │                 ├── PricingRecord (niveau école)
+                                         │                 ├── RankingRecord (niveau école)
+                                         │                 ├── ProgramPlacement (lieux hors du parc)
+                                         │                 └── campus_policy_note (colonne)
+                                         │
+                                         ├── CapacityRecord (niveau campus)
+                                         └── ProgramCampusAttachment (détail année par année)
 
 School (1) ──► (N) SchoolStatsRecord
 School (1) ──► (N) AccreditationRecord
+School (1) ──► (N) PipelineJob
+ContributionInbox ──► School? · Campus? · Program? · ProgramCampus?   (ON DELETE SET NULL)
 ```
 
 > **Principe de déduplication :** Un même programme (ex: "PGE") disponible sur N campus est stocké **une seule fois** dans `Program` (lié directement à `School`), et son association à chaque campus est modélisée par une ligne dans `ProgramCampus`. Cela garantit l'unicité des tarifs et classements par programme, tout en permettant des capacités différentes par campus.
@@ -332,8 +277,11 @@ model School {
   official_domain String   @unique        // "emlv.fr"
   status          String   @default("ACTIVE") // ACTIVE, INACTIVE, DRAFT
   campuses        Campus[]
+  programs        Program[]
   statsRecords    SchoolStatsRecord[]
   accreditations  AccreditationRecord[]
+  contributions   ContributionInbox[]
+  pipelineJobs    PipelineJob[]
 }
 ```
 
@@ -346,6 +294,7 @@ model Campus {
   city            String?          // "Paris"
   school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   programCampuses ProgramCampus[]  // Association vers les programmes via table de jointure
+  contributions   ContributionInbox[]
   @@unique([schoolId, name])
 }
 ```
@@ -361,8 +310,10 @@ model Program {
   is_expatriation_mandatory Boolean         @default(false)
   min_expatriation_months   Int?
   max_internship_months     Int?
+  campus_policy_note        String?         // Contrainte de campus publiée en prose (ex. IBBA) — §5.4
   school          School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   campuses        ProgramCampus[]   // Liste des campus où ce programme est dispensé
+  placements      ProgramPlacement[] // Lieux annoncés qui ne sont pas des campus de l'école
   pricingRecords  PricingRecord[]   // Tarifs identiques quel que soit le campus
   rankingRecords  RankingRecord[]   // Classements identiques quel que soit le campus
   @@unique([schoolId, name])        // Contrainte de déduplication
@@ -378,9 +329,59 @@ model ProgramCampus {
   program          Program         @relation(fields: [programId], references: [id], onDelete: Cascade)
   campus           Campus          @relation(fields: [campusId], references: [id], onDelete: Cascade)
   capacityRecords  CapacityRecord[] // Capacité variable selon le campus
+  attachments      ProgramCampusAttachment[] // Détail année par année — zéro ligne = sens inchangé
   @@unique([programId, campusId])
 }
 ```
+
+> **Une arête `ProgramCampus` n'est créée que par la validation d'une découverte**
+> (`validateProgramDiscovery`) ou par l'écran de gestion (`POST /api/admin/schools/[id]/programs`,
+> `PUT /api/admin/programs/[id]`). Elle pilote trois
+> choses coûteuses : une option dans les menus de capacité, une destination de
+> `CapacityRecord`, et une tâche `Capacity` facturée à chaque passe de Phase 2. Le
+> rattachement campus (§5.4) ne fait que s'y accrocher, il n'en crée jamais.
+
+#### ProgramCampusAttachment *(détail année par année d'une arête)*
+```prisma
+model ProgramCampusAttachment {
+  id              String   @id @default(uuid())
+  programCampusId String
+  study_year      Int                  // 1, 2, 3… — jamais 0 ici
+  regime          String   @default("ANY") // "INITIAL" | "ALTERNANCE" | "ANY"
+  languages       String[] @default([])
+  note            String?
+  source_url      String?
+  programCampus   ProgramCampus @relation(..., onDelete: Cascade)
+  @@unique([programCampusId, study_year, regime])
+}
+```
+
+Les fiches publient le campus **année par année**, et répètent un même campus
+sur plusieurs années : le Bachelor en 3 ans d'EM Normandie nomme Le Havre en 1ʳᵉ,
+2ᵉ et 3ᵉ année, et deux régimes différents en 3ᵉ. Une ligne `ProgramCampus` ne
+peut pas le porter. Pour un couple `(arête, année)`, le régime est **soit
+entièrement `ANY`, soit entièrement nommé** : la règle est tenue à l'écriture
+(`absorb_any_regime`), une contrainte d'exclusion n'étant pas déclarable en Prisma.
+
+#### ProgramPlacement *(lieux qui ne sont pas des campus de l'école)*
+```prisma
+model ProgramPlacement {
+  id         String  @id @default(uuid())
+  programId  String
+  study_year Int     @default(0)       // 0 = année non précisée (sentinelle, pas NULL)
+  regime     String  @default("ANY")
+  label      String                    // libellé tel que publié
+  kind       String  @default("UNSPECIFIED") // PARTNER | REGION | REMOTE | UNSPECIFIED
+  note       String?
+  source_url String?
+  @@unique([programId, study_year, regime, label])
+}
+```
+
+« Université partenaire », « UniLaSalle Rouen », « Londres » : les créer dans
+`Campus` ferait entrer chez l'école des lieux qui ne lui appartiennent pas.
+**Aucun chemin n'écrit encore cette table** : la collecte en rendait 8 lignes dont
+3 en défaut, et rien ne la lit (voir §5.4).
 
 ### 3.3. Tables Temporelles (Records)
 
@@ -412,24 +413,45 @@ model ContributionInbox {
   program_name_mismatch  Boolean  @default(false)
   createdAt              DateTime @default(now())
   submission_group_id    String?
+  raw_report             String?  // Rapport Tavily Research intégral (tickets du pipeline)
+  school                 School?        @relation(..., onDelete: SetNull)
+  campus                 Campus?        @relation(..., onDelete: SetNull)
+  program                Program?       @relation(..., onDelete: SetNull)
+  programCampus          ProgramCampus? @relation(..., onDelete: SetNull)
 
   @@index([submission_group_id])
+  @@index([schoolId])
+  @@index([programId])
   @@index([status, createdAt])   // file de traitement : filtre + tri
 }
 ```
 
-> **Aucune de ces colonnes n'est une vraie clé étrangère** — ce sont de simples
-> `String?`, sans relation Prisma. Rien en base ne rattrape une incohérence : un
-> ticket peut référencer une entité supprimée. **Le contrôle d'appartenance doit
-> donc être fait applicativement** — c'est ce que fait `POST /api/contribute`,
-> qui vérifie que `campusId`, `programId` et `programCampusId` appartiennent
-> bien à `schoolId`.
+> **Vraies clés étrangères, en `ON DELETE SET NULL`** depuis la migration
+> `20260902120000_inbox_relations_and_enum_guards`. Ce n'est pas `CASCADE` : la
+> zone tampon est volontairement souple, et supprimer une école ne détruit pas
+> les contributions qui la visaient — le ticket se détache et l'admin voit qu'il
+> ne pointe plus sur rien. Une clé étrangère ne prouve pas l'**appartenance** :
+> `POST /api/contribute` vérifie toujours que `campusId`, `programId` et
+> `programCampusId` appartiennent bien à `schoolId`.
+
+> **Statut, catégorie et `source_type` sont gardés en base** par des contraintes
+> `CHECK` (posées `NOT VALID` : elles s'appliquent à toute écriture future sans
+> exiger la conformité de l'historique). Les listes de référence sont
+> `lib/contribution.ts` et `backend/constants.py`, et `test_contribution_enums.py`
+> vérifie qu'elles concordent. Ajouter une valeur impose de modifier les deux
+> **et** d'écrire une migration qui remplace la contrainte.
+
+> **`raw_report`** conserve le rapport Research que Gemini a structuré, pour que
+> la donnée reste ré-extractible sans repayer un appel `pro` (~25 crédits) — c'est
+> ce qui rend possible le rapport rangé du §5.1. Il devait aussi permettre à
+> l'admin d'arbitrer sur pièces (URL, contradictions entre sources, ce que la
+> recherche n'a pas trouvé) : **aucun écran ne l'affiche encore**.
 
 **Valeurs de `ai_category` :**
 
 | Catégorie | Niveau FK requis | Phase | Description |
 |---|---|---|---|
-| `Program_Discovery` | schoolId | Phase 1 | Découverte des campus et programmes |
+| `Program_Discovery` | schoolId | Phase 1 | Découverte des campus et programmes — ou rattachement campus, ou rapport rangé (voir ci-dessous) |
 | `Pricing` | schoolId + campusId + programId | Phase 2 | Tarifs de scolarité |
 | `Ranking` | schoolId + programId | Phase 2 | Classements médias |
 | `Capacity` | schoolId + campusId + programId | Phase 2 | Places disponibles |
@@ -462,15 +484,46 @@ model ContributionInbox {
 > SQL : un `::timestamptz` sur une chaîne issue d'un JSON lève une erreur si la
 > valeur est malformée et ferait tomber toute la boucle de traitement.
 
-> **Angle mort connu :** aucun écran du back-office n'affiche les tickets
-> `Failed`. Ils existent en base entre deux tentatives, mais l'interface d'inbox
-> ne les distingue pas.
+> **Les tickets `Failed` sont visibles** dans l'inbox (filtre et badge) depuis
+> que ses listes viennent de `lib/contribution.ts` : elles étaient recopiées dans
+> la page, et « Failed » y manquait.
+
+**Trois charges possibles pour un ticket `Program_Discovery`**, toutes en
+`source_type = 'Automated_AI'` :
+
+| Charge (`ai_extracted_json`) | Statut | S'écrit par | Origine |
+|---|---|---|---|
+| `discovered_campuses` | `Pending_Admin` | `PUT …/validate` | Découverte de Phase 1 (§5.1) |
+| `campus_attachments` | `Pending_Admin` | `PUT …/attachments` — **`/validate` le refuse** | Collecte du rattachement campus (§5.4) |
+| `parked_reason: "research_report_parked"` | `Failed` | rien — **`/validate` le refuse** ; le rejeter le retire | Rapport Research dont l'extraction a échoué (§5.1) |
+
+La garde de `/validate` lit la charge **enregistrée**, pas le corps de la
+requête : c'est le formulaire répéteur, qui n'affiche que `discovered_campuses`,
+qui enverrait une liste vide — et `validateProgramDiscovery` l'accepte, ce qui
+clôturait le ticket sans rien écrire.
 
 > **Purge manuelle :** Un bouton "🗑️ Purger" dans `admin/inbox` permet à l'Admin/Modérateur de supprimer en masse les tickets `Validated` et/ou `Rejected` via `DELETE /api/admin/inbox/purge`. Les tickets `Pending_AI` et `Pending_Admin` ne sont jamais supprimables via cette route.
 
 ### 3.5. ~~Suivi du Cron — CronTarget~~ *(Supprimé)*
 
-> **Note :** Le modèle `CronTarget` a été supprimé du projet. Le pipeline Tavily Research est suffisamment intelligent pour naviguer autour des obstacles. Les échecs de scan sont uniquement logués dans la console. Pas de blacklist.
+> **Note :** Le modèle `CronTarget` a été supprimé du projet. Le pipeline Tavily Research est suffisamment intelligent pour naviguer autour des obstacles. Pas de blacklist.
+
+### 3.5 bis. Suivi des exécutions — PipelineJob
+
+Chaque passe, manuelle (`source = "manual"`) ou cron (`"cron"`), est une ligne
+`PipelineJob` : `status` (`queued`, `running`, `completed`, `failed`, gardé par
+`CHECK`), `progress` et `result` en JSON, `error`, horodatages et `worker_id`.
+`backend/pipeline_jobs.py` porte les règles :
+
+- **un seul job actif par école** — la garde de concurrence des points d'entrée ;
+- **reprise au démarrage** : un job resté `running` sous un autre `worker_id` est
+  clos (`reap_orphaned_jobs`), sinon l'école resterait verrouillée pour toujours ;
+- **job sans signe de vie** au-delà de `PIPELINE_JOB_STALE_SECONDS` : clos ;
+- **purge** des jobs terminés depuis plus de `PIPELINE_JOB_RETENTION_DAYS`
+  (défaut 7).
+
+Le panneau `/admin/cron` lit cette table ; c'était auparavant un dictionnaire en
+mémoire de `routers/internal.py`, perdu à chaque redémarrage.
 
 ### 3.6. Authentification — User
 
@@ -494,8 +547,8 @@ système et assume l'irréversible.**
 | Réservé à **ADMIN** (`guardAdmin`) | Pourquoi |
 |---|---|
 | `DELETE /api/admin/schools/[id]` | suppression en cascade : campus, programmes, tarifs, classements, capacités, accréditations, stats |
-| `DELETE /api/admin/campuses/[id]` | cascade sur les associations et les capacités |
-| `DELETE /api/admin/programs/[id]` | cascade sur tarifs, classements, capacités |
+| `DELETE /api/admin/campuses/[id]` | cascade sur les associations, les capacités et les lignes-années |
+| `DELETE /api/admin/programs/[id]` | cascade sur tarifs, classements, capacités, lignes-années et placements |
 | `POST /api/admin/schools` | créer une école est structurant, pas de la modération |
 | `DELETE /api/admin/inbox/purge` | effacement de masse de l'historique |
 | `POST /api/admin/trigger-research` | déclenche des dépenses réelles en crédits Tavily |
@@ -503,14 +556,14 @@ système et assume l'irréversible.**
 
 | Ouvert à toute session (`guardAuth`) | Pourquoi |
 |---|---|
-| toute la file d'inbox : lecture, validation, rejet, création de programmes | **c'est le métier du modérateur** — le lui retirer viderait le rôle de sens |
+| toute la file d'inbox : lecture, validation, rejet, création de programmes, écriture du rattachement campus (`attachments`) | **c'est le métier du modérateur** — le lui retirer viderait le rôle de sens |
 | créations et mises à jour de tarifs, classements, capacités, accréditations, stats, campus | travail de correction courant |
 | suppressions **d'un enregistrement isolé** (`pricing/[id]`, `rankings/[id]`, `capacities/[id]`, `accreditations/[id]`, `stats/[recordId]`) | corriger une ligne fausse est de la modération, et c'est réversible |
 | lectures (`pipeline-status`, `schools-with-programs`, `manage`…) | aucun effet |
 
 > **`guardAuth` et `guardAdmin` sont le seul moyen de protéger une route admin.**
 > `getServerSession` nu ne doit plus réapparaître : il ne subsiste sur aucune des
-> 32 routes. Toute nouvelle route doit choisir explicitement.
+> 33 routes. Toute nouvelle route doit choisir explicitement.
 
 #### Mot de passe
 
@@ -542,26 +595,65 @@ système et assume l'irréversible.**
 
 ### 4.1. Tavily Research — Pipeline de Base
 
-Le pipeline automatisé utilise exclusivement l'endpoint **Tavily Research** (mode adaptatif) :
+**Tavily cherche et rédige, Gemini structure.** Research ne reçoit plus
+d'`output_schema` : ce paramètre n'écourtait pas seulement la mise en forme, il
+écourtait la recherche — l'agent cessait de chercher dès qu'il pouvait remplir
+les champs `required`. Mesuré sur une même question : 1 classement issu d'une
+source avec le schéma, 10 classements issus de 14 sources sans lui. Research
+rend donc un rapport rédigé, conservé dans `raw_report`, que la cascade Gemini
+convertit en JSON selon `extraction_schemas.py`.
 
-| Usage | Mode | Paramètres clés | Coût |
+| Usage | Appel Tavily | Paramètres clés | Coût |
 |---|---|---|---|
-| **Phase 1 — Cartographie** | `research` (pro) | `input=prompt_dynamique`, `include_domains=[official_domain]`, `output_schema=PHASE1_SCHEMA` | ~15-50 crédits |
-| **Phase 2 — Pricing, Ranking** | `research` (pro) | `input=prompt_catégorie`, `include_domains=[official_domain]`, `output_schema=CATEGORY_SCHEMA` | ~15-50 crédits |
-| **Phase 2 — SchoolStats, Accreditation, Capacity** | `research` (mini) | `input=prompt_catégorie`, `include_domains=[official_domain]`, `output_schema=CATEGORY_SCHEMA` | ~4-15 crédits |
-| **Crowdsourcing** | `extract` | `urls=[url_utilisateur]`, `extract_depth="advanced"` | 1 crédit/5 URLs |
+| **Phase 1 — Catalogue** (facultatif) | `search` puis `extract` | page « nos formations » du domaine officiel | ~3 crédits |
+| **Phase 1 — Découverte** | `research` (pro) | `input=brief`, `include_domains=[official_domain]` | ~25 crédits estimés |
+| **Phase 1 — Rattachement campus** (sur demande) | `map` puis `extract` avancé | `/map` enraciné sur la page catalogue, fiches par lots de 5 URL | ~15-17 crédits |
+| **Phase 2 — Pricing, Ranking** | `research` (pro) | `input=brief`, `include_domains` (liste blanche pour Ranking) | ~25 crédits estimés |
+| **Phase 2 — SchoolStats, Accreditation, Capacity** | `research` (mini) | `input=brief`, `include_domains=[official_domain]` | ~10 crédits estimés |
+| **Crowdsourcing** | `extract` | `urls=[url_utilisateur]`, `extract_depth="advanced"` | 1 crédit / 5 URL |
 
-> **⚠️ Accreditation — Extraction en liste :** Le `ACCREDITATION_OUTPUT_SCHEMA` retourne un objet avec un tableau `accreditations: []`. En un seul appel, Tavily extrait **toutes** les accréditations présentes sur la page (EQUIS, AACSB, AMBA, CTI, etc.). La validation d'un ticket `Accreditation` crée autant de `AccreditationRecord` que d'entrées dans le tableau, dans une transaction atomique unique.
+> **Research ne déclare pas son coût** : aucun champ `usage`, ni en mini ni en
+> pro. `ESTIMATED_CREDITS` (`research_client.py`) vaut 10 et 25 — ce sont des
+> estimations. `GET /usage` n'est pas en temps réel : pour mesurer une passe, il
+> faut compter les appels, pas lire le compteur.
 
-Les prompts dynamiques sont construits par les builders dans `research_prompts.py` :
+> **Accreditation et Ranking rendent des listes.** L'extraction d'une
+> accréditation rend `{ "accreditations": [...] }` : un rapport, toutes les
+> accréditations, et la validation crée autant d'`AccreditationRecord` dans une
+> transaction unique. Ranking et Capacity rendent un tableau que le pipeline
+> découpe en un ticket par entrée, reliés par `submission_group_id`
+> (`ARRAY_RESULT_KEYS`).
+
+Les briefs de recherche sont construits par `research_prompts.py` :
 - `build_phase1_research_input(school_name, domain)`
-- `build_pricing_research_input(school_name, campus_name, program_name, academic_year_str, domain)`
-- `build_ranking_research_input(...)`
-- `build_capacity_research_input(...)`
-- `build_school_stats_research_input(...)`
-- `build_accreditation_research_input(...)`
+- `build_pricing_research_input(...)`, `build_ranking_research_input(...)`,
+  `build_capacity_research_input(...)`, `build_school_stats_research_input(...)`,
+  `build_accreditation_research_input(...)`
 
-Voir `research-pipeline-plan.md` pour les prompts complets et les JSON Schemas.
+### 4.1 bis. Cascade Gemini
+
+`gemini_client.extract_structured()` essaie les modèles du plus fort au plus
+faible, en s'arrêtant au **plancher** de la catégorie :
+
+| Palier | Modèles (`MODEL_LADDER`) |
+|---|---|
+| `high` | gemini-3.8-flash · 3.7-flash · 3.6-flash |
+| `mid` | gemini-3.5-flash · 3-flash-preview |
+| `low` | gemini-3.5-flash-lite · 3.1-flash-lite · 2.5-flash |
+
+| Catégorie | Plancher (`MIN_TIER_BY_CATEGORY`) |
+|---|---|
+| `Program_Discovery`, `Pricing`, `Ranking` | `mid` — extractions à arbitrages |
+| `SchoolStats`, `Accreditation`, `Capacity`, `Campus_Attachment` | `low` — recopie d'une étiquette et de sa valeur |
+
+- **Registre de session** : un 429 `limit: 0` (modèle non ouvert au free tier)
+  retire le modèle pour la journée ; un 503 le met en refroidissement court.
+  Les quotas repartent à **minuit Pacifique**.
+- **Garde RPM** : 12 s minimum entre deux appels
+  (`GEMINI_MIN_SECONDS_BETWEEN_CALLS`), soit 5 requêtes/minute sur la clé.
+- **408 et 499** sont traités comme transitoires : ils n'avortent pas la cascade.
+- Échelle épuisée au-dessus du plancher → `ExtractionUnavailable`. En Phase 1,
+  le rapport Research est alors **rangé**, pas perdu (§5.1).
 
 ### 4.2. Key Cycling (Rotation de Clés — Stratégie Greedy)
 
@@ -611,10 +703,9 @@ n'appelait donc jamais `mark_exhausted()`. Sur un 402/429, ses trois fonctions
 retournaient `""`, la clé morte restait sélectionnée et était réinterrogée en
 boucle.
 
-# Architecture Complète — School Data Pipeline (Partie 2 : Pipeline & Workflows)
+---
 
-> **Version :** 1.0 — 19 mai 2026
-> **Continuation de `architecture-1-systeme.md`**
+# Partie 2 : Pipeline & Workflows
 
 ---
 
@@ -622,21 +713,48 @@ boucle.
 
 ### 5.1. Phase 1 : Cartographie (Program Discovery)
 
-**Déclencheur :** Le Cron (APScheduler) détecte qu'une école `ACTIVE` n'a aucun `Campus` en BDD.
+**Déclencheurs :**
+- le cron `phase1_scanner` — toutes les 168 h, premier passage 5 min après le
+  démarrage — sur les écoles `ACTIVE` **sans aucun `Campus`**. **Inscrit
+  seulement en production** (§10 bis) ;
+- l'écran `/admin/cron` → `POST /internal/trigger-targeted-research` (ADMIN) ;
+- `POST /internal/trigger-scan/{school_id}`.
 
-**Séquence :**
+**Séquence (`run_phase1_research`) :**
 
 ```
-CRON ──► Lire School WHERE campuses.count = 0
-       ──► Tavily Research(input=prompt_dynamique, include_domains=[official_domain], output_schema=PHASE1_SCHEMA, model="pro")
-       ──► Si output_schema OK → JSON direct
-           Sinon → Gemma 26B fallback (conversion texte → JSON)
-       ──► INSERT ContributionInbox(ai_category="Program_Discovery", status="Pending_Admin")
-       ──► ⏸️ STOP — Attente validation Admin
+Lire School (doit être ACTIVE)
+ ──► Catalogue (facultatif) : /search sur le domaine → /extract de la page « nos formations »
+       → titres de formations, passés à l'extraction comme ancre (with_catalog_anchor)
+ ──► Rapport rangé de moins de 7 jours pour cette école ?
+       OUI → le reprendre : Research n'est PAS rappelé
+       NON → Tavily Research (model="pro", include_domains=[official_domain], sans output_schema)
+ ──► Extraction Gemini (plancher "mid") du rapport → discovered_campuses
+       ÉCHEC → rapport rangé en ticket Failed, STOP (voir ci-dessous)
+ ──► Garde-fous : libellés de rubrique écartés (« Nos programmes »…),
+       campus sans formation écartés ; aucun campus restant → échec motivé
+ ──► INSERT ContributionInbox(Program_Discovery, Pending_Admin, raw_report, urls = catalogue + sources)
+       et suppression du rapport rangé repris, dans la même transaction
+ ──► Rattachement campus — SEULEMENT si demandé (§5.4)
+ ──► ⏸️ STOP — attente de la validation admin
 ```
 
-**Prompt Phase 1 (Tavily Research) :**
-Voir `research-pipeline-plan.md` §7.1 pour le prompt dynamique complet.
+**Un rapport Research n'est payé qu'une fois.** Le 28 septembre 2026, deux
+découvertes ont échoué sur des 503 Gemini et leurs rapports (~25 crédits
+chacun) sont partis avec l'échec : ils n'étaient enregistrés qu'avec le ticket.
+Désormais, une extraction indisponible, en erreur ou de forme inattendue range
+le rapport dans un ticket `Failed` (`raw_report`, charge
+`parked_reason: "research_report_parked"`, dernière erreur, nombre de
+tentatives). La passe suivante de la même école — manuelle ou cron — le reprend
+tant qu'il a moins de `PARKED_REPORT_MAX_AGE_DAYS` (7) jours. Un nouvel échec
+s'inscrit sur le même ticket sans en créer un second. Rejeter ce ticket dans
+l'inbox empêche qu'il soit repris. Une panne de lecture ou d'écriture de ce
+rangement fait payer Research comme avant : c'est un gain, jamais une nouvelle
+cause d'échec.
+
+**Message d'échec « aucun campus » :** `campuses_seen` distingue « le rapport ne
+nommait aucun campus » de « tous les campus ont été écartés faute de
+formations ». Ces deux cas appellent des corrections opposées.
 
 **JSON de sortie attendu (exemple EMLV) :**
 ```json
@@ -668,37 +786,42 @@ Voir `research-pipeline-plan.md` §7.1 pour le prompt dynamique complet.
 
 ### 5.2. Validation Phase 1 (Super Ticket Admin)
 
-Quand l'Admin ouvre un ticket `Program_Discovery` :
-1. Le frontend Next.js parse le `ai_extracted_json` et génère un **formulaire répéteur** pré-rempli
-2. L'Admin peut : corriger un nom, modifier un campus, supprimer un programme, en ajouter un, basculer un switch
-3. Au clic "Tout valider" → **Transaction Prisma** :
-   - Créer/mettre à jour les `Campus` rattachés à la `School`
-   - Créer/mettre à jour les `Program` rattachés à chaque `Campus`
-   - Marquer le ticket Inbox comme `Validated`
-   - Si erreur → rollback complet, rien n'est inséré
+Quand l'Admin ouvre un ticket `Program_Discovery` portant `discovered_campuses` :
+1. Le frontend parse `ai_extracted_json` et génère un **formulaire répéteur** pré-rempli. Le rapport Research (`raw_report`) est conservé en base mais **aucun écran ne l'affiche encore** : l'admin arbitre sur le JSON extrait.
+2. L'Admin peut corriger un nom, modifier un campus, supprimer un programme, en ajouter un, basculer un switch.
+3. Au clic « Tout valider », `PUT /api/admin/inbox/[id]/validate` → **une transaction Prisma** (délai 60 s) :
+   - upsert des `Campus` sur `(schoolId, name)` ;
+   - upsert des `Program` sur `(schoolId, name)` — un programme commun à N campus est créé une fois ;
+   - upsert des arêtes `ProgramCampus` sur `(programId, campusId)` ;
+   - ticket passé à `Validated`.
+   Les upserts sont **sérialisés** : `tx` ne dispose que d'une connexion, un
+   `Promise.all` n'y gagne aucun parallélisme et, sous charge, dépasse le délai.
+   Toute erreur annule tout.
+
+`/validate` **refuse** les deux autres charges d'un `Program_Discovery`
+(rattachement campus, rapport rangé — §3.4).
 
 ### 5.3. Phase 2 : Enrichissement Chirurgical (Deep Dive)
 
-**Déclencheur :** Le Cron détecte qu'une école a des `Program` validés mais des données manquantes dans les tables `_Record`.
+**Déclencheurs :** le cron `phase2_enricher` (toutes les 24 h, **production
+seulement**) sur les écoles `ACTIVE` ayant au moins un `Campus` ; l'écran
+`/admin/cron` pour une école, un programme et des catégories choisis ;
+`POST /internal/trigger-enrichment/{school_id}`. `PHASE2_MAX_PROGRAMS` borne le
+nombre de programmes d'une passe complète (tests).
 
-**Séquence par catégorie (répétée pour chaque Programme/École) :**
+**Séquence (`run_phase2_research`) :**
 
 ```
-CRON ──► Lire Programs WHERE school.status = "ACTIVE"
-       ──► Pour chaque catégorie niveau École (SchoolStats, Accreditation) :
-           ──► Construire le prompt dynamique (research_prompts.build_*_research_input)
-           ──► Tavily Research(input=prompt, include_domains=[official_domain], output_schema=CATEGORY_SCHEMA, model="mini")
-           ──► Si output_schema OK → JSON direct
-               Sinon → Gemma 26B fallback
-           ──► Diff vs table de production
-               Si IDENTIQUE → skip silencieux (Edge Case 10)
-           ──► INSERT ContributionInbox(status="Pending_Admin")
-
-       ──► Pour chaque Programme × (Pricing, Ranking) :
-           ──► Tavily Research(model="pro") → 1 ticket par catégorie
-
-       ──► Pour chaque ProgramCampus × (Capacity) :
-           ──► Tavily Research(model="mini") → 1 ticket par campus
+Charger l'école, ses programmes et ses arêtes (connexion courte, puis fermée)
+ ──► Niveau ÉCOLE — SchoolStats, Accreditation, Ranking : 1 appel Research par catégorie
+ ──► Niveau PROGRAMME — Pricing : 1 appel par programme
+ ──► Niveau PROGRAMME × CAMPUS — Capacity : 1 appel par arête ProgramCampus
+ Pour chaque appel :
+   ──► Tavily Research (pro ou mini, voir tableau) → rapport rédigé
+   ──► Extraction Gemini (plancher de la catégorie)
+   ──► Diff vs production (has_data_changed) : IDENTIQUE → pas de ticket (Edge Case 10)
+   ──► INSERT ContributionInbox(Pending_Admin, raw_report) — un ticket par entrée
+       pour les catégories à liste, reliés par submission_group_id
 ```
 
 **Niveaux de granularité :**
@@ -720,6 +843,76 @@ Les JSON Schemas d'extraction sont définis dans `extraction_schemas.py`, les pr
 correspondants dans `extraction_prompts.py`. Ils ne sont plus passés en `output_schema`
 à Tavily : l'agent rend un rapport rédigé, que Gemini convertit ensuite en JSON. Voir
 `research-pipeline-plan.md` §8 pour les détails.
+
+### 5.4. Rattachement campus année par année
+
+La découverte dit **quelles formations existent** ; elle ne dit pas quelle
+formation est enseignée sur quel campus, ni en quelle année. Cette donnée n'est
+pas dans le rapport Research : elle vit dans un **encart à champs nommés** des
+fiches formation (`Campus   Caen Le Havre Paris Dublin`) et dans une section
+« Campus de rattachement » qui la détaille année par année.
+
+**Désactivé par défaut.** La collecte coûte ~15 à 17 crédits Tavily et 9 appels
+Gemini par école, y compris là où elle ne produit rien. L'admin l'active pour
+une passe et une école par la case de `/admin/cron`
+(`collect_campus_attachments`, faux à chaque étage). Le cron ne l'active jamais.
+Désactivée, le résultat du job porte `campus_attachments: {"status": "disabled"}`.
+
+**Collecte (`campus_attachment_collector.py`) :**
+
+```
+Instantané de la base : Program, Campus, arêtes et lignes-années de l'école
+   └─ aucun Program en base → rien, aucun appel (EMLV, Essec avant découverte)
+ ──► /map enraciné sur la page catalogue (jamais la racine du domaine : 0 URL)
+ ──► /extract avancé des fiches, par lots de 5 URL
+ ──► Extraction Gemini (plancher "low", plusieurs fiches par appel) : un énoncé par (lieu, zone, année)
+ ──► Gardes de page, en Python, sur le texte lu :
+       • une carte d'index n'est un programme que si l'ancrage de SON lien porte
+         le titre ET le lieu, et que le lien peut mener à une fiche
+         (écarte les rubriques « Gouvernance », « Management »… d'Em Lyon)
+       • une ligne-année ne naît que si la page nomme l'année ET porte un titre
+         de rattachement — sinon l'arête survit, la ligne-année non
+ ──► Règles (campus_attachment.py) :
+       • F8 : ProgramCampus = union des zones ; ligne-année = section seule
+       • régime : ANY et régime nommé ne coexistent pas pour une même année
+       • libellés : dédupliqués sur une clé repliée, orthographe publiée conservée
+       • clé de campus appliquée aux DEUX côtés : « Lyon campus », U+2011…
+ ──► Appariement fiche → Program (program_identity.py), par clauses fermées :
+       A1 identité après repli · A2 sigle = initiales · B variante de parcours
+       (liste FERMÉE : durées, alternance, blended). Ambigu → rien.
+ ──► Fusion des affirmations identiques (deux voies d'accès, même année) ;
+       divergentes → aucune ligne, conflit remonté
+ ──► Plan (attachment_plan.py) : create / update / unchanged / stale
+ ──► Ticket Program_Discovery + campus_attachments, SEULEMENT si create + update > 0
+```
+
+**Écriture (`PUT /api/admin/inbox/[id]/attachments`, `guardAuth`)** — l'admin
+peut retirer des lignes dans le panneau de l'inbox avant d'écrire :
+
+- **jamais d'arête créée.** Chaque ligne est résolue par `findUnique` sur
+  `programId_campusId` ; arête absente → `edge_missing`, rien d'écrit. La règle
+  est portée par le **type** : `AttachmentTx` ne déclare que
+  `programCampus.findUnique` et `programCampusAttachment.findMany`/`upsert`. Ni
+  `create`, ni `delete`, ni `deleteMany` ne sont appelables ;
+- **idempotent** : une ligne identique n'émet aucun `upsert` ; des langues
+  modifiées → `update`, l'**avant** renvoyé à l'admin ;
+- **jamais de suppression.** Une ligne que la page ne publie plus ressort en
+  `stale` et reste en base. Le silence du collecteur n'est pas le silence de la
+  page (`--limit`, carte sans bords, lecture tronquée) ; supprimer sur absence
+  transformerait chaque lecture manquée en perte invisible ;
+- **`campus_policy_note`** dans la même transaction : `PolicyNoteTx` ne connaît
+  que `program.findUnique` et `program.update` de cette seule colonne, en
+  `string` — ce chemin ne peut ni créer un programme ni effacer une note.
+
+Le plan existe en **deux implémentations** — `lib/campus-attachment.ts`
+(`planAttachmentWrites`, pour la route) et `backend/pipeline/attachment_plan.py`
+(pour décider du dépôt du ticket, la Phase 1 n'ayant aucun canal vers Next.js).
+`test/fixtures/attachment_plan_cases.json` (21 cas) est lu par les deux suites.
+
+**En production au 28 septembre 2026 :** 26 lignes-années (Programme Grande
+École 15, Bachelor Management 7, IBBA 4) et la note de l'IBBA, toutes chez
+EM Normandie. Em Lyon ne publie aucune année ; EM Strasbourg ne publie aucun
+lieu. `ProgramPlacement` n'a pas de chemin d'écriture.
 
 ---
 
@@ -753,9 +946,9 @@ Utilisateur (non connecté)
 ### 6.2. Traitement Backend (Flux de Traitement et Sécurisation)
 
 Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière suivante :
-1. **Validation Initiale du Parcours :** Si la catégorie du ticket est `Pricing`, `Ranking` ou `Capacity`, le système vérifie immédiatement qu'un `programId` est renseigné (ticket rattaché à un parcours spécifique). Si ce n'est pas le cas, le traitement lève directement une `GemmaParsingError` et **le ticket est supprimé** de la BDD.
-2. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Timeout de 15s maximum. Si le contenu extrait est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et **le ticket est supprimé** de la BDD (l'URL soumise est considérée définitivement invalide).
-3. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_CHECK` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le texte extrait est tronqué à 80 000 caractères (aligné sur l'extraction) afin d'inclure le contenu principal situé après les menus de navigation très longs. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué **`Rejected`** avec la raison écrite dans `ai_extracted_json` — c'est le seul cas où un ticket reste en `Rejected` après le traitement IA.
+1. **Mono ou multi-programme :** pour `Pricing`, `Ranking` ou `Capacity`, un ticket rattaché à un `programId` est extrait pour ce seul programme. **Sans `programId`, il passe en mode multi-programme** : Gemma extrait une entrée par programme trouvé sur la page, et chaque nom est apparié aux `Program` de l'école par `_match_program_name` — égalité littérale (`exact`), puis clauses fermées de `program_identity.match_program` (`fuzzy`). Un nom ambigu ou inconnu part en `unmatched_programs`, jamais sur un programme voisin. L'ancienne heuristique (inclusion de sous-chaîne, Jaccard ≥ 0,4) rattachait un doctorat à un bachelor : 6 faux appariements sur 34, corrigés en `fafcdae`. Les programmes non appariés peuvent être créés depuis l'inbox (`POST …/create-programs`).
+2. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Délai de 30 s (`TAVILY_EXTRACT_TIMEOUT_SECONDS`). Si le contenu extrait est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et **le ticket est supprimé** de la BDD (l'URL soumise est considérée définitivement invalide).
+3. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_SYSTEM` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le texte est tronqué à **25 000 caractères** : l'appel ne rend qu'un booléen et une raison, et tranche sur le début de la page. L'extraction, elle, reçoit 80 000 caractères en mono-programme et 25 000 en multi-programme — trois plafonds délibérés, qui fixent le coût de chaque ticket. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué **`Rejected`** avec la raison écrite dans `ai_extracted_json` — c'est le seul cas où un ticket reste en `Rejected` après le traitement IA.
 4. **Extraction Structurée (Gemma 31B) :** Si compatible, Gemma 31B extrait les données structurées selon la catégorie concernée. Le champ `user_text` est à nouveau exclu.
 5. **Validation Post-Extraction des Données Obligatoires :**
    - **`Capacity`** : validation que `spots_available` et `academic_year` ne sont pas `null`.
@@ -769,7 +962,6 @@ Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière su
    - **Erreurs Inattendues (`Exception` générique) :** **PAS de suppression.** Le ticket passe en `Failed` via `_mark_ticket_failed()`, avec un compteur de tentatives. Une coupure Neon au réveil ou un timeout ne prouve pas que la contribution est invalide — l'ancien code détruisait ici une extraction Tavily **déjà facturée**. Le ticket est rejoué après `CROWDSOURCING_RETRY_DELAY_MINUTES` (défaut 60), puis supprimé au-delà de `CROWDSOURCING_MAX_ATTEMPTS` (défaut 3). Chaque nouvelle tentative **relance une extraction facturée** : c'est le paramètre à surveiller côté coût.
    - **Quota Epuisé (`QuotaExhaustedError`) :** Le traitement de l'ensemble du batch est interrompu immédiatement (le ticket reste en `Pending_AI`, aucune suppression).
 7. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés/supprimés.
-```
 
 #### File d'attente
 
@@ -846,11 +1038,12 @@ entrée écartée**, avec motif.
 
 | Page | Route | Rôle requis |
 |---|---|---|
-| Login | `/admin/login` | — |
+| Login | `/admin/login` (fichier : `app/(admin-auth)/admin/login/page.tsx`, hors layout admin) | — |
 | Inbox (validation) | `/admin/inbox` | Admin ou Moderator |
 | CRUD Écoles | `/admin/schools` | Admin ou Moderator |
 | CRUD Campus | `/admin/schools/[id]/campuses` | Admin ou Moderator |
-| Monitoring Cron | `/admin/cron` | Admin ou Moderator |
+| Gestion d'une école (programmes, tarifs, classements, capacités, stats, accréditations) | `/admin/schools/[id]/manage` | Admin ou Moderator |
+| Monitoring Cron, recherche ciblée (case « collecte campus ») | `/admin/cron` | lecture : Admin ou Moderator · lancement : **Admin** |
 | Gestion Modérateurs | `/admin/users` | **Admin uniquement** |
 
 ---
@@ -929,7 +1122,7 @@ paginer aurait changé leur forme de réponse (un tableau nu devient
 `{ data, pagination }`) et cassé tout consommateur existant.
 
 > **Le cache ISR ne fonctionne pas.** `export const revalidate = 3600` est bien
-> déclaré sur les 12 routes, mais tous les handlers lisent
+> déclaré sur les 15 routes, mais tous les handlers lisent
 > `new URL(request.url).searchParams`, ce qui force le rendu dynamique et
 > neutralise la directive. Le build confirme : toutes les routes `/api/v1`
 > sortent en `ƒ (Dynamic)`. **C'est la limitation de débit, et non le cache, qui
@@ -945,7 +1138,7 @@ paginer aurait changé leur forme de réponse (un tableau nu devient
 
 Format : `{ "error": "Description" }`
 
-**Tables exclues de toute réponse :** `ContributionInbox`, `CronTarget`, `User`.
+**Tables exclues de toute réponse :** `ContributionInbox`, `User`, `PipelineJob`. Le rattachement année par année (`ProgramCampusAttachment`, `campus_policy_note`) et `ProgramPlacement` ne sont pas encore exposés.
 
 ---
 
@@ -957,23 +1150,28 @@ Format : `{ "error": "Description" }`
 | 2 | Données temporelles ambiguës | `academic_year` obligatoire, rejet si < année courante | `edgecase.md` |
 | 2.1 | Aucune date sur la page | `year_assumed = true`, Admin averti | `edgecase.md` |
 | 3 | Prix complexes (par année vs global) | `year_X_fee` + `total_fee`, jamais de lissage IA | `edgecase.md` |
-| 4 | Boucle infinie données inaccessibles | `CronTarget.failed_attempts_count` → blacklist après 3 | `edgecase.md` |
+| 4 | Boucle infinie données inaccessibles | `CronTarget` supprimé : l'échec est tracé dans `PipelineJob` (`failed`, `error`) et le cron repasse au cycle suivant. Pas de blacklist | `pipeline_jobs.py` |
 | 5 | Sources contradictoires | `data_conflict_warning = true` + domaines d'autorité | `edgecase.md` |
 | 6 | Renommage de programme | `program_name_mismatch = true` + recherche sémantique | `edgecase.md` |
-| 7 | Rate limit Google/Gemma (429) | Retry avec backoff exponentiel (`base_delay * (1.5 ** (attempt - 1))`) + distinction `GemmaAPIError` (Pending_AI) vs `GemmaParsingError` (Rejected) | `edgecase.md` |
+| 7 | Rate limit Google (429/503) | **Pipeline** : cascade Gemini — modèle `limit: 0` retiré pour la journée, 503 refroidi, garde de 12 s entre appels, plancher `min_tier` (§4.1 bis). **Crowdsourcing** : backoff exponentiel Gemma + distinction `GemmaAPIError` (reste `Pending_AI`) / `GemmaParsingError` (supprimé) | `gemini_client.py`, `gemma_client.py` |
 | 8 | Frais cachés | `additional_fees_notes` (texte libre) | `edgecase.md` |
 | 9 | Tableaux Markdown cassés | Ignorer la source, passer à la suivante | `edgecase.md` |
 | 10 | Inbox inondée (doublons) | Diff vs production avant insertion | `edgecase.md` |
 | 11 | Paywalls / Modales cookies | Gemma détecte le blocage → skip silencieux | `edgecase.md` |
 | 12 | Ambiguïté devise (UE vs intl) | Colonnes `intl_*` séparées | `edgecase.md` |
 | 13 | Prompt Injection / Fake News | Délimiteurs `<TEXTE_SOURCE>`, whitelist domaines, isolation totale du commentaire utilisateur `user_text` des invites de l'IA | `edgecase.md` |
-| 14 | Timeout / réponse vide Tavily | Timeout 15s, body < 50 chars = `TavilyExtractionError` → ticket **supprimé** de la BDD (URL définitivement invalide) | `processor.py` |
+| 14 | Timeout / réponse vide Tavily | Délai explicite par appel (`TAVILY_*_TIMEOUT_SECONDS` : extract 30 s, search 60 s, map 120 s), body < 50 chars = `TavilyExtractionError` → ticket **supprimé** de la BDD (URL définitivement invalide) | `processor.py` |
 | 15 | Cold Start Koyeb | Retry frontend + healthcheck `/health` | `edgecase.md` |
-| 16 | Faux-négatifs compatibilité (menus longs) | Augmentation de la limite de troncature à 80 000 caractères pour le tri de compatibilité afin de couvrir le contenu principal | `processor.py` |
-| 17 | Timeout transaction Prisma (validation) | Exécution parallèle des upserts (Promise.all) + timeout de 60s pour gérer les imports très volumineux (ex: EDHEC avec 9 campus et 30+ programmes) | `app/api/admin/inbox/[id]/validate/route.ts` |
+| 16 | Faux-négatifs compatibilité (menus longs) | Plafonds explicites par appel : 25 000 caractères pour la compatibilité (un booléen, tranché sur le début de la page), 80 000 pour l'extraction mono-programme, 25 000 en multi-programme | `processor.py` |
+| 17 | Timeout transaction Prisma (validation) | Upserts **sérialisés** (`tx` n'a qu'une connexion : un `Promise.all` n'y gagne rien et dépasse le délai sous charge) + timeout de 60 s pour les imports volumineux (ex: EDHEC, 9 campus et 30+ programmes) | `app/api/admin/inbox/[id]/validate/route.ts` |
 | 18 | URL invalide / faux lien utilisateur (ex: `http://localhost`, domaine inexistant) | Tavily retourne contenu vide → `TavilyExtractionError` → ticket **supprimé** (pas de `Rejected` parasite en BDD) | `processor.py` |
 | 19 | Accumulation de tickets `Validated`/`Rejected` en BDD (quota Neon 500 MB) | Bouton "🗑️ Purger" dans `admin/inbox` (`DELETE /api/admin/inbox/purge`) avec sélection des statuts + compteur avant confirmation | `app/api/admin/inbox/purge/route.ts` |
 | 20 | Timeout d'inactivité BDD pendant requêtes API/IA longues (`connection already closed`) | Pattern "Ephemeral DB Connections" : isolation des contextes de connexion BDD des requêtes Tavily/Gemma longues. Connexions éphémères courtes pour la lecture et par-ticket pour l'écriture. | `phase2_research.py`, `processor.py` |
+| 21 | Gemini saturé (503) après un Research déjà payé | Rapport rangé en ticket `Failed`, repris par la passe suivante pendant 7 jours sans rappeler Research | `phase1_research.py` |
+| 22 | Backend lancé en développement → passes payantes sans clic | `phase1_scanner` et `phase2_enricher` inscrits seulement si `ENVIRONMENT=production` ou `CRON_RESEARCH_ENABLED=true` | `scheduler/jobs.py` |
+| 23 | Le site découpe par voie d'accès, la base par diplôme (3 fiches PGE → 1 `Program`) | Appariement par variante de parcours (liste fermée) + fusion des affirmations identiques ; divergentes → aucune ligne | `program_identity.py`, `campus_attachment.py` |
+| 24 | Cartes de rubrique au même format que les cartes de programme (Em Lyon) | Une carte n'est un programme que si l'ancrage de son lien porte le titre et le lieu | `campus_attachment.py` |
+| 25 | École qui ne publie aucun lieu sur ses fiches (EM Strasbourg) | Zéro ligne, aucun ticket, aucune erreur ; la collecte reste désactivée par défaut | `campus_attachment_collector.py` |
 
 ---
 
@@ -999,11 +1197,15 @@ def wrap_source(text, limit=None)  # tronque, neutralise, encadre
 ```
 
 Sans neutralisation, une page contenant elle-même `</TEXTE_SOURCE>` **sort du
-bloc** : tout ce qui suit est lu comme une consigne. Les six points d'injection
-du projet y sont passés — contrôle de compatibilité, extractions mono et
-multi-programme, `is_content_relevant`, `fact_check`, phases 1 et 2.
+bloc** : tout ce qui suit est lu comme une consigne. Tous les points d'injection
+y passent : contrôle de compatibilité, extractions mono et multi-programme du
+crowdsourcing, et `extract_structured` de la cascade Gemini — donc les Phases 1
+et 2 et la collecte du rattachement campus. `is_content_relevant` et
+`fact_check`, jamais appelées, ont été **retirées** de `gemma_client.py` —
+`fact_check` gardait ouverte une porte d'injection pour un service que personne
+ne rendait.
 
-`fact_check()` a reçu un traitement particulier : elle injectait une
+`fact_check()`, avant son retrait, avait reçu un traitement particulier : elle injectait une
 revendication utilisateur **non délimitée et non tronquée**. Elle est désormais
 bornée à 2 000 caractères et encadrée par `<REVENDICATION>`, balise que le même
 filtre neutralise dans le contenu.
@@ -1099,7 +1301,7 @@ production : il en est bien absent).
 Voir §3.6 pour la politique de rôles complète. Les principes :
 
 - Chaque route admin choisit **explicitement** `guardAuth` ou `guardAdmin`.
-- `getServerSession` nu ne subsiste sur **aucune** des 32 routes.
+- `getServerSession` nu ne subsiste sur **aucune** des 33 routes.
 - Le jeton de l'API interne est comparé par `secrets.compare_digest`.
 - Aucun mot de passe par défaut ; politique unique dans `lib/password.ts`.
 
@@ -1139,12 +1341,17 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
   3. connexions courtes à la volée (`with get_db_connection()`) pour les lectures
      comparatives et l'écriture de chaque ticket.
 
-> **Limite connue :** `get_pool()` initialise le pool **sans verrou**, alors que
-> les appels arrivent depuis `run_in_executor` et les threads APScheduler. Deux
-> pools concurrents à froid ouvriraient jusqu'à 10 connexions sur un palier Neon
-> qui en autorise 5. *Non corrigé.*
+> **Pool initialisé sous verrou.** `get_pool()` fait une double vérification
+> autour d'un `threading.Lock` : les appels arrivent depuis `run_in_executor` et
+> les threads APScheduler, et deux pools concurrents à froid ouvraient jusqu'à
+> 10 connexions sur un palier Neon qui en autorise 5.
 
-### 10.9. Contraintes Gemma et gestion d'erreurs
+### 10.9. Contraintes Gemma (crowdsourcing) et gestion d'erreurs
+
+> Le pipeline (Phases 1 et 2, rattachement campus) passe par la cascade Gemini
+> (§4.1 bis), avec ses propres exceptions : `GeminiError`, et
+> `ExtractionUnavailable` quand l'échelle est épuisée au-dessus du plancher. Les
+> règles ci-dessous concernent Gemma, utilisé par le crowdsourcing.
 
 - **Pydantic interdit** avec les modèles Gemma (erreur 500)
 - JSON forcé par prompt strict, « 100 % prompting »
@@ -1155,8 +1362,10 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
   `GemmaAPIError` (réseau / API, temporaire), `GemmaParsingError` (structurel,
   permanent). **Ce typage porte tout le triage du §6.2** — le confondre revient à
   supprimer des contributions valides.
-- **Décodage tolérant :** extraction du premier dictionnaire si le modèle
-  encapsule sa réponse dans une liste JSON
+- **Décodage prudent des listes :** une liste d'**un seul** objet est déballée
+  (sans perte) ; une liste de **plusieurs** objets est retentée puis rejetée en
+  `GemmaParsingError` — l'ancien code en gardait le premier et perdait les
+  autres en silence
 - **Sécurisation des boucles de scan :** les appels LLM sont encadrés par
   `try…except GemmaError` au niveau de chaque école et programme
 
@@ -1172,8 +1381,12 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
 2. **CSP à nonce**, pour retirer `'unsafe-inline'` de `script-src`.
 3. **Fragments de clés API dans les journaux** — six derniers caractères
    (`key_manager.py`, `research_client.py`) ; trois suffiraient.
-4. **Statuts et catégories en chaînes libres**, sans énumération partagée entre
-   Python et TypeScript.
+4. ~~Statuts et catégories en chaînes libres~~ — **résolu** : énumérations
+   partagées (`lib/contribution.ts`, `backend/constants.py`, vérifiées par
+   `test_contribution_enums.py`) et contraintes `CHECK` en base (§3.4).
+
+> Audit relancé le 28 septembre 2026 : toujours **4 hautes, 0 critique**, toutes
+> tirées par la CLI Prisma (`prisma`, `@prisma/config`, `deepmerge-ts`, `mysql2`).
 
 ---
 
@@ -1188,6 +1401,7 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
 | `npm run lint` / `lint:fix` | ESLint 9, configuration plate |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | `python -m pytest -q` (venv actif requis) |
+| `npm run test:ts` | `node --import tsx --test test/*.test.ts` — tests TypeScript, sans dépendance nouvelle |
 
 **`prisma generate` fait partie du build**, et ce n'est pas décoratif : Prisma 7
 n'a plus de hook `postinstall` qui génère le client. Sans cet appel explicite, un
@@ -1216,8 +1430,8 @@ visible. C'est le second parti :
 | `@typescript-eslint/no-explicit-any` (~73) | **`warn`** | dette chiffrable, donc résorbable |
 | `prefer-const` (1) | **corrigée** | — |
 
-Résultat : **0 erreur, 114 avertissements**. La dette n'est ni masquée ni
-bloquante.
+Résultat : **0 erreur, 114 avertissements** au 2 septembre 2026 — **124 au 28
+septembre**. La dette n'est ni masquée ni bloquante, mais elle monte.
 
 ### Tests
 
@@ -1245,7 +1459,15 @@ Un test vérifiait de surcroît un message (« doit être rattaché à un parcou
 bascule désormais en mode multi-programme. Il a été réécrit pour tester ce
 contrat.
 
-**11 tests passent aujourd'hui.**
+Au 2 septembre 2026, **11 tests** passaient. **Au 28 septembre 2026 : 216 tests
+Python (+25 sous-tests) et 36 tests TypeScript**, tous verts. Les deux suites
+lisent des fixtures communes quand une règle existe en deux langages
+(`test/fixtures/attachment_plan_cases.json`).
+
+> **La CI ne lance pas encore `npm run test:ts`** : le job `python-tests` n'exécute
+> que `pytest`, et le job `validate` que `tsc`, ESLint et Prisma. Les 36 tests
+> TypeScript — dont ceux qui prouvent qu'aucune arête n'est créée par le
+> rattachement campus — ne tournent qu'en local.
 
 > Le test le plus important vérifie que **`user_text` n'atteint jamais un modèle
 > d'IA**. C'est une garantie de confidentialité, pas un détail.
@@ -1403,11 +1625,20 @@ suffit, toujours sans `--force`.
 > **Premier run vert le 2 septembre 2026** : run `33611880574`, commit `dee8067`,
 > branche `fix/ci-prisma-generate-order`. Les deux jobs au vert.
 
-> **Le poste de développement ne peut pas joindre Neon en direct.** La sortie
-> TCP sur le port **5432** est filtrée (`P1001` ; même IP, le port 443 répond).
-> Aucune commande de la CLI Prisma touchant la base — `migrate status`,
-> `migrate deploy`, `db execute` — ne fonctionne depuis ce réseau ; il faut en
-> changer (partage de connexion) ou passer par un runner GitHub.
+> **Le poste de développement joint mal Neon en direct.** Sur le réseau habituel,
+> le port **5432** s'ouvre en TCP mais le protocole Postgres est coupé derrière
+> (`P1001`, y compris pour `psycopg2`, donc pour le backend local) ; le port 443
+> répond. Le 28 septembre 2026, `migrate status` est passé après un premier
+> échec : l'accès est intermittent. Quand la CLI échoue, il faut changer de
+> réseau (partage de connexion) ou passer par un runner GitHub.
+>
+> **Une migration a été appliquée par le port 443** le 15 septembre 2026
+> (`20260904120000_program_campus_attachment`) : SQL du fichier et ligne
+> `_prisma_migrations` dans **une seule transaction**, sur `DIRECT_URL`, après une
+> répétition terminée par `ROLLBACK`. Le checksum attendu par Prisma est le
+> **sha256 des octets de `migration.sql`** ; les 10 checksums en base se
+> reproduisent. **Ne jamais lancer `migrate dev`, `migrate reset` ni `db push`**
+> contre cette base : ils proposent de la réinitialiser.
 > L'application, elle, fonctionne : [`lib/prisma.ts`](../../lib/prisma.ts) passe
 > par `@neondatabase/serverless` en WebSocket sur 443, un chemin réseau
 > différent. Un `npm run dev` qui marche ne prouve donc **pas** que la CLI Prisma
@@ -1425,8 +1656,8 @@ suffit, toujours sans `--force`.
 | ContributionInbox | Table unique avec `ai_category` étendu | Évite la duplication de tables, frontend adaptatif |
 | Crowdsourcing | Sélection en arborescence, multi-catégorie | Pas de dette technique, pas de nouvelles écoles par les users |
 | Catégorie de donnée | Choisie par l'utilisateur (pas l'IA) | Plus fiable, simplifie le routage du prompt |
-| Tavily Phase 1 | `crawl` | Économique (~1 crédit/10 pages), explore tout le site |
-| Tavily Phase 2 | `search` avec `include_raw_content` | Ciblé par domaine, contenu brut pour Gemma |
+| Tavily Phase 1 | `research` (pro) + ancrage catalogue (`search` + `extract`) | Research explore le site et rédige ; le catalogue fournit la liste de référence des intitulés |
+| Tavily Phase 2 | `research` par catégorie, pro ou mini | Un brief par catégorie, borné au domaine officiel (liste blanche pour Ranking) |
 | Tavily Workflow A | `extract` | URL connue, le moins cher (1 crédit/5 URLs) |
 | Communication services | DB partagée + API interne minimale | Simple, chaque service fait ce qu'il sait faire |
 | Auth | NextAuth Credentials, 2 rôles | Admin crée les modérateurs, pas d'auto-inscription |
@@ -1443,10 +1674,22 @@ suffit, toujours sans `--force`.
 | Clôture d'un ticket multi-programme | Conditionnelle : seulement si une donnée a été écrite | Un ticket dont toutes les entrées étaient écartées repartait en `Validated` avec « 0 Record(s) créé(s) » |
 | Migration du refactor `Program` | Écrite à la main, avec rétro-remplissage et garde-fous | La version auto-générée par Prisma détruisait le lien programme ↔ campus et échouait sur toute table peuplée |
 | Politique de mot de passe | Source unique `lib/password.ts`, 12 à 72 octets | Le seed n'avait aucune contrainte, la création de compte acceptait 6 caractères, et bcrypt tronque au-delà de 72 octets |
-| Constantes de prompts intégrées dans `processor.py` | `PIPELINE_STRATEGIES`, `CROWDSOURCING_COMPATIBILITY_CHECK`, system prompts dans le fichier qui les utilise | Les modules `backend/ai/prompts.py` et `backend/tavily_service/strategies.py` ont été supprimés lors du refactoring — les constantes sont maintenant co-localisées avec leur unique utilisateur |
-| Unwrapping des Listes JSON | Retrait automatique du conteneur `[ { ... } ]` | Résout les anomalies de formatage mineures générées par le modèle |
+| Constantes de prompts intégrées dans `processor.py` | `PIPELINE_STRATEGIES`, `CROWDSOURCING_COMPATIBILITY_SYSTEM`, system prompts dans le fichier qui les utilise | Les modules `backend/ai/prompts.py` et `backend/tavily_service/strategies.py` ont été supprimés lors du refactoring — les constantes sont maintenant co-localisées avec leur unique utilisateur |
+| Listes JSON rendues par Gemma | Une liste d'un seul objet est déballée ; plusieurs objets → retente puis `GemmaParsingError` | Garder le premier objet d'une liste en perdait les autres en silence |
 | Déduplication Programme (Program→School) | `Program.schoolId` + `@@unique([schoolId, name])` + table de jointure `ProgramCampus` | Un programme commun à N campus (ex: PGE) n'est stocké qu'une fois — tarifs et classements centralisés, capacité différenciée par campus via `ProgramCampus.capacityRecords` |
-| Extraction Accréditations en liste | `ACCREDITATION_OUTPUT_SCHEMA` retourne `{ "accreditations": [...] }` | Un seul appel Tavily extrait toutes les accréditations de la page — validation admin en un clic crée N `AccreditationRecord` via transaction atomique — rétrocompatible avec l'ancien format objet unique |
+| Extraction Accréditations en liste | Le schéma d'extraction rend `{ "accreditations": [...] }` | Un seul rapport Research, toutes les accréditations — validation admin en un clic crée N `AccreditationRecord` via transaction atomique — rétrocompatible avec l'ancien format objet unique |
 | Pourcentages SchoolStats | Valeurs entières 0-100 (ex: 46 pour 46%) | Alignment avec les données sources (Tavily renvoie des entiers) — `formatPct()` frontend gère la rétrocompatibilité avec les anciens décimaux 0-1 |
 | Montée de dépendances | Branche dédiée, `npm audit fix` **sans `--force`** | Une montée doit pouvoir être abandonnée d'un `git checkout` ; `--force` est précisément ce qui casse les contrats de version |
 | Vulnérabilités résiduelles de la CLI Prisma (4 hautes : `deepmerge-ts`, `mysql2`) | Risque accepté, correctif npm refusé | Le correctif redescend Prisma en v6, où `@prisma/adapter-neon` n'existe pas : la connexion Neon serverless casserait. Les avis ne concernent que la CLI de build — et `mysql2` un pilote que le projet n'ouvre jamais |
+| `output_schema` de Tavily Research | Retiré : Research rédige, Gemini structure | Le schéma écourtait la recherche elle-même — 1 classement issu d'une source avec lui, 10 issus de 14 sources sans lui |
+| Modèle d'extraction du pipeline | Cascade Gemini à paliers, plancher par catégorie | Les paliers hauts sont rares ; une recopie d'étiquette n'en a pas besoin, une extraction à arbitrages ne doit pas descendre au flash-lite |
+| Ranking | Niveau école, liste complète | Un classement nomme l'école plus souvent qu'un parcours : un rapport au lieu de N appels |
+| Clés de l'Inbox | Vraies clés étrangères, `ON DELETE SET NULL` | Un ticket pointait sur une entité supprimée ; `CASCADE` aurait détruit les contributions avec l'école |
+| Rattachement campus | Table fille `ProgramCampusAttachment`, `ProgramCampus` inchangé | Une ligne par couple ne porte ni la répétition par année ni les régimes ; ouvrir la clé de `ProgramCampus` touchait 7 chemins, dont 2 pertes silencieuses |
+| Écriture du rattachement | Jamais d'arête créée, garanti par le type `AttachmentTx` | Une arête ouvre une option de capacité et une tâche Phase 2 facturée ; elle doit passer par la validation d'une découverte |
+| Lignes que la page ne publie plus | Conservées et signalées `stale`, jamais supprimées | Le silence du collecteur n'est pas celui de la page ; une suppression sur absence serait invisible, la cascade en plus |
+| Collecte du rattachement | Désactivée par défaut, case par passe et par école | 15 à 17 crédits par école, même là où elle ne produit rien |
+| Appariement fiche → programme | Clauses fermées ; ambigu → rien | Un non-apparié se voit, un mauvais appariement non. Jaccard et l'inclusion rattachaient un doctorat à un bachelor |
+| Deux fiches pour un même diplôme | Fusion des affirmations identiques, pas de colonne de voie | Les deux voies d'accès du PGE se recouvrent sur une seule année, à l'identique ; une colonne de voie ne serait lue par rien |
+| Cron Research | Inscrit seulement en production (`ENVIRONMENT`) | Démarrer le backend en local payait deux découvertes 5 minutes plus tard |
+| Rapport Research après un échec d'extraction | Rangé en ticket `Failed`, repris 7 jours | Deux 503 Gemini avaient coûté ~50 crédits sans trace |

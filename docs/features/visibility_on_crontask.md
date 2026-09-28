@@ -1,5 +1,19 @@
 # Visibilité des jobs Cron APScheduler dans `/admin/cron`
 
+> **Statut au 28 septembre 2026 : remplacé par la table `PipelineJob`.** Le
+> registre en mémoire décrit ici (`_pipeline_jobs`, `register_cron_job`,
+> `complete_cron_job`) a été supprimé par la migration
+> `20260902100000_pipeline_job_state` : il était perdu à chaque redémarrage et
+> laissait une école verrouillée par un job fantôme. Les jobs cron sont désormais
+> des lignes `PipelineJob` (`source = "cron"`), ouvertes par `_start_cron_job` et
+> closes par `_finish_cron_job` dans `scheduler/jobs.py`. Référence :
+> `architecture/architecture.md` §3.5 bis.
+>
+> **Toujours vrai :** `/admin/cron` n'affiche ni `scheduler.last_runs`, ni
+> `has_failure`, ni `research_cron` (pourquoi les jobs Research sont inscrits ou
+> non). Un cron en échec — ou un cron désactivé hors production — reste
+> invisible à l'écran.
+
 Les jobs déclenchés par APScheduler (`phase1_scanner`, `phase2_enricher`, `crowdsourcing_processor`) sont actuellement invisibles dans le dashboard admin. Seuls les jobs lancés manuellement via les endpoints `trigger-*` s'affichent dans la section "Tâches en cours". L'objectif est d'enregistrer les jobs Cron dans le même `_pipeline_jobs` que les jobs manuels, avec un champ `source` pour les distinguer, et d'ajouter une section séparée dans le frontend.
 
 ## Proposed Changes
@@ -124,7 +138,8 @@ commentaire « en production la BDD est toujours accessible ».
 appelé. Il l'est désormais, dans un `try` pour que l'endpoint de supervision ne
 tombe pas à cause de ce qu'il est censé superviser.
 
-**5. Premier déclenchement après démarrage.** Le trigger était réglé à 168 h
+**5. Premier déclenchement après démarrage.** *(Depuis le 28 septembre 2026, ce
+passage n'a lieu qu'en production : voir `research_cron_enabled()`.)* Le trigger était réglé à 168 h
 **sans `next_run_time`** : le premier passage n'avait lieu qu'une semaine après
 chaque redémarrage — donc jamais, sur une instance qui redémarre régulièrement.
 Une `start_date` à +5 min est posée, réglable par

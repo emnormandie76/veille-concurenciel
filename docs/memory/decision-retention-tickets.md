@@ -187,10 +187,34 @@ La divergence est close, elle n'est plus « à arbitrer ».
 
 ## 8. Ce qu'il reste à surveiller
 
-1. **Aucun écran du back-office n'affiche les tickets `Failed`.** Ils existent en
-   base entre deux tentatives, mais l'interface d'inbox ne les distingue pas.
-   Tant que ce n'est pas fait, la fenêtre d'arbitrage humain reste théorique —
-   la politique fonctionne, mais personne ne la voit fonctionner.
+1. ~~**Aucun écran du back-office n'affiche les tickets `Failed`.**~~ —
+   **corrigé** : les listes de statuts de l'inbox viennent de `lib/contribution.ts`,
+   « Failed » y figure avec son badge, et le filtre le propose.
 2. **Surveiller les logs `🗑️ Ticket … supprime apres N tentatives`** après mise
    en service. Si un même message d'erreur revient souvent, ce n'est plus une
    contribution invalide : c'est un bug à corriger.
+
+## 9. Un second usage de `Failed` : les rapports Research rangés (septembre 2026)
+
+Depuis le 28 septembre 2026 (`bedb5d2`), le **pipeline** écrit lui aussi des
+tickets `Failed`, avec une autre signification. Quand l'extraction Gemini d'un
+rapport Tavily Research échoue en Phase 1, le rapport (~25 crédits) est rangé
+dans un ticket `Program_Discovery`, `source_type = 'Automated_AI'`,
+`raw_report` rempli :
+
+```json
+{ "parked_reason": "research_report_parked",
+  "last_error": "Extraction Gemini indisponible: …", "extraction_attempts": 1 }
+```
+
+Ce ticket **n'entre pas** dans la politique décrite plus haut :
+
+| | Crowdsourcing (`User_Submission`) | Rapport rangé (`Automated_AI`) |
+|---|---|---|
+| Qui le rejoue | `process_pending_submissions`, après délai | la **Phase 1 suivante de la même école**, manuelle ou cron |
+| Plafond | `CROWDSOURCING_MAX_ATTEMPTS`, puis suppression | aucun ; il n'est plus repris au-delà de **7 jours** |
+| Fin normale | `Pending_Admin` | supprimé quand une extraction réussit — le nouveau ticket porte le même rapport |
+| Action de l'admin | aucune | le **rejeter** empêche qu'il soit repris ; `/validate` refuse de le clôturer |
+
+La file du crowdsourcing filtre sur `source_type = 'User_Submission'` : elle ne
+peut pas reprendre ces tickets par erreur.

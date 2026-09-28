@@ -2,6 +2,11 @@
 
 Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plateforme School Data Pipeline, ainsi que les solutions apportées par l'équipe.
 
+> **Mise à jour du 28 septembre 2026.** Chaque cas indique sa solution actuelle ;
+> quand la mise en œuvre s'écarte de la solution décidée à l'origine, un
+> paragraphe **« Mise en œuvre »** le dit. Le tableau récapitulatif est dans
+> `architecture/architecture.md` §9.
+
 ## Session 1
 
 ### Edge Case 1 : Attaque par épuisement de quota (DDoS Tavily)
@@ -9,12 +14,14 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Problème :** Un bot ou utilisateur malveillant peut soumettre 1000 requêtes bidons ou de spam en quelques minutes (ex: liens vers YouTube ou sites aléatoires).
 - **Impact :** Épuisement immédiat du quota gratuit Tavily (1000 req/mois), bloquant complètement la plateforme pour le reste du mois (y compris le Workflow B automatisé).
 - **Solution confirmée :** **Middleware Vercel (Rate Limiting par IP) + Validation basique de l'URL (vérification d'un format `https://` valide uniquement pour l'instant).**
+- **Mise en œuvre :** plus stricte que prévu. `proxy.ts` limite `/api/contribute` à 5 requêtes / 20 s / IP (Upstash si configuré). `POST /api/contribute` n'accepte que 5 URL `https:`, **du domaine officiel de l'école** ou de `CONTRIBUTION_ALLOWED_DOMAINS`, et rejette les hôtes internes (boucle locale, RFC1918, `.local`…).
 
 ### Edge Case 2 : Données temporelles ambiguës ou archivées
 - **Contexte :** Extraction des prix ou des places disponibles.
 - **Problème :** Un site d'école affiche à la fois les tarifs de 2023 (archives) et 2025, ou Tavily scrape une page PDF de 2022 mal référencée. L'IA (Gemma 31B) pourrait extraire la mauvaise année ou ne pas comprendre le contexte temporel.
 - **Impact :** L'Admin valide une donnée obsolète sans s'en rendre compte, compromettant la fiabilité de la base de données finale.
 - **Solution confirmée :** **Ajout du champ `academic_year` dans le schéma JSON. Règle métier stricte : si l'année de l'information trouvée est inférieure à l'année actuelle, l'IA ne valide pas la donnée, celle-ci n'est pas envoyée à l'Admin, et le système automatisé continue de chercher.**
+- **Mise en œuvre :** partielle. Les briefs Research ciblent l'année académique visée (`get_target_academic_year_str`), et les prompts d'extraction définissent `academic_year` sans ambiguïté (année de début, année du palmarès). **Aucun filtre en code ne rejette une année passée** : elle arrive à l'admin, qui la voit.
 
 ### Edge Case 2.1 : Aucune date mentionnée sur la page
 - **Contexte :** Extraction des tarifs ou du classement depuis un site d'école.
@@ -34,7 +41,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Contexte :** Le Workflow B (Pipeline IA Automatisé) lit une liste cible d'écoles pour identifier les données manquantes et déclenche une recherche.
 - **Problème :** Une école spécifique n'a pas de page "Tarifs" publique (ex: il faut créer un compte, télécharger une brochure PDF protégée, ou le site est en maintenance). L'IA automatisée cherche, ne trouve rien, et au prochain passage du cron, elle va recommencer à chercher pour la même école.
 - **Impact :** Épuisement du quota Tavily en boucle sur des écoles dont la donnée est inaccessible publiquement.
-- **Solution actuelle :** ~~Anciennement géré via la table `CronTarget` avec blacklist après 3 échecs.~~ **Cette table a été supprimée.** Les échecs sont désormais uniquement logués dans la console. Le pipeline Tavily Research est suffisamment intelligent pour naviguer autour des obstacles (paywalls, sites en maintenance). La rotation de clés et les quotas Tavily restent la protection principale contre l'épuisement des crédits.
+- **Solution actuelle :** ~~Anciennement géré via la table `CronTarget` avec blacklist après 3 échecs.~~ **Cette table a été supprimée.** Chaque passe est tracée dans `PipelineJob` (`failed`, `error`). Le pipeline Tavily Research est suffisamment intelligent pour naviguer autour des obstacles (paywalls, sites en maintenance). La rotation de clés et les quotas Tavily restent la protection principale contre l'épuisement des crédits.
 
 ### Edge Case 5 : Sources de données contradictoires (Véracité)
 - **Contexte :** Workflow A ou B. L'IA analyse le texte fourni par Tavily pour extraire un classement ou un prix.
@@ -51,10 +58,11 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 ## Session 3
 
 ### Edge Case 7 : Dépassement de limite d'API (Rate Limit Google/Gemma)
-- **Contexte :** Le pipeline automatisé utilise l'API `google-generativeai` pour contacter Gemma 31B.
+- **Contexte :** Le pipeline automatisé et le crowdsourcing appellent les modèles Google via le SDK `google-genai`.
 - **Problème :** Bien que l'API soit gratuite, Google impose des limites de requêtes par minute (RPM) ou par jour (ex: 15 RPM selon les quotas du Free Tier). Si le Cron déclenche 20 requêtes simultanées, l'API va renvoyer une erreur `HTTP 429 Too Many Requests`.
 - **Impact :** Les tâches échouent sans arrêt, l'inbox reste vide, et potentiellement le backend FastAPI plante si l'erreur n'est pas interceptée.
 - **Solution confirmée :** **Implémenter une logique de "Retry avec Backoff Exponentiel" (relancer la requête avec un délai grandissant) et limiter le nombre d'exécutions simultanées dans le gestionnaire de tâches (APScheduler) pour lisser les appels sur le temps.**
+- **Mise en œuvre :** le pipeline passe par la **cascade Gemini** : 12 s minimum entre deux appels (5 req/min), un modèle refusé par quota journalier (`429 limit: 0`) est retiré jusqu'à minuit Pacifique, un 503 le met en refroidissement, et la cascade descend d'un modèle sans jamais passer sous le plancher de la catégorie. Le crowdsourcing garde le backoff exponentiel de Gemma. Une seule école est traitée à la fois par le cron.
 
 ### Edge Case 8 : Frais annexes et "coûts cachés"
 - **Contexte :** L'IA extrait le coût de l'école (colonne `year_1_fee`).
@@ -74,7 +82,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Contexte :** Workflow B (Automatisé). L'école n'a pas modifié ses prix depuis 6 mois.
 - **Problème :** Le Cron repasse tous les mois, l'IA extrait les mêmes tarifs et crée un ticket `Pending_Admin` dans l'Inbox à chaque fois.
 - **Impact :** L'Admin est noyé sous des centaines de tickets à valider qui n'apportent rien de nouveau par rapport aux tables de production actuelles.
-- **Solution confirmée :** **Avant d'insérer dans l'Inbox, le backend FastAPI fait un "Diff" (comparaison) entre le JSON renvoyé par l'IA et la table rigide `PricingRecord` actuelle. Si rien n'a changé (mêmes montants, mêmes années), on annule silencerde la création du ticket.**
+- **Solution confirmée :** **Avant d'insérer dans l'Inbox, le backend FastAPI fait un "Diff" (comparaison) entre le JSON renvoyé par l'IA et la table rigide `PricingRecord` actuelle. Si rien n'a changé (mêmes montants, mêmes années), on annule silencieusement la création du ticket.**
 
 ## Session 5
 
@@ -105,6 +113,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Problème :** Tavily met plus de 30 secondes à répondre (serveur surchargé, page très lourde) ou renvoie un body complètement vide (la page existe mais n'a aucun contenu textuel exploitable).
 - **Impact :** Le worker FastAPI reste bloqué en attente, consomme les ressources limitées de l'instance Koyeb EcoFree, et peut potentiellement faire tomber le backend si plusieurs requêtes s'accumulent.
 - **Solution confirmée :** **Imposer un timeout strict de 15 secondes sur tous les appels Tavily (via le paramètre `timeout` du client HTTP). Si Tavily renvoie un body vide ou un contenu de moins de 50 caractères, traiter comme un échec standard (incrémenter `failed_attempts_count` dans `CronTarget`). Aucune requête IA n'est déclenchée.**
+- **Mise en œuvre :** un délai explicite **par type d'appel**, réglable par variable (`TAVILY_EXTRACT_TIMEOUT_SECONDS` 30 s, `SEARCH` 60 s, `MAP` 120 s) — 15 s coupait des extractions légitimes. `CronTarget` n'existe plus : en crowdsourcing, un contenu de moins de 50 caractères lève `TavilyExtractionError` et le ticket est **supprimé** (l'URL ne sera jamais exploitable).
 
 
 ### Edge Case 15 : Cold Start de l'instance Koyeb EcoFree
@@ -112,6 +121,24 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Problème :** Après un redémarrage, l'instance met 10 à 30 secondes à redevenir opérationnelle. Durant ce laps de temps, les requêtes du frontend Next.js (soumissions utilisateur, chargement du dashboard Admin) échouent avec une erreur réseau ou un timeout.
 - **Impact :** L'utilisateur lambda voit une erreur incompréhensible en soumettant son information. L'Admin croit que le backend est en panne.
 - **Solution confirmée :** **Côté Next.js (frontend), implémenter un mécanisme de retry automatique avec un message UX explicite ("Le serveur redémarre, nouvelle tentative dans quelques secondes..."). Côté Koyeb, configurer un healthcheck HTTP sur `/health` pour que Koyeb ne route le trafic qu'une fois le backend prêt.**
+- **Mise en œuvre :** `/health` existe. La reconnexion automatique existe sur `/admin/cron` (« Reconnexion automatique en cours… ») ; le formulaire public `/contribute`, lui, n'appelle pas FastAPI — il écrit directement dans l'inbox.
+
+## Session 8
+
+### Edge Case 16 : Faux négatifs du contrôle de compatibilité (menus longs)
+- **Contexte :** Crowdsourcing. Gemma 26B décide si la page concerne l'école et la catégorie.
+- **Problème :** Sur les sites aux menus très longs, le contenu utile arrive tard dans la page.
+- **Solution actuelle :** des plafonds **explicites et délibérés** par appel (`processor.py`) : 25 000 caractères pour la compatibilité (un booléen, tranché sur le début de la page), 80 000 pour l'extraction mono-programme (un seul objet en sortie), 25 000 en multi-programme (le prompt porte déjà la liste des programmes). Les toucher change le coût de chaque ticket.
+
+### Edge Case 17 : Timeout de la transaction de validation
+- **Contexte :** Validation d'une découverte volumineuse (ex. EDHEC : 9 campus, 30+ programmes).
+- **Solution actuelle :** transaction de 60 s, et upserts **sérialisés** : `tx` ne dispose que d'une connexion, un `Promise.all` n'y gagne aucun parallélisme et dépasse le délai sous charge.
+
+### Edge Case 18 : URL invalide ou fausse (`http://localhost`, domaine inexistant)
+- **Solution actuelle :** rejetée à la soumission (`https:` obligatoire, domaine officiel, hôtes internes refusés). Si elle passe, Tavily rend un contenu vide → `TavilyExtractionError` → ticket supprimé, sans `Rejected` parasite.
+
+### Edge Case 19 : Accumulation des tickets traités (quota Neon 500 MB)
+- **Solution actuelle :** bouton « Purger » de l'inbox (`DELETE /api/admin/inbox/purge`, ADMIN), qui supprime les tickets `Validated` et/ou `Rejected` après confirmation chiffrée ; les jobs `PipelineJob` terminés sont purgés au démarrage au-delà de 7 jours.
 
 ### Edge Case 20 : Timeout d'inactivité de connexion BDD pendant les requêtes API/IA longues (Idle Timeout)
 - **Contexte :** Traitement automatisé ou manuel de la Phase 2 (Tavily Research) et traitement par lot des soumissions crowdsourcing (Tavily Extract + Gemma).
@@ -119,6 +146,28 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Impact :** Échec du job et perte des données extraites au moment de la sauvegarde en base, malgré la réussite et le coût en crédits de la recherche IA.
 - **Solution confirmée :** **Patron "Ephemeral DB Connections" (sessions BDD éphémères). Séparation stricte entre les contextes de connexion BDD et les appels API/IA externes. La connexion BDD est ouverte pour lire les métadonnées initiales puis immédiatement fermée. Les requêtes Tavily et Gemma s'exécutent hors connexion BDD, et des connexions courtes sont ouvertes à la volée uniquement pour vérifier ou insérer chaque ticket (`_get_existing_record`, `_get_existing_capacity_record`, `_update_ticket_status`, `_delete_ticket`, `INSERT INTO ContributionInbox`).**
 
+## Session 9 — pipeline Research et rattachement campus (septembre 2026)
 
+### Edge Case 21 : Gemini saturé après un Research déjà payé
+- **Contexte :** Phase 1. Research (~25 crédits) rend son rapport, puis l'extraction Gemini échoue : tous les modèles au-dessus du plancher répondent 503 « high demand ».
+- **Impact :** le 28 septembre 2026, deux découvertes (EM Normandie, EMLV) ont perdu leurs rapports — environ 50 crédits sans trace, le rapport n'étant enregistré qu'avec le ticket.
+- **Solution actuelle :** le rapport est rangé dans un ticket `Failed` (`raw_report`, `parked_reason`). La passe suivante de la même école le reprend pendant 7 jours sans rappeler Research ; une extraction réussie le supprime. Rejeter ce ticket empêche qu'il soit repris.
 
+### Edge Case 22 : Des passes payantes lancées sans clic
+- **Contexte :** Le backend local est lancé pour développer (`uvicorn`).
+- **Problème :** APScheduler inscrivait `phase1_scanner`, qui passait 5 minutes plus tard sur toutes les écoles `ACTIVE` sans campus — EMLV et Essec, ~30 crédits chacune.
+- **Solution actuelle :** `phase1_scanner` et `phase2_enricher` ne sont inscrits qu'avec `ENVIRONMENT=production`, ou forcés par `CRON_RESEARCH_ENABLED=true|false` (une valeur inconnue les coupe). Le traitement du crowdsourcing reste inscrit.
 
+### Edge Case 23 : Le site et la base ne découpent pas les programmes de la même façon
+- **Contexte :** Rattachement campus. La base a **un** `Programme Grande École` ; le site publie trois fiches (en 5 ans, en 2 ou 3 ans, en blended learning).
+- **Problème :** les deux fiches PGE publient l'année 3 des mêmes campus : 5 collisions sur l'unique `(programCampusId, study_year, regime)`.
+- **Solution actuelle :** l'appariement reconnaît une **variante de parcours** par une liste fermée de qualificatifs (durées, alternance, blended). Les affirmations identiques sont fusionnées — les 5 collisions l'étaient toutes, langues et note comprises ; des affirmations divergentes n'écrivent rien et remontent à l'admin.
+
+### Edge Case 24 : Des rubriques au format des programmes
+- **Contexte :** La page catalogue d'Em Lyon publie des cartes de rubrique (« Gouvernance », « Management »…) au même format que les cartes de programme, champ `Campus` compris.
+- **Problème :** prises pour des programmes, elles produisaient 14 lignes fausses.
+- **Solution actuelle :** une carte n'est un programme que si l'**ancrage de son lien** porte le titre et le lieu, et que le lien peut mener à une fiche. Les rubriques pointent vers une URL de facette.
+
+### Edge Case 25 : Une école qui ne publie aucun lieu
+- **Contexte :** Les fiches d'EM Strasbourg ont un encart régulier (conditions d'accès, diplôme, langues, rythme, durée) **sans champ de lieu**.
+- **Solution actuelle :** zéro ligne, aucun ticket, aucune erreur. La collecte étant désactivée par défaut, ne pas la lancer sur cette école évite 9 à 17 crédits pour rien.

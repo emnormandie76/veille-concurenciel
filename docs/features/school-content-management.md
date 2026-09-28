@@ -3,7 +3,7 @@
 <!-- audit-2026-09-01 -->
 > ## ⚠️ Amendements — remédiation de l'audit, 1er septembre 2026
 >
-> **Chaque route admin choisit désormais explicitement son garde.** Les 32 routes
+> **Chaque route admin choisit désormais explicitement son garde.** Les 32 routes (33 depuis l'ajout de `inbox/[id]/attachments`)
 > sous `app/api/admin/` ont été recartographiées ; `getServerSession` nu n'y
 > subsiste nulle part.
 >
@@ -51,7 +51,17 @@
 
 
 > **Version :** 1.0 — 27 juillet 2026  
-> **Statut :** En attente de validation  
+> **Statut :** **Implémenté.** Vérifié le 28 septembre 2026 : `manage/page.tsx`, les
+> composants `ProgramSelector` et `YearSelector`, et les 7 onglets
+> (`tabs/SchoolInfoTab`, `AccreditationsTab`, `StatsTab`, `CampusProgramsTab`,
+> `PricingTab`, `RankingsTab`, `CapacitiesTab`). Il reste **4** `as any` dans
+> `app/`, `components/` et `lib/`.
+>
+> **Ce que l'écran ne montre pas encore :** le détail année par année d'un
+> programme sur un campus (`ProgramCampusAttachment`), la note de campus
+> (`Program.campus_policy_note`) et les lieux hors du parc (`ProgramPlacement`).
+> Ces données s'écrivent depuis l'inbox (`architecture/architecture.md` §5.4) mais
+> aucun onglet ne les affiche ni ne les corrige.  
 > **Objectif :** Créer une nouvelle page admin `/admin/schools/[id]/manage` avec navigation par onglets pour gérer la totalité du contenu d'une école (infos de base, accréditations, statistiques, campus, programmes, tarifs, classements, capacités).
 
 ---

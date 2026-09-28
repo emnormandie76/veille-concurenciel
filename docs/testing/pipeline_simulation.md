@@ -1,142 +1,149 @@
 # 🚀 Guide de Simulation du Pipeline & Crowdsourcing (Étape par Étape)
 
-Ce guide explique comment lancer localement et configurer pas à pas les scripts de simulation pour tester les trois flux majeurs du pipeline de veille concurrentielle :
+Ce guide explique comment lancer localement les scripts de simulation de `backend/scripts/`, pour tester les flux du pipeline sans passer par le dashboard :
 1. **Phase 1** : Cartographie (Program Discovery)
-2. **Phase 2** : Enrichissement (Pricing, Ranking, Capacity, SchoolStats)
-3. **Workflow A** : Crowdsourcing Utilisateur (Soumission + Extraction + Validation IA)
+2. **Phase 2** : Enrichissement (Pricing, Ranking, Capacity, SchoolStats, Accreditation)
+3. **Workflow A** : Crowdsourcing utilisateur
+4. **Rattachement campus** : collecte, appariement et rejeu — **sans crédit** sur cache
+
+> **Revu le 28 septembre 2026.** Les scripts vivent dans `backend/scripts/` et se
+> lancent en module depuis la racine du dépôt (`python -m backend.scripts.…`).
 
 ---
 
 ## 📋 Prérequis Communs
 
-Avant de lancer les scripts, assurez-vous d'avoir configuré l'environnement de développement :
-
 ### 1. Variables d'environnement
-Le dossier `backend/` doit contenir un fichier `.env` configuré avec les accès aux API externes et à la base de données :
+`backend/.env` (liste complète : [`.env.example`](../../.env.example)) :
 ```ini
-# Connexion base de données (Neon Cloud PostgreSQL)
+# Connexion base de données (Neon, pooler)
 DATABASE_URL="postgresql://user:password@endpoint/dbname?sslmode=require"
 
-# API Google GenAI (Gemma 4)
+# API Google GenAI — cascade Gemini (pipeline) et Gemma 4 (crowdsourcing)
 GEMINI_API_KEY="AIzaSy..."
 
-# API Tavily (Recherche & Scraping)
-TAVILY_API_KEY="tvly-..."
+# API Tavily — une ou plusieurs clés, rotation automatique
+TAVILY_API_KEYS="tvly-...,tvly-..."
+# ou TAVILY_API_KEY_1 … TAVILY_API_KEY_10, ou TAVILY_API_KEY pour une seule clé
 ```
 
 ### 2. Activer l'environnement virtuel Python
-Ouvrez votre terminal et activez l'environnement virtuel :
-
-* **Sur Windows (PowerShell)** :
+* **Windows (PowerShell)** :
   ```powershell
   $env:PYTHONUTF8=1
   .\backend\.venv\Scripts\Activate.ps1
   ```
-* **Sur macOS / Linux** :
+* **macOS / Linux** :
   ```bash
   export PYTHONUTF8=1
   source backend/.venv/bin/activate
   ```
 
+> **Réseau.** Les scripts se connectent en psycopg2 sur le port 5432. Sur un
+> réseau qui coupe le protocole Postgres (`P1001`), ils échouent alors que
+> l'application Next.js fonctionne. Voir `manual_testing_cron.md`, *Dépannage*.
+
 ---
 
 ## 🗺️ Étape 1 : Simulation de la Phase 1 (Program Discovery)
 
-La **Phase 1** cherche à cartographier une école en découvrant ses campus et ses programmes d'études via **Tavily Research** (agent de recherche autonome).
+* **Script** : `backend/scripts/simulate_phase1_research.py`
+* **Comportement** — celui de `run_phase1_research()` :
+  1. lit la page catalogue de l'école (`/search` + `/extract`), dont les intitulés ancrent l'extraction ;
+  2. reprend un rapport Research rangé de moins de 7 jours s'il en existe un, sinon lance **Tavily Research** (`pro`, sans `output_schema`) ;
+  3. convertit le rapport en JSON par la **cascade Gemini** (plancher `mid`) ;
+  4. écarte les libellés de rubrique et les campus sans formation ;
+  5. insère un ticket `Program_Discovery` en `Pending_Admin`, avec le rapport dans `raw_report`. Si l'extraction échoue, le rapport est rangé dans un ticket `Failed`.
 
-* **Script concerné** : [simulate_phase1_research.py](file:///c:/Users/aparede/Desktop/dev/appVC/backend/simulate_phase1_research.py)
-* **Comportement** :
-  1. Il insère ou récupère l'école cible en base de données.
-  2. Il construit un prompt dynamique contextualisé (nom de l'école, domaine officiel).
-  3. Il lance une tâche **Tavily Research** (mode `pro`) avec un `output_schema` JSON.
-  4. Si `output_schema` ne retourne pas de JSON structuré, Gemma 26B convertit le rapport texte en JSON.
-  5. Il insère un ticket de type `Program_Discovery` dans `ContributionInbox` au statut `Pending_Admin`.
-
-### Lancement
-Exécutez la commande suivante à la racine du projet :
 ```powershell
-backend\.venv\Scripts\python backend\simulate_phase1_research.py
+python -m backend.scripts.simulate_phase1_research --school-name "EDHEC Business School" --domain edhec.edu
+python -m backend.scripts.simulate_phase1_research --dry-run      # sans écriture ni crédit réel
 ```
-
-### Personnalisation
-Pour tester une autre école, passez le `school_id` ou le nom en paramètre selon le script.
-
-### Mode Dry Run (sans consommer de crédits)
-```powershell
-backend\.venv\Scripts\python backend\simulate_phase1_research.py --dry-run
-```
+Coût réel : ~28-30 crédits Tavily (Research pro estimé à 25).
 
 ---
 
-## 🔍 Étape 2 : Simulation de la Phase 2 (Enrichissement Chirurgical)
+## 🔍 Étape 2 : Simulation de la Phase 2 (Enrichissement)
 
-La **Phase 2** prend un programme déjà validé en base de données et recherche activement sur le web des informations spécifiques via **Tavily Research** (mode `pro`).
+* **Script** : `backend/scripts/simulate_phase2_research.py`
+* **Comportement** — celui de `run_phase2_research()` :
+  1. charge l'école, ses programmes et ses arêtes programme × campus ;
+  2. un appel Research par catégorie **au niveau où la donnée existe** : école (SchoolStats, Accreditation, Ranking), programme (Pricing), programme × campus (Capacity) — `pro` pour Pricing et Ranking, `mini` pour les autres ;
+  3. extraction Gemini au plancher de la catégorie ;
+  4. diff contre la production (`has_data_changed()`) : rien de nouveau, pas de ticket ;
+  5. un ticket `Pending_Admin` par entrée pour les catégories à liste (Ranking, Capacity), reliés par `submission_group_id`.
 
-* **Script concerné** : [simulate_phase2_research.py](file:///c:/Users/aparede/Desktop/dev/appVC/backend/simulate_phase2_research.py)
-* **Comportement** :
-  1. Il sélectionne automatiquement une école active disposant de programmes en base de données.
-  2. Pour chaque programme/école, il construit des prompts dynamiques par catégorie (Pricing, Ranking, Capacity, SchoolStats, Accreditation) avec l'année scolaire N+1.
-  3. Il lance une tâche **Tavily Research** par catégorie.
-  4. Il compare les résultats avec les données de production (`has_data_changed()`).
-  5. Si des données nouvelles sont trouvées, il insère des tickets spécifiques dans `ContributionInbox` en statut `Pending_Admin`.
-
-### Lancement
-Exécutez la commande suivante à la racine du projet :
 ```powershell
-backend\.venv\Scripts\python backend/simulate_phase2_research.py
-```
-
-### Mode Dry Run (sans consommer de crédits)
-```powershell
-backend\.venv\Scripts\python backend/simulate_phase2_research.py --dry-run
+python -m backend.scripts.simulate_phase2_research --school-name "EDHEC Business School" --domain edhec.edu --max-programs 2
+python -m backend.scripts.simulate_phase2_research --dry-run
 ```
 
 ---
 
 ## 👥 Étape 3 : Simulation du Crowdsourcing (Workflow A)
 
-Ce flux traite la soumission d'un utilisateur externe qui propose une URL source pour une catégorie précise (ex: l'utilisateur a soumis le lien des tarifs EMLV).
+* **Script** : `backend/scripts/simulate_crowdsourcing.py`
+* **Comportement** — celui de `process_crowdsourcing_ticket()` :
+  1. crée un ticket `Pending_AI` lié à une URL ;
+  2. extrait la page par Tavily Extract — contenu vide ou de moins de 50 caractères : **ticket supprimé** ;
+  3. **compatibilité (Gemma 26B)**, sur les 25 000 premiers caractères — incompatible : `Rejected` ;
+  4. **extraction (Gemma 31B)** : 80 000 caractères en mono-programme ; **sans `programId`**, mode multi-programme (25 000 caractères), chaque nom apparié aux programmes de l'école par clauses fermées (`program_identity.match_program`) — un nom ambigu ou inconnu part en `unmatched_programs` ;
+  5. champs obligatoires à `null` : `GemmaParsingError`, **ticket supprimé** ;
+  6. succès : `Pending_Admin`. Erreur API temporaire : reste `Pending_AI`. Erreur inattendue : `Failed`, rejoué après 60 min, supprimé après 3 tentatives.
 
-* **Script concerné** : [simulate_crowdsourcing.py](file:///c:/Users/aparede/Desktop/dev/appVC/backend/simulate_crowdsourcing.py)
-* **Comportement** :
-  1. Il crée un ticket de test `Pending_AI` dans la table `ContributionInbox` lié à une URL soumise par l'utilisateur.
-  2. Il extrait le texte de l'URL via Tavily Extract.
-  3. **Vérification de compatibilité (Gemma 26B)** : Il analyse si la page est valide et parle bien de l'école et de la catégorie demandée (sur un texte maximum de 80 000 caractères).
-  4. **Extraction structurée (Gemma 31B)** : Si compatible, il extrait les données au format JSON.
-  5. **Validation des contraintes strictes** :
-     * Rejette les tickets `Pricing`, `Ranking` ou `Capacity` s'ils ne sont pas rattachés à un programme précis (`programId`).
-     * Rejette le ticket si les champs obligatoires sont extraits à `null` (ex: `spots_available` pour une capacité).
-  6. Met à jour le ticket en BDD en statut `Pending_Admin` (Succès) ou `Rejected` (Données absentes ou invalides).
+Le texte libre du contributeur (`user_text`) n'est **jamais** transmis à un modèle.
 
-### Lancement
-Exécutez la commande suivante à la racine du projet :
 ```powershell
-backend\.venv\Scripts\python backend/simulate_crowdsourcing.py
+python -m backend.scripts.simulate_crowdsourcing
+```
+Pour tester un autre lien, modifiez `test_url` et la catégorie à la fin de `main()`.
+
+---
+
+## 🏫 Étape 4 : Rattachement campus — collecte, appariement, rejeu
+
+Ces trois scripts servent à mettre au point la collecte du rattachement campus
+(`architecture.md` §5.4). Avec `--cache-only`, ils rejouent les réponses Tavily et
+Gemini déjà en cache et **ne dépensent aucun crédit** — une réponse absente du
+cache lève `CacheMiss` au lieu d'être payée.
+
+```powershell
+# 1. Dump en lecture seule de la base (écoles, campus, programmes, arêtes, lignes-années)
+npx tsx scripts/dump-program-identity.ts tmp/db.json
+
+# 2. Collecte en sortie sèche (JSON, aucune écriture en base) — liste des campus lue dans le dump
+python -m backend.scripts.simulate_campus_attachment `
+  --school-name "Em Lyon" --domain em-lyon.com --catalog-url "https://em-lyon.com/fr/nos-programmes" `
+  --db-dump tmp/db.json --limit 24 --batch-size 3 --cache-dir tmp/dry-cache --cache-only --out tmp/after
+
+# 3. Appariement fiches → Program, et lignes réellement écrivables
+python -m backend.scripts.resolve_program_identity --db-dump tmp/db.json `
+  --school "Em Lyon" --dry tmp/after/em-lyon.json --out tmp/resolve
+
+# 4. Le pas de Phase 1, rejoué sur cache pour toutes les écoles du dump
+python -m backend.scripts.replay_phase1_campus_attachment --db-dump tmp/db.json --cache-dir tmp/dry-cache `
+  --catalog "Em Lyon=https://em-lyon.com/fr/nos-programmes" --state as-dumped --out tmp/phase1-replay
 ```
 
-### Personnalisation
-Pour tester un autre lien de crowdsourcing, vous pouvez modifier les lignes suivantes à la fin de la fonction `main()` :
-```python
-# Exemple de configuration pour tester une capacité
-test_url = "https://www.letudiant.fr/fiches/etudes/fiche/votre-page-test.html"
-# Remplacez la catégorie et le type de ticket inséré :
-# Categorie: Capacity
-# (Assurez-vous que la catégorie correspond bien à votre test)
-```
+`--campus` (liste de campus saisie à la main) n'est accepté qu'avec `--cache-only`.
+`--no-page-guards` rejoue la sortie d'avant les gardes de page, pour mesurer leur
+effet sur le même cache. `tmp/` est ignoré par git.
 
 ---
 
 ## 🛠️ Dépannage & Erreurs Courantes
 
 ### 1. UnicodeEncodeError sur la console Windows
-Si vous voyez des erreurs d'affichage ou des crashs liés à l'affichage des émoticônes (`✅`, `❌`, `🛑`) :
-* Assurez-vous d'avoir configuré la variable système `$env:PYTHONUTF8=1` avant de lancer le script.
-* Les scripts de simulation incluent un reconfigurateur de flux `sys.stdout.reconfigure(encoding='utf-8')` pour forcer l'encodage.
+* Posez `$env:PYTHONUTF8=1` avant de lancer le script ; les scripts forcent aussi `sys.stdout.reconfigure(encoding='utf-8')`.
 
 ### 2. Le ticket de crowdsourcing se fait rejeter pour incompatibilité
-* **Cause** : Le texte utile est trop loin dans le document Markdown généré par Tavily (après un très long menu de navigation ou des bandeaux publicitaires).
-* **Vérification** : La limite de troncature dans [processor.py](file:///c:/Users/aparede/Desktop/dev/appVC/backend/crowdsourcing/processor.py) pour le check Gemma 26B doit être réglée à `[:80000]` pour que le modèle ait accès à l'intégralité du texte utile.
+* **Cause probable** : le texte utile arrive après un très long menu, au-delà des 25 000 caractères envoyés au contrôle de compatibilité.
+* **Attention avant de toucher la limite** : les trois plafonds de `processor.py` (80 000 / 25 000 / 25 000) sont délibérés et fixent le coût de chaque ticket. L'ancien conseil de ce guide (« régler le check à `[:80000]` ») ne correspond plus au code.
 
 ### 3. Too Many Requests (HTTP 429) sur Tavily
-* **Cause** : La clé API Tavily active a épuisé ses quotas mensuels de requêtes.
-* **Résolution** : Le pipeline utilise un gestionnaire de rotation (`TavilyKeyManager`). Si vous disposez de clés secondaires, ajoutez-les dans `backend/.env` séparées par des virgules pour permettre la rotation automatique.
+* **Cause** : la clé active a épuisé son quota ; `TavilyKeyManager` la marque épuisée et passe à la suivante.
+* **Résolution** : ajoutez des clés — `TAVILY_API_KEYS="cle1,cle2"` ou `TAVILY_API_KEY_1` … `TAVILY_API_KEY_10`. Une clé refusée par l'API (« exceeds your plan's set usage limit ») est retentée une fois à chaque redémarrage, l'état des quotas ne vivant qu'en mémoire.
+
+### 4. `ExtractionUnavailable` ou 503 Gemini
+* **Cause** : tous les modèles au-dessus du plancher de la catégorie sont saturés ou épuisés pour la journée (quotas remis à zéro à minuit Pacifique).
+* **Effet** : en Phase 1, le rapport Research est rangé — relancez plus tard la même école, sans repayer Research.

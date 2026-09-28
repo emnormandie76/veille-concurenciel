@@ -45,6 +45,32 @@
 > les identifiants appartiennent bien à l'école.
 >
 > Référence à jour : [`architecture.md`](../architecture/architecture.md) §6.2 et §10.
+>
+> ## Mise à jour — 28 septembre 2026 : l'appariement a changé (`fafcdae`)
+>
+> **L'algorithme de la section 3.1.4 n'est plus celui du code.** Inclusion de
+> sous-chaîne dans les deux sens puis similarité de Jaccard ≥ 0,4 : rejouée sur
+> les 49 noms réellement publiés par EM Normandie et Em Lyon, cette méthode
+> rendait 34 appariements dont **6 faux**, tous silencieux — un doctorat rattaché
+> à un bachelor (Jaccard exactement 0,400), un MSc à un bachelor, et deux fois
+> le mauvais « frère », parce que l'inclusion rendait le **premier** candidat de
+> la liste triée par nom au lieu du plus proche.
+>
+> **Aucun seuil ne pouvait le corriger** : les appariements justes de la famille
+> `MSc X` → `Master of Science (MSc) - X` valent 0,429, les faux 0,400 et 0,500.
+>
+> `_match_program_name` garde sa signature et son contrat (`exact` / `fuzzy` /
+> `none`) : l'égalité littérale reste la phase 1 et seule à rendre `exact` ;
+> l'appariement approché est délégué à `match_program()`
+> (`backend/pipeline/program_identity.py`), par clauses fermées — identité après
+> repli de la convention d'écriture, sigle égal aux initiales, variante de
+> parcours bornée par une liste fermée. **Si plusieurs programmes répondent, rien
+> n'est apparié.** Résultat sur le même corpus : 33 appariements, zéro faux. Un
+> nom non apparié part en `unmatched_programs` : l'admin voit le nom sans
+> proposition, au lieu d'un programme plausible et faux.
+>
+> La règle n°1 ci-dessus tient toujours : le prompt multi-programme ne restitue
+> pas le campus.
 
 
 ## 1. Contexte et Problème
@@ -337,6 +363,10 @@ def _fetch_school_programs(school_id: str) -> list[dict]:
 ```
 
 ##### 3.1.4. Nouvelle fonction `_match_program_name(extracted_name: str, known_programs: list[dict]) -> dict`
+
+> ⚠️ **Remplacé le 28 septembre 2026** : l'implémentation ci-dessous (inclusion
+> puis Jaccard) rattachait des diplômes différents. Voir l'encadré en tête de
+> document et `program_identity.match_program()`.
 
 Fonction de fuzzy-matching. Elle compare un nom extrait avec les programmes connus de l'école et retourne le meilleur match.
 

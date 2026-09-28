@@ -1,8 +1,8 @@
 # API REST publique (v1) — spécification et état réel
 
-> **Mise à jour** : 1er septembre 2026, après la remédiation de l'audit technique.
-> Les sections marquées **« État réel »** décrivent ce que fait le code
-> aujourd'hui, là où il s'écarte de l'intention initiale.
+> **Mise à jour** : 28 septembre 2026 — revérifiée contre le code (15 routes
+> `app/api/v1`). Les sections marquées **« État réel »** décrivent ce que fait le
+> code aujourd'hui, là où il s'écarte de l'intention initiale.
 
 ## Objectif
 
@@ -52,7 +52,7 @@ ni limitée. Un seul client pouvait aspirer la base et saturer le palier Neon.
 **Intention initiale** : `export const revalidate = 3600` sur chaque route, la
 première requête frappant la base et les suivantes étant servies par le CDN.
 
-**État réel** : la directive est bien présente dans les 12 routes, **mais elle
+**État réel** : la directive est bien présente dans les 15 routes, **mais elle
 ne s'applique pas**. Tous les handlers reçoivent `request` et lisent
 `new URL(request.url).searchParams` : en App Router, cela force le rendu
 dynamique et neutralise `revalidate`. Le build le confirme — les routes `/api/v1`
@@ -82,7 +82,7 @@ tronquer de donnée réelle.
 
 ---
 
-## Points d'entrée (12 routes)
+## Points d'entrée (15 routes)
 
 Toutes sous `/api/v1/`. Seules les écoles `status == "ACTIVE"` sont exposées.
 
@@ -182,6 +182,12 @@ des crédits sur des cibles arbitraires.
 
 - `ContributionInbox` — zone tampon interne, jamais exposée
 - `User` — authentification du back-office
+- `PipelineJob` — suivi interne des passes du pipeline
+
+> **Pas encore exposés** : le détail année par année d'un programme sur un
+> campus (`ProgramCampusAttachment`), la note de campus d'un programme
+> (`Program.campus_policy_note`) et les lieux hors du parc (`ProgramPlacement`).
+> Les 26 lignes-années en production ne sont lisibles que dans la base.
 
 > `CronTarget` figurait dans cette liste ; **la table a été supprimée du projet**
 > (migration `20260701100000_remove_cron_target`).

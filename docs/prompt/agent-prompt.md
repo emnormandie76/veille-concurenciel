@@ -1,3 +1,8 @@
+> **📁 Document historique — ne pas exécuter.** Consigne donnée à un agent le 1er juillet 2026,
+> conservée pour la trace des décisions. Le code a évolué depuis ; la référence
+> actuelle est [`docs/architecture/architecture.md`](../architecture/architecture.md)
+> (revue le 28 septembre 2026).
+
 ## INSTRUCTIONS POUR L'AGENT
 
 Tu es un agent développeur senior chargé de construire le projet **School Data Pipeline** : une plateforme hybride (Crowdsourcing + Pipeline IA) de centralisation des données de l'enseignement supérieur français.

@@ -44,11 +44,34 @@
 > d'exécution non automatisés*.
 >
 > Voir aussi [`visibility_on_crontask.md`](visibility_on_crontask.md).
+>
+> ## Mise à jour — 28 septembre 2026
+>
+> **Les trois limites connues ci-dessus sont corrigées.** Les tâches de fond sont
+> gardées dans `_background_tasks` jusqu'à leur fin ; `trigger-enrichment` refuse
+> de lancer une passe quand un job tourne déjà sur l'école ; et l'état des jobs a
+> quitté la mémoire du processus.
+>
+> **`_pipeline_jobs` et `_pipeline_progress` n'existent plus** (sections 3.1 et
+> 6.1 ci-dessous) : chaque passe est une ligne `PipelineJob` en base
+> (`status`, `progress`, `result`, `error`), reprise au redémarrage et purgée après
+> 7 jours. Voir `architecture/architecture.md` §3.5 bis.
+>
+> **Le pipeline Research est le seul pipeline** : `USE_RESEARCH_PIPELINE` n'est
+> plus lu nulle part, il ne subsiste que dans une docstring.
+>
+> **La recherche ciblée porte un interrupteur de collecte.** L'écran a une case
+> « collecte du rattachement campus », décochée par défaut et de nouveau décochée
+> après chaque lancement. `TargetedResearchRequest` gagne
+> `collect_campus_attachments` (faux par défaut, refusé en Phase 2) ; le corps est
+> relu par `lib/trigger-research.ts`, qui n'accepte que le booléen `true`. Le
+> backend renvoie ce qu'il a compris, pour qu'un backend plus ancien se voie à
+> l'écran. Voir `architecture/architecture.md` §5.4.
 
 
 > **Version :** 1.0 — 12 juin 2026  
 > **Branche :** `devresearch`  
-> **Pipeline concerné :** Research uniquement (`USE_RESEARCH_PIPELINE=true`)  
+> **Pipeline concerné :** Research (le seul pipeline depuis ; le drapeau `USE_RESEARCH_PIPELINE` a disparu)  
 > **Prérequis :** Le plan `research-pipeline-plan.md` doit être implémenté et fonctionnel
 
 ---
@@ -700,9 +723,14 @@ Nouveau layout :
 {
   "phase": "2",
   "program_id": "uuid-programme-optionnel",
-  "categories": ["Ranking", "Pricing"]
+  "categories": ["Ranking", "Pricing"],
+  "collect_campus_attachments": false
 }
 ```
+
+`collect_campus_attachments` *(ajouté en septembre 2026)* : Phase 1 seulement,
+faux par défaut. Vrai, la Phase 1 enchaîne la collecte du rattachement campus
+après la découverte (~15 à 17 crédits Tavily).
 
 ---
 

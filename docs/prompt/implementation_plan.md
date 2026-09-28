@@ -1,5 +1,11 @@
 # 🧹 Plan de Nettoyage Exhaustif — School Data Pipeline
 
+> **📁 Document historique — ne pas exécuter.** Consigne donnée à un agent le 1er juillet 2026,
+> conservée pour la trace des décisions. Le code a évolué depuis ; la référence
+> actuelle est [`docs/architecture/architecture.md`](../architecture/architecture.md)
+> (revue le 28 septembre 2026).
+> Ce nettoyage est fait : le pipeline Research est le seul pipeline.
+
 > **Version :** 1.0 — 1er juillet 2026  
 > **Objectif :** Nettoyer le projet en supprimant deux features obsolètes et en promouvant le pipeline Research comme pipeline de base unique  
 > **Destinataire :** Agent IA développeur (Claude Sonnet) pour exécution

@@ -3,6 +3,36 @@
 > **Contexte :** Lire `architecture.md`, `bdd.md`, `cahier-des-charges-school-pipeline.md`, `edgecase.md`, `API-rest.md`,`gemma-python-guide.md` avant de commencer.
 > **Règle absolue :** Ne JAMAIS passer à l'étape suivante sans avoir validé TOUS les tests de l'étape courante.
 
+> ## ⚠️ Statut au 28 septembre 2026 — plan de construction initial, terminé
+>
+> Les étapes 0 à 11 sont toutes réalisées ; ce fichier est l'**historique** de la
+> construction, pas une description du système actuel. **La référence est
+> [`architecture.md`](architecture.md).** Plusieurs mécanismes décrits ici ont été
+> remplacés depuis :
+>
+> | Ici | Aujourd'hui |
+> |---|---|
+> | Étape 5 — Tavily `crawl` + extraction Gemma 31B | Ancrage catalogue + Tavily **Research** (pro), rapport structuré par la **cascade Gemini** ; rapport rangé si l'extraction échoue |
+> | Étape 5 — `CronTarget`, blacklist après 3 échecs | Table supprimée ; suivi par `PipelineJob` ; pas de blacklist |
+> | Étape 6 — `PIPELINE_STRATEGIES`, tri Gemma 26B, `search` | Research par catégorie (pro ou mini) + Gemini. `PIPELINE_STRATEGIES` ne sert plus qu'au crowdsourcing |
+> | Étape 1 — `middleware.ts` | `proxy.ts` (Next.js 16) |
+> | Étape 1 — admin par défaut au seed | `SEED_ADMIN_PASSWORD` obligatoire, aucun mot de passe par défaut |
+> | Étape 4 — rotation de clé à 950 crédits | rotation à `credits_limit − 10` |
+> | Étape 7 — fact-checking Gemma 26B | contrôle de **compatibilité** Gemma 26B, puis extraction 31B |
+> | Étapes 8-9 — cache ISR | déclaré mais **inopérant** sur l'API v1 (voir `API-rest.md`) |
+> | Étape 11 — CronTargets dans `/admin/cron` | jobs `PipelineJob`, recherche ciblée, case « collecte campus » |
+> | `APScheduler` toujours actif | jobs Research inscrits **seulement en production** |
+>
+> **Fonctions de ce plan retirées depuis**, n'étant plus appelées nulle part :
+> `is_content_relevant` et `fact_check` (`ai/gemma_client.py`), puis
+> `crawl_school_website` (`tavily_service/client.py`) le 28 septembre 2026. Les
+> étapes 5 et 6 ci-dessous les citent comme elles existaient alors.
+>
+> **Chantiers postérieurs** (voir `docs/features/`) : remédiation de l'audit
+> technique (sécurité, CI, énumérations, `PipelineJob`) ; pipeline Research
+> (`research-pipeline-plan.md`) ; rattachement campus année par année
+> (`architecture.md` §5.4).
+
 ---
 
 ## Étape 0 : Initialisation du Projet

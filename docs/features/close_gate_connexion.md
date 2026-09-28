@@ -1,5 +1,11 @@
 # Diagnostic & Stratégie : Gestion des Connexions BDD (Close Gate Connexion)
 
+> **Statut au 28 septembre 2026 : implémenté**, y compris le verrou du pool
+> signalé plus bas comme « non traité ». La règle s'applique aussi au code écrit
+> depuis : la Phase 1 lit l'école puis referme avant Research, et la collecte du
+> rattachement campus prend un instantané de la base avant tout appel payant.
+> Référence : `architecture/architecture.md` §10.8.
+
 ## 1. Contexte & Symptôme Observé
 
 Pendant l'exécution d'une recherche ciblée en Phase 2 (Tarifs / Pricing), l'erreur suivante est survenue dans les logs du terminal :
@@ -97,9 +103,12 @@ transactionnel ne dispose que d'une connexion, et `validate/route.ts` émet des
 `Promise.all` dessus (l. 266, 358). Sous charge, risque de blocage ou de
 dépassement du délai de 60 s. *Non corrigé.*
 
-### Une limite proche, non traitée
+### Une limite proche — corrigée depuis
 
-`get_pool()` dans `backend/db.py` initialise le pool **sans verrou**, alors que
+> **Corrigé.** `get_pool()` fait désormais une double vérification autour d'un
+> `threading.Lock` (`_pool_lock`). Le constat d'origine :
+
+`get_pool()` dans `backend/db.py` initialisait le pool **sans verrou**, alors que
 les appels arrivent depuis `run_in_executor` et les threads APScheduler. Deux
 pools concurrents créés à froid ouvriraient jusqu'à **10 connexions** sur un
 palier Neon qui en autorise **5** — exactement le risque de saturation décrit

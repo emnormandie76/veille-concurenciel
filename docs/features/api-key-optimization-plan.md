@@ -1,5 +1,12 @@
 # Optimisation de la Rotation des Clés API Tavily
 
+> **Statut au 28 septembre 2026 : implémenté.** Référence à jour :
+> `architecture/architecture.md` §4.2. Depuis ce plan, deux appelants se sont
+> ajoutés avec le même seuil léger de 5 crédits : l'ancrage catalogue
+> (`CATALOG_REQUIRED_CREDITS`) et `/map` (`MAP_REQUIRED_CREDITS`). `/map` essaie
+> jusqu'à trois clés, parce que le compteur local n'étant pas en temps réel, seule
+> la réponse de l'API dit qu'une clé est refusée.
+
 Ce plan implémente une rotation intelligente des clés API (Stratégie "Greedy") pour le client Tavily. L'objectif est d'utiliser au maximum chaque crédit disponible sur chaque clé, en empêchant les requêtes lourdes (mode "pro") d'échouer sur des clés avec peu de crédits, tout en permettant aux requêtes légères (mode "mini" ou requêtes standards de crawl/search) de consommer ces derniers crédits.
 
 ## Modifications Prévues
@@ -92,12 +99,11 @@ lieu d'en fabriquer un second. Le global a disparu.
   250 crédits pour un appel « pro » (`REQUIRED_CREDITS_PRO`) mais n'en enregistre
   que 25 (`ESTIMATED_CREDITS`). Facteur dix entre le contrôle d'éligibilité et la
   comptabilité.
-- **Timeouts déclarés et jamais appliqués** : `client.py` définit
-  `CRAWL_TIMEOUT_SECONDS`, `SEARCH_TIMEOUT_SECONDS` et `EXTRACT_TIMEOUT_SECONDS` —
-  aucun appel ne les utilise. Les requêtes Tavily partent sans limite de temps,
-  dans un thread APScheduler.
-- **`_current_index`** reste un vestige de la rotation circulaire annoncée dans la
-  documentation du module : `get_active_key` applique en réalité un
-  premier-disponible.
+- ~~**Timeouts déclarés et jamais appliqués**~~ — **corrigé** : search, extract
+  et map passent chacun leur délai (`TAVILY_*_TIMEOUT_SECONDS` : 60, 30 et
+  120 s). `crawl_school_website`, qui n'était plus appelée, a été retirée le
+  28 septembre 2026.
+- ~~**`_current_index`**, vestige de la rotation circulaire~~ — **retiré** ;
+  `get_active_key` applique un premier-disponible, et le dit.
 - **L'état des quotas ne vit qu'en mémoire.** Un redémarrage le perd. Le persister
   hors du processus reste à faire.

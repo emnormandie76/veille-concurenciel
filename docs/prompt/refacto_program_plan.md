@@ -1,5 +1,17 @@
 # Refactorisation : Programme unique par École (pas par Campus)
 
+> **📁 Document historique — ne pas exécuter.** Consigne donnée à un agent le 8 juillet 2026,
+> conservée pour la trace des décisions. Le code a évolué depuis ; la référence
+> actuelle est [`docs/architecture/architecture.md`](../architecture/architecture.md)
+> (revue le 28 septembre 2026).
+>
+> ⛔ **Ce plan autorisait `prisma migrate reset` sur une base quasi vide. C'est
+> aujourd'hui INTERDIT** : la base Neon porte des données validées (écoles,
+> programmes, 26 lignes-années). Le refactor a finalement été appliqué par une
+> migration écrite à la main, qui préserve les données
+> (`20260901120000_program_campus_refactor`, voir `bdd.md` §4). Ne jamais lancer
+> `migrate reset`, `migrate dev` ni `db push` contre cette base.
+
 > **Décisions confirmées par l'utilisateur :**
 > - ✅ Pricing identique quel que soit le campus → `PricingRecord` reste sur `Program`
 > - ✅ Capacity varie par campus → `CapacityRecord` va sur `ProgramCampus`

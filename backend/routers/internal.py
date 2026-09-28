@@ -121,6 +121,10 @@ class TargetedResearchRequest(BaseModel):
     phase: str = "1"  # "1" ou "2"
     program_id: str | None = None  # UUID du programme cible (Phase 2 uniquement)
     categories: list[str] | None = None  # ["Pricing", "Ranking"] etc. (Phase 2 uniquement)
+    # Phase 1 uniquement. Faux par défaut : la collecte du rattachement campus
+    # coûte 15 à 17 crédits Tavily et 9 appels Gemini par école, même quand
+    # l'école ne publie rien. L'admin l'active passe par passe.
+    collect_campus_attachments: bool = False
 
 
 # ── Endpoints ─────────────────────────────────────────────────────
@@ -244,6 +248,12 @@ async def trigger_targeted_research(
             detail="Les catégories sont requises quand un programme est spécifié en Phase 2"
         )
 
+    if request.collect_campus_attachments and request.phase != "1":
+        raise HTTPException(
+            status_code=400,
+            detail="La collecte du rattachement campus ne concerne que la Phase 1"
+        )
+
     already = _already_running_response(
         school_id, "Une tâche est déjà en cours pour cette école"
     )
@@ -260,6 +270,7 @@ async def trigger_targeted_research(
             "current_action": "En file d'attente",
             "program_id": request.program_id,
             "categories": request.categories,
+            "collect_campus_attachments": request.collect_campus_attachments,
         },
     )
 
@@ -270,12 +281,14 @@ async def trigger_targeted_research(
             phase=request.phase,
             program_id=request.program_id,
             categories=request.categories,
+            collect_campus_attachments=request.collect_campus_attachments,
         )
     )
 
     logger.info(
         f"🚀 Recherche ciblée déclenchée pour school_id={school_id} "
-        f"(phase={request.phase}, program={request.program_id}, categories={request.categories})"
+        f"(phase={request.phase}, program={request.program_id}, categories={request.categories}, "
+        f"collect_campus_attachments={request.collect_campus_attachments})"
     )
     return {
         "message": "Recherche ciblée déclenchée",
@@ -284,6 +297,10 @@ async def trigger_targeted_research(
         "phase": phase_label,
         "program_id": request.program_id,
         "categories": request.categories,
+        # Renvoyé pour que l'écran admin affiche ce que le backend a compris :
+        # un backend antérieur à l'interrupteur ignorerait le champ et
+        # lancerait la collecte à chaque passe.
+        "collect_campus_attachments": request.collect_campus_attachments,
         "status": "queued",
     }
 
@@ -519,6 +536,7 @@ async def _run_targeted_research(
     phase: str,
     program_id: str | None,
     categories: list[str] | None,
+    collect_campus_attachments: bool = False,
 ):
     """
     Recherche ciblée depuis le panneau admin/cron.
@@ -552,7 +570,8 @@ async def _run_targeted_research(
                 None,
                 lambda: run_phase1_research(
                     school_id, key_manager,
-                    progress_callback=progress_cb
+                    progress_callback=progress_cb,
+                    collect_campus_attachments=collect_campus_attachments,
                 ),
             )
         else:

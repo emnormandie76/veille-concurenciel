@@ -192,6 +192,8 @@ def phase1_scanner(key_manager):
         job_key = _start_cron_job(school_id, "Phase 1 — Cartographie (Auto)")
 
         try:
+            # Sans collecte du rattachement campus : elle ne tourne que sur
+            # déclenchement manuel, case cochée (voir phase1_research.py).
             result = run_phase1(school_id, key_manager)
 
             if result.get("success"):

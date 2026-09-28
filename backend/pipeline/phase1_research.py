@@ -68,11 +68,20 @@ catalogue.
 ## Le rattachement campus, après la découverte
 
 Le rapport Research ne dit pas quelle formation est enseignée sur quel campus :
-cette donnée vit dans l'encart des fiches du site. `run_phase1_research()` lance
-donc, après la découverte et quel qu'en soit le sort, la collecte de
+cette donnée vit dans l'encart des fiches du site. `run_phase1_research()` peut
+donc lancer, après la découverte et quel qu'en soit le sort, la collecte de
 `backend/pipeline/campus_attachment_collector.py` : /map enraciné sur la page
 catalogue trouvée plus haut, /extract des fiches, extraction Gemini, lignes
 confrontées aux `Program`, `Campus` et arêtes RÉELS de l'école.
+
+**Par défaut, elle ne tourne pas.** Elle coûte 15 à 17 crédits Tavily et
+9 appels Gemini par école, y compris là où elle ne produit rien (Em Lyon ne
+publie aucune ligne-année, EM Strasbourg aucun lieu). L'admin l'active pour une
+passe précise, sur une école précise, par la case de l'écran qui déclenche la
+Phase 1 : `collect_campus_attachments` descend de la requête jusqu'ici. Le cron
+`phase1_scanner` et `trigger-scan` ne l'activent jamais. Désactivée, elle
+n'émet aucun appel et le résultat le dit : `campus_attachments` vaut
+`{"status": "disabled"}`.
 
 Elle produit au plus un ticket `Program_Discovery` portant `campus_attachments`,
 en `Pending_Admin` : rien n'est écrit sans validation admin. Et ce ticket n'est
@@ -260,17 +269,24 @@ def run_phase1_research(
     key_manager,
     dry_run: bool = False,
     progress_callback: Callable[[dict], None] | None = None,
+    collect_campus_attachments: bool = False,
 ) -> dict:
     """
     Orchestrateur complet de la Phase 1 via Tavily Research pour une école.
 
-    La découverte d'abord, inchangée ; puis le rattachement campus, dont le
-    résumé part dans `campus_attachments`. Le second n'est jamais lancé en
-    `dry_run` : il consommerait des crédits réels.
+    La découverte d'abord, inchangée ; puis le rattachement campus, seulement
+    si `collect_campus_attachments` est vrai. Son résumé part dans
+    `campus_attachments`, qui vaut `{"status": "disabled"}` quand l'admin ne
+    l'a pas demandé : une collecte absente doit se voir dans le résultat du
+    job. Le second pas n'est jamais lancé en `dry_run` : il consommerait des
+    crédits réels.
     """
     context: dict = {}
     result = _run_program_discovery(school_id, key_manager, dry_run, progress_callback, context)
     if dry_run or "school" not in context:
+        return result
+    if not collect_campus_attachments:
+        result["campus_attachments"] = {"status": "disabled"}
         return result
     result["campus_attachments"] = _run_campus_attachment_step(
         school_id, key_manager, context, progress_callback

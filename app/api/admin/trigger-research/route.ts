@@ -1,14 +1,18 @@
 import { NextResponse } from "next/server";
 import { guardAdmin } from "@/lib/auth";
 import { internalApiToken, fastapiUrl } from "@/lib/internal-api";
+import { parseTriggerResearchBody } from "@/lib/trigger-research";
 
 /**
  * POST /api/admin/trigger-research
- * 
+ *
  * Proxy vers FastAPI /internal/trigger-targeted-research/{school_id}
  * Permet de lancer une recherche ciblée depuis le panneau admin/cron.
- * 
- * Body: { school_id, phase, program_id?, categories? }
+ *
+ * Body: { school_id, phase, program_id?, categories?, collect_campus_attachments? }
+ *
+ * `collect_campus_attachments` (Phase 1 seulement) vaut false par défaut :
+ * voir lib/trigger-research.ts.
  */
 export async function POST(request: Request) {
   const { error } = await guardAdmin();
@@ -19,18 +23,11 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { school_id, phase, program_id, categories } = body;
+    const parsed = parseTriggerResearchBody(body);
 
-    if (!school_id) {
+    if (!parsed.ok) {
       return NextResponse.json(
-        { error: "school_id est requis" },
-        { status: 400 }
-      );
-    }
-
-    if (!phase || !["1", "2"].includes(phase)) {
-      return NextResponse.json(
-        { error: "phase doit être '1' ou '2'" },
+        { error: parsed.error },
         { status: 400 }
       );
     }
@@ -39,18 +36,14 @@ export async function POST(request: Request) {
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
     const res = await fetch(
-      `${baseUrl}/internal/trigger-targeted-research/${school_id}`,
+      `${baseUrl}/internal/trigger-targeted-research/${parsed.schoolId}`,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          phase,
-          program_id: program_id || null,
-          categories: categories || null,
-        }),
+        body: JSON.stringify(parsed.forward),
         signal: controller.signal,
       }
     );

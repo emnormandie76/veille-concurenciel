@@ -339,7 +339,7 @@ class TestDatabaseEdges(unittest.TestCase):
 # ── Le branchement dans la Phase 1 ────────────────────────────────
 
 class TestPhase1Wiring(unittest.TestCase):
-    def run_phase1(self, discovery_result, context_fill, dry_run=False, step_result=None):
+    def run_phase1(self, discovery_result, context_fill, dry_run=False, step_result=None, collect=True):
         from backend.pipeline import phase1_research
 
         def fake_discovery(school_id, key_manager, dry_run_, progress_callback, context):
@@ -349,7 +349,12 @@ class TestPhase1Wiring(unittest.TestCase):
         step = MagicMock(return_value=step_result or {"status": "no_change", "ticket_id": None})
         with patch.object(phase1_research, "_run_program_discovery", side_effect=fake_discovery), \
              patch.object(phase1_research, "_run_campus_attachment_step", step):
-            result = phase1_research.run_phase1_research("s1", "key-manager", dry_run=dry_run)
+            if collect is None:
+                result = phase1_research.run_phase1_research("s1", "key-manager", dry_run=dry_run)
+            else:
+                result = phase1_research.run_phase1_research(
+                    "s1", "key-manager", dry_run=dry_run, collect_campus_attachments=collect
+                )
         return result, step
 
     def test_the_step_runs_after_a_successful_discovery(self):
@@ -375,6 +380,74 @@ class TestPhase1Wiring(unittest.TestCase):
         step.assert_not_called()
         _, step = self.run_phase1({"success": False, "message": "École non trouvée"}, {})
         step.assert_not_called()
+
+    def test_off_by_default_and_said_in_the_result(self):
+        discovery = {"success": True, "inbox_id": "discovery-ticket"}
+        school = {"school": {"name": "Em Lyon"}, "catalog_urls": ["https://em-lyon.com/fr/nos-programmes"]}
+        for collect in (None, False):
+            with self.subTest(collect=collect):
+                result, step = self.run_phase1(discovery, school, collect=collect)
+                step.assert_not_called()
+                self.assertEqual(result["campus_attachments"], {"status": "disabled"})
+                # La découverte rend son résultat intact.
+                self.assertEqual((result["success"], result["inbox_id"]), (True, "discovery-ticket"))
+
+    def test_off_even_when_discovery_failed(self):
+        result, step = self.run_phase1(
+            {"success": False, "message": "Erreur Tavily Research: timeout"},
+            {"school": {"name": "Em Normandie"}},
+            collect=False,
+        )
+        step.assert_not_called()
+        self.assertEqual(result["campus_attachments"], {"status": "disabled"})
+        self.assertFalse(result["success"])
+
+    def test_off_emits_no_paid_call(self):
+        """Désactivée, la collecte ne touche ni la base, ni Tavily, ni Gemini."""
+        from backend.pipeline import phase1_research
+        import backend.db
+        import backend.pipeline.campus_attachment_collector as collector
+
+        def fake_discovery(school_id, key_manager, dry_run_, progress_callback, context):
+            context.update({"school": {"name": "Em Normandie"}, "catalog_urls": ["https://www.em-normandie.com/programmes"]})
+            return {"success": True}
+
+        exploding = MagicMock(side_effect=AssertionError("appel inattendu : la collecte est désactivée"))
+        with patch.object(phase1_research, "_run_program_discovery", side_effect=fake_discovery), \
+             patch.object(backend.db, "get_db_connection", exploding), \
+             patch.object(collector, "LiveCollectorIO", exploding), \
+             patch.object(collector, "read_school_snapshot", exploding), \
+             patch.object(collector, "run_campus_attachment_step", exploding), \
+             patch.object(collector, "insert_attachment_ticket", exploding):
+            result = phase1_research.run_phase1_research("s1", ExplodingIO())
+        exploding.assert_not_called()
+        self.assertEqual(result["campus_attachments"], {"status": "disabled"})
+
+    def test_on_runs_the_real_step_exactly_as_before(self):
+        """Activée, le pas réel est appelé avec les mêmes arguments qu'avant l'interrupteur."""
+        from backend.pipeline import phase1_research
+        import backend.db
+        import backend.pipeline.campus_attachment_collector as collector
+
+        @contextmanager
+        def fake_connection():
+            yield MagicMock(name="conn")
+
+        def fake_discovery(school_id, key_manager, dry_run_, progress_callback, context):
+            context.update({"school": {"name": "Em Normandie"}, "catalog_urls": ["https://www.em-normandie.com/programmes"]})
+            return {"success": True}
+
+        step = MagicMock(return_value={"status": "ticket_emitted", "ticket_id": "t1", "school": "Em Normandie"})
+        with patch.object(phase1_research, "_run_program_discovery", side_effect=fake_discovery), \
+             patch.object(backend.db, "get_db_connection", fake_connection), \
+             patch.object(collector, "read_school_snapshot", return_value=snapshot()), \
+             patch.object(collector, "run_campus_attachment_step", step):
+            result = phase1_research.run_phase1_research("s1", "key-manager", collect_campus_attachments=True)
+        step.assert_called_once()
+        snap, io, index_pages, emit = step.call_args.args
+        self.assertIsInstance(io, collector.LiveCollectorIO)
+        self.assertEqual(index_pages, ["https://www.em-normandie.com/programmes"])
+        self.assertEqual(result["campus_attachments"]["status"], "ticket_emitted")
 
     def test_the_step_never_raises_into_phase1(self):
         from backend.pipeline import phase1_research

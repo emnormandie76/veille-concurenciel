@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import QuotaTavilyPanel from "./QuotaTavilyPanel";
+import { buildLaunchBody, describeCampusCollection } from "@/lib/trigger-research";
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -116,6 +117,10 @@ export default function CronMonitoringPage() {
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [selectedProgramId, setSelectedProgramId] = useState<string>("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  // Phase 1 : collecte du rattachement campus, pour cette passe et cette école
+  // seulement. Décochée par défaut, et décochée de nouveau après chaque
+  // lancement comme à chaque changement d'école ou de phase.
+  const [collectCampusAttachments, setCollectCampusAttachments] = useState(false);
   const [launchingResearch, setLaunchingResearch] = useState(false);
   const [launchMessage, setLaunchMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -212,6 +217,7 @@ export default function CronMonitoringPage() {
   useEffect(() => {
     setSelectedCategories([]);
     setSelectedProgramId("");
+    setCollectCampusAttachments(false);
   }, [selectedPhase, selectedSchoolId]);
 
   // ── Handlers ─────────────────────────────────────────────────
@@ -231,15 +237,13 @@ export default function CronMonitoringPage() {
     setLaunchMessage(null);
 
     try {
-      const body: any = {
-        school_id: selectedSchoolId,
+      const body = buildLaunchBody({
+        schoolId: selectedSchoolId,
         phase: selectedPhase,
-      };
-
-      if (selectedPhase === "2") {
-        if (selectedProgramId) body.program_id = selectedProgramId;
-        if (selectedCategories.length > 0) body.categories = selectedCategories;
-      }
+        programId: selectedProgramId,
+        categories: selectedCategories,
+        collectCampusAttachments,
+      });
 
       const res = await fetch("/api/admin/trigger-research", {
         method: "POST",
@@ -258,6 +262,14 @@ export default function CronMonitoringPage() {
           type: "error",
           text: `Une tâche est déjà en cours pour cette école (job #${data.job_id})`,
         });
+      } else if (selectedPhase === "1") {
+        const confirmed = typeof data.collect_campus_attachments === "boolean";
+        setLaunchMessage({
+          type: confirmed ? "success" : "error",
+          text: `${confirmed ? "✅" : "⚠️"} ${data.message} — Job #${data.job_id} · ${describeCampusCollection(data.collect_campus_attachments)}`,
+        });
+        setCollectCampusAttachments(false);
+        setTimeout(fetchPipelineStatus, 1000);
       } else {
         setLaunchMessage({
           type: "success",
@@ -536,6 +548,25 @@ export default function CronMonitoringPage() {
               ))}
             </select>
           </div>
+
+          {/* Phase 1: collecte du rattachement campus, décochée par défaut */}
+          {selectedPhase === "1" && selectedSchoolId && (
+            <div className="form-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={collectCampusAttachments}
+                  onChange={(e) => setCollectCampusAttachments(e.target.checked)}
+                />
+                <span className="checkbox-text">Collecter aussi le rattachement campus</span>
+              </label>
+              <p className="form-hint collect-hint">
+                Pour cette passe seulement. Environ 15 à 17 crédits Tavily et 9 appels Gemini de
+                plus, même si l&apos;école ne publie aucun lieu. Décochée, la collecte n&apos;émet
+                aucun appel et le résultat du job porte <code>status: disabled</code>.
+              </p>
+            </div>
+          )}
 
           {/* Phase 2: Program selector */}
           {selectedPhase === "2" && selectedSchoolId && (
@@ -986,6 +1017,12 @@ export default function CronMonitoringPage() {
 
         .checkbox-text {
           color: var(--text-primary);
+        }
+
+        .collect-hint {
+          display: block;
+          margin: 6px 0 0;
+          line-height: 1.4;
         }
 
         .launch-section {

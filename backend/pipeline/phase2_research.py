@@ -2,7 +2,9 @@
 backend/pipeline/phase2_research.py — Phase 2 : Enrichissement via Tavily Research
 
 Séquence, pour une école :
-  1. Lire l'école, ses programmes et ses couples programme-campus
+  1. Lire l'école, ses programmes et ses couples programme-campus — et, en
+     passe automatique (`skip_pending`), les cibles dont un ticket attend
+     encore l'admin, qui ne sont pas recherchées (pending_guard.py)
   2. Pour chaque catégorie :
      - construire un BRIEF de recherche (plan de rapport imposé)
      - lancer Tavily Research SANS output_schema — l'agent rédige
@@ -67,6 +69,7 @@ from backend.ai.extraction_schemas import (
     ranking_extraction_schema,
 )
 from backend.pipeline.diff import has_data_changed
+from backend.pipeline.pending_guard import read_pending_targets
 from backend.pipeline.program_identity import MATCH_AMBIGUOUS, match_program
 from backend.ai.research_prompts import (
     build_pricing_research_input,
@@ -76,7 +79,7 @@ from backend.ai.research_prompts import (
     build_accreditation_research_input,
 )
 from backend.tavily_service.research_client import create_research_task
-from backend.utils.academic_year import get_target_academic_year_str
+from backend.utils.academic_year import get_target_academic_year_str, get_target_period_start
 
 logger = logging.getLogger("pipeline.phase2_research")
 
@@ -398,6 +401,7 @@ def run_phase2_research(
     target_program_id: str | None = None,
     target_categories: list[str] | None = None,
     progress_callback: Callable[[dict], None] | None = None,
+    skip_pending: bool = False,
 ) -> dict:
     """
     Orchestrateur de la Phase 2 via Tavily Research pour une école.
@@ -409,6 +413,9 @@ def run_phase2_research(
         target_program_id: Si défini, ne traiter que ce programme (UUID)
         target_categories: Si défini, ne traiter que ces catégories
         progress_callback: Callback de progression (monitoring admin)
+        skip_pending: Si True, sauter les cibles dont un ticket du pipeline
+            attend la validation (pending_guard). Passes automatiques seulement :
+            une recherche lancée à la main reste libre.
     """
     from backend.db import get_db_connection
 
@@ -493,15 +500,46 @@ def run_phase2_research(
                     prog_ids
                 )
                 program_campuses = [dict(row) for row in cur.fetchall()]
+
+            # ── Cibles dont un ticket attend l'admin (passe automatique) ──
+            pending = read_pending_targets(cur, school_id, get_target_period_start()) if skip_pending else None
     # ── Connexion BDD FERMÉE ici — les appels API commencent maintenant ──
 
     school_cats = [c for c in SCHOOL_LEVEL_CATEGORIES if not target_categories or c in target_categories]
     prog_cats = [c for c in PROGRAM_LEVEL_CATEGORIES if not target_categories or c in target_categories]
     prog_campus_cats = [c for c in PROGRAM_CAMPUS_LEVEL_CATEGORIES if not target_categories or c in target_categories]
-    total_to_scan = len(school_cats) + (len(programs) * len(prog_cats)) + (len(program_campuses) * len(prog_campus_cats))
+
+    # `programs` sert aussi au brief et au schéma Ranking, et à
+    # _write_ranking_tickets : la garde ne filtre qu'une copie dédiée à Pricing,
+    # sans quoi un programme en attente de tarif sortirait du rattachement des
+    # classements.
+    pricing_programs = programs
+    skipped_pending = None
+    if pending is not None:
+        skipped_school_cats = [c for c in school_cats if c in pending.school_categories]
+        school_cats = [c for c in school_cats if c not in pending.school_categories]
+        if prog_cats:
+            pricing_programs = [p for p in programs if p["id"] not in pending.pricing_program_ids]
+        before_capacity = len(program_campuses)
+        program_campuses = [
+            pc for pc in program_campuses
+            if pc["program_campus_id"] not in pending.capacity_program_campus_ids
+        ]
+        skipped_pending = {
+            "school_categories": skipped_school_cats,
+            "pricing": len(programs) - len(pricing_programs),
+            "capacity": before_capacity - len(program_campuses),
+        }
+        logger.info(
+            "⏸️ [Research] Cibles en attente de validation, sautées : "
+            "école %s, Pricing ×%d, Capacity ×%d",
+            skipped_school_cats or "—", skipped_pending["pricing"], skipped_pending["capacity"],
+        )
+
+    total_to_scan = len(school_cats) + (len(pricing_programs) * len(prog_cats)) + (len(program_campuses) * len(prog_campus_cats))
     logger.info(
         f"📊 [Research] Total tâches à scanner: {total_to_scan} "
-        f"({len(school_cats)} école + {len(programs)}×{len(prog_cats)} prog "
+        f"({len(school_cats)} école + {len(pricing_programs)}×{len(prog_cats)} prog "
         f"+ {len(program_campuses)}×{len(prog_campus_cats)} prog-campus)"
     )
 
@@ -565,7 +603,7 @@ def run_phase2_research(
             tickets_created += 1
 
     # ── 4. Catégories niveau Programme (Pricing) ───────────
-    for program in programs:
+    for program in pricing_programs:
         for category in prog_cats:
             categories_scanned += 1
 
@@ -652,7 +690,10 @@ def run_phase2_research(
         })
 
     logger.info(f"✅ [Research] Phase 2 terminée : {categories_scanned} scans, {tickets_created} tickets créés")
-    return {"success": True, "tickets_created": tickets_created, "message": f"{tickets_created} ticket(s) créé(s) sur {categories_scanned} scans"}
+    result = {"success": True, "tickets_created": tickets_created, "message": f"{tickets_created} ticket(s) créé(s) sur {categories_scanned} scans"}
+    if skipped_pending is not None:
+        result["skipped_pending"] = skipped_pending
+    return result
 
 
 # ── Écriture des tickets Ranking ──────────────────────────────────

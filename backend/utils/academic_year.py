@@ -42,6 +42,16 @@ def get_target_academic_year_str() -> str:
     return f"{year}-{year + 1}"
 
 
+def get_target_period_start() -> date:
+    """
+    1er septembre ouvrant la période dont l'année cible est get_target_academic_year_int().
+
+    Un ticket créé avant cette date visait l'année cible précédente.
+    Ex: 29 septembre 2026 → cible 2027 → 1er septembre 2026
+    """
+    return date(get_target_academic_year_int() - 1, ACADEMIC_YEAR_PIVOT_MONTH, 1)
+
+
 def get_current_academic_year_int() -> int:
     """
     Retourne l'année de DÉBUT de l'année scolaire en cours.

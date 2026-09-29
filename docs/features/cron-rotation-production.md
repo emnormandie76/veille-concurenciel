@@ -1,6 +1,6 @@
 # Feature — Recherches automatiques en production : rotation semestrielle
 
-> **Statut :** plan validé par le propriétaire le 29 septembre 2026. Rien n'est codé.
+> **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 et 1 faites.
 > **Branche de départ :** `newresearch`.
 > **Lire avant de coder :** ce document en entier, puis
 > [`architecture.md`](../architecture/architecture.md) §3.5 bis, §5.1, §5.3,
@@ -230,19 +230,19 @@ précédente et **ne bloque pas**.
 
 **Tests** — nouveau `test/test_pending_guard.py`, sur le modèle de
 `test/test_phase1_parked_report.py` (connexion mockée) :
-- [ ] `get_target_period_start()` : 29/09/2026 → 01/09/2026 ; 15/05/2026 → 01/09/2025 ; 31/08/2026 → 01/09/2025.
-- [ ] la requête filtre bien `Pending_Admin`, `Automated_AI` et l'école ; la
+- [x] `get_target_period_start()` : 29/09/2026 → 01/09/2026 ; 15/05/2026 → 01/09/2025 ; 31/08/2026 → 01/09/2025.
+- [x] la requête filtre bien `Pending_Admin`, `Automated_AI` et l'école ; la
   période ne s'applique pas à la découverte.
-- [ ] `run_phase2_research(skip_pending=True)` ne lance **aucun** appel
+- [x] `run_phase2_research(skip_pending=True)` ne lance **aucun** appel
   Research pour une catégorie école, un programme ou un couple bloqués, et
   lance les autres.
-- [ ] Ranking reçoit toujours la liste **complète** des programmes, même quand
+- [x] Ranking reçoit toujours la liste **complète** des programmes, même quand
   des programmes sont bloqués en Pricing.
-- [ ] `skip_pending=False` (défaut, chemin manuel) : comportement inchangé.
+- [x] `skip_pending=False` (défaut, chemin manuel) : comportement inchangé.
 
 **Fait quand :** les cases ci-dessus sont cochées et `npm test` passe.
 
-- [ ] Étape 1 terminée
+- [x] Étape 1 terminée
 
 ### Étape 2 — Phase 1 : ne proposer que ce qui est nouveau
 
@@ -630,3 +630,4 @@ Une ligne par session de travail, la plus récente en bas.
 |---|---|---|---|---|
 | 2026-09-29 | Claude (Opus 5.5) | — | Plan rédigé et validé par le propriétaire | — |
 | 2026-09-29 | Claude (Opus 5.5) | 0 | Travail sur les classements commité à part (`0bcfda1`) ; 228 tests verts | Prochaine : étape 1 |
+| 2026-09-29 | Claude (Opus 5.5) | 1 | `get_target_period_start()`, `pending_guard.read_pending_targets`, `run_phase2_research(skip_pending=…)` ; `test_pending_guard.py` (9 tests, dont 2 vérifiés en réintroduisant le piège `programs` et en retirant la garde) ; 237 tests verts | Prochaine : étape 2. Choix d'application, sans effet sur le comportement voulu : la période est tranchée en Python sur `createdAt` (la découverte, sans période, tient dans la même requête) ; `school_categories` ne garde que SchoolStats, Accreditation et Ranking ; `skipped_pending` n'apparaît au résultat qu'en passe automatique, le résultat manuel est identique. Une lecture de la garde en erreur fait échouer la passe au lieu de payer sans garde (même connexion que le chargement des programmes). `phase2_enricher` n'appelle pas encore `skip_pending=True` : il disparaît à l'étape 4. Pas de surprise : le code était bien celui que décrit le §1.2 |

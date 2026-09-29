@@ -235,7 +235,7 @@ def phase1_scanner(key_manager):
             logger.info(f"⏭️ [CRON] {school_name}: un job est déjà en cours — passée")
             continue
 
-        job_key = _start_cron_job(school_id, "Phase 1 — Cartographie (Auto)")
+        job_key = _start_cron_job(school_id, pipeline_jobs.PHASE1_CRON_LABEL)
 
         try:
             # Sans collecte du rattachement campus : elle ne tourne que sur
@@ -337,7 +337,7 @@ def phase2_enricher(key_manager):
             logger.info(f"⏭️ [CRON] {school_name}: un job est déjà en cours — passée")
             continue
 
-        job_key = _start_cron_job(school_id, "Phase 2 — Enrichissement (Auto)")
+        job_key = _start_cron_job(school_id, pipeline_jobs.PHASE2_CRON_LABEL)
 
         try:
             result = run_phase2(school_id, key_manager)

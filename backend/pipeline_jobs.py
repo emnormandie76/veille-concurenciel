@@ -34,8 +34,12 @@ import json
 import uuid
 import socket
 import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import psycopg2.extras
+
+from backend.utils.env import env_int
 
 logger = logging.getLogger("pipeline.jobs_store")
 
@@ -60,6 +64,33 @@ STALE_AFTER_SECONDS = int(os.environ.get("PIPELINE_JOB_STALE_SECONDS", 1800))
 # Rétention des jobs terminés. Au-delà, la ligne est supprimée : c'est la purge
 # que `_pipeline_jobs` n'avait jamais.
 RETENTION_DAYS = int(os.environ.get("PIPELINE_JOB_RETENTION_DAYS", 7))
+
+# ── Libellés de phase ─────────────────────────────────────────────
+# Écrits dans PipelineJob.phase par les points d'entrée, relus par la rotation
+# des recherches (backend/scheduler/rotation.py) pour dater le dernier passage
+# d'une école. Une faute de frappe d'un côté effacerait cette mémoire en
+# silence : aucun littéral ailleurs.
+PHASE1_LABEL = "Phase 1 — Cartographie"
+PHASE1_CRON_LABEL = "Phase 1 — Cartographie (Auto)"
+PHASE2_LABEL = "Phase 2 — Enrichissement"
+PHASE2_CRON_LABEL = "Phase 2 — Enrichissement (Auto)"
+PHASE2_TARGETED_LABEL = "Phase 2 — Enrichissement ciblé"
+
+# Libellés qui comptent comme un passage COMPLET, par phase. L'enrichissement
+# ciblé (un programme, des catégories choisies) n'en est pas un.
+ROTATION_PASS_LABELS: dict[str, tuple[str, ...]] = {
+    "1": (PHASE1_LABEL, PHASE1_CRON_LABEL),
+    "2": (PHASE2_LABEL, PHASE2_CRON_LABEL),
+}
+_PASS_PHASE_BY_LABEL = {
+    label: phase for phase, labels in ROTATION_PASS_LABELS.items() for label in labels
+}
+ROTATION_LABELS: tuple[str, ...] = tuple(_PASS_PHASE_BY_LABEL)
+
+# Les jobs de rotation sont la seule mémoire du dernier passage d'une école :
+# purgés à 7 jours, l'école paraîtrait jamais passée et serait repayée. Doit
+# rester supérieur à CRON_RESEARCH_INTERVAL_DAYS (182 par défaut).
+ROTATION_RETENTION_DAYS = env_int("PIPELINE_JOB_ROTATION_RETENTION_DAYS", 400, minimum=1)
 
 _STALE_ERROR = (
     "Job interrompu : aucun signe de vie depuis plus de "
@@ -263,7 +294,10 @@ def reap_orphaned_jobs() -> int:
 
 
 def purge_finished_jobs() -> int:
-    """Supprime les jobs terminés au-delà de la rétention."""
+    """
+    Supprime les jobs terminés au-delà de la rétention : ROTATION_RETENTION_DAYS
+    pour un passage complet (ROTATION_LABELS), RETENTION_DAYS pour les autres.
+    """
     from backend.db import get_db_connection
 
     with get_db_connection() as conn:
@@ -273,18 +307,70 @@ def purge_finished_jobs() -> int:
                 DELETE FROM "PipelineJob"
                 WHERE status <> ALL(%s)
                   AND finished_at IS NOT NULL
-                  AND finished_at < now() - (%s * interval '1 day')
+                  AND finished_at < now() - (
+                      CASE WHEN phase = ANY(%s) THEN %s ELSE %s END * interval '1 day'
+                  )
                 """,
-                (list(ACTIVE_STATUSES), RETENTION_DAYS),
+                (list(ACTIVE_STATUSES), list(ROTATION_LABELS), ROTATION_RETENTION_DAYS, RETENTION_DAYS),
             )
             purged = cur.rowcount or 0
 
     if purged:
-        logger.info(f"🧹 {purged} job(s) terminé(s) purgé(s) (> {RETENTION_DAYS} j)")
+        logger.info(
+            f"🧹 {purged} job(s) terminé(s) purgé(s) "
+            f"(> {RETENTION_DAYS} j, {ROTATION_RETENTION_DAYS} j pour un passage complet)"
+        )
     return purged
 
 
 # ── Lectures ──────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class LastPass:
+    """Dernier passage complet terminé d'une école pour une phase."""
+
+    status: str             # STATUS_COMPLETED | STATUS_FAILED
+    finished_at: datetime   # UTC, avec fuseau
+
+
+def _as_utc(value: datetime) -> datetime:
+    """
+    `finished_at` est un TIMESTAMP sans fuseau écrit par now() : de l'UTC sur
+    Neon. Rendu avec son fuseau pour se comparer à un instant UTC.
+    """
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+def read_last_passes(cur, school_ids: list[str]) -> dict[tuple[str, str], LastPass]:
+    """
+    Dernier job terminé (`completed` ou `failed`) portant un libellé de passage
+    complet, par `(école, phase)` — la phase valant "1" ou "2".
+
+    Une requête, dans la connexion de l'appelant ; `cur` doit être un
+    RealDictCursor. Une école sans passage n'a pas de clé.
+    """
+    if not school_ids:
+        return {}
+    cur.execute(
+        """
+        SELECT "schoolId", phase, status, finished_at
+        FROM "PipelineJob"
+        WHERE "schoolId" = ANY(%s)
+          AND phase = ANY(%s)
+          AND status = ANY(%s)
+          AND finished_at IS NOT NULL
+        """,
+        (list(school_ids), list(ROTATION_LABELS), [STATUS_COMPLETED, STATUS_FAILED]),
+    )
+    passes: dict[tuple[str, str], LastPass] = {}
+    for row in cur.fetchall():
+        key = (row["schoolId"], _PASS_PHASE_BY_LABEL[row["phase"]])
+        finished_at = _as_utc(row["finished_at"])
+        current = passes.get(key)
+        if current is None or finished_at > current.finished_at:
+            passes[key] = LastPass(row["status"], finished_at)
+    return passes
+
 
 def get_active_job(school_id: str) -> dict | None:
     """

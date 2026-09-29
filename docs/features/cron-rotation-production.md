@@ -1,6 +1,6 @@
 # Feature — Recherches automatiques en production : rotation semestrielle
 
-> **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 à 2 faites.
+> **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 à 3 faites.
 > **Branche de départ :** `newresearch`.
 > **Lire avant de coder :** ce document en entier, puis
 > [`architecture.md`](../architecture/architecture.md) §3.5 bis, §5.1, §5.3,
@@ -388,18 +388,18 @@ l'étape 1 évite de recréer les tickets déjà déposés.
     attente), en une connexion courte.
 
 **Tests** — nouveau `test/test_rotation_plan.py` :
-- [ ] école sans passage → due, raison `never`.
-- [ ] `completed` à 181 jours → pas due ; à 183 jours → due.
-- [ ] `failed` à 13 jours → pas due ; à 15 jours → due.
-- [ ] découverte en attente → Phase 1 pas due ; Phase 2 non affectée.
-- [ ] école sans `Program` → Phase 2 jamais candidate.
-- [ ] `Phase 2 — Enrichissement ciblé` ne compte pas comme passage.
-- [ ] ordre de priorité du §3.3 respecté, égalités départagées par le nom.
-- [ ] coût Phase 2 : 15 programmes et 30 couples → 720.
-- [ ] purge : un job de rotation de 30 jours est gardé, un job ciblé de 30 jours
+- [x] école sans passage → due, raison `never`.
+- [x] `completed` à 181 jours → pas due ; à 183 jours → due.
+- [x] `failed` à 13 jours → pas due ; à 15 jours → due.
+- [x] découverte en attente → Phase 1 pas due ; Phase 2 non affectée.
+- [x] école sans `Program` → Phase 2 jamais candidate.
+- [x] `Phase 2 — Enrichissement ciblé` ne compte pas comme passage.
+- [x] ordre de priorité du §3.3 respecté, égalités départagées par le nom.
+- [x] coût Phase 2 : 15 programmes et 30 couples → 720.
+- [x] purge : un job de rotation de 30 jours est gardé, un job ciblé de 30 jours
   est supprimé (vérifier la requête et ses paramètres).
 
-- [ ] Étape 3 terminée
+- [x] Étape 3 terminée
 
 ### Étape 4 — Le job nocturne de rotation
 
@@ -632,3 +632,4 @@ Une ligne par session de travail, la plus récente en bas.
 | 2026-09-29 | Claude (Opus 5.5) | 0 | Travail sur les classements commité à part (`0bcfda1`) ; 228 tests verts | Prochaine : étape 1 |
 | 2026-09-29 | Claude (Opus 5.5) | 1 | `get_target_period_start()`, `pending_guard.read_pending_targets`, `run_phase2_research(skip_pending=…)` ; `test_pending_guard.py` (9 tests, dont 2 vérifiés en réintroduisant le piège `programs` et en retirant la garde) ; 237 tests verts | Prochaine : étape 2. Choix d'application, sans effet sur le comportement voulu : la période est tranchée en Python sur `createdAt` (la découverte, sans période, tient dans la même requête) ; `school_categories` ne garde que SchoolStats, Accreditation et Ranking ; `skipped_pending` n'apparaît au résultat qu'en passe automatique, le résultat manuel est identique. Une lecture de la garde en erreur fait échouer la passe au lieu de payer sans garde (même connexion que le chargement des programmes). `phase2_enricher` n'appelle pas encore `skip_pending=True` : il disparaît à l'étape 4. Pas de surprise : le code était bien celui que décrit le §1.2 |
 | 2026-09-29 | Claude (Opus 5.5) | 2 | `discovery_diff.filter_new_discoveries` (pur) ; branchement dans `_run_program_discovery` entre garde-fous et INSERT, bloc `diff_against_base` au ticket, résultat `no_new_discoveries` sans ticket avec rapport rangé supprimé ; `test_discovery_diff.py` (12 tests ; mutations « sans réécriture » et « sans filtre » détectées) ; 249 tests verts | Prochaine : étape 3. Choix d'application : la lecture de la base réutilise `read_school_snapshot` du collecteur (deux SELECT de trop, School et lignes-années, plutôt que trois requêtes recopiées) ; si elle échoue, le ticket part complet comme avant, avec `diff_against_base: {"error": …}` — le rapport est payé, il ne doit pas se perdre ; `ambiguous_programs` et `ambiguous_campuses` portent le nom et les candidats ; en cas de fusion de deux voies, la première rendue est gardée avec ses attributs ; `diff_against_base` figure aussi au résultat du job. Surprise : `test_phase1_parked_report.py` passait, mais par le repli « base illisible » (sa base simulée n'avait pas de `fetchall`) : `fetchall` ajouté, base vide, ces tests suivent maintenant le chemin normal |
+| 2026-09-29 | Claude (Opus 5.5) | 3 | `pipeline_jobs` : libellés en constantes (écrivains de `internal.py` et `jobs.py` branchés dessus), `read_last_passes`, purge à deux rétentions (400 j pour un passage complet) ; `scheduler/rotation.py` : `plan_rotation` pur, `Candidate`, `load_rotation_state` en trois requêtes ; `test_rotation_plan.py` (20 tests) ; 269 tests verts | Prochaine : étape 4. Hors liste des fichiers : `backend/utils/env.py` (`env_int` : valeur illisible ou sous le minimum → défaut et avertissement, exigé au §4 et déjà utile ici ; minimum 1 jour pour les trois délais) et `pending_guard.read_discovery_pending` (une requête pour toutes les écoles plutôt qu'une par école : l'étape 5 appellera le planificateur à chaque rafraîchissement de `/admin/cron`). Choix : le coût Phase 2 est calculé depuis `ESTIMATED_CREDITS` et les listes de catégories de `phase2_research` (Em Lyon : 785, comme au §5) ; Phase 1 = `CATALOG_REQUIRED_CREDITS` + pro = 30 ; `finished_at` (sans fuseau) est lu comme de l'UTC ; au sein d'un groupe de priorité, le passage le plus ancien d'abord, puis le nom (sans casse). Pour l'étape 4 : `load_rotation_state` lit `has_active_job` sans clore les jobs morts — appeler `reap_stale_jobs()` avant, ou compter sur `_school_is_busy`. Surprise : au déploiement, aucune école n'aura de passage en mémoire (purge à 7 jours jusqu'ici) — toutes « jamais passées », comme le §3 l'anticipe ; et mon premier test d'ordre ne distinguait pas les groupes 2 et 3 (« jamais » trie déjà en tête), corrigé avec une Phase 1 jamais passée d'Em Lyon |

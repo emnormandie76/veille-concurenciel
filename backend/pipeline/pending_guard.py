@@ -94,3 +94,27 @@ def read_pending_targets(cur, school_id: str, period_start: date) -> PendingTarg
             targets.capacity_program_campus_ids.add(row["programCampusId"])
 
     return targets
+
+
+def read_discovery_pending(cur, school_ids: list[str]) -> set[str]:
+    """
+    Écoles dont une découverte (`discovered_campuses`) attend l'admin — la même
+    règle que `PendingTargets.discovery_pending`, pour plusieurs écoles en une
+    requête. Sert au planificateur de la rotation : une telle école n'est pas
+    candidate à la Phase 1.
+    """
+    if not school_ids:
+        return set()
+    cur.execute(
+        """
+        SELECT DISTINCT "schoolId"
+        FROM "ContributionInbox"
+        WHERE "schoolId" = ANY(%s)
+          AND status = %s
+          AND source_type = %s
+          AND ai_category = %s
+          AND COALESCE(ai_extracted_json ? 'discovered_campuses', false)
+        """,
+        (list(school_ids), STATUS_PENDING_ADMIN, SOURCE_AUTOMATED_AI, CATEGORY_PROGRAM_DISCOVERY),
+    )
+    return {row["schoolId"] for row in cur.fetchall()}

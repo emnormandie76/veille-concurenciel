@@ -151,7 +151,7 @@ async def trigger_scan(
     if already:
         return already
 
-    phase_label = "Phase 1 — Cartographie"
+    phase_label = pipeline_jobs.PHASE1_LABEL
     job_id = pipeline_jobs.create_job(
         school_id=school_id,
         phase=phase_label,
@@ -194,7 +194,7 @@ async def trigger_enrichment(
     if already:
         return already
 
-    phase_label = "Phase 2 — Enrichissement"
+    phase_label = pipeline_jobs.PHASE2_LABEL
     job_id = pipeline_jobs.create_job(
         school_id=school_id,
         phase=phase_label,
@@ -260,7 +260,7 @@ async def trigger_targeted_research(
     if already:
         return already
 
-    phase_label = "Phase 1 — Cartographie" if request.phase == "1" else "Phase 2 — Enrichissement ciblé"
+    phase_label = pipeline_jobs.PHASE1_LABEL if request.phase == "1" else pipeline_jobs.PHASE2_TARGETED_LABEL
 
     job_id = pipeline_jobs.create_job(
         school_id=school_id,

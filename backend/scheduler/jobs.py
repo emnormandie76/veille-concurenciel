@@ -445,11 +445,72 @@ def stop_scheduler():
     _scheduler = None
 
 
-def get_scheduler_status() -> dict:
-    """Retourne le statut du scheduler (pour pipeline-status)."""
+ROTATION_STATUS_NEXT_COUNT = 5
+
+
+def _rotation_status(enabled: bool, key_manager) -> dict:
+    """
+    Le bloc `rotation` de pipeline-status : ce que la rotation va faire, et ce
+    qu'elle a coûté, sans lire les journaux.
+
+    `next` : les premiers candidats du planificateur, tels que la nuit les
+    verrait maintenant. Lecture en base courte ; une erreur se rend dans le
+    bloc (`{"error": …}`) sans faire échouer pipeline-status. `last_night` vient
+    du registre en mémoire : vide après un redémarrage.
+    """
+    from backend.db import get_db_connection
+    from backend.scheduler.rotation import INTERVAL_DAYS, load_rotation_state, plan_rotation
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                state = load_rotation_state(cur)
+        candidates = plan_rotation(
+            state.schools, state.last_passes, state.discovery_pending,
+            datetime.now(timezone.utc),
+        )
+        used = key_manager.credits_used_this_month() if key_manager is not None else None
+    except Exception as e:
+        logger.warning(f"⚠️ État de la rotation illisible : {e}")
+        return {"error": str(e)[:300]}
+
+    return {
+        "enabled": enabled,
+        "hour": RESEARCH_HOUR,
+        "timezone": ROTATION_TIMEZONE,
+        "interval_days": INTERVAL_DAYS,
+        "passes_per_night": PASSES_PER_NIGHT,
+        "monthly_ceiling": MONTHLY_CREDIT_CEILING,
+        "month_credits_used": used,
+        "due_count": len(candidates),
+        "next": [
+            {
+                "school_name": c.school_name,
+                "phase": c.phase,
+                "reason": c.reason,
+                "last_pass_at": c.last_pass_at.isoformat() if c.last_pass_at else None,
+                "estimated_credits": c.estimated_credits,
+            }
+            for c in candidates[:ROTATION_STATUS_NEXT_COUNT]
+        ],
+        "last_night": _last_job_runs.get(ROTATION_JOB_ID),
+    }
+
+
+def get_scheduler_status(key_manager=None) -> dict:
+    """
+    Retourne le statut du scheduler (pour pipeline-status). `key_manager` sert
+    aux crédits du mois du bloc `rotation`.
+    """
     scheduler = _scheduler
     if not scheduler or not scheduler.running:
-        return {"running": False, "jobs": [], "last_runs": dict(_last_job_runs)}
+        return {
+            "running": False,
+            "jobs": [],
+            "last_runs": dict(_last_job_runs),
+            "research_cron": dict(zip(("enabled", "reason"), research_cron_enabled())),
+            "rotation": _rotation_status(False, key_manager),
+        }
 
     jobs = []
     for job in scheduler.get_jobs():
@@ -473,4 +534,5 @@ def get_scheduler_status() -> dict:
         # Pourquoi research_rotation manque a `jobs`, le cas echeant :
         # l'absence doit se lire, pas se deviner.
         "research_cron": dict(zip(("enabled", "reason"), research_cron_enabled())),
+        "rotation": _rotation_status(scheduler.get_job(ROTATION_JOB_ID) is not None, key_manager),
     }

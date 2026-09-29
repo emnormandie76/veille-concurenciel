@@ -350,7 +350,7 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
     # nulle part. get_scheduler_status() existait mais n'était jamais appelé.
     try:
         from backend.scheduler.jobs import get_scheduler_status
-        scheduler_status = get_scheduler_status()
+        scheduler_status = get_scheduler_status(getattr(request.app.state, "tavily_manager", None))
     except Exception as e:
         scheduler_status = {"running": False, "jobs": [], "error": str(e)}
 

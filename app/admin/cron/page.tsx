@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useMemo } from "react";
 import QuotaTavilyPanel from "./QuotaTavilyPanel";
+import RotationPanel from "./RotationPanel";
 import { buildLaunchBody, describeCampusCollection } from "@/lib/trigger-research";
+import type { ResearchCron, RotationBlock } from "@/lib/rotation-status";
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -38,6 +40,12 @@ interface PipelineJob {
   progress_details?: ProgressDetails;
 }
 
+interface SchedulerStatus {
+  running: boolean;
+  research_cron?: ResearchCron;
+  rotation?: RotationBlock;
+}
+
 interface PipelineStatus {
   status: string;
   database: string;
@@ -46,6 +54,7 @@ interface PipelineStatus {
   cron_jobs: PipelineJob[];
   tavily: TavilyKeyStatus[];
   ai_model_primary: string;
+  scheduler?: SchedulerStatus;
 }
 
 interface ProgramInfo {
@@ -499,6 +508,11 @@ export default function CronMonitoringPage() {
                       <p className="no-data">Aucune clé Tavily active détectée par le backend.</p>
                     )}
                   </div>
+
+                  <RotationPanel
+                    rotation={pipelineStatus.scheduler?.rotation}
+                    researchCron={pipelineStatus.scheduler?.research_cron}
+                  />
                 </>
               )}
             </div>

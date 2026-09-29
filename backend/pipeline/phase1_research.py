@@ -6,7 +6,9 @@ Séquence :
   2. Passe catalogue — localiser puis lire la page des formations de l'école
   3. Tavily Research, SANS output_schema, avec le prompt et include_domains du dépôt
   4. Extraction Gemini du rapport, ancrée sur le catalogue quand il existe
-  5. Contrôles, puis insertion dans ContributionInbox (Pending_Admin)
+  5. Contrôles, puis comparaison à la base (discovery_diff.py) : seul ce qui
+     manque part en ticket ContributionInbox (Pending_Admin) ; rien de nouveau,
+     pas de ticket
 
 ## Ce qui a changé, et ce qui n'a surtout PAS changé
 
@@ -129,6 +131,7 @@ from backend.ai.extraction_schemas import (
 )
 from backend.ai.research_prompts import build_phase1_research_input
 from backend.constants import STATUS_FAILED
+from backend.pipeline.discovery_diff import filter_new_discoveries
 from backend.tavily_service.catalog_client import fetch_catalog
 from backend.tavily_service.research_client import create_research_task
 
@@ -484,6 +487,51 @@ def _extraction_failed(
     }
 
 
+def _read_discovery_base(school_id: str) -> tuple[list[dict], list[dict], set[tuple[str, str]]] | None:
+    """
+    `Campus`, `Program` et arêtes `ProgramCampus` de l'école, pour
+    `filter_new_discoveries`. Lecture du collecteur (`read_school_snapshot`),
+    en une connexion courte.
+
+    Rend None si la lecture échoue : la découverte dépose alors son ticket
+    complet, comme avant. Le rapport est payé, il ne doit pas se perdre ici.
+    """
+    from backend.db import get_db_connection
+    from backend.pipeline.campus_attachment_collector import read_school_snapshot
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                snapshot = read_school_snapshot(cur, school_id)
+    except Exception as e:
+        logger.warning(f"⚠️ Lecture de la base pour le diff de découverte impossible : {e}")
+        return None
+    if snapshot is None:
+        return None
+    edges = {(edge["programId"], edge["campusId"]) for edge in snapshot.edges}
+    return snapshot.campuses, snapshot.programs, edges
+
+
+def _consume_parked_report(parked: dict | None) -> None:
+    """
+    Supprime le rapport rangé repris quand aucun ticket ne le remplace. Ne lève
+    jamais : laissé en place, il serait repris sans repayer Research.
+    """
+    if not parked:
+        return
+    from backend.db import get_db_connection
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    'DELETE FROM "ContributionInbox" WHERE id = %s AND status = %s',
+                    (parked["id"], STATUS_FAILED),
+                )
+    except Exception as e:
+        logger.warning(f"⚠️ Rapport rangé #{parked['id'][:8]} non supprimé : {e}")
+
+
 def _run_program_discovery(
     school_id: str,
     key_manager,
@@ -667,6 +715,39 @@ def _run_program_discovery(
             **rejects,
         }
 
+    # ── 5 bis. Ne proposer que ce qui manque en base ──────────────────
+    if progress_callback:
+        progress_callback({"current_action": "Comparaison avec la base", "school": school_name, "category": CATEGORY})
+
+    base = _read_discovery_base(school_id)
+    if base is None:
+        # Le rapport est payé : sans la base, on dépose le ticket complet comme
+        # avant, et le bloc dit qu'il n'a pas été filtré.
+        extracted["diff_against_base"] = {"error": "lecture de la base impossible, ticket non filtré"}
+    else:
+        kept, diff_summary = filter_new_discoveries(extracted["discovered_campuses"], *base)
+        extracted["discovered_campuses"] = kept
+        extracted["diff_against_base"] = diff_summary
+        if not kept:
+            _consume_parked_report(parked)
+            logger.info(
+                "➖ Phase 1 : rien de nouveau pour %s par rapport à la base (%s)",
+                school_name, diff_summary,
+            )
+            return {
+                "success": True,
+                "no_new_discoveries": True,
+                "message": "Aucune nouveauté par rapport à la base",
+                "inbox_id": None,
+                "school_name": school_name,
+                "campuses_count": 0,
+                "programs_count": 0,
+                "catalog_titles_count": len(catalog_titles),
+                "research_report_reused": parked is not None,
+                "diff_against_base": diff_summary,
+                **rejects,
+            }
+
     # ── 6. INSERT dans ContributionInbox ────────────────────────────
     if progress_callback:
         progress_callback({"current_action": "Insertion dans ContributionInbox", "school": school_name, "category": CATEGORY})
@@ -736,5 +817,6 @@ def _run_program_discovery(
         "qualified_programs_count": qualified_programs,
         "catalog_titles_count": len(catalog_titles),
         "research_report_reused": parked is not None,
+        "diff_against_base": extracted["diff_against_base"],
         **rejects,
     }

@@ -64,6 +64,11 @@ class FakeDB:
             def fetchone(self):
                 return self._row
 
+            def fetchall(self):
+                # Campus, Program et arêtes de l'école : base vide, la
+                # découverte est entièrement nouvelle.
+                return []
+
         return Cursor()
 
     def sql(self, keyword: str) -> list[tuple[str, tuple]]:

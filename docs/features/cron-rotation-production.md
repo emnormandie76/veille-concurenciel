@@ -1,6 +1,6 @@
 # Feature — Recherches automatiques en production : rotation semestrielle
 
-> **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 et 1 faites.
+> **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 à 2 faites.
 > **Branche de départ :** `newresearch`.
 > **Lire avant de coder :** ce document en entier, puis
 > [`architecture.md`](../architecture/architecture.md) §3.5 bis, §5.1, §5.3,
@@ -305,18 +305,18 @@ publie plus. On ne les détecte pas.
 
 **Tests** — nouveau `test/test_discovery_diff.py`, avec les noms réels
 d'Em Normandie :
-- [ ] base vide → sortie identique à l'entrée.
-- [ ] tout est déjà en base → liste vide.
-- [ ] « Programme Grande Ecole » face à « Programme Grande École » en base →
+- [x] base vide → sortie identique à l'entrée.
+- [x] tout est déjà en base → liste vide.
+- [x] « Programme Grande Ecole » face à « Programme Grande École » en base →
   réécrit, et retiré si le couple existe déjà.
-- [ ] programme connu sur un campus où il n'est pas encore → gardé, nom réécrit.
-- [ ] programme nouveau sur un campus connu → gardé ; campus réécrit.
-- [ ] programme ambigu → gardé tel quel et signalé.
-- [ ] deux voies du même programme sur un même campus → une seule entrée.
-- [ ] `_run_program_discovery` sans nouveauté : aucun INSERT, rapport rangé
+- [x] programme connu sur un campus où il n'est pas encore → gardé, nom réécrit.
+- [x] programme nouveau sur un campus connu → gardé ; campus réécrit.
+- [x] programme ambigu → gardé tel quel et signalé.
+- [x] deux voies du même programme sur un même campus → une seule entrée.
+- [x] `_run_program_discovery` sans nouveauté : aucun INSERT, rapport rangé
   repris supprimé, `success` vrai.
 
-- [ ] Étape 2 terminée
+- [x] Étape 2 terminée
 
 ### Étape 3 — Mémoire du dernier passage et planificateur
 
@@ -631,3 +631,4 @@ Une ligne par session de travail, la plus récente en bas.
 | 2026-09-29 | Claude (Opus 5.5) | — | Plan rédigé et validé par le propriétaire | — |
 | 2026-09-29 | Claude (Opus 5.5) | 0 | Travail sur les classements commité à part (`0bcfda1`) ; 228 tests verts | Prochaine : étape 1 |
 | 2026-09-29 | Claude (Opus 5.5) | 1 | `get_target_period_start()`, `pending_guard.read_pending_targets`, `run_phase2_research(skip_pending=…)` ; `test_pending_guard.py` (9 tests, dont 2 vérifiés en réintroduisant le piège `programs` et en retirant la garde) ; 237 tests verts | Prochaine : étape 2. Choix d'application, sans effet sur le comportement voulu : la période est tranchée en Python sur `createdAt` (la découverte, sans période, tient dans la même requête) ; `school_categories` ne garde que SchoolStats, Accreditation et Ranking ; `skipped_pending` n'apparaît au résultat qu'en passe automatique, le résultat manuel est identique. Une lecture de la garde en erreur fait échouer la passe au lieu de payer sans garde (même connexion que le chargement des programmes). `phase2_enricher` n'appelle pas encore `skip_pending=True` : il disparaît à l'étape 4. Pas de surprise : le code était bien celui que décrit le §1.2 |
+| 2026-09-29 | Claude (Opus 5.5) | 2 | `discovery_diff.filter_new_discoveries` (pur) ; branchement dans `_run_program_discovery` entre garde-fous et INSERT, bloc `diff_against_base` au ticket, résultat `no_new_discoveries` sans ticket avec rapport rangé supprimé ; `test_discovery_diff.py` (12 tests ; mutations « sans réécriture » et « sans filtre » détectées) ; 249 tests verts | Prochaine : étape 3. Choix d'application : la lecture de la base réutilise `read_school_snapshot` du collecteur (deux SELECT de trop, School et lignes-années, plutôt que trois requêtes recopiées) ; si elle échoue, le ticket part complet comme avant, avec `diff_against_base: {"error": …}` — le rapport est payé, il ne doit pas se perdre ; `ambiguous_programs` et `ambiguous_campuses` portent le nom et les candidats ; en cas de fusion de deux voies, la première rendue est gardée avec ses attributs ; `diff_against_base` figure aussi au résultat du job. Surprise : `test_phase1_parked_report.py` passait, mais par le repli « base illisible » (sa base simulée n'avait pas de `fetchall`) : `fetchall` ajouté, base vide, ces tests suivent maintenant le chemin normal |

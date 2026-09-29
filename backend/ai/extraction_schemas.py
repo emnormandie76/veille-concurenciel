@@ -30,6 +30,10 @@ prisma/schema.prisma).
 Référence : dossier « Le rapport avant le schéma », section 08.
 """
 
+import copy
+import re
+import unicodedata
+
 # ── Phase 1 · Program_Discovery ───────────────────────────────────
 #
 # Tables visées : Campus (@@unique[schoolId, name]) et Program
@@ -318,6 +322,75 @@ RANKING_EXTRACTION_SCHEMA = {
     },
     "required": ["rankings"],
 }
+
+# Valeur de `program_hint` quand la formation classée n'est aucun des
+# programmes fournis. Une chaîne de l'enum plutôt que `null` : l'enum ferme le
+# choix, et le modèle doit pouvoir dire « aucun » sans sortir de la liste.
+NO_PROGRAM_HINT = "Aucun programme de la liste"
+
+
+def ranking_extraction_schema(program_names: list[str]) -> dict:
+    """
+    Schéma Ranking dont `program_hint` est fermé sur les programmes de l'école.
+
+    En texte libre, `program_hint` reprenait l'écriture du rapport — « PGE
+    post-bac », « Bachelor en Management » — et le rattachement en Python
+    perdait ces classements ou les collait au mauvais programme. C'est le modèle,
+    qui lit le rapport, qui choisit le programme ; l'admin relit ensuite chaque
+    ticket. Sans programme connu, le schéma générique est rendu tel quel.
+    """
+    names = list(dict.fromkeys(n for n in program_names if n))
+    if not names:
+        return RANKING_EXTRACTION_SCHEMA
+    schema = copy.deepcopy(RANKING_EXTRACTION_SCHEMA)
+    schema["properties"]["rankings"]["items"]["properties"]["program_hint"] = {
+        "type": "string",
+        "enum": names + [NO_PROGRAM_HINT],
+        "description": (
+            "Programme classé, copié à l'identique de la liste. "
+            f"'{NO_PROGRAM_HINT}' si la formation classée n'y figure pas, "
+            "ou si scope vaut 'school'."
+        ),
+    }
+    return schema
+
+
+def _fold(text: str) -> str:
+    text = unicodedata.normalize("NFD", text or "")
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    return " " + re.sub(r"[^a-z0-9]+", " ", text.lower()).strip() + " "
+
+
+# Ordre significatif : Le Figaro Étudiant et Le Parisien Étudiant contiennent
+# « étudiant », donc ils passent avant L'Étudiant.
+_RANKING_NAME_MARKERS: list[tuple[tuple[str, ...], str]] = [
+    ((" figaro ",), "Le Figaro Étudiant"),
+    ((" parisien ",), "Le Parisien Étudiant"),
+    ((" sigem ",), "SIGEM"),
+    ((" financial times ", " ft "), "Financial Times"),
+    ((" qs ",), "QS"),
+    ((" challenges ",), "Challenges"),
+    ((" le point ",), "Le Point"),
+    ((" l etudiant ", " letudiant "), "L'Étudiant"),
+]
+
+
+def canonical_ranking_name(name: str | None) -> str | None:
+    """
+    Nom d'un média de classement ramené sur RANKING_NAME_ENUM quand il en est un.
+
+    Gemma, qui extrait les contributions, ne sait pas contraindre sa sortie à un
+    enum. Sans ce repli, « Le Figaro » (contribution) et « Le Figaro Étudiant »
+    (pipeline) faisaient deux lignes RankingRecord pour le même palmarès. Un nom
+    qui n'est aucun de ces médias est rendu tel quel.
+    """
+    if not name or not name.strip():
+        return name
+    folded = _fold(name)
+    for markers, canonical in _RANKING_NAME_MARKERS:
+        if any(marker in folded for marker in markers):
+            return canonical
+    return name.strip()
 
 
 # ── Phase 2 · Capacity ────────────────────────────────────────────

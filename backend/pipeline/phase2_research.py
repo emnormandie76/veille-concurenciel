@@ -59,9 +59,15 @@ import psycopg2
 import psycopg2.extras
 
 from backend.ai.gemini_client import ExtractionUnavailable, GeminiError, extract_structured
-from backend.ai.extraction_prompts import get_extraction_prompt
-from backend.ai.extraction_schemas import get_extraction_schema, get_min_tier
+from backend.ai.extraction_prompts import get_extraction_prompt, ranking_extraction_prompt
+from backend.ai.extraction_schemas import (
+    NO_PROGRAM_HINT,
+    get_extraction_schema,
+    get_min_tier,
+    ranking_extraction_schema,
+)
 from backend.pipeline.diff import has_data_changed
+from backend.pipeline.program_identity import MATCH_AMBIGUOUS, match_program
 from backend.ai.research_prompts import (
     build_pricing_research_input,
     build_ranking_research_input,
@@ -138,17 +144,20 @@ def _match_program(hint: str | None, programs: list[dict]) -> dict | None:
     """
     Retrouve le programme visé par `program_hint`.
 
-    Ranking tourne désormais au niveau école : le rapport parle de « Programme
-    Grande École » ou de « Master in Management », pas d'un identifiant. Le
-    rattachement se fait ici, et il est délibérément prudent — mieux vaut
-    écarter un classement que l'attribuer au mauvais programme, où il
-    deviendrait une ligne fausse et permanente.
+    Ranking tourne au niveau école : le rapport parle de « Programme Grande
+    École » ou de « Master in Management », pas d'un identifiant. Le
+    rattachement est délibérément prudent — mieux vaut écarter un classement
+    que l'attribuer au mauvais programme, où il deviendrait une ligne fausse et
+    permanente.
 
-    Correspondance exacte d'abord ; à défaut, inclusion d'un intitulé dans
-    l'autre, et UNIQUEMENT si un seul programme correspond. « Bachelor » face à
-    trois bachelors est une ambiguïté, pas un résultat.
+    L'extraction choisit `program_hint` dans la liste des programmes de l'école
+    (`ranking_extraction_schema`) : le cas normal est l'égalité exacte. À
+    défaut, les clauses fermées de `program_identity.match_program`, et
+    uniquement si un seul programme répond. L'ancienne inclusion de sous-chaîne
+    rattachait « Bachelor Management, Data et IA Responsables » au « Bachelor
+    Management », et perdait « Bachelor en Management ».
     """
-    if not hint:
+    if not hint or hint == NO_PROGRAM_HINT:
         return None
     target = _normalize_name(hint)
     if not target:
@@ -158,24 +167,15 @@ def _match_program(hint: str | None, programs: list[dict]) -> dict | None:
         if _normalize_name(program["name"]) == target:
             return program
 
-    partials = [
-        program
-        for program in programs
-        if len(target) >= 4
-        and (
-            target in _normalize_name(program["name"])
-            or _normalize_name(program["name"]) in target
-        )
-    ]
-    if len(partials) == 1:
-        return partials[0]
-    if len(partials) > 1:
+    clause, hits = match_program(hint, programs)
+    if clause.startswith(MATCH_AMBIGUOUS):
         logger.info(
             "↔️ '%s' correspond à %d programmes — classement écarté (ambigu)",
             hint,
-            len(partials),
+            len(hits),
         )
-    return None
+        return None
+    return hits[0] if hits else None
 
 
 # ── Lecture de la production ──────────────────────────────────────
@@ -315,6 +315,8 @@ def _run_research_and_extract(
     official_domain: str,
     dry_run: bool,
     label: str = "",
+    extraction_prompt: Optional[str] = None,
+    extraction_schema: Optional[dict] = None,
 ) -> tuple[Optional[dict], str, list[str]]:
     """
     Un appel Research puis une extraction Gemini.
@@ -322,6 +324,10 @@ def _run_research_and_extract(
     Retourne (données extraites, rapport brut, URLs sources). Les données valent
     None quand la recherche ou l'extraction a échoué : l'appelant passe alors à
     la suite sans écrire de ticket.
+
+    `extraction_prompt` et `extraction_schema` remplacent ceux de la catégorie
+    quand l'extraction dépend de l'école — Ranking reçoit la liste de ses
+    programmes.
 
     Les extractions sont sérialisées par le portillon RPM de gemini_client :
     lancées en parallèle, elles saturaient les 5 requêtes/minute de la clé.
@@ -359,9 +365,9 @@ def _run_research_and_extract(
 
     try:
         extracted = extract_structured(
-            system_prompt=get_extraction_prompt(category),
+            system_prompt=extraction_prompt or get_extraction_prompt(category),
             source_text=report,
-            json_schema=get_extraction_schema(category),
+            json_schema=extraction_schema or get_extraction_schema(category),
             min_tier=get_min_tier(category),
         )
     except ExtractionUnavailable as e:
@@ -511,12 +517,16 @@ def run_phase2_research(
                 "progress": f"{categories_scanned}/{total_to_scan}",
             })
 
+        extraction_prompt = extraction_schema = None
         if category == "SchoolStats":
             prompt = build_school_stats_research_input(school_name, academic_year_str, official_domain)
         elif category == "Ranking":
+            program_names = [p["name"] for p in programs]
             prompt = build_ranking_research_input(
-                school_name, [p["name"] for p in programs], academic_year_str, official_domain
+                school_name, program_names, academic_year_str, official_domain
             )
+            extraction_prompt = ranking_extraction_prompt(program_names)
+            extraction_schema = ranking_extraction_schema(program_names)
         else:  # Accreditation
             prompt = build_accreditation_research_input(school_name, official_domain)
 
@@ -527,6 +537,8 @@ def run_phase2_research(
             official_domain=official_domain,
             dry_run=dry_run,
             label=f"pour {school_name}",
+            extraction_prompt=extraction_prompt,
+            extraction_schema=extraction_schema,
         )
         if extracted is None:
             continue

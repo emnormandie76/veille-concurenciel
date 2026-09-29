@@ -608,8 +608,8 @@ convertit en JSON selon `extraction_schemas.py`.
 | **Phase 1 — Catalogue** (facultatif) | `search` puis `extract` | page « nos formations » du domaine officiel | ~3 crédits |
 | **Phase 1 — Découverte** | `research` (pro) | `input=brief`, `include_domains=[official_domain]` | ~25 crédits estimés |
 | **Phase 1 — Rattachement campus** (sur demande) | `map` puis `extract` avancé | `/map` enraciné sur la page catalogue, fiches par lots de 5 URL | ~15-17 crédits |
-| **Phase 2 — Pricing, Ranking** | `research` (pro) | `input=brief`, `include_domains` (liste blanche pour Ranking) | ~25 crédits estimés |
-| **Phase 2 — SchoolStats, Accreditation, Capacity** | `research` (mini) | `input=brief`, `include_domains=[official_domain]` | ~10 crédits estimés |
+| **Phase 2 — Pricing, Ranking** | `research` (pro) | `input=brief` ; `include_domains=[official_domain]` pour Pricing, aucun pour Ranking (le brief nomme les sites des médias) | ~25 crédits estimés |
+| **Phase 2 — SchoolStats, Accreditation, Capacity** | `research` (mini) | `input=brief` ; `include_domains=[official_domain]` sauf pour Capacity | ~10 crédits estimés |
 | **Crowdsourcing** | `extract` | `urls=[url_utilisateur]`, `extract_depth="advanced"` | 1 crédit / 5 URL |
 
 > **Research ne déclare pas son coût** : aucun champ `usage`, ni en mini ni en
@@ -839,6 +839,19 @@ Charger l'école, ses programmes et ses arêtes (connexion courte, puis fermée)
 programmes. Cela remplace N appels Research par un seul, puis découpe le rapport en
 un ticket par couple (année, classement, programme).
 
+Le rattachement d'un classement à un programme se fait à l'extraction : le schéma
+Ranking reçoit la liste des programmes de l'école, et `program_hint` doit en être
+un nom exact, ou « Aucun programme de la liste » (`ranking_extraction_schema`,
+`ranking_extraction_prompt`). « PGE post-bac » est donc rendu comme « Programme
+Grande École » ; la voie reste lisible dans `ranking_label`, sur le ticket.
+`_match_program` accepte ensuite l'égalité exacte, puis les clauses fermées de
+`program_identity.match_program`. Il n'y a plus d'appariement par inclusion.
+Sont écartés, avec une ligne de journal : les classements `scope: "school"`
+(`RankingRecord` exige un `programId`), les programmes absents de la base, et un
+second classement du même média la même année pour le même programme. Un rang
+publié en tranche (QS « 141-150 ») n'a pas de représentation : `rank` est un
+entier.
+
 Les JSON Schemas d'extraction sont définis dans `extraction_schemas.py`, les prompts
 correspondants dans `extraction_prompts.py`. Ils ne sont plus passés en `output_schema`
 à Tavily : l'agent rend un rapport rédigé, que Gemini convertit ensuite en JSON. Voir
@@ -952,7 +965,7 @@ Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière su
 4. **Extraction Structurée (Gemma 31B) :** Si compatible, Gemma 31B extrait les données structurées selon la catégorie concernée. Le champ `user_text` est à nouveau exclu.
 5. **Validation Post-Extraction des Données Obligatoires :**
    - **`Capacity`** : validation que `spots_available` et `academic_year` ne sont pas `null`.
-   - **`Ranking`** : validation que `ranking_name`, `rank` et `academic_year` ne sont pas `null`.
+   - **`Ranking`** : validation que `ranking_name`, `rank` et `academic_year` ne sont pas `null`, puis `canonical_ranking_name()` ramène le média sur la liste du pipeline (« Le Figaro » → « Le Figaro Étudiant ») ; un média hors liste est gardé tel quel. Même repli en multi-programme.
    - **`Pricing`** : validation que `academic_year` n'est pas `null` et qu'au moins un des frais de scolarité extraits est non nul.
    - Si une donnée obligatoire manque ou est extraite en tant que `null`, une `GemmaParsingError` est levée.
 6. **Statut & Triage des Erreurs :**
@@ -1323,9 +1336,13 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
 
 ### 10.7. Validation des domaines (pipeline)
 
-- **Rankings :** liste blanche stricte (`lefigaro.fr`, `letudiant.fr`,
-  `sigem.org`, `leparisien.fr`)
-- **Pricing / Capacity :** restreint à l'`official_domain` de l'école
+- **Pricing, SchoolStats, Accreditation :** `include_domains=[official_domain]`
+  (`DOMAIN_PREFERRED_CATEGORIES`). C'est une préférence, pas un filtre : Research
+  peut encore citer d'autres sites.
+- **Ranking, Capacity :** aucun `include_domains`. Les classements vivent chez les
+  médias, les places chez les concours ; le brief Ranking nomme les sites à
+  consulter (lefigaro.fr, letudiant.fr, leparisien.fr, lepoint.fr,
+  challenges.fr, rankings.ft.com, topuniversities.com).
 - **Crowdsourcing :** voir §10.2
 
 ### 10.8. Protection BDD et connexions éphémères
@@ -1657,7 +1674,7 @@ suffit, toujours sans `--force`.
 | Crowdsourcing | Sélection en arborescence, multi-catégorie | Pas de dette technique, pas de nouvelles écoles par les users |
 | Catégorie de donnée | Choisie par l'utilisateur (pas l'IA) | Plus fiable, simplifie le routage du prompt |
 | Tavily Phase 1 | `research` (pro) + ancrage catalogue (`search` + `extract`) | Research explore le site et rédige ; le catalogue fournit la liste de référence des intitulés |
-| Tavily Phase 2 | `research` par catégorie, pro ou mini | Un brief par catégorie, borné au domaine officiel (liste blanche pour Ranking) |
+| Tavily Phase 2 | `research` par catégorie, pro ou mini | Un brief par catégorie ; domaine officiel préféré pour Pricing, SchoolStats et Accreditation, aucun pour Ranking et Capacity |
 | Tavily Workflow A | `extract` | URL connue, le moins cher (1 crédit/5 URLs) |
 | Communication services | DB partagée + API interne minimale | Simple, chaque service fait ce qu'il sait faire |
 | Auth | NextAuth Credentials, 2 rôles | Admin crée les modérateurs, pas d'auto-inscription |

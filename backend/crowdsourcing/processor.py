@@ -26,6 +26,7 @@ from backend.ai.gemma_client import (
 )
 from backend.tavily_service.key_manager import QuotaExhaustedError
 from backend.pipeline.program_identity import match_program
+from backend.ai.extraction_schemas import RANKING_NAME_ENUM, canonical_ranking_name
 from backend.constants import (
     PUBLIC_CONTRIBUTION_CATEGORIES,
     STATUS_FAILED,
@@ -33,6 +34,15 @@ from backend.constants import (
 )
 
 logger = logging.getLogger("pipeline.processor")
+
+# Les médias que le pipeline connaît, dans l'écriture qu'il stocke. Gemma ne sait
+# pas contraindre sa sortie à un enum : la consigne l'y oriente, et
+# canonical_ranking_name() rattrape ce qu'elle laisse passer.
+_RANKING_NAME_HINT = (
+    "Nom du média. S'il est l'un de ceux-ci, écris-le EXACTEMENT ainsi : "
+    + ", ".join(name for name in RANKING_NAME_ENUM if name != "Autre")
+    + ". Sinon, le nom tel qu'il figure dans la page"
+)
 
 # ── Retention des tickets en echec ────────────────────────────────
 #
@@ -118,7 +128,7 @@ RÈGLES :
 
 Structure JSON :
 {
-  "ranking_name": "Nom exact du classement (ex: Le Figaro, L'Étudiant, SIGEM)",
+  "ranking_name": \"""" + _RANKING_NAME_HINT + """\",
   "rank": entier ou null,
   "academic_year": entier (année) ou null,
   "source_url": "URL exacte",
@@ -322,7 +332,7 @@ Structure JSON :
   "programs": [
     {{
       "program_name": "Nom exact tel que trouvé dans la page",
-      "ranking_name": "Nom exact du classement (ex: Le Figaro, L'Étudiant, SIGEM)",
+      "ranking_name": \"""" + _RANKING_NAME_HINT + """\",
       "rank": entier ou null,
       "academic_year": entier (année) ou null,
       "source_url": "URL exacte"
@@ -564,6 +574,8 @@ def process_crowdsourcing_ticket(ticket_id: str, key_manager=None) -> None:
                 prog_name = prog_entry.get("program_name", "")
                 match_result = _match_program_name(prog_name, school_programs)
                 data_fields = {k: v for k, v in prog_entry.items() if k != "program_name"}
+                if category == "Ranking" and data_fields.get("ranking_name"):
+                    data_fields["ranking_name"] = canonical_ranking_name(data_fields["ranking_name"])
 
                 if match_result["match_confidence"] == "none":
                     unmatched_programs.append({
@@ -657,6 +669,7 @@ def process_crowdsourcing_ticket(ticket_id: str, key_manager=None) -> None:
                     raise GemmaParsingError(
                         f"Données Ranking incomplètes. ranking_name={ranking_name}, rank={rank}, academic_year={academic_year}"
                     )
+                extracted["ranking_name"] = canonical_ranking_name(ranking_name)
             elif category == "Pricing":
                 academic_year = extracted.get("academic_year")
                 if academic_year is None:

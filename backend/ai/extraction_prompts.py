@@ -136,8 +136,9 @@ NORMALISATION DU MÉDIA :
 
 PROGRAMME OU ÉCOLE :
 - scope = 'program' quand le palmarès classe une formation précise (Programme
-  Grande École, Master in Management, un MSc…). Le nom du programme tel qu'il
-  est écrit dans le rapport va dans program_hint.
+  Grande École, Master in Management, un MSc…). program_hint désigne cette
+  formation : si la liste des programmes de l'école suit cette consigne,
+  applique ses règles ; sinon, écris le nom tel qu'il figure dans le rapport.
 - scope = 'school' quand il classe l'établissement dans son ensemble.
   program_hint reste null.
 - Le rapport distingue explicitement les deux : ne les confonds pas.
@@ -324,3 +325,39 @@ def with_catalog_anchor(prompt: str, catalog_titles: list[str] | None) -> str:
         return prompt
     listing = "\n".join(f"- {title}" for title in catalog_titles)
     return prompt + CATALOG_ANCHOR_TEMPLATE.format(catalog=listing)
+
+
+RANKING_PROGRAMS_TEMPLATE = """
+
+PROGRAMMES DE L'ÉCOLE — program_hint est choisi dans cette liste :
+{programs}
+
+- Recopie le nom de la liste à l'identique, pas l'écriture du rapport. « PGE »,
+  « Programme Grande École post-bac » ou « PGE en 5 ans » désignent le
+  Programme Grande École s'il figure dans la liste : une voie d'admission
+  (post-bac, post-prépa, admission parallèle), une durée ou l'alternance ne
+  font pas un autre programme.
+- Un diplôme DIFFÉRENT n'est pas une voie : un bachelor n'est pas un MSc, un
+  « Bachelor Management, Data et IA » n'est pas le « Bachelor Management ». Si
+  la formation classée n'est pas dans la liste, prends « {no_program} ».
+- scope = 'school' prend aussi « {no_program} ».
+- Le libellé du palmarès tel que le rapport l'écrit, voie comprise (« PGE
+  post-bac », « post-bac et post-prépa »), va dans ranking_label."""
+
+
+def ranking_extraction_prompt(program_names: list[str]) -> str:
+    """
+    Prompt Ranking, complété par la liste des programmes de l'école.
+
+    Va de pair avec `ranking_extraction_schema`, qui ferme `program_hint` sur la
+    même liste. Sans programme connu, le prompt générique est rendu tel quel.
+    """
+    from backend.ai.extraction_schemas import NO_PROGRAM_HINT
+
+    names = list(dict.fromkeys(n for n in program_names if n))
+    if not names:
+        return RANKING_EXTRACTION_PROMPT
+    listing = "\n".join(f"- {name}" for name in names)
+    return RANKING_EXTRACTION_PROMPT + RANKING_PROGRAMS_TEMPLATE.format(
+        programs=listing, no_program=NO_PROGRAM_HINT
+    )

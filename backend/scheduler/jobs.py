@@ -1,49 +1,56 @@
 """
-backend/scheduler/jobs.py — APScheduler Jobs (Étape 5.4)
+backend/scheduler/jobs.py — APScheduler Jobs
 
 Deux jobs récurrents :
-  - phase1_scanner : toutes les CRON_PHASE1_INTERVAL_HOURS heures
-    Détecte les écoles ACTIVE sans Campus → lance run_phase1()
-  - phase2_enricher : toutes les CRON_PHASE2_INTERVAL_HOURS heures (Étape 6)
-    Détecte les Programs validés → lance run_phase2() pour chaque catégorie
+  - research_rotation : chaque nuit à CRON_RESEARCH_HOUR (Europe/Paris), au
+    plus CRON_ROTATION_PASSES_PER_NIGHT passe(s) Phase 1 ou Phase 2, choisies
+    par le planificateur (scheduler/rotation.py) sous le plafond mensuel
+    CRON_MONTHLY_CREDIT_CEILING. Seul job qui paie Research.
+  - crowdsourcing_processor : toutes les CRON_CROWDSOURCING_INTERVAL_MINUTES.
 
 Règles :
-  - Max 1 école à la fois (pas de parallélisme → économie Free Tier)
-  - Pause de 30s entre deux écoles
   - Le scheduler est démarré/arrêté dans le lifespan FastAPI (main.py)
-  - Hors production, phase1_scanner et phase2_enricher ne sont PAS inscrits :
-    voir research_cron_enabled(). Le traitement Crowdsourcing l'est toujours.
+  - Hors production, research_rotation n'est PAS inscrit : voir
+    research_cron_enabled(). Le traitement Crowdsourcing l'est toujours.
 
-Référence : task.md §5.4, architecture.md §2.2 (APScheduler)
+## Pourquoi une rotation à heure fixe
+
+phase1_scanner et phase2_enricher, qu'elle remplace, tournaient sur des
+IntervalTrigger comptés depuis le démarrage : sur Koyeb, qui redémarre, la
+Phase 1 partait à chaque redémarrage et la Phase 2 jamais. Et la Phase 2
+repassait chaque jour sur tout (~54 000 crédits par mois pour trois écoles).
+Le CronTrigger ne dépend pas du démarrage ; misfire_grace_time rattrape une
+nuit où l'instance était arrêtée à l'heure dite.
+
+Référence : docs/features/cron-rotation-production.md, architecture.md §2.2
 """
 
 import os
 import logging
-import time
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import psycopg2
 import psycopg2.extras
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from backend import pipeline_jobs
 from backend.tavily_service.key_manager import QuotaExhaustedError
+from backend.utils.env import env_int
 
 logger = logging.getLogger("pipeline.scheduler")
 
 # ── Constantes ────────────────────────────────────────────────────
-PHASE1_INTERVAL_HOURS = int(os.environ.get("CRON_PHASE1_INTERVAL_HOURS", 168))  # 1 semaine
-PHASE2_INTERVAL_HOURS = int(os.environ.get("CRON_PHASE2_INTERVAL_HOURS", 24))   # 1 jour
-PAUSE_BETWEEN_SCHOOLS = 30  # secondes entre chaque école (politesse + rate limits)
+ROTATION_JOB_ID = "research_rotation"
+ROTATION_TIMEZONE = "Europe/Paris"
 
-# Délai avant le tout premier passage de phase1_scanner après un démarrage.
-# Sans lui, un intervalle de 168h signifie que le premier passage n'a lieu
-# qu'une semaine après le redémarrage — le job semble configuré mais ne tourne
-# jamais sur une instance qui redémarre régulièrement.
-PHASE1_INITIAL_DELAY_MINUTES = int(
-    os.environ.get("CRON_PHASE1_INITIAL_DELAY_MINUTES", 5)
-)
+# Lues une fois, au démarrage. Une valeur illisible retombe sur le défaut.
+RESEARCH_HOUR = env_int("CRON_RESEARCH_HOUR", 3, minimum=0, maximum=23)
+# 0 : le job planifie et journalise, mais ne dépense rien (vérification à blanc).
+MONTHLY_CREDIT_CEILING = env_int("CRON_MONTHLY_CREDIT_CEILING", 7000, minimum=0)
+PASSES_PER_NIGHT = env_int("CRON_ROTATION_PASSES_PER_NIGHT", 1, minimum=1)
 
 # Le libellé du job et le log de démarrage annonçaient 5 minutes alors que le
 # déclencheur était réglé sur 1. C'est l'intervalle réel qui fait foi ici.
@@ -58,18 +65,18 @@ _FALSY = frozenset({"0", "false", "no", "off"})
 
 def research_cron_enabled() -> tuple[bool, str]:
     """
-    Les deux jobs qui PAIENT Research doivent-ils etre inscrits ?
+    Le job qui PAIE Research (research_rotation) doit-il etre inscrit ?
 
     Rend `(active, raison)`, la raison etant journalisee au demarrage.
 
     Lancer le backend sur un poste de developpement demarrait phase1_scanner,
     qui passait 5 minutes plus tard sur toutes les ecoles ACTIVE sans campus :
     le 2026-09-28, EMLV et Essec, environ 28 a 30 credits Tavily chacune, sans
-    que personne n'ait clique. Phase2_enricher, lui, paie Research pour chaque
-    programme valide. Aucun des deux ne doit tourner parce qu'un developpeur a
-    demarre uvicorn.
+    que personne n'ait clique. research_rotation, qui l'a remplace avec
+    phase2_enricher, paie Research de la meme facon. Il ne doit pas tourner
+    parce qu'un developpeur a demarre uvicorn.
 
-    Par defaut, ils ne sont donc inscrits qu'en production (`ENVIRONMENT`,
+    Par defaut, il n'est donc inscrit qu'en production (`ENVIRONMENT`,
     deja [PROD — REQUIS], voir .env.example). `CRON_RESEARCH_ENABLED` force
     l'un ou l'autre choix. Une valeur non reconnue desactive, bruyamment : une
     faute de frappe doit couter une passe de cron, pas des credits.
@@ -172,211 +179,210 @@ def get_scheduler() -> BackgroundScheduler:
     return _scheduler
 
 
-# ── Job Phase 1 : Scanner ─────────────────────────────────────────
+# ── Job nocturne : rotation des recherches ────────────────────────
 
-def phase1_scanner(key_manager):
+class _QuotaWatch:
     """
-    Job APScheduler : Phase 1 — Cartographie (Program Discovery)
+    Le TavilyKeyManager, vu par une passe : note tout refus de clé.
 
-    Détecte les écoles ACTIVE sans Campus en BDD et lance run_phase1() pour chacune.
-    Traitement séquentiel avec pause entre chaque école.
+    Les phases avalent QuotaExhaustedError — la Phase 1 en fait un échec
+    motivé, la Phase 2 une ligne de journal par cible, avant de passer à la
+    suivante. Une Phase 2 coupée par le quota se terminerait donc « réussie »,
+    et l'école attendrait six mois ce qu'elle n'a pas reçu. Le refus se lit
+    ici, au seul endroit où toute clé est demandée.
+    """
 
-    Référence : task.md §5.4, architecture.md §5.1
+    def __init__(self, key_manager):
+        self._key_manager = key_manager
+        self.refused = False
+
+    def get_active_key(self, *args, **kwargs):
+        try:
+            return self._key_manager.get_active_key(*args, **kwargs)
+        except QuotaExhaustedError:
+            self.refused = True
+            raise
+
+    def __getattr__(self, name):
+        return getattr(self._key_manager, name)
+
+
+@dataclass
+class _PassOutcome:
+    status: str                  # "completed" | "failed" | "busy" | "not_recorded"
+    error: str | None = None
+    quota_exhausted: bool = False
+
+
+_QUOTA_CUT_ERROR = (
+    "Quota Tavily épuisé pendant la passe : passe incomplète, reprise après "
+    "le délai d'échec (CRON_RESEARCH_RETRY_FAILED_DAYS)"
+)
+
+
+def _describe(candidate) -> str:
+    return (
+        f"{candidate.school_name}, Phase {candidate.phase}, "
+        f"~{candidate.estimated_credits} crédits"
+    )
+
+
+def _run_rotation_pass(candidate, key_manager) -> _PassOutcome:
+    """
+    Une passe de la rotation, tracée comme un PipelineJob `source = "cron"`.
+
+    Le job EST la mémoire du passage (rotation.py) : s'il ne peut pas être
+    ouvert, la passe n'est pas lancée — sinon l'école serait repayée la nuit
+    suivante. Il porte un battement de cœur : une passe muette plus de
+    PIPELINE_JOB_STALE_SECONDS serait déclarée morte en cours de route.
+    """
+    from backend.pipeline.phase1_research import run_phase1_research
+    from backend.pipeline.phase2_research import run_phase2_research
+    from backend.scheduler.rotation import PHASE_1
+
+    if _school_is_busy(candidate.school_id):
+        logger.info(f"⏭️ [ROTATION] {candidate.school_name} : un job est déjà en cours — passée")
+        return _PassOutcome("busy")
+
+    phase_label = (
+        pipeline_jobs.PHASE1_CRON_LABEL if candidate.phase == PHASE_1
+        else pipeline_jobs.PHASE2_CRON_LABEL
+    )
+    job_id = _start_cron_job(candidate.school_id, phase_label)
+    if job_id is None:
+        return _PassOutcome("not_recorded", "job non enregistré en base : passe non lancée")
+
+    def progress(details: dict) -> None:
+        pipeline_jobs.update_progress(job_id, details)
+
+    watch = _QuotaWatch(key_manager)
+    logger.info(f"🚀 [ROTATION] {_describe(candidate)} ({candidate.reason})")
+    try:
+        if candidate.phase == PHASE_1:
+            # Jamais de collecte du rattachement campus depuis le cron
+            # (architecture.md §5.4) : ~15 crédits par école, souvent pour rien.
+            result = run_phase1_research(
+                candidate.school_id, watch,
+                progress_callback=progress,
+                collect_campus_attachments=False,
+            )
+        else:
+            result = run_phase2_research(
+                candidate.school_id, watch,
+                progress_callback=progress,
+                skip_pending=True,
+            )
+    except QuotaExhaustedError as e:
+        _finish_cron_job(job_id, pipeline_jobs.STATUS_FAILED, error=str(e))
+        return _PassOutcome(pipeline_jobs.STATUS_FAILED, str(e), quota_exhausted=True)
+    except Exception as e:
+        logger.error(f"❌ [ROTATION] {_describe(candidate)} : {e}")
+        _finish_cron_job(job_id, pipeline_jobs.STATUS_FAILED, error=str(e))
+        return _PassOutcome(pipeline_jobs.STATUS_FAILED, str(e))
+
+    if watch.refused or key_manager.available_keys == 0:
+        logger.error(f"🛑 [ROTATION] {_describe(candidate)} : {_QUOTA_CUT_ERROR}")
+        _finish_cron_job(job_id, pipeline_jobs.STATUS_FAILED, result=result, error=_QUOTA_CUT_ERROR)
+        return _PassOutcome(pipeline_jobs.STATUS_FAILED, _QUOTA_CUT_ERROR, quota_exhausted=True)
+
+    if result.get("success"):
+        logger.info(f"✅ [ROTATION] {_describe(candidate)} : {result.get('message')}")
+        _finish_cron_job(job_id, pipeline_jobs.STATUS_COMPLETED, result=result)
+        return _PassOutcome(pipeline_jobs.STATUS_COMPLETED)
+
+    message = result.get("message") or "Échec inconnu"
+    logger.warning(f"⚠️ [ROTATION] {_describe(candidate)} : {message}")
+    _finish_cron_job(job_id, pipeline_jobs.STATUS_FAILED, error=message)
+    return _PassOutcome(pipeline_jobs.STATUS_FAILED, message)
+
+
+def research_rotation(key_manager, now: datetime | None = None) -> None:
+    """
+    Job APScheduler nocturne : au plus PASSES_PER_NIGHT passe(s), sous plafond.
+
+    Lit l'état, planifie (rotation.plan_rotation), puis lance le PREMIER
+    candidat dont l'estimation tient sous MONTHLY_CREDIT_CEILING avec les
+    crédits déjà consommés ce mois-ci. Aucun candidat ne tient : rien ce soir,
+    et le registre le dit. Un quota épuisé clôt la nuit.
     """
     from backend.db import get_db_connection
-    from backend.pipeline.phase1_research import run_phase1_research as run_phase1
+    from backend.scheduler.rotation import load_rotation_state, plan_rotation
 
-    logger.info(f"⏰ [CRON] phase1_scanner démarré")
+    logger.info("⏰ [ROTATION] research_rotation démarré")
 
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # Écoles ACTIVE sans aucun Campus
-                cur.execute(
-                    """
-                    SELECT s.id, s.name, s.official_domain
-                    FROM "School" s
-                    LEFT JOIN "Campus" c ON c."schoolId" = s.id
-                    WHERE s.status = 'ACTIVE'
-                    AND c.id IS NULL
-                    ORDER BY s.name ASC
-                    """
-                )
-                schools_without_campus = cur.fetchall()
-
-    except Exception as e:
-        # La table School ne possede pas de colonne "createdAt" : l'ancien
-        # ORDER BY s."createdAt" levait UndefinedColumn a CHAQUE passage, etait
-        # avale ici, et aucune ecole n'a jamais ete cartographiee
-        # automatiquement. Le tri se fait desormais sur s.name, comme
-        # phase2_enricher. L'echec est enregistre au lieu d'etre seulement logue.
-        logger.error(f"❌ [CRON] Erreur lecture BDD dans phase1_scanner: {e}")
-        _record_job_run("phase1_scanner", "failed", f"lecture BDD : {e}")
+    if key_manager is None:
+        logger.error("❌ [ROTATION] Aucun TavilyKeyManager : rotation abandonnée")
+        _record_job_run(ROTATION_JOB_ID, "failed", "TavilyKeyManager absent : aucune clé chargée")
         return
 
-    if not schools_without_campus:
-        logger.info("✅ [CRON] phase1_scanner: aucune école à traiter")
-        _record_job_run("phase1_scanner", "success", "aucune école à traiter")
+    try:
+        # Un job mort encore marqué actif ferait sauter son école ce soir.
+        pipeline_jobs.reap_stale_jobs()
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                state = load_rotation_state(cur)
+        candidates = plan_rotation(
+            state.schools, state.last_passes, state.discovery_pending,
+            now or datetime.now(timezone.utc),
+        )
+        used = key_manager.credits_used_this_month()
+    except Exception as e:
+        logger.error(f"❌ [ROTATION] Planification impossible : {e}")
+        _record_job_run(ROTATION_JOB_ID, "failed", f"planification : {e}")
         return
 
     logger.info(
-        f"📋 [CRON] phase1_scanner: {len(schools_without_campus)} école(s) sans campus"
+        f"📋 [ROTATION] {len(candidates)} passe(s) due(s) ; crédits du mois "
+        f"{used}/{MONTHLY_CREDIT_CEILING} ; en tête : "
+        + (", ".join(f"{_describe(c)} ({c.reason})" for c in candidates[:5]) or "—")
     )
-
-    for i, school in enumerate(schools_without_campus):
-        school_id = school["id"]
-        school_name = school["name"]
-
-        logger.info(
-            f"🏫 [CRON] Traitement {i+1}/{len(schools_without_campus)}: {school_name}"
-        )
-
-        if _school_is_busy(school_id):
-            logger.info(f"⏭️ [CRON] {school_name}: un job est déjà en cours — passée")
-            continue
-
-        job_key = _start_cron_job(school_id, pipeline_jobs.PHASE1_CRON_LABEL)
-
-        try:
-            # Sans collecte du rattachement campus : elle ne tourne que sur
-            # déclenchement manuel, case cochée (voir phase1_research.py).
-            result = run_phase1(school_id, key_manager)
-
-            if result.get("success"):
-                logger.info(
-                    f"✅ [CRON] {school_name}: "
-                    f"{result.get('campuses_count')} campus, "
-                    f"{result.get('programs_count')} programmes → Inbox créé"
-                )
-                _finish_cron_job(job_key, "completed", result=result)
-            else:
-                msg = result.get("message", "Échec inconnu")
-                logger.warning(f"⚠️ [CRON] {school_name}: {msg}")
-                _finish_cron_job(job_key, "failed", error=msg)
-
-                # Si quota épuisé → arrêter le job immédiatement
-                if "quota" in msg.lower() or "épuisé" in msg.lower():
-                    logger.error("🛑 [CRON] Quota Tavily épuisé — arrêt du scanner")
-                    break
-
-        except QuotaExhaustedError as e:
-            logger.error(f"🛑 [CRON] Quota Tavily épuisé — arrêt immédiat du scanner: {e}")
-            _finish_cron_job(job_key, "failed", error=str(e))
-            break
-        except Exception as e:
-            logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
-            _finish_cron_job(job_key, "failed", error=str(e))
-
-        # Pause entre chaque école (sauf la dernière)
-        if i < len(schools_without_campus) - 1:
-            logger.info(f"⏸️ [CRON] Pause {PAUSE_BETWEEN_SCHOOLS}s avant la prochaine école...")
-            time.sleep(PAUSE_BETWEEN_SCHOOLS)
-
-    logger.info("✅ [CRON] phase1_scanner terminé")
-    _record_job_run(
-        "phase1_scanner",
-        "success",
-        f"{len(schools_without_campus)} école(s) parcourue(s)",
-    )
-
-
-# ── Job Phase 2 : Enricher (stub — Étape 6) ──────────────────────
-
-def phase2_enricher(key_manager):
-    """
-    Job APScheduler : Phase 2 — Enrichissement
-
-    Détecte les écoles ACTIVE avec au moins un Campus et lance run_phase2() pour chacune.
-    Traitement séquentiel avec pause entre chaque école.
-
-    Référence : task.md §6.5, architecture.md §5.3
-    """
-    from backend.db import get_db_connection
-    from backend.pipeline.phase2_research import run_phase2_research as run_phase2
-
-    logger.info(f"⏰ [CRON] phase2_enricher démarré")
-
-    try:
-        with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # Écoles ACTIVE avec au moins un Campus
-                cur.execute(
-                    """
-                    SELECT DISTINCT s.id, s.name
-                    FROM "School" s
-                    JOIN "Campus" c ON c."schoolId" = s.id
-                    WHERE s.status = 'ACTIVE'
-                    ORDER BY s.name ASC
-                    """
-                )
-                schools_with_campus = cur.fetchall()
-
-    except Exception as e:
-        logger.error(f"❌ [CRON] Erreur lecture BDD dans phase2_enricher: {e}")
-        _record_job_run("phase2_enricher", "failed", f"lecture BDD : {e}")
+    if not candidates:
+        _record_job_run(ROTATION_JOB_ID, "success", "aucune passe due")
         return
 
-    if not schools_with_campus:
-        logger.info("✅ [CRON] phase2_enricher: aucune école à traiter")
-        _record_job_run("phase2_enricher", "success", "aucune école à traiter")
+    if not any(used + c.estimated_credits <= MONTHLY_CREDIT_CEILING for c in candidates):
+        detail = (
+            f"plafond mensuel atteint : {used}/{MONTHLY_CREDIT_CEILING} crédits, "
+            f"{len(candidates)} passe(s) en attente, la moins chère "
+            f"~{min(c.estimated_credits for c in candidates)} crédits"
+        )
+        logger.info(f"⏸️ [ROTATION] {detail}")
+        _record_job_run(ROTATION_JOB_ID, "success", detail)
         return
 
-    logger.info(
-        f"📋 [CRON] phase2_enricher: {len(schools_with_campus)} école(s) à enrichir"
-    )
-
-    for i, school in enumerate(schools_with_campus):
-        school_id = school["id"]
-        school_name = school["name"]
-
-        logger.info(
-            f"🏫 [CRON] Traitement {i+1}/{len(schools_with_campus)}: {school_name}"
-        )
-
-        if _school_is_busy(school_id):
-            logger.info(f"⏭️ [CRON] {school_name}: un job est déjà en cours — passée")
+    launched: list[tuple] = []
+    for candidate in candidates:
+        if len(launched) >= PASSES_PER_NIGHT:
+            break
+        if used + candidate.estimated_credits > MONTHLY_CREDIT_CEILING:
+            logger.info(f"⏭️ [ROTATION] {_describe(candidate)} : ne tient pas sous le plafond")
             continue
 
-        job_key = _start_cron_job(school_id, pipeline_jobs.PHASE2_CRON_LABEL)
-
-        try:
-            result = run_phase2(school_id, key_manager)
-
-            if result.get("success"):
-                logger.info(
-                    f"✅ [CRON] {school_name}: {result.get('tickets_created')} ticket(s) créé(s)"
-                )
-                _finish_cron_job(job_key, "completed", result=result)
-            else:
-                msg = result.get("message", "Échec inconnu")
-                logger.warning(f"⚠️ [CRON] {school_name}: {msg}")
-                _finish_cron_job(job_key, "failed", error=msg)
-
-                if "quota" in msg.lower() or "épuisé" in msg.lower():
-                    logger.error("🛑 [CRON] Quota Tavily épuisé — arrêt de l'enricher")
-                    break
-
-        except QuotaExhaustedError as e:
-            logger.error(f"🛑 [CRON] Quota Tavily épuisé — arrêt immédiat de l'enricher: {e}")
-            _finish_cron_job(job_key, "failed", error=str(e))
+        outcome = _run_rotation_pass(candidate, key_manager)
+        if outcome.status == "busy":
+            continue
+        launched.append((candidate, outcome))
+        if outcome.quota_exhausted or outcome.status == "not_recorded":
             break
-        except Exception as e:
-            logger.error(f"❌ [CRON] Erreur lors du traitement de {school_name}: {e}")
-            _finish_cron_job(job_key, "failed", error=str(e))
+        used = key_manager.credits_used_this_month()
 
-        if i < len(schools_with_campus) - 1:
-            logger.info(f"⏸️ [CRON] Pause {PAUSE_BETWEEN_SCHOOLS}s avant la prochaine école...")
-            time.sleep(PAUSE_BETWEEN_SCHOOLS)
+    if not launched:
+        _record_job_run(ROTATION_JOB_ID, "success", "aucune passe lancée : écoles occupées")
+        return
 
-    logger.info("✅ [CRON] phase2_enricher terminé")
+    failed = [o for _, o in launched if o.status != pipeline_jobs.STATUS_COMPLETED]
+    detail = " ; ".join(
+        _describe(c) + (f" — {o.error}" if o.error else "") for c, o in launched
+    )
+    _record_job_run(ROTATION_JOB_ID, "failed" if failed else "success", detail)
 
 
 # ── Démarrage / Arrêt ─────────────────────────────────────────────
 
 def start_scheduler(key_manager):
     """
-    Démarre le scheduler avec les deux jobs et le traitement Crowdsourcing.
-    Appelé depuis le lifespan FastAPI (main.py) au startup.
+    Démarre le scheduler : la rotation des recherches (production seulement) et
+    le traitement Crowdsourcing. Appelé depuis le lifespan FastAPI (main.py).
     """
     scheduler = get_scheduler()
 
@@ -387,32 +393,20 @@ def start_scheduler(key_manager):
     research_enabled, research_reason = research_cron_enabled()
 
     if research_enabled:
-        # ── Job Phase 1 ──────────────────────────────────────────
+        # Heure fixe, indépendante du démarrage : voir l'en-tête du module.
         scheduler.add_job(
-            func=phase1_scanner,
-            trigger=IntervalTrigger(
-                hours=PHASE1_INTERVAL_HOURS,
-                # Sans next_run_time, un intervalle de 168h repousse le premier
-                # passage a une semaine apres chaque redemarrage.
-                start_date=datetime.now() + timedelta(minutes=PHASE1_INITIAL_DELAY_MINUTES),
-            ),
+            func=research_rotation,
+            trigger=CronTrigger(hour=RESEARCH_HOUR, minute=0, timezone=ROTATION_TIMEZONE),
             args=[key_manager],
-            id="phase1_scanner",
-            name=f"Phase 1 Scanner (toutes les {PHASE1_INTERVAL_HOURS}h)",
-            replace_existing=True,
-        )
-
-        # ── Job Phase 2 ──────────────────────────────────────────
-        scheduler.add_job(
-            func=phase2_enricher,
-            trigger=IntervalTrigger(hours=PHASE2_INTERVAL_HOURS),
-            args=[key_manager],
-            id="phase2_enricher",
-            name=f"Phase 2 Enricher (toutes les {PHASE2_INTERVAL_HOURS}h)",
+            id=ROTATION_JOB_ID,
+            name=f"Rotation des recherches (chaque nuit à {RESEARCH_HOUR}h)",
+            misfire_grace_time=3600,
+            coalesce=True,
+            max_instances=1,
             replace_existing=True,
         )
     else:
-        logger.warning(f"⏸️ Jobs Research non inscrits — {research_reason}")
+        logger.warning(f"⏸️ Rotation des recherches non inscrite — {research_reason}")
 
     # ── Job Crowdsourcing ────────────────────────────────────────
     from backend.crowdsourcing.processor import process_pending_submissions
@@ -427,10 +421,10 @@ def start_scheduler(key_manager):
 
     scheduler.start()
     research_part = (
-        f"Phase1({PHASE1_INTERVAL_HOURS}h, 1er passage dans {PHASE1_INITIAL_DELAY_MINUTES}min), "
-        f"Phase2({PHASE2_INTERVAL_HOURS}h), "
+        f"Rotation({RESEARCH_HOUR}h {ROTATION_TIMEZONE}, {PASSES_PER_NIGHT} passe(s) par nuit, "
+        f"plafond {MONTHLY_CREDIT_CEILING} crédits/mois), "
         if research_enabled
-        else "Phase1/Phase2 désactivés, "
+        else "Rotation désactivée, "
     )
     logger.info(
         f"✅ Scheduler démarré ({research_reason}): "
@@ -476,7 +470,7 @@ def get_scheduler_status() -> dict:
         "has_failure": any(
             run.get("status") == "failed" for run in _last_job_runs.values()
         ),
-        # Pourquoi phase1_scanner et phase2_enricher manquent a `jobs`, le cas
-        # echeant : l'absence doit se lire, pas se deviner.
+        # Pourquoi research_rotation manque a `jobs`, le cas echeant :
+        # l'absence doit se lire, pas se deviner.
         "research_cron": dict(zip(("enabled", "reason"), research_cron_enabled())),
     }

@@ -12,10 +12,17 @@ import os
 logger = logging.getLogger("pipeline.config")
 
 
-def env_int(name: str, default: int, *, minimum: int | None = None) -> int:
+def env_int(
+    name: str,
+    default: int,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
     """
     Entier lu dans `name`, ou `default` si la variable est absente, vide, non
-    entière ou sous `minimum` — avec un avertissement dans ces deux derniers cas.
+    entière ou hors de [`minimum`, `maximum`] — avec un avertissement dans ces
+    derniers cas.
     """
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -27,5 +34,8 @@ def env_int(name: str, default: int, *, minimum: int | None = None) -> int:
         return default
     if minimum is not None and value < minimum:
         logger.warning("⚠️ %s=%d est sous le minimum %d : défaut %d retenu", name, value, minimum, default)
+        return default
+    if maximum is not None and value > maximum:
+        logger.warning("⚠️ %s=%d dépasse le maximum %d : défaut %d retenu", name, value, maximum, default)
         return default
     return value

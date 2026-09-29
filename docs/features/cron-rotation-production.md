@@ -1,6 +1,6 @@
 # Feature — Recherches automatiques en production : rotation semestrielle
 
-> **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 à 3 faites.
+> **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 à 4 faites.
 > **Branche de départ :** `newresearch`.
 > **Lire avant de coder :** ce document en entier, puis
 > [`architecture.md`](../architecture/architecture.md) §3.5 bis, §5.1, §5.3,
@@ -470,19 +470,19 @@ Une valeur non entière doit retomber sur le défaut **avec un avertissement**,
 pas faire tomber le démarrage.
 
 **Tests :**
-- [ ] `test/test_scheduler_research_gate.py` mis à jour : hors production,
+- [x] `test/test_scheduler_research_gate.py` mis à jour : hors production,
   `research_rotation` n'est pas inscrit ; en production, il l'est avec un
   `CronTrigger` à l'heure configurée ; `crowdsourcing_processor` toujours inscrit.
-- [ ] plafond : consommation 6 900 + candidat à 720 → sauté, candidat suivant à
+- [x] plafond : consommation 6 900 + candidat à 720 → sauté, candidat suivant à
   30 → lancé ; plafond 0 → rien lancé.
-- [ ] le `progress_callback` passé à la phase met bien à jour le job.
-- [ ] Phase 2 appelée avec `skip_pending=True` ; Phase 1 avec
+- [x] le `progress_callback` passé à la phase met bien à jour le job.
+- [x] Phase 2 appelée avec `skip_pending=True` ; Phase 1 avec
   `collect_campus_attachments=False`.
-- [ ] `QuotaExhaustedError` → job `failed`, aucune autre passe cette nuit.
-- [ ] `credits_used_this_month()` remet à zéro une clé du mois précédent
+- [x] `QuotaExhaustedError` → job `failed`, aucune autre passe cette nuit.
+- [x] `credits_used_this_month()` remet à zéro une clé du mois précédent
   (`test/test_tavily_key_rotation.py`).
 
-- [ ] Étape 4 terminée
+- [x] Étape 4 terminée
 
 ### Étape 5 — Visibilité dans `/admin/cron`
 
@@ -574,6 +574,7 @@ des panneaux existants du fichier (`QuotaTavilyPanel.tsx`).
 | `reap_orphaned_jobs` suppose un seul processus backend | ne pas passer à plusieurs instances Koyeb sans revoir `pipeline_jobs.py` |
 | Neon se joint mal depuis le poste de développement (P1001 sur 5432) | un test contre la vraie base peut échouer pour une raison réseau ; les tests unitaires mockent la base |
 | Collecte du rattachement campus | ne jamais l'activer depuis le cron (~15 à 17 crédits par école, souvent pour rien) |
+| Les phases avalent `QuotaExhaustedError` | une Phase 2 coupée par le quota se dit réussie : le job la lit par `_QuotaWatch` et `available_keys`, pas par l'exception |
 
 ---
 
@@ -633,3 +634,4 @@ Une ligne par session de travail, la plus récente en bas.
 | 2026-09-29 | Claude (Opus 5.5) | 1 | `get_target_period_start()`, `pending_guard.read_pending_targets`, `run_phase2_research(skip_pending=…)` ; `test_pending_guard.py` (9 tests, dont 2 vérifiés en réintroduisant le piège `programs` et en retirant la garde) ; 237 tests verts | Prochaine : étape 2. Choix d'application, sans effet sur le comportement voulu : la période est tranchée en Python sur `createdAt` (la découverte, sans période, tient dans la même requête) ; `school_categories` ne garde que SchoolStats, Accreditation et Ranking ; `skipped_pending` n'apparaît au résultat qu'en passe automatique, le résultat manuel est identique. Une lecture de la garde en erreur fait échouer la passe au lieu de payer sans garde (même connexion que le chargement des programmes). `phase2_enricher` n'appelle pas encore `skip_pending=True` : il disparaît à l'étape 4. Pas de surprise : le code était bien celui que décrit le §1.2 |
 | 2026-09-29 | Claude (Opus 5.5) | 2 | `discovery_diff.filter_new_discoveries` (pur) ; branchement dans `_run_program_discovery` entre garde-fous et INSERT, bloc `diff_against_base` au ticket, résultat `no_new_discoveries` sans ticket avec rapport rangé supprimé ; `test_discovery_diff.py` (12 tests ; mutations « sans réécriture » et « sans filtre » détectées) ; 249 tests verts | Prochaine : étape 3. Choix d'application : la lecture de la base réutilise `read_school_snapshot` du collecteur (deux SELECT de trop, School et lignes-années, plutôt que trois requêtes recopiées) ; si elle échoue, le ticket part complet comme avant, avec `diff_against_base: {"error": …}` — le rapport est payé, il ne doit pas se perdre ; `ambiguous_programs` et `ambiguous_campuses` portent le nom et les candidats ; en cas de fusion de deux voies, la première rendue est gardée avec ses attributs ; `diff_against_base` figure aussi au résultat du job. Surprise : `test_phase1_parked_report.py` passait, mais par le repli « base illisible » (sa base simulée n'avait pas de `fetchall`) : `fetchall` ajouté, base vide, ces tests suivent maintenant le chemin normal |
 | 2026-09-29 | Claude (Opus 5.5) | 3 | `pipeline_jobs` : libellés en constantes (écrivains de `internal.py` et `jobs.py` branchés dessus), `read_last_passes`, purge à deux rétentions (400 j pour un passage complet) ; `scheduler/rotation.py` : `plan_rotation` pur, `Candidate`, `load_rotation_state` en trois requêtes ; `test_rotation_plan.py` (20 tests) ; 269 tests verts | Prochaine : étape 4. Hors liste des fichiers : `backend/utils/env.py` (`env_int` : valeur illisible ou sous le minimum → défaut et avertissement, exigé au §4 et déjà utile ici ; minimum 1 jour pour les trois délais) et `pending_guard.read_discovery_pending` (une requête pour toutes les écoles plutôt qu'une par école : l'étape 5 appellera le planificateur à chaque rafraîchissement de `/admin/cron`). Choix : le coût Phase 2 est calculé depuis `ESTIMATED_CREDITS` et les listes de catégories de `phase2_research` (Em Lyon : 785, comme au §5) ; Phase 1 = `CATALOG_REQUIRED_CREDITS` + pro = 30 ; `finished_at` (sans fuseau) est lu comme de l'UTC ; au sein d'un groupe de priorité, le passage le plus ancien d'abord, puis le nom (sans casse). Pour l'étape 4 : `load_rotation_state` lit `has_active_job` sans clore les jobs morts — appeler `reap_stale_jobs()` avant, ou compter sur `_school_is_busy`. Surprise : au déploiement, aucune école n'aura de passage en mémoire (purge à 7 jours jusqu'ici) — toutes « jamais passées », comme le §3 l'anticipe ; et mon premier test d'ordre ne distinguait pas les groupes 2 et 3 (« jamais » trie déjà en tête), corrigé avec une Phase 1 jamais passée d'Em Lyon |
+| 2026-09-29 | Claude (Opus 5.5) | 4 | `TavilyKeyManager.credits_used_this_month()` ; job `research_rotation` (CronTrigger 3 h Europe/Paris, grâce 1 h, plafond, battement de cœur, `skip_pending=True`, collecte campus coupée) ; `phase1_scanner`, `phase2_enricher` et leurs constantes retirés (grep : plus aucun import ; restent `.env.example` et la doc, étape 6) ; `test_research_rotation_job.py` (17 tests), gate, collecte et clés mis à jour ; 287 tests verts, cinq mutations détectées | Prochaine : étape 5. **Écart au plan** : `QuotaExhaustedError` n'atteint jamais le job — la Phase 1 en fait un échec motivé, la Phase 2 le journalise et passe à la cible suivante, puis se dit réussie ; une Phase 2 coupée par le quota aurait fini `completed` et attendu 6 mois. Le job passe aux phases un `_QuotaWatch` qui note tout refus de `get_active_key`, et contrôle `available_keys == 0` en fin de passe : dans les deux cas, job `failed` (reprise à 14 jours, la garde de l'étape 1 évite de repayer) et fin de la nuit. L'`except QuotaExhaustedError` du plan est gardé. Autres choix : si le job `PipelineJob` ne peut pas être ouvert, la passe n'est pas lancée (sans lui, l'école serait repayée la nuit suivante) ; une école occupée laisse la place au candidat suivant ; `reap_stale_jobs()` avant la lecture d'état ; `CRON_RESEARCH_HOUR` borné à 0-23 (`env_int` gagne `maximum`) ; après une passe, les crédits du mois sont relus au gestionnaire de clés. Tests du job dans un nouveau fichier plutôt que dans le test de la garde. Surprise : les compteurs du gestionnaire de clés repartent de zéro à chaque redémarrage et ne se recalent que par la synchro `/usage` en arrière-plan ; si elle échoue, le plafond sous-estime le mois — à garder en tête à l'étape 7 |

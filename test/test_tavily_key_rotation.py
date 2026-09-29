@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 import os
 import sys
@@ -125,6 +126,26 @@ class TestTavilyKeyRotation(unittest.TestCase):
 
         # Vérifier que get_active_key l'ignore désormais
         self.assertEqual(self.manager.get_active_key(required_credits=5), "mock_key_2")
+
+    def test_credits_used_this_month_remet_a_zero_une_cle_du_mois_precedent(self):
+        """
+        Le plafond du job de rotation se calcule sur ce total. Le 1er du mois,
+        get_status() rend encore la consommation du mois écoulé tant qu'aucune
+        clé n'a été demandée : il ne doit pas servir au plafond.
+        """
+        current = datetime.now(timezone.utc).month
+        previous = 12 if current == 1 else current - 1
+        self.manager._keys[0].credits_used = 900
+        self.manager._keys[0].reset_month = previous
+        self.manager._keys[0].exhausted = True
+        self.manager._keys[1].credits_used = 120
+        self.manager._keys[2].credits_used = 30
+
+        self.assertEqual(sum(k["credits_used"] for k in self.manager.get_status()), 1050)
+        self.assertEqual(self.manager.credits_used_this_month(), 150)
+        self.assertEqual(self.manager._keys[0].credits_used, 0)
+        self.assertFalse(self.manager._keys[0].exhausted)
+        self.assertEqual(self.manager._keys[0].reset_month, current)
 
 
 if __name__ == "__main__":

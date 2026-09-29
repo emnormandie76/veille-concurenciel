@@ -6,7 +6,7 @@ Point d'entrée du pipeline IA. Intègre :
   - TavilyKeyManager : Rotation automatique des clés Tavily
   - gemma_client.py : Module Gemma (retry, nettoyage JSON, validation)
   - routers/internal.py : API Interne (trigger-scan, trigger-enrichment, pipeline-status)
-  - scheduler/jobs.py : APScheduler (phase1_scanner, phase2_enricher)
+  - scheduler/jobs.py : APScheduler (research_rotation, crowdsourcing_processor)
   - pipeline/phase1.py : Phase 1 Cartographie (Étape 5)
 
 Étapes suivantes :

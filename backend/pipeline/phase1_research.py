@@ -81,7 +81,7 @@ confrontées aux `Program`, `Campus` et arêtes RÉELS de l'école.
 publie aucune ligne-année, EM Strasbourg aucun lieu). L'admin l'active pour une
 passe précise, sur une école précise, par la case de l'écran qui déclenche la
 Phase 1 : `collect_campus_attachments` descend de la requête jusqu'ici. Le cron
-`phase1_scanner` et `trigger-scan` ne l'activent jamais. Désactivée, elle
+`research_rotation` et `trigger-scan` ne l'activent jamais. Désactivée, elle
 n'émet aucun appel et le résultat le dit : `campus_attachments` vaut
 `{"status": "disabled"}`.
 

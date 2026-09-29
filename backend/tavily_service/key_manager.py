@@ -254,6 +254,24 @@ class TavilyKeyManager:
                     break
 
 
+    def credits_used_this_month(self) -> int:
+        """
+        Crédits consommés ce mois-ci, toutes clés confondues — le plafond du job
+        de rotation se calcule dessus.
+
+        Remet d'abord à zéro, sous le verrou, une clé restée sur le mois
+        précédent. `get_status()` ne le fait pas : le 1er du mois, il rend encore
+        la consommation du mois écoulé tant qu'aucune clé n'a été demandée.
+
+        Ce sont des ESTIMATIONS (Research ne déclare pas son coût, voir
+        ESTIMATED_CREDITS), sur le mois calendaire UTC, qui n'est pas forcément
+        le cycle de facturation Tavily : d'où un plafond inférieur au budget.
+        """
+        with self._lock:
+            for key_state in self._keys:
+                self._reset_if_new_month(key_state)
+            return sum(key_state.credits_used for key_state in self._keys)
+
     def get_status(self) -> list[dict]:
         """Retourne le statut de toutes les clés (déclenche une synchro asynchrone si cache > 5 min)."""
         now = time.time()

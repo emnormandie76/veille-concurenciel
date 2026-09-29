@@ -3,12 +3,14 @@ Les jobs qui paient Research ne demarrent pas sur un poste de developpement.
 
 Le 2026-09-28, demarrer uvicorn en local lancait phase1_scanner 5 minutes plus
 tard sur EMLV et Essec, sans que personne n'ait clique. Voir
-research_cron_enabled() dans backend/scheduler/jobs.py.
+research_cron_enabled() dans backend/scheduler/jobs.py. Le job qui paie
+Research est desormais research_rotation, a heure fixe : la regle est la meme.
 """
 
 from unittest.mock import patch
 
 import pytest
+from apscheduler.triggers.cron import CronTrigger
 
 from backend.scheduler import jobs
 
@@ -55,23 +57,32 @@ def test_une_valeur_inconnue_coupe_au_lieu_de_payer(env):
     assert "ture" in reason
 
 
-def _registered_job_ids(monkeypatch) -> list[str]:
-    """Demarre un scheduler neuf, rend les id inscrits, puis l'arrete."""
+def _registered_jobs(monkeypatch) -> dict:
+    """Demarre un scheduler neuf, rend ses jobs par id, puis l'arrete."""
     monkeypatch.setattr(jobs, "_scheduler", None)
     scheduler = jobs.get_scheduler()
     with patch.object(scheduler, "start"):
         jobs.start_scheduler(key_manager=None)
-    ids = sorted(job.id for job in scheduler.get_jobs())
+    registered = {job.id: job for job in scheduler.get_jobs()}
     monkeypatch.setattr(jobs, "_scheduler", None)
-    return ids
+    return registered
 
 
 def test_start_scheduler_hors_production_ninscrit_que_le_crowdsourcing(env):
-    assert _registered_job_ids(env) == ["crowdsourcing_processor"]
+    assert sorted(_registered_jobs(env)) == ["crowdsourcing_processor"]
 
 
-def test_start_scheduler_en_production_inscrit_les_trois_jobs(env):
+def test_start_scheduler_en_production_inscrit_la_rotation_a_heure_fixe(env):
     env.setenv("ENVIRONMENT", "production")
-    assert _registered_job_ids(env) == [
-        "crowdsourcing_processor", "phase1_scanner", "phase2_enricher",
-    ]
+    env.setattr(jobs, "RESEARCH_HOUR", 5)
+    registered = _registered_jobs(env)
+
+    assert sorted(registered) == ["crowdsourcing_processor", "research_rotation"]
+    rotation = registered["research_rotation"]
+    assert isinstance(rotation.trigger, CronTrigger)
+    fields = {f.name: str(f) for f in rotation.trigger.fields}
+    assert (fields["hour"], fields["minute"]) == ("5", "0")
+    assert str(rotation.trigger.timezone) == "Europe/Paris"
+    assert rotation.misfire_grace_time == 3600
+    assert rotation.coalesce is True
+    assert rotation.max_instances == 1

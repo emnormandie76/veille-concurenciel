@@ -1,6 +1,7 @@
 # Mémoire — Ce qu'il faudra faire au déploiement sur Vercel
 
 > **Rédigé le** : 1er septembre 2026
+> **Mis à jour le** : 12 octobre 2026 — cron des recherches (§0, §6, §7, §8, §9)
 > **Statut du projet à cette date** : aucun déploiement Vercel. Tout ce qui suit
 > est à faire **le jour où** vous déployez, pas avant.
 > **Contexte** : les six étapes de l'audit technique ont été traitées. Plusieurs
@@ -22,9 +23,9 @@
 **Seul le Next.js va sur Vercel.** Le backend FastAPI (`backend/`) n'y a pas sa
 place et n'y fonctionnerait pas :
 
-- il fait tourner **APScheduler** en tâche de fond (`phase1_scanner`,
-  `phase2_enricher`, `crowdsourcing_processor`). Une fonction serverless ne vit
-  que le temps d'une requête : les crons ne tourneraient jamais ;
+- il fait tourner **APScheduler** en tâche de fond (`research_rotation`,
+  `crowdsourcing_processor`). Une fonction serverless ne vit que le temps d'une
+  requête : les crons ne tourneraient jamais ;
 - il maintient un **pool de connexions psycopg2** (`backend/db.py`, 1 à 5
   connexions) qui suppose un processus long ;
 - l'état des quotas Tavily (`TavilyKeyManager`) vit **en mémoire du processus**.
@@ -227,7 +228,7 @@ Deux variables à poser **sur l'hébergeur du backend**, pas sur Vercel :
 
 | Variable | Valeur | Conséquence si oubliée |
 |----------|--------|------------------------|
-| `ENVIRONMENT` | `production` | Tant qu'elle ne vaut pas `production`, `/docs`, `/redoc` **et** `/openapi.json` restent **ouverts** et publient la surface complète de l'API interne, routes `/internal/*` comprises. Elle décide aussi du cron : hors production, `phase1_scanner` et `phase2_enricher` ne sont pas inscrits (forçage : `CRON_RESEARCH_ENABLED`). |
+| `ENVIRONMENT` | `production` | Tant qu'elle ne vaut pas `production`, `/docs`, `/redoc` **et** `/openapi.json` restent **ouverts** et publient la surface complète de l'API interne, routes `/internal/*` comprises. Elle décide aussi du cron : hors production, `research_rotation` n'est pas inscrit (forçage : `CRON_RESEARCH_ENABLED`) ; en production il l'est, et **paie Tavily chaque nuit** sous `CRON_MONTHLY_CREDIT_CEILING` (défaut 7 000 — voir §8). |
 | `ALLOWED_ORIGINS` | `https://votre-domaine.vercel.app` | En production, si elle est absente, **aucune origine croisée n'est acceptée** et une erreur est journalisée au démarrage. |
 
 À noter : les appels Next.js → FastAPI sont des appels **serveur à serveur**.
@@ -240,8 +241,7 @@ La variable ne concerne que d'éventuels appels directs depuis un navigateur.
 
 | Fonctionnalité | Où elle vit | Conséquence |
 |----------------|-------------|-------------|
-| `phase1_scanner` (cartographie) | APScheduler, backend FastAPI | rien à faire côté Vercel — **inscrit seulement si `ENVIRONMENT=production`** (ou `CRON_RESEARCH_ENABLED=true`) sur l'hébergeur du backend |
-| `phase2_enricher` (enrichissement) | idem | idem |
+| `research_rotation` (rotation nocturne des recherches, Phase 1 et Phase 2) | APScheduler, backend FastAPI | rien à faire côté Vercel — **inscrit seulement si `ENVIRONMENT=production`** (ou `CRON_RESEARCH_ENABLED=true`) sur l'hébergeur du backend ; au plus une passe par nuit à 3 h (Europe/Paris), sous plafond mensuel. Un backend en veille à l'heure dite ne lance rien |
 | `crowdsourcing_processor` | idem, toutes les minutes | **les contributions publiques ne seront traitées que si le backend tourne.** Sans lui, les tickets s'accumulent en `Pending_AI`. |
 
 Si vous vouliez un jour tout mettre sur Vercel, il faudrait remplacer
@@ -256,7 +256,12 @@ passage en serverless.
 1. Créer la base Upstash / activer Vercel KV → récupérer les deux variables.
 2. Déployer le **backend FastAPI** d'abord, avec `ENVIRONMENT=production`,
    `ALLOWED_ORIGINS`, `INTERNAL_API_TOKEN`, `DATABASE_URL`, `GEMINI_API_KEY`,
-   les clés Tavily. Noter son URL publique.
+   les clés Tavily — **et `CRON_MONTHLY_CREDIT_CEILING=0`**. Sans elle,
+   `ENVIRONMENT=production` inscrit une rotation qui paie dès la première nuit,
+   jusqu'à 7 000 crédits estimés par mois. À 0, elle planifie sans rien dépenser, le
+   temps de la passe à blanc puis d'une première passe réelle surveillée, avec
+   l'accord du propriétaire (`docs/testing/manual_testing_cron.md` étape 5,
+   `docs/features/cron-rotation-production.md` étape 7). Noter son URL publique.
 3. Appliquer les migrations sur la base de production (§3).
 4. Créer le projet Vercel, renseigner **toutes** les variables du §1.
 5. Déployer. Vérifier que le build passe (`prisma generate && next build`).
@@ -282,6 +287,7 @@ passage en serverless.
 | 8 | Soumettre une contribution avec une URL hors du domaine de l'école | **400** avec message explicite |
 | 9 | ~65 appels rapides sur `/api/v1/schools` | 429 au-delà de 60/min |
 | 10 | Console navigateur sur `/admin` | aucune violation CSP |
+| 11 | `/admin/cron` → panneau « Rotation automatique » | badge **à blanc** (plafond 0), prochaines passes listées ; journal de la première nuit : « plafond mensuel atteint », aucune ligne `🚀 [ROTATION]` |
 
 ---
 

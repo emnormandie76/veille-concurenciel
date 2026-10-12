@@ -55,7 +55,7 @@ La liste complète, commentée et classée par exécution, est dans
 | Variable | Piège |
 |----------|-------|
 | `INTERNAL_API_TOKEN` | Le même secret a porté trois noms. C'est celui-ci le bon ; `FASTAPI_INTERNAL_TOKEN` et `INTERNAL_TOKEN` restent acceptés mais sont à supprimer. |
-| `ENVIRONMENT` | Tant qu'elle ne vaut pas `production`, `/docs`, `/redoc` et `/openapi.json` du backend restent **ouverts**. |
+| `ENVIRONMENT` | Tant qu'elle ne vaut pas `production`, `/docs`, `/redoc` et `/openapi.json` du backend restent **ouverts**. À `production`, elle inscrit la rotation nocturne des recherches, qui **paie Tavily** sous le plafond `CRON_MONTHLY_CREDIT_CEILING` (`0` = à blanc) — voir `docs/architecture/architecture.md` §5.5. |
 | `ALLOWED_ORIGINS` | Absente en production, aucune origine croisée n'est acceptée (et une erreur est journalisée). |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Sans magasin partagé, la limitation de débit retombe en mémoire — elle ralentit une attaque mais ne la bloque pas sur une plateforme sans état. |
 

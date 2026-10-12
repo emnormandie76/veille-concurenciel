@@ -1,6 +1,6 @@
 # Cahier des Charges : Plateforme de Données de l'Enseignement Supérieur (School Data Pipeline)
 
-> **Mise à jour du 28 septembre 2026.** Les exigences (humain dans la boucle,
+> **Mise à jour du 12 octobre 2026.** Les exigences (humain dans la boucle,
 > pipeline en deux phases, crowdsourcing borné aux écoles existantes) sont
 > inchangées. Les choix techniques ont été alignés sur le code : Tavily Research
 > rédige un rapport que la cascade Gemini structure, le modèle de données est
@@ -78,11 +78,11 @@ Le système gère plusieurs types de données tout en maintenant un typage stric
 Le pipeline automatisé (Workflow B) est divisé en deux étapes séquentielles avec validation obligatoire entre les deux.
 
 ### 5.1. Phase 1 : Cartographie (Program Discovery)
-1. **Détection :** Le Cron détecte qu'une école `ACTIVE` n'a aucun `Campus` en BDD (en production), ou l'admin lance la passe depuis `/admin/cron`.
+1. **Détection :** En production, la rotation nocturne retient une école `ACTIVE` dont la Phase 1 est due — jamais passée (les écoles sans programme en premier), puis tous les six mois —, ou l'admin lance la passe depuis `/admin/cron`. Sur une école déjà cartographiée, la découverte ne propose que ce qui manque en base.
 2. **Recherche :** FastAPI lit la page catalogue de l'école (ancrage), puis lance **Tavily Research** (mode `pro`) avec un brief contextualisé (nom de l'école, domaine officiel).
 3. **Extraction :** Tavily Research croise les sources et rédige un rapport ; la cascade Gemini le convertit en JSON. Si l'extraction échoue, le rapport est conservé et repris à la passe suivante, sans repayer Research.
 4. **Ticket Inbox :** Création d'un ticket `ContributionInbox` avec `ai_category = "Program_Discovery"` et `status = "Pending_Admin"`.
-5. **⏸️ Blocage strict :** Le Cron ne lance **jamais** la Phase 2 tant que ce ticket n'est pas validé par l'Admin.
+5. **⏸️ Blocage strict :** Le Cron ne lance **jamais** la Phase 2 d'une école tant qu'aucun de ses programmes n'a été validé par l'Admin. La Phase 2 ne lit que la table `Program` : une nouvelle découverte en attente n'empêche pas l'enrichissement des programmes déjà validés, et n'y ajoute rien.
 
 ### 5.2. Phase 2 : Enrichissement Chirurgical (Deep Dive)
 Après validation de la Phase 1, le Cron enchaîne la recherche de données granulaires en utilisant les vrais noms de programmes et campus validés.
@@ -147,5 +147,5 @@ Pour garantir la résilience, la fiabilité et maîtriser les coûts, les contra
 3. **Extraction "Enrichie" via Tavily Research :** Le pipeline utilise l'API Tavily Research (agent de recherche autonome), **sans `output_schema`** : l'agent rédige un rapport, conservé dans `raw_report`, que la cascade Gemini convertit en JSON natif. **L'utilisation de Pydantic reste formellement interdite avec les modèles Gemma** (crowdsourcing).
 4. **Le bridage automatique (Quota Guard Tavily) :** Le pipeline IA s'arrêtera automatiquement dès l'atteinte du quota de l'API (rotation de clés avec stratégie Greedy).
 5. **Gestion simplifiée des URLs :** Le champ `urls` de l'Inbox gère le flux frontend, et à la validation, les liens précis seront insérés de manière propre dans les champs `source_url` des tables finales.
-6. **Blocage Phase 1 → Phase 2 :** Le Cron ne lance JAMAIS la Phase 2 (enrichissement) tant que le ticket `Program_Discovery` (Phase 1) n'est pas validé par un Admin/Modérateur. Cela garantit que seuls des programmes confirmés sont enrichis.
+6. **Blocage Phase 1 → Phase 2 :** Le Cron ne lance JAMAIS la Phase 2 (enrichissement) sur un programme que l'Admin/Modérateur n'a pas validé : une école sans programme validé n'est pas candidate, et la Phase 2 ne lit que la table `Program`. Cela garantit que seuls des programmes confirmés sont enrichis.
 7. **Admin-only pour les écoles :** Seul un Admin ou Modérateur peut ajouter/modifier/supprimer des écoles. Les utilisateurs publics ne peuvent contribuer que pour les écoles déjà existantes en BDD.

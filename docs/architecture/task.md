@@ -22,6 +22,7 @@
 > | Étapes 8-9 — cache ISR | déclaré mais **inopérant** sur l'API v1 (voir `API-rest.md`) |
 > | Étape 11 — CronTargets dans `/admin/cron` | jobs `PipelineJob`, recherche ciblée, case « collecte campus » |
 > | `APScheduler` toujours actif | jobs Research inscrits **seulement en production** |
+> | Étapes 5.4 et 6.5 — `phase1_scanner` (`CRON_PHASE1_INTERVAL_HOURS`), `phase2_enricher` (`CRON_PHASE2_INTERVAL_HOURS`) | un seul job nocturne, `research_rotation`, sous plafond mensuel — depuis le 29 septembre 2026 (`architecture.md` §5.5) |
 >
 > **Fonctions de ce plan retirées depuis**, n'étant plus appelées nulle part :
 > `is_content_relevant` et `fact_check` (`ai/gemma_client.py`), puis

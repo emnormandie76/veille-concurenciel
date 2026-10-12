@@ -2,7 +2,7 @@
 
 Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plateforme School Data Pipeline, ainsi que les solutions apportées par l'équipe.
 
-> **Mise à jour du 28 septembre 2026.** Chaque cas indique sa solution actuelle ;
+> **Mise à jour du 12 octobre 2026.** Chaque cas indique sa solution actuelle ;
 > quand la mise en œuvre s'écarte de la solution décidée à l'origine, un
 > paragraphe **« Mise en œuvre »** le dit. Le tableau récapitulatif est dans
 > `architecture/architecture.md` §9.
@@ -41,7 +41,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Contexte :** Le Workflow B (Pipeline IA Automatisé) lit une liste cible d'écoles pour identifier les données manquantes et déclenche une recherche.
 - **Problème :** Une école spécifique n'a pas de page "Tarifs" publique (ex: il faut créer un compte, télécharger une brochure PDF protégée, ou le site est en maintenance). L'IA automatisée cherche, ne trouve rien, et au prochain passage du cron, elle va recommencer à chercher pour la même école.
 - **Impact :** Épuisement du quota Tavily en boucle sur des écoles dont la donnée est inaccessible publiquement.
-- **Solution actuelle :** ~~Anciennement géré via la table `CronTarget` avec blacklist après 3 échecs.~~ **Cette table a été supprimée.** Chaque passe est tracée dans `PipelineJob` (`failed`, `error`). Le pipeline Tavily Research est suffisamment intelligent pour naviguer autour des obstacles (paywalls, sites en maintenance). La rotation de clés et les quotas Tavily restent la protection principale contre l'épuisement des crédits.
+- **Solution actuelle :** ~~Anciennement géré via la table `CronTarget` avec blacklist après 3 échecs.~~ **Cette table a été supprimée.** Chaque passe est tracée dans `PipelineJob` (`failed`, `error`) ; une passe automatique en échec n'est reprise que 14 jours plus tard (`CRON_RESEARCH_RETRY_FAILED_DAYS`), une passe réussie 182 jours plus tard. Le pipeline Tavily Research est suffisamment intelligent pour naviguer autour des obstacles (paywalls, sites en maintenance). La rotation de clés et les quotas Tavily restent la protection principale contre l'épuisement des crédits.
 
 ### Edge Case 5 : Sources de données contradictoires (Véracité)
 - **Contexte :** Workflow A ou B. L'IA analyse le texte fourni par Tavily pour extraire un classement ou un prix.
@@ -83,6 +83,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Problème :** Le Cron repasse tous les mois, l'IA extrait les mêmes tarifs et crée un ticket `Pending_Admin` dans l'Inbox à chaque fois.
 - **Impact :** L'Admin est noyé sous des centaines de tickets à valider qui n'apportent rien de nouveau par rapport aux tables de production actuelles.
 - **Solution confirmée :** **Avant d'insérer dans l'Inbox, le backend FastAPI fait un "Diff" (comparaison) entre le JSON renvoyé par l'IA et la table rigide `PricingRecord` actuelle. Si rien n'a changé (mêmes montants, mêmes années), on annule silencieusement la création du ticket.**
+- **Mise en œuvre :** `has_data_changed` (`pipeline/diff.py`), pour toutes les catégories. Le diff ne compare qu'à la **production** : un ticket encore en attente n'arrête rien. C'est l'Edge Case 26.
 
 ## Session 5
 
@@ -156,7 +157,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 ### Edge Case 22 : Des passes payantes lancées sans clic
 - **Contexte :** Le backend local est lancé pour développer (`uvicorn`).
 - **Problème :** APScheduler inscrivait `phase1_scanner`, qui passait 5 minutes plus tard sur toutes les écoles `ACTIVE` sans campus — EMLV et Essec, ~30 crédits chacune.
-- **Solution actuelle :** `phase1_scanner` et `phase2_enricher` ne sont inscrits qu'avec `ENVIRONMENT=production`, ou forcés par `CRON_RESEARCH_ENABLED=true|false` (une valeur inconnue les coupe). Le traitement du crowdsourcing reste inscrit.
+- **Solution actuelle :** le job qui paie Research, `research_rotation` (qui a remplacé `phase1_scanner` et `phase2_enricher`), n'est inscrit qu'avec `ENVIRONMENT=production`, ou forcé par `CRON_RESEARCH_ENABLED=true|false` (une valeur inconnue le coupe). Forcé en local, il lance une vraie passe à l'heure dite : jamais sans `CRON_MONTHLY_CREDIT_CEILING=0`. Le traitement du crowdsourcing reste inscrit, et appelle Tavily et Gemma s'il trouve des tickets `Pending_AI`.
 
 ### Edge Case 23 : Le site et la base ne découpent pas les programmes de la même façon
 - **Contexte :** Rattachement campus. La base a **un** `Programme Grande École` ; le site publie trois fiches (en 5 ans, en 2 ou 3 ans, en blended learning).
@@ -171,3 +172,30 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 ### Edge Case 25 : Une école qui ne publie aucun lieu
 - **Contexte :** Les fiches d'EM Strasbourg ont un encart régulier (conditions d'accès, diplôme, langues, rythme, durée) **sans champ de lieu**.
 - **Solution actuelle :** zéro ligne, aucun ticket, aucune erreur. La collecte étant désactivée par défaut, ne pas la lancer sur cette école évite 9 à 17 crédits pour rien.
+
+## Session 10 — rotation des recherches en production (septembre 2026)
+
+### Edge Case 26 : Un ticket en attente repayé à chaque passe
+- **Contexte :** Passe automatique de Phase 2 sur une école dont des tickets attendent la validation de l'admin.
+- **Problème :** `has_data_changed` ne compare qu'à la production, et `_insert_ticket` n'interroge pas l'Inbox : chaque cible encore en attente était recherchée, payée et déposée une seconde fois.
+- **Solution actuelle :** en passe automatique (`skip_pending=True`), `pending_guard.read_pending_targets` lit les tickets `Pending_Admin` `Automated_AI` de l'école créés depuis le début de la période cible, et la passe saute la catégorie d'école, le programme (Pricing) ou l'arête (Capacity) concernés. Ranking garde la liste complète des programmes. Côté Phase 1, une école dont une découverte attend n'est pas candidate. Les recherches manuelles restent libres ; un ticket de crowdsourcing ne bloque rien.
+
+### Edge Case 27 : Redémarrages et déclencheurs à intervalle
+- **Contexte :** Koyeb redémarre l'instance ; APScheduler compte un `IntervalTrigger` depuis le démarrage.
+- **Problème :** la Phase 1 (premier passage à +5 min) partait à chaque redémarrage ; la Phase 2 (toutes les 24 h, sans date de départ) ne partait jamais si l'instance redémarrait au moins une fois par jour.
+- **Solution actuelle :** un seul job à heure fixe, `research_rotation` (`CronTrigger`, 3 h Europe/Paris), qui lit le dernier passage de chaque école dans `PipelineJob` (passages gardés 400 jours) et lance au plus une passe par nuit sous un plafond mensuel. Un démarrage après l'heure saute la nuit sans la rattraper : le cycle étant de six mois, le retard est d'un jour.
+
+### Edge Case 28 : La Phase 1 relancée sur une école déjà cartographiée
+- **Contexte :** Une découverte repasse sur une école dont les campus et programmes sont en base.
+- **Problème :** le ticket reprenait tous les programmes, et la validation fait un `upsert` sur le nom exact : « Programme Grande Ecole » au lieu de « Programme Grande École » créait un second `Program`, que la Phase 2 payait ensuite.
+- **Solution actuelle :** `discovery_diff.filter_new_discoveries` ne garde que ce qui manque en base ; un campus ou un programme reconnu est réécrit à l'orthographe de la base, un ambigu est gardé tel quel et signalé. Rien de nouveau → aucun ticket. Base illisible → ticket complet, signalé dans `diff_against_base.error`.
+
+### Edge Case 29 : Un quota épuisé au milieu d'une passe automatique
+- **Contexte :** Les clés Tavily s'épuisent pendant une Phase 2 lancée par la rotation.
+- **Problème :** les phases avalent `QuotaExhaustedError` ; la Phase 2 passe à la cible suivante, puis se dit réussie. Le job aurait fini `completed` et l'école attendu six mois ce qu'elle n'avait pas reçu.
+- **Solution actuelle :** le job enveloppe le gestionnaire de clés dans un `_QuotaWatch` qui note tout refus, et contrôle `available_keys == 0` en fin de passe : job `failed`, reprise à 14 jours (la garde de l'Edge Case 26 évite de repayer ce qui a été déposé), et plus aucune passe cette nuit.
+
+### Edge Case 30 : Une passe automatique déclarée morte en pleine exécution
+- **Contexte :** Une Phase 2 dure plus d'une heure.
+- **Problème :** sans progression, `updated_at` ne bouge pas ; au bout de `PIPELINE_JOB_STALE_SECONDS` (30 min), `reap_stale_jobs` la clôt en `failed` et l'école paraît libre pour un lancement concurrent.
+- **Solution actuelle :** chaque passe de la rotation passe un `progress_callback` qui met à jour le job : c'est son battement de cœur.

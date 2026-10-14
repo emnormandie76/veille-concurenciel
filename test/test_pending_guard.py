@@ -112,20 +112,26 @@ def _run(db: FakeDB, *, skip_pending: bool, ranking_extraction: dict | None = No
 
     `_run_research_and_extract` est le seul chemin vers Research : chaque appel
     qu'il reçoit est un appel payé. Sauf Ranking quand on le demande, il rend
-    « rien d'extrait », ce qui n'écrit aucun ticket.
+    « rien de neuf » : une extraction réussie que `has_data_changed` juge
+    identique à la production, ce qui n'écrit aucun ticket. (« Rien
+    d'extrait » est désormais un échec de la cible, qui ferait échouer la
+    passe : test_phase2_outcomes.py.)
     """
     calls: list[dict] = []
 
     def research(**kwargs):
         calls.append(kwargs)
         if kwargs["category"] == "Ranking" and ranking_extraction is not None:
-            return ranking_extraction, "## Classements", []
-        return None, "", []
+            return phase2_research.ResearchOutcome(
+                ranking_extraction, "## Classements", [], phase2_research.OUTCOME_OK,
+            )
+        return phase2_research.ResearchOutcome({}, "", [], phase2_research.OUTCOME_OK)
 
     with patch("backend.db.get_db_connection", db.connection), \
             patch.object(phase2_research, "get_target_period_start", return_value=PERIOD_START), \
             patch.object(phase2_research, "_run_research_and_extract", side_effect=research), \
-            patch.object(phase2_research, "_write_ranking_tickets", return_value=0) as write_ranking, \
+            patch.object(phase2_research, "has_data_changed", return_value=False), \
+            patch.object(phase2_research, "_write_ranking_tickets", return_value=(0, 0)) as write_ranking, \
             patch.object(phase2_research, "build_ranking_research_input",
                          wraps=phase2_research.build_ranking_research_input) as ranking_brief:
         result = phase2_research.run_phase2_research("s1", "key-manager", skip_pending=skip_pending)

@@ -204,7 +204,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 
 ## Session 11 — backend local sur demande (octobre 2026)
 
-Défauts F3, F4, F8 et F9 de [`backend-local.md`](features/backend-local.md) §5, corrigés à l'étape 3.
+Défauts F3, F4, F8 et F9 de [`backend-local.md`](features/backend-local.md) §5, corrigés à l'étape 3 ; F1, corrigé à l'étape 4.
 
 ### Edge Case 31 : Un démarrage raté qui se dit prêt
 - **Contexte :** Démarrage du backend (`lifespan` de `backend/main.py`).
@@ -220,3 +220,8 @@ Défauts F3, F4, F8 et F9 de [`backend-local.md`](features/backend-local.md) §5
 - **Contexte :** Traitement des contributions, chaque minute.
 - **Problème :** base injoignable : le traitement faisait `return` chaque minute, sans trace dans `pipeline-status`. Le job n'était pas suivi.
 - **Solution actuelle :** un échec de lecture de la file lève `SubmissionQueueUnavailable`. Le job passe par une enveloppe qui inscrit chaque passage au registre (`last_runs.crowdsourcing_processor`) : `failed` sur une base injoignable ou un quota Tavily épuisé, sinon `success` avec le bilan du passage. `has_failure` dégrade alors `pipeline-status`.
+
+### Edge Case 34 : Une Phase 2 dont toutes les cibles échouent, et qui se dit réussie
+- **Contexte :** Phase 2, une cible par appel Research : SchoolStats, Accreditation et Ranking pour l'école, Pricing par programme, Capacity par arête programme-campus.
+- **Problème :** une recherche ou une extraction en échec rendait `None`, et la boucle passait à la cible suivante. En fin de passe, le résultat valait toujours `success: True`. Une Phase 2 dont toutes les cibles avaient échoué (Gemini saturé, panne Tavily hors quota) finissait `completed`, et l'école n'était pas reprise avant 182 jours. Les rapports Research payés étaient perdus.
+- **Solution actuelle :** chaque cible rend un motif (`ok`, `dry_run`, `research_failed`, `empty_report`, `extraction_unavailable`, `extraction_failed`, `bad_shape`). La passe est en échec dès qu'une cible a échoué (décision D2) : le résultat porte `outcomes` (les motifs par catégorie), `unchanged`, `failed_targets` (`[{category, label, reason}]`), et le message nomme les cibles en échec. Le job finit `failed`, avec son résultat, et l'école repasse 14 jours plus tard ; la garde de l'Edge Case 26 évite de repayer ce qui a été déposé. Le rapport d'une cible dont l'extraction a échoué reste perdu : le ranger est hors du plan (D3).

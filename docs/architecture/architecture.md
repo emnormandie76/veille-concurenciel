@@ -5,8 +5,9 @@
 > **Mises à jour du plan [backend-local](../features/backend-local.md)**
 > (branche `localpython`, octobre 2026) : pont WebSocket et migrations en 443
 > (§10.8) ; **plus de cron** : les passes dues partent sur demande (§5.5), et un
-> démarrage raté se voit (§2.3). Les sections qui citent encore Koyeb (§1.2,
-> §2.1, §2.2) seront reprises à l'étape 8 du plan.
+> démarrage raté se voit (§2.3) ; une Phase 2 dont une cible a échoué finit
+> `failed` et nomme ses cibles (§5.3). Les sections qui citent encore Koyeb
+> (§1.2, §2.1, §2.2) seront reprises à l'étape 8 du plan.
 > Depuis la v2.0 : les deux crons Research (`phase1_scanner`, `phase2_enricher`)
 > sont remplacés par une **rotation nocturne** sous plafond mensuel (§5.5) ; une
 > passe automatique ne repaie pas une cible dont le ticket attend l'admin
@@ -1012,13 +1013,58 @@ Charger l'école, ses programmes et ses arêtes (connexion courte, puis fermée)
  ──► Niveau ÉCOLE — SchoolStats, Accreditation, Ranking : 1 appel Research par catégorie
  ──► Niveau PROGRAMME — Pricing : 1 appel par programme
  ──► Niveau PROGRAMME × CAMPUS — Capacity : 1 appel par arête ProgramCampus
- Pour chaque appel :
+ Pour chaque appel (une « cible ») :
    ──► Tavily Research (pro ou mini, voir tableau) → rapport rédigé
    ──► Extraction Gemini (plancher de la catégorie)
    ──► Diff vs production (has_data_changed) : IDENTIQUE → pas de ticket (Edge Case 10)
    ──► INSERT ContributionInbox(Pending_Admin, raw_report) — un ticket par entrée
        pour les catégories à liste, reliés par submission_group_id
+   Recherche ou extraction en échec → motif compté, cible suivante
+ Bilan : success = aucune cible en échec (D2)
 ```
+
+**Résultat d'une passe.** Chaque cible rend un motif
+(`_run_research_and_extract`, `ResearchOutcome`) :
+
+| Motif | Quand | Échec ? |
+|---|---|---|
+| `ok` | Gemini rend un objet JSON | non |
+| `dry_run` | `dry_run=True` : Research simulé, rien d'extrait ni d'écrit | non |
+| `research_failed` | l'appel Research lève : panne, délai, quota Tavily épuisé | oui |
+| `empty_report` | rapport vide | oui |
+| `extraction_unavailable` | `ExtractionUnavailable` : la cascade est épuisée au-dessus du plancher | oui |
+| `extraction_failed` | une autre `GeminiError` (réponse illisible…) | oui |
+| `bad_shape` | Gemini rend autre chose qu'un objet | oui |
+
+`run_phase2_research` rend :
+
+- `success` : **faux dès qu'une cible a échoué** en recherche ou en extraction
+  (décision D2 de [`backend-local.md`](../features/backend-local.md) §2.2).
+  Avant l'étape 4 de ce plan, une passe valait toujours `success: True`, même
+  quand toutes ses cibles avaient échoué (Edge Case 34) ;
+- `tickets_created` et `message` : « 3 ticket(s) créé(s) sur 6 scans », suivi,
+  en cas d'échec, de « ; 2 cible(s) en échec : Pricing « Bachelor
+  Management » (extraction mal formée), … ». Cinq cibles au plus sont
+  nommées, puis un compte (« (+3) ») : le message part dans `PipelineJob.error`
+  et dans le rapport des passes dues ;
+- `outcomes` : les motifs par catégorie, en nombre de **cibles**
+  (`{"Pricing": {"ok": 23, "extraction_unavailable": 1}}`) ;
+- `unchanged` : par catégorie, le nombre d'**enregistrements** identiques à la
+  production, donc sans ticket. Un rapport Ranking en porte plusieurs.
+  Accreditation n'a pas de comparaison (`_get_existing_record` rend `None`) :
+  elle écrit un ticket à chaque passe et n'y figure jamais ;
+- `failed_targets` : `[{category, label, reason}]`, dans l'ordre de la passe ;
+  `label` est l'école, le programme ou « programme @ campus » ;
+- `skipped_pending`, en passe automatique seulement (garde ci-dessous). Une
+  cible sautée n'est ni comptée ni en échec.
+
+Tous les déclencheurs clôturent le job sur `result["success"]` : `failed`
+avec le message, et le résultat est gardé dans `PipelineJob.result`, rotation
+comprise (§5.5). Le rapport Research d'une cible dont l'extraction a échoué
+reste perdu : le ranger, comme la Phase 1 le fait (Edge Case 21), est hors du
+plan (décision D3). Un quota épuisé en cours de passe fait échouer toutes les
+cibles suivantes en `research_failed` ; en rotation, `_QuotaWatch` le
+reconnaît à part (§5.5).
 
 **Niveaux de granularité :**
 
@@ -1266,6 +1312,13 @@ Phase 2 ciblée, non. Le délai court après un échec évite de repayer à chaq
 lancement une découverte qui échoue, sans attendre six mois après une simple
 coupure.
 
+**Reprise après échec.** Une Phase 2 est `failed` dès qu'une de ses cibles a
+échoué en recherche ou en extraction (§5.3, décision D2) : l'école repasse
+14 jours plus tard, et non 182. La reprise refait **toute** la passe. La garde
+« en attente » (§5.3) saute ce qui a été déposé, mais les cibles inchangées et
+celles qui avaient échoué sont repayées ; l'estimation (ci-dessous) ne
+soustrait rien, et le plafond mensuel borne la dépense.
+
 **Ordre :** (1) Phase 1 des écoles sans aucun `Program` — tout le reste en
 dépend ; (2) Phase 2 jamais passée — la découverte vient d'être validée ;
 (3) les autres, du passage le plus ancien au plus récent ; (4) à égalité, nom
@@ -1295,20 +1348,22 @@ rangé) — l'estimation est prudente :
 4. Phase 1 : `run_phase1_research(..., collect_campus_attachments=False)` —
    une passe due n'active jamais la collecte (§5.4). Phase 2 :
    `run_phase2_research(..., skip_pending=True)` ;
-5. clôture : `result["success"]` → `completed`, sinon `failed` avec le message.
-   Une Phase 1 sans nouveauté (`no_new_discoveries`) est un succès : l'école est
-   passée.
+5. clôture : `result["success"]` → `completed`, sinon `failed` avec le message
+   et le résultat (une Phase 2 y nomme ses cibles en échec, §5.3). Une Phase 1
+   sans nouveauté (`no_new_discoveries`) est un succès : l'école est passée.
 
 **Quota épuisé.** Les phases **avalent** `QuotaExhaustedError` : la Phase 1 en
-fait un échec motivé, la Phase 2 une ligne de journal par cible avant de passer
-à la suivante — puis elle se dit réussie. Une Phase 2 coupée par le quota aurait
-fini `completed` et attendu six mois ce qu'elle n'avait pas reçu. Le job passe
-donc aux phases un `_QuotaWatch`, qui enveloppe le gestionnaire de clés et note
-tout refus de `get_active_key`, et contrôle `available_keys == 0` en fin de
-passe. Dans les deux cas : job `failed` (« Quota Tavily épuisé pendant la
-passe… »), reprise après 14 jours — la garde du §5.3 évite de repayer ce qui a
-déjà été déposé — et **fin de l'exécution**. Une `QuotaExhaustedError` qui
-remonterait malgré tout est traitée de même.
+fait un échec motivé, la Phase 2 un `research_failed` par cible avant de passer
+à la suivante, puis elle finit en échec (§5.3). Jusqu'à l'étape 4 du plan
+backend-local, elle se disait réussie : coupée par le quota, elle aurait fini
+`completed` et attendu six mois ce qu'elle n'avait pas reçu. Le job passe
+toujours aux phases un `_QuotaWatch`, qui enveloppe le gestionnaire de clés et
+note tout refus de `get_active_key`, et contrôle `available_keys == 0` en fin de
+passe : c'est lui qui distingue le quota d'une panne. Dans les deux cas : job
+`failed` (« Quota Tavily épuisé pendant la passe… »), reprise après 14 jours
+— la garde du §5.3 évite de repayer ce qui a déjà été déposé — et **fin de
+l'exécution**. Une `QuotaExhaustedError` qui remonterait malgré tout est
+traitée de même.
 
 **Plafond mensuel.** Une passe ne part que si `crédits du mois + estimation ≤
 CRON_MONTHLY_CREDIT_CEILING` (7 000, sous le budget de ~10 000 pour laisser de
@@ -1633,6 +1688,7 @@ Format : `{ "error": "Description" }`
 | 31 | Démarrage raté qui se dit prêt (F3) ; intervalle du crowdsourcing illisible qui bloquait tout le scheduler (F9) | Chaque échec du démarrage (base, reprise des jobs, clés Tavily, scheduler) journalisé en `ERROR` et ajouté à `startup_errors` ; `/health` et `pipeline-status` en `degraded`. `SELECT 1` au démarrage, message qui cite le pilote. Intervalle lu par `env_int` (§2.3) | `main.py`, `db.py`, `scheduler/jobs.py` |
 | 32 | Crédits du mois repartis de zéro à chaque lancement : plafond qui croit le mois vierge (F8) | Synchro `/usage` bloquante avant toute passe réelle ; une clé non recalée → rien ne part (`USAGE_SYNC_FAILED`). Dernière synchro dans `rotation.usage_sync` (§5.5) | `tavily_service/key_manager.py`, `scheduler/jobs.py` |
 | 33 | Base injoignable : le crowdsourcing faisait `return` chaque minute, sans trace (F4) | `SubmissionQueueUnavailable` levée ; chaque passage inscrit au registre (`last_runs.crowdsourcing_processor`), `failed` aussi sur un quota épuisé ; `has_failure` dégrade `pipeline-status` | `crowdsourcing/processor.py`, `scheduler/jobs.py` |
+| 34 | Phase 2 dont toutes les cibles échouent (Gemini saturé, panne Tavily) qui se dit réussie : l'école attendait 182 jours (F1) | Un motif par cible ; `success: False` dès qu'une cible a échoué (D2), `failed_targets` et `outcomes` dans le résultat, cibles nommées dans le message ; job `failed`, reprise à 14 jours (§5.3, §5.5) | `pipeline/phase2_research.py` |
 
 ---
 
@@ -1987,10 +2043,24 @@ contrat.
 Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
 (+25 sous-tests) et 36 tests TypeScript ; au 12 octobre, 291 et 43 ; le
 14 octobre, après l'étape 1 du plan backend-local, 291 et 50 ; après l'étape 2,
-319 et 68. **Au 14 octobre 2026, après l'étape 3 : 362 tests Python (+25
-sous-tests) et 68 tests TypeScript**, tous verts. Les deux suites lisent des
+319 et 68 ; après l'étape 3, 362 et 68. **Au 14 octobre 2026, après
+l'étape 4 : 379 tests Python (+25 sous-tests) et 68 tests TypeScript**, tous
+verts. Les deux suites lisent des
 fixtures communes quand une règle existe en deux langages
 (`test/fixtures/attachment_plan_cases.json`).
+
+**Une Phase 2 qui dit la vérité** (étape 4, §5.3), sans base ni réseau :
+`test/test_phase2_outcomes.py` fait tourner la vraie `run_phase2_research`
+et le vrai `_run_research_and_extract`, Research, Gemini et la base étant des
+doubles. Chaque motif d'échec sur toutes les cibles → `success: False` et
+`failed_targets` complet ; quota épuisé → `research_failed` ; échecs mêlés à
+des tickets → compteurs justes ; une seule cible en échec suffit (D2) ;
+production identique → aucun ticket, `unchanged` compté ; `dry_run` sans
+extraction ; une cible sautée par la garde n'est ni comptée ni en échec ;
+la rotation et les deux déclencheurs manuels clôturent `failed` en gardant le
+résultat. Dans `test/test_pending_guard.py`, la doublure de la recherche rend
+« rien de neuf » (une extraction jugée identique à la production) et non plus
+« rien d'extrait », devenu un échec ; ses assertions n'ont pas changé.
 
 **Passes dues et démarrage** (étape 3, §2.3 et §5.5), sans base ni réseau :
 

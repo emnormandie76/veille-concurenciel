@@ -277,9 +277,11 @@ def _run_rotation_pass(candidate, key_manager) -> _PassOutcome:
         _finish_rotation_job(job_id, pipeline_jobs.STATUS_COMPLETED, result=result)
         return _PassOutcome(pipeline_jobs.STATUS_COMPLETED)
 
+    # Le résultat est gardé : une Phase 2 en échec y nomme ses cibles
+    # (`failed_targets`), comme le font déjà les déclencheurs manuels.
     message = result.get("message") or "Échec inconnu"
     logger.warning(f"⚠️ [ROTATION] {_describe(candidate)} : {message}")
-    _finish_rotation_job(job_id, pipeline_jobs.STATUS_FAILED, error=message)
+    _finish_rotation_job(job_id, pipeline_jobs.STATUS_FAILED, result=result, error=message)
     return _PassOutcome(pipeline_jobs.STATUS_FAILED, message)
 
 

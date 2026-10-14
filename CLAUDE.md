@@ -56,9 +56,13 @@ Chantier « backend local sur demande »
   F3, F4, F8, F9) codée le 14 octobre : `POST /internal/run-due-passes`,
   `startup_errors`, synchro `/usage` bloquante ; 362 tests Python et 68
   TypeScript. Aucune vérification réelle (ni `uvicorn`, ni appel de la route).
-  **En attente de la validation du propriétaire.** Jusqu'à l'étape 5,
+  Commit `6f82c2e`, CI verte, validée par le propriétaire. Jusqu'à l'étape 5,
   `/admin/cron` en local lit encore l'ancien bloc de la rotation et s'affiche
-  incohérent.
+  incohérent ;
+- étape 4 (une Phase 2 qui dit la vérité : F1, règle D2) codée le 14 octobre :
+  une Phase 2 dont une cible a échoué rend `success: False`, avec `outcomes`,
+  `unchanged` et `failed_targets` ; 379 tests Python et 68 TypeScript. Aucune
+  vérification réelle. **En attente de la validation du propriétaire.**
 
 L'étape en cours se lit dans le journal du plan (§11).
 

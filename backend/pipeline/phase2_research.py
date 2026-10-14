@@ -46,6 +46,12 @@ valide, corrige ou rejette classement par classement. Ils sont reliés par
 pièces, et la donnée reste ré-extractible si le schéma évolue, sans repayer
 Tavily.
 
+**Une passe dit ce qui a échoué.** Une recherche ou une extraction ratée
+rendait `None`, la boucle passait à la suite, et la passe se disait réussie :
+une école dont toutes les cibles avaient échoué n'était pas reprise avant
+182 jours. Chaque cible rend désormais un motif ; une seule cible en échec
+fait échouer la passe (décision D2 de docs/features/backend-local.md).
+
 Référence : dossier « Le rapport avant le schéma », sections 04, 05 et 11.
 """
 
@@ -55,7 +61,7 @@ import re
 import unicodedata
 import uuid
 import json
-from typing import Any, Callable, Optional
+from typing import Any, Callable, NamedTuple, Optional
 
 import psycopg2
 import psycopg2.extras
@@ -292,6 +298,39 @@ def _insert_ticket(
 
 # ── Recherche puis extraction ─────────────────────────────────────
 
+# Motif d'une cible, rendu par `_run_research_and_extract`.
+OUTCOME_OK = "ok"
+OUTCOME_DRY_RUN = "dry_run"
+OUTCOME_RESEARCH_FAILED = "research_failed"
+OUTCOME_EMPTY_REPORT = "empty_report"
+OUTCOME_EXTRACTION_UNAVAILABLE = "extraction_unavailable"
+OUTCOME_EXTRACTION_FAILED = "extraction_failed"
+OUTCOME_BAD_SHAPE = "bad_shape"
+
+# Les motifs d'échec, et leur libellé dans le message de la passe. Une seule
+# cible sur l'un d'eux fait échouer la passe (D2) : l'école repasse après
+# CRON_RESEARCH_RETRY_FAILED_DAYS (14 jours) au lieu de 182.
+FAILURE_LABELS = {
+    OUTCOME_RESEARCH_FAILED: "recherche en échec",
+    OUTCOME_EMPTY_REPORT: "rapport vide",
+    OUTCOME_EXTRACTION_UNAVAILABLE: "extraction indisponible",
+    OUTCOME_EXTRACTION_FAILED: "extraction en échec",
+    OUTCOME_BAD_SHAPE: "extraction mal formée",
+}
+
+# Cibles en échec nommées dans le message ; au-delà, un compte. Le message part
+# dans PipelineJob.error et dans le rapport des passes dues.
+MAX_FAILED_TARGETS_IN_MESSAGE = 5
+
+
+class ResearchOutcome(NamedTuple):
+    """Une cible : données extraites (ou None), rapport brut, URLs sources, motif."""
+    extracted: Optional[dict]
+    report: str
+    source_urls: list[str]
+    reason: str
+
+
 def _report_text(research_result: dict) -> str:
     """
     Texte du rapport Research.
@@ -320,13 +359,16 @@ def _run_research_and_extract(
     label: str = "",
     extraction_prompt: Optional[str] = None,
     extraction_schema: Optional[dict] = None,
-) -> tuple[Optional[dict], str, list[str]]:
+) -> ResearchOutcome:
     """
     Un appel Research puis une extraction Gemini.
 
-    Retourne (données extraites, rapport brut, URLs sources). Les données valent
-    None quand la recherche ou l'extraction a échoué : l'appelant passe alors à
-    la suite sans écrire de ticket.
+    Retourne (données extraites, rapport brut, URLs sources, motif). Les données
+    valent None quand la recherche ou l'extraction a échoué, et en `dry_run` :
+    l'appelant passe alors à la suite sans écrire de ticket. Le motif dit
+    pourquoi (`FAILURE_LABELS` pour les échecs) ; l'appelant le compte.
+    Un quota Tavily épuisé est un `research_failed` comme un autre : en
+    rotation, `_QuotaWatch` (backend/scheduler/jobs.py) le repère à part.
 
     `extraction_prompt` et `extraction_schema` remplacent ceux de la catégorie
     quand l'extraction dépend de l'école — Ranking reçoit la liste de ses
@@ -347,7 +389,7 @@ def _run_research_and_extract(
         logger.info("🔬 [%s] %s %s", research_model.upper(), category, label)
     except Exception as e:
         logger.error("❌ Échec Research %s %s: %s", category, label, e)
-        return None, "", []
+        return ResearchOutcome(None, "", [], OUTCOME_RESEARCH_FAILED)
 
     report = _report_text(research_result)
     sources = research_result.get("sources", [])
@@ -355,11 +397,11 @@ def _run_research_and_extract(
 
     if dry_run:
         logger.info("🧪 [DRY RUN] %s %s — %d caractères", category, label, len(report))
-        return None, report, source_urls
+        return ResearchOutcome(None, report, source_urls, OUTCOME_DRY_RUN)
 
     if not report.strip():
         logger.error("❌ Rapport vide pour %s %s — extraction annulée", category, label)
-        return None, "", source_urls
+        return ResearchOutcome(None, "", source_urls, OUTCOME_EMPTY_REPORT)
 
     logger.info(
         "📄 Rapport %s %s : %d caractères, %d sources",
@@ -377,19 +419,57 @@ def _run_research_and_extract(
         # Échec explicite plutôt qu'un ticket bas de gamme : le prochain cycle
         # réessaiera, avec des compteurs journaliers remis à zéro.
         logger.error("❌ Extraction indisponible pour %s %s: %s", category, label, e)
-        return None, report, source_urls
+        return ResearchOutcome(None, report, source_urls, OUTCOME_EXTRACTION_UNAVAILABLE)
     except GeminiError as e:
         logger.error("❌ Extraction échouée pour %s %s: %s", category, label, e)
-        return None, report, source_urls
+        return ResearchOutcome(None, report, source_urls, OUTCOME_EXTRACTION_FAILED)
 
     if not isinstance(extracted, dict):
         logger.error(
             "❌ Extraction %s %s : objet attendu, %s reçu",
             category, label, type(extracted).__name__,
         )
-        return None, report, source_urls
+        return ResearchOutcome(None, report, source_urls, OUTCOME_BAD_SHAPE)
 
-    return extracted, report, source_urls
+    return ResearchOutcome(extracted, report, source_urls, OUTCOME_OK)
+
+
+class _PassTally:
+    """
+    Le bilan d'une passe : les motifs par catégorie, les enregistrements
+    identiques à la production à part, et les cibles en échec dans l'ordre.
+
+    `outcomes` compte des cibles (une par appel Research) ; `unchanged` compte
+    des enregistrements : un rapport Ranking en porte plusieurs.
+    """
+
+    def __init__(self) -> None:
+        self.outcomes: dict[str, dict[str, int]] = {}
+        self.unchanged: dict[str, int] = {}
+        self.failed_targets: list[dict] = []
+
+    def record(self, category: str, label: str, reason: str) -> None:
+        counts = self.outcomes.setdefault(category, {})
+        counts[reason] = counts.get(reason, 0) + 1
+        if reason in FAILURE_LABELS:
+            self.failed_targets.append({"category": category, "label": label, "reason": reason})
+
+    def add_unchanged(self, category: str, count: int) -> None:
+        if count:
+            self.unchanged[category] = self.unchanged.get(category, 0) + count
+
+    def message(self, tickets_created: int, categories_scanned: int) -> str:
+        message = f"{tickets_created} ticket(s) créé(s) sur {categories_scanned} scans"
+        if not self.failed_targets:
+            return message
+        named = ", ".join(
+            f"{t['category']} « {t['label']} » ({FAILURE_LABELS[t['reason']]})"
+            for t in self.failed_targets[:MAX_FAILED_TARGETS_IN_MESSAGE]
+        )
+        rest = len(self.failed_targets) - MAX_FAILED_TARGETS_IN_MESSAGE
+        if rest > 0:
+            named += f" (+{rest})"
+        return f"{message} ; {len(self.failed_targets)} cible(s) en échec : {named}"
 
 
 # ── Orchestrateur ─────────────────────────────────────────────────
@@ -416,6 +496,14 @@ def run_phase2_research(
         skip_pending: Si True, sauter les cibles dont un ticket du pipeline
             attend la validation (pending_guard). Passes automatiques seulement :
             une recherche lancée à la main reste libre.
+
+    Returns:
+        `success` (faux dès qu'une cible a échoué en recherche ou en
+        extraction, D2), `tickets_created`, `message` (qui nomme les cibles en
+        échec), `outcomes` (`{catégorie: {motif: nb de cibles}}`), `unchanged`
+        (`{catégorie: nb d'enregistrements identiques à la production}`),
+        `failed_targets` (`[{category, label, reason}]`) et, en passe
+        automatique, `skipped_pending`.
     """
     from backend.db import get_db_connection
 
@@ -429,6 +517,7 @@ def run_phase2_research(
 
     tickets_created = 0
     categories_scanned = 0
+    tally = _PassTally()
 
     # ── PHASE 1 : Lecture courte — connexion fermée après ──────────────
     with get_db_connection() as conn:
@@ -568,7 +657,7 @@ def run_phase2_research(
         else:  # Accreditation
             prompt = build_accreditation_research_input(school_name, official_domain)
 
-        extracted, report, source_urls = _run_research_and_extract(
+        extracted, report, source_urls, reason = _run_research_and_extract(
             category=category,
             query=prompt,
             key_manager=key_manager,
@@ -578,17 +667,20 @@ def run_phase2_research(
             extraction_prompt=extraction_prompt,
             extraction_schema=extraction_schema,
         )
+        tally.record(category, school_name, reason)
         if extracted is None:
             continue
 
         if category == "Ranking":
-            tickets_created += _write_ranking_tickets(
+            created, unchanged = _write_ranking_tickets(
                 extracted=extracted,
                 school_id=school_id,
                 programs=programs,
                 source_urls=source_urls,
                 raw_report=report,
             )
+            tickets_created += created
+            tally.add_unchanged(category, unchanged)
             continue
 
         existing = _get_existing_record(category, school_id, None)
@@ -601,6 +693,8 @@ def run_phase2_research(
                 raw_report=report,
             )
             tickets_created += 1
+        else:
+            tally.add_unchanged(category, 1)
 
     # ── 4. Catégories niveau Programme (Pricing) ───────────
     for program in pricing_programs:
@@ -620,7 +714,7 @@ def run_phase2_research(
                 school_name, program["name"], academic_year_str, official_domain
             )
 
-            extracted, report, source_urls = _run_research_and_extract(
+            extracted, report, source_urls, reason = _run_research_and_extract(
                 category=category,
                 query=prompt,
                 key_manager=key_manager,
@@ -628,6 +722,7 @@ def run_phase2_research(
                 dry_run=dry_run,
                 label=f"pour {program['name']}",
             )
+            tally.record(category, program["name"], reason)
             if extracted is None:
                 continue
 
@@ -642,6 +737,8 @@ def run_phase2_research(
                     raw_report=report,
                 )
                 tickets_created += 1
+            else:
+                tally.add_unchanged(category, 1)
 
     # ── 5. Catégories niveau ProgramCampus (Capacity) ──────
     for pc in program_campuses:
@@ -662,24 +759,28 @@ def run_phase2_research(
                 academic_year_str, official_domain
             )
 
-            extracted, report, source_urls = _run_research_and_extract(
+            target = f"{pc['program_name']} @ {pc['campus_name']}"
+            extracted, report, source_urls, reason = _run_research_and_extract(
                 category=category,
                 query=prompt,
                 key_manager=key_manager,
                 official_domain=official_domain,
                 dry_run=dry_run,
-                label=f"pour {pc['program_name']} @ {pc['campus_name']}",
+                label=f"pour {target}",
             )
+            tally.record(category, target, reason)
             if extracted is None:
                 continue
 
-            tickets_created += _write_capacity_ticket(
+            created, unchanged = _write_capacity_ticket(
                 extracted=extracted,
                 school_id=school_id,
                 program_campus=pc,
                 source_urls=source_urls,
                 raw_report=report,
             )
+            tickets_created += created
+            tally.add_unchanged(category, unchanged)
 
     if progress_callback:
         progress_callback({
@@ -689,8 +790,22 @@ def run_phase2_research(
             "tickets_created": tickets_created,
         })
 
-    logger.info(f"✅ [Research] Phase 2 terminée : {categories_scanned} scans, {tickets_created} tickets créés")
-    result = {"success": True, "tickets_created": tickets_created, "message": f"{tickets_created} ticket(s) créé(s) sur {categories_scanned} scans"}
+    message = tally.message(tickets_created, categories_scanned)
+    if tally.failed_targets:
+        logger.warning(f"⚠️ [Research] Phase 2 terminée en échec : {message}")
+    else:
+        logger.info(f"✅ [Research] Phase 2 terminée : {categories_scanned} scans, {tickets_created} tickets créés")
+    result = {
+        # D2 : une seule cible en échec fait échouer la passe, qui sera reprise
+        # après le délai d'échec. La garde « en attente » (skip_pending) évite
+        # de repayer ce qui a été déposé.
+        "success": not tally.failed_targets,
+        "tickets_created": tickets_created,
+        "message": message,
+        "outcomes": tally.outcomes,
+        "unchanged": tally.unchanged,
+        "failed_targets": tally.failed_targets,
+    }
     if skipped_pending is not None:
         result["skipped_pending"] = skipped_pending
     return result
@@ -705,9 +820,10 @@ def _write_ranking_tickets(
     programs: list[dict],
     source_urls: list[str],
     raw_report: str,
-) -> int:
+) -> tuple[int, int]:
     """
     Un ticket par classement extrait, relié aux autres par submission_group_id.
+    Rend (tickets créés, classements identiques à la production).
 
     L'admin valide, corrige ou rejette classement par classement, et
     `validateRanking` écrit une ligne à la fois : un ticket portant un tableau
@@ -724,7 +840,7 @@ def _write_ranking_tickets(
     rankings = extracted.get("rankings")
     if not isinstance(rankings, list) or not rankings:
         logger.warning("⚠️ Extraction Ranking vide pour school_id=%s", school_id)
-        return 0
+        return 0, 0
 
     existing = _get_existing_rankings([p["id"] for p in programs])
     group_id = str(uuid.uuid4())
@@ -783,7 +899,7 @@ def _write_ranking_tickets(
         len(rankings), created, unchanged, skipped_school_scope,
         skipped_unmatched, skipped_duplicate_key,
     )
-    return created
+    return created, unchanged
 
 
 # ── Écriture du ticket Capacity ───────────────────────────────────
@@ -795,9 +911,11 @@ def _write_capacity_ticket(
     program_campus: dict,
     source_urls: list[str],
     raw_report: str,
-) -> int:
+) -> tuple[int, int]:
     """
-    Un seul ticket portant le tableau des voies d'admission.
+    Un seul ticket portant le tableau des voies d'admission. Rend (tickets
+    créés, enregistrements identiques à la production) : (1, 0), (0, 1), ou
+    (0, 0) pour une extraction vide.
 
     Contrairement à Ranking, Capacity ne se découpe pas : CapacityRecord est
     unique sur (programCampusId, academic_year), et les entrées d'une même année
@@ -811,7 +929,7 @@ def _write_capacity_ticket(
             "⚠️ Extraction Capacity vide pour %s @ %s",
             program_campus["program_name"], program_campus["campus_name"],
         )
-        return 0
+        return 0, 0
 
     existing = _get_existing_capacity_record(program_campus["program_campus_id"])
     # Comparaison sur l'entrée la plus récente : le diff protège d'un ticket
@@ -822,13 +940,13 @@ def _write_capacity_ticket(
         default=None,
     )
     if latest is None:
-        return 0
+        return 0, 0
     if not has_data_changed(latest, existing, DB_FIELDS_BY_CATEGORY["Capacity"]):
         logger.info(
             "➖ Capacity inchangée pour %s @ %s",
             program_campus["program_name"], program_campus["campus_name"],
         )
-        return 0
+        return 0, 1
 
     payload: dict[str, Any] = dict(extracted)
     payload["year_assumed"] = any(
@@ -849,4 +967,4 @@ def _write_capacity_ticket(
         "🎟️ Capacity : %d voie(s) d'admission → 1 ticket pour %s @ %s",
         len(capacities), program_campus["program_name"], program_campus["campus_name"],
     )
-    return 1
+    return 1, 0

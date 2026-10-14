@@ -121,7 +121,7 @@ obligatoire (exigence de Prisma 7).
 ```bash
 npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
-npm test              # 362 tests Python (pytest)
+npm test              # 379 tests Python (pytest)
 npm run test:ts       # 68 tests TypeScript (node --test), dont les routes de test/api/
 ```
 

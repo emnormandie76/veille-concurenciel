@@ -24,17 +24,22 @@ class TestTavilyKeyRotation(unittest.TestCase):
             "TAVILY_API_KEYS": "mock_key_1,mock_key_2,mock_key_3"
         })
         self.env_patcher.start()
+        # addCleanup et non tearDown : un setUp qui échoue en route ne laisse
+        # aucun remplacement actif derrière lui.
+        self.addCleanup(self.env_patcher.stop)
 
-        # Patcher _fetch_quota_in_background pour éviter les requêtes HTTP réelles
+        # Patcher les deux départs de synchro /usage pour éviter les requêtes
+        # HTTP réelles : celle du démarrage (_sync_usage_in_background, appelée
+        # par le constructeur) et celle d'une clé (_fetch_quota_in_background).
+        self.sync_patcher = patch.object(TavilyKeyManager, '_sync_usage_in_background')
+        self.sync_patcher.start()
+        self.addCleanup(self.sync_patcher.stop)
         self.fetch_patcher = patch.object(TavilyKeyManager, '_fetch_quota_in_background')
         self.mock_fetch = self.fetch_patcher.start()
+        self.addCleanup(self.fetch_patcher.stop)
 
         # Initialiser le gestionnaire
         self.manager = TavilyKeyManager()
-
-    def tearDown(self):
-        self.env_patcher.stop()
-        self.fetch_patcher.stop()
 
     def test_greedy_selection_pro_ignores_low_credits(self):
         """

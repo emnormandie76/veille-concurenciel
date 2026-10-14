@@ -1,5 +1,16 @@
 # Feature — Recherches automatiques en production : rotation semestrielle
 
+> **⚠️ Remplacé par [`backend-local.md`](backend-local.md) (14 octobre 2026).**
+> Koyeb est abandonné : le backend n'est plus hébergé, l'admin le lance sur son
+> poste. Le cron `research_rotation` décrit ici est **supprimé** (étape 3 du
+> nouveau plan), avec `ENVIRONMENT`, `CRON_RESEARCH_ENABLED`,
+> `CRON_RESEARCH_HOUR` et `CRON_ROTATION_PASSES_PER_NIGHT`. Les passes dues
+> partent sur demande (`POST /internal/run-due-passes`, `run_due_passes`), avec
+> la même logique : planificateur, plafond, garde « en attente », mêmes libellés
+> de job. La passe à blanc de l'étape 7 devient une simulation (`dry_run: true`).
+> Ce document reste comme historique et pour le chiffrage. Ce qui fait foi :
+> [`architecture.md`](../architecture/architecture.md) §5.5.
+>
 > **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 à 6 faites.
 > **Branche de départ :** `newresearch`.
 > **Lire avant de coder :** ce document en entier, puis

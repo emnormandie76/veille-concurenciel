@@ -219,19 +219,50 @@ def get_db_connection():
         connection_pool.putconn(conn)
 
 
-def check_db_connection() -> bool:
+def _driver_hint() -> str:
+    """Une piste selon `DB_DRIVER`, pour le message d'échec du démarrage."""
+    driver = _normalize_driver(os.environ.get("DB_DRIVER"))
+    if driver is None:
+        return (
+            "DB_DRIVER absente : psycopg2 vise le port 5432, fermé sur le réseau "
+            "de l'établissement. Sur ce poste, posez DB_DRIVER=neon-ws dans "
+            "backend/.env pour passer par le pont WebSocket (443)."
+        )
+    if driver == DB_DRIVER_NEON_WS:
+        return (
+            "DB_DRIVER=neon-ws : la connexion passe par le pont WebSocket local "
+            "(backend/neon_ws_bridge.py) ; ses avertissements sont dans le journal."
+        )
+    return f"DB_DRIVER={driver} n'est pas reconnue."
+
+
+def db_connection_error() -> str | None:
     """
-    Vérifie que la connexion à la BDD fonctionne.
-    Utilisé par le healthcheck et le endpoint pipeline-status.
+    None si `SELECT 1` passe ; sinon le message d'échec, suivi d'une piste
+    selon `DB_DRIVER`. Le message est celui de `get_pool()`, qui cite le pilote
+    et l'hôte sans secret ; il est nettoyé une seconde fois de l'URL et du mot
+    de passe, quelle que soit l'exception.
     """
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
-        return True
+        return None
     except Exception as e:
-        logger.error(f"❌ Erreur de connexion BDD: {e}")
-        return False
+        message = str(e).strip() or type(e).__name__
+        database_url = os.environ.get("DATABASE_URL")
+        if database_url:
+            message = _redact(message, database_url)
+        logger.error(f"❌ Erreur de connexion BDD: {message}")
+        return f"{message} — {_driver_hint()}"
+
+
+def check_db_connection() -> bool:
+    """
+    Vérifie que la connexion à la BDD fonctionne.
+    Utilisé par le démarrage (via db_connection_error) et par pipeline-status.
+    """
+    return db_connection_error() is None
 
 
 def close_pool():

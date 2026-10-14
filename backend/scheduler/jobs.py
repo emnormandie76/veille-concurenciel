@@ -1,32 +1,34 @@
 """
-backend/scheduler/jobs.py — APScheduler Jobs
+backend/scheduler/jobs.py — Passes dues et traitement des contributions
 
-Deux jobs récurrents :
-  - research_rotation : chaque nuit à CRON_RESEARCH_HOUR (Europe/Paris), au
-    plus CRON_ROTATION_PASSES_PER_NIGHT passe(s) Phase 1 ou Phase 2, choisies
-    par le planificateur (scheduler/rotation.py) sous le plafond mensuel
-    CRON_MONTHLY_CREDIT_CEILING. Seul job qui paie Research.
-  - crowdsourcing_processor : toutes les CRON_CROWDSOURCING_INTERVAL_MINUTES.
+Deux points d'entrée :
+  - run_due_passes : les passes de recherche dues (Phase 1 ou Phase 2),
+    choisies par le planificateur (scheduler/rotation.py) sous le plafond
+    mensuel CRON_MONTHLY_CREDIT_CEILING. Lancé à la demande de l'admin, par
+    POST /internal/run-due-passes. AUCUN job planifié ne paie Research.
+  - crowdsourcing_processor : le seul job APScheduler. Toutes les
+    CRON_CROWDSOURCING_INTERVAL_MINUTES tant que le backend tourne, première
+    passe dès le démarrage pour traiter l'arriéré `Pending_AI`.
 
-Règles :
-  - Le scheduler est démarré/arrêté dans le lifespan FastAPI (main.py)
-  - Hors production, research_rotation n'est PAS inscrit : voir
-    research_cron_enabled(). Le traitement Crowdsourcing l'est toujours.
+Le scheduler est démarré/arrêté dans le lifespan FastAPI (main.py).
 
-## Pourquoi une rotation à heure fixe
+## Pourquoi plus de cron
 
-phase1_scanner et phase2_enricher, qu'elle remplace, tournaient sur des
-IntervalTrigger comptés depuis le démarrage : sur Koyeb, qui redémarre, la
-Phase 1 partait à chaque redémarrage et la Phase 2 jamais. Et la Phase 2
-repassait chaque jour sur tout (~54 000 crédits par mois pour trois écoles).
-Le CronTrigger ne dépend pas du démarrage ; misfire_grace_time rattrape une
-nuit où l'instance était arrêtée à l'heure dite.
+Le backend n'est plus hébergé : l'admin le lance à la main sur son poste
+(décision du 14 octobre 2026). Un cron à heure fixe ne tournerait que si le
+poste est allumé à cette heure-là. Et lancer uvicorn ne doit jamais suffire à
+payer Research : le 28 septembre 2026, un démarrage local avait lancé deux
+Phase 1 payantes sans que personne ait cliqué. Les passes dues partent donc sur
+demande, avec la logique de l'ancien cron `research_rotation` : mêmes libellés
+de job (la mémoire des passages), même plafond, même garde « école occupée »,
+même arrêt sur quota.
 
-Référence : docs/features/cron-rotation-production.md, architecture.md §2.2
+Référence : docs/features/backend-local.md (étape 3), architecture.md §5.5
 """
 
-import os
+import copy
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -34,7 +36,6 @@ import psycopg2
 import psycopg2.extras
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from backend import pipeline_jobs
 from backend.tavily_service.key_manager import QuotaExhaustedError
@@ -43,70 +44,46 @@ from backend.utils.env import env_int
 logger = logging.getLogger("pipeline.scheduler")
 
 # ── Constantes ────────────────────────────────────────────────────
-ROTATION_JOB_ID = "research_rotation"
-ROTATION_TIMEZONE = "Europe/Paris"
+# Clés du registre des passages (_last_job_runs). La simulation a la sienne :
+# elle n'efface pas l'issue de la dernière exécution réelle.
+ROTATION_JOB_ID = "run_due_passes"
+DRY_RUN_JOB_ID = "run_due_passes_dry_run"
+CROWDSOURCING_JOB_ID = "crowdsourcing_processor"
 
-# Lues une fois, au démarrage. Une valeur illisible retombe sur le défaut.
-RESEARCH_HOUR = env_int("CRON_RESEARCH_HOUR", 3, minimum=0, maximum=23)
-# 0 : le job planifie et journalise, mais ne dépense rien (vérification à blanc).
+# Passes lancées par une exécution, au plus (POST /internal/run-due-passes).
+MAX_PASSES_PER_RUN = 5
+
+# Lu une fois, au démarrage. Une valeur illisible retombe sur le défaut.
 MONTHLY_CREDIT_CEILING = env_int("CRON_MONTHLY_CREDIT_CEILING", 7000, minimum=0)
-PASSES_PER_NIGHT = env_int("CRON_ROTATION_PASSES_PER_NIGHT", 1, minimum=1)
 
-# Le libellé du job et le log de démarrage annonçaient 5 minutes alors que le
-# déclencheur était réglé sur 1. C'est l'intervalle réel qui fait foi ici.
-CROWDSOURCING_INTERVAL_MINUTES = int(
-    os.environ.get("CRON_CROWDSOURCING_INTERVAL_MINUTES", 1)
-)
+CROWDSOURCING_DEFAULT_INTERVAL_MINUTES = 1
 
-# Valeurs reconnues pour CRON_RESEARCH_ENABLED.
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
-_FALSY = frozenset({"0", "false", "no", "off"})
+# Statut d'un rapport annoncé avant le départ des passes (on_planned).
+REPORT_PLANNED = "planned"
 
 
-def research_cron_enabled() -> tuple[bool, str]:
-    """
-    Le job qui PAIE Research (research_rotation) doit-il etre inscrit ?
+class RotationAlreadyRunning(RuntimeError):
+    """Une exécution réelle des passes dues tourne déjà dans ce processus."""
 
-    Rend `(active, raison)`, la raison etant journalisee au demarrage.
+    code = "ALREADY_RUNNING"
 
-    Lancer le backend sur un poste de developpement demarrait phase1_scanner,
-    qui passait 5 minutes plus tard sur toutes les ecoles ACTIVE sans campus :
-    le 2026-09-28, EMLV et Essec, environ 28 a 30 credits Tavily chacune, sans
-    que personne n'ait clique. research_rotation, qui l'a remplace avec
-    phase2_enricher, paie Research de la meme facon. Il ne doit pas tourner
-    parce qu'un developpeur a demarre uvicorn.
 
-    Par defaut, il n'est donc inscrit qu'en production (`ENVIRONMENT`,
-    deja [PROD — REQUIS], voir .env.example). `CRON_RESEARCH_ENABLED` force
-    l'un ou l'autre choix. Une valeur non reconnue desactive, bruyamment : une
-    faute de frappe doit couter une passe de cron, pas des credits.
+class UsageSyncFailed(RuntimeError):
+    """La synchro /usage n'a pas recalé toutes les clés : aucune passe ne part."""
 
-    Le traitement Crowdsourcing n'est pas concerne : il n'agit que sur des
-    tickets que quelqu'un a deposes.
-    """
-    raw = os.environ.get("CRON_RESEARCH_ENABLED", "").strip().lower()
-    if raw in _TRUTHY:
-        return True, "CRON_RESEARCH_ENABLED=%s" % raw
-    if raw in _FALSY:
-        return False, "CRON_RESEARCH_ENABLED=%s" % raw
-    if raw:
-        return False, (
-            "CRON_RESEARCH_ENABLED=%r non reconnue (attendu true/false) : "
-            "jobs Research desactives par prudence" % raw
-        )
-    environment = os.environ.get("ENVIRONMENT", "development").strip().lower()
-    if environment in ("production", "prod"):
-        return True, "ENVIRONMENT=%s" % environment
-    return False, (
-        "ENVIRONMENT=%s : hors production, les jobs Research ne sont pas "
-        "inscrits (CRON_RESEARCH_ENABLED=true pour les forcer)" % environment
-    )
+    code = "USAGE_SYNC_FAILED"
+
+    def __init__(self, message: str, usage_sync: dict):
+        super().__init__(message)
+        self.usage_sync = usage_sync
+
 
 # ── Registre du dernier passage de chaque job ─────────────────────
-# Un job périodique qui échoue ne doit pas se contenter d'une ligne de log :
-# du point de vue d'APScheduler il se termine « normalement » et le panneau
-# admin n'affiche aucune anomalie. Ce registre est exposé par
-# get_scheduler_status(), lui-même remonté dans /internal/pipeline-status.
+# Un job qui échoue ne doit pas se contenter d'une ligne de log : du point de
+# vue d'APScheduler il se termine « normalement » et le panneau admin
+# n'affiche aucune anomalie. Ce registre est exposé par get_scheduler_status(),
+# lui-même remonté dans /internal/pipeline-status. Il vit en mémoire : vide à
+# chaque démarrage.
 _last_job_runs: dict[str, dict] = {}
 
 
@@ -119,46 +96,43 @@ def _record_job_run(job_id: str, status: str, detail: str | None = None) -> None
     }
 
 
-# ── Suivi des jobs cron dans la table PipelineJob ───────────────
+# ── Suivi des passes dans la table PipelineJob ──────────────────
 #
-# Auparavant register_cron_job()/complete_cron_job(), qui écrivaient dans le
-# dictionnaire de module de routers/internal.py. L'état vit maintenant en base.
-# Le suivi ne doit jamais faire tomber le cron : si la base ne répond pas, le
-# traitement continue sans job tracé (run_phase1 échouera de lui-même si la
-# base est vraiment indisponible).
+# Le suivi ne doit jamais faire tomber une exécution : si la base ne répond
+# pas, la passe n'est pas lancée (voir _run_rotation_pass).
 
-def _start_cron_job(school_id: str, phase: str) -> str | None:
-    """Ouvre un job cron en base. Retourne son id, ou None si l'écriture échoue."""
+def _start_rotation_job(school_id: str, phase: str) -> str | None:
+    """Ouvre le job d'une passe en base. Retourne son id, ou None si l'écriture échoue."""
     try:
-        job_id = pipeline_jobs.create_job(school_id, phase, source="cron")
+        job_id = pipeline_jobs.create_job(school_id, phase, source=pipeline_jobs.SOURCE_ROTATION)
         pipeline_jobs.mark_running(job_id)
         return job_id
     except Exception as e:
-        logger.warning(f"⚠️ [CRON] Job non enregistré en base pour {school_id}: {e}")
+        logger.warning(f"⚠️ [ROTATION] Job non enregistré en base pour {school_id}: {e}")
         return None
 
 
-def _finish_cron_job(job_id: str | None, status: str, result=None, error=None) -> None:
-    """Clôt un job cron en base, si son ouverture avait réussi."""
+def _finish_rotation_job(job_id: str | None, status: str, result=None, error=None) -> None:
+    """Clôt le job d'une passe en base, si son ouverture avait réussi."""
     if not job_id:
         return
     try:
         pipeline_jobs.complete_job(job_id, status, result=result, error=error)
     except Exception as e:
-        logger.warning(f"⚠️ [CRON] Clôture du job {job_id} non enregistrée: {e}")
+        logger.warning(f"⚠️ [ROTATION] Clôture du job {job_id} non enregistrée: {e}")
 
 
 def _school_is_busy(school_id: str) -> bool:
     """
-    Vrai si un job tourne déjà sur cette école (déclenché à la main, ou par le
-    passage précédent). Empeche le cron de doubler un traitement en cours et de
+    Vrai si un job tourne déjà sur cette école (déclenché à la main, ou par la
+    passe précédente). Empêche de doubler un traitement en cours et de
     consommer deux fois les crédits Tavily.
     """
     try:
         return pipeline_jobs.get_active_job(school_id) is not None
     except Exception as e:
-        # Base injoignable : on ne bloque pas le cron sur un contrôle de confort.
-        logger.warning(f"⚠️ [CRON] Contrôle de concurrence impossible ({e})")
+        # Base injoignable : on ne bloque pas l'exécution sur un contrôle de confort.
+        logger.warning(f"⚠️ [ROTATION] Contrôle de concurrence impossible ({e})")
         return False
 
 # ── Singleton scheduler ───────────────────────────────────────────
@@ -172,14 +146,14 @@ def get_scheduler() -> BackgroundScheduler:
         _scheduler = BackgroundScheduler(
             timezone="Europe/Paris",
             job_defaults={
-                "coalesce": True,    # Fusionner les jobs manqués (Koyeb redémarrages)
+                "coalesce": True,    # Fusionner les passages manqués (poste en veille)
                 "max_instances": 1,  # Une seule instance à la fois
             }
         )
     return _scheduler
 
 
-# ── Job nocturne : rotation des recherches ────────────────────────
+# ── Passes dues ───────────────────────────────────────────────────
 
 class _QuotaWatch:
     """
@@ -227,13 +201,24 @@ def _describe(candidate) -> str:
     )
 
 
+def _candidate_dict(candidate) -> dict:
+    """Une passe due, telle que pipeline-status et le rapport la montrent."""
+    return {
+        "school_name": candidate.school_name,
+        "phase": candidate.phase,
+        "reason": candidate.reason,
+        "last_pass_at": candidate.last_pass_at.isoformat() if candidate.last_pass_at else None,
+        "estimated_credits": candidate.estimated_credits,
+    }
+
+
 def _run_rotation_pass(candidate, key_manager) -> _PassOutcome:
     """
-    Une passe de la rotation, tracée comme un PipelineJob `source = "cron"`.
+    Une passe due, tracée comme un PipelineJob `source = "rotation"`.
 
     Le job EST la mémoire du passage (rotation.py) : s'il ne peut pas être
-    ouvert, la passe n'est pas lancée — sinon l'école serait repayée la nuit
-    suivante. Il porte un battement de cœur : une passe muette plus de
+    ouvert, la passe n'est pas lancée — sinon l'école serait repayée au
+    lancement suivant. Il porte un battement de cœur : une passe muette plus de
     PIPELINE_JOB_STALE_SECONDS serait déclarée morte en cours de route.
     """
     from backend.pipeline.phase1_research import run_phase1_research
@@ -244,11 +229,13 @@ def _run_rotation_pass(candidate, key_manager) -> _PassOutcome:
         logger.info(f"⏭️ [ROTATION] {candidate.school_name} : un job est déjà en cours — passée")
         return _PassOutcome("busy")
 
+    # Libellés inchangés depuis le cron : ce sont eux qui font la mémoire du
+    # dernier passage (pipeline_jobs.ROTATION_PASS_LABELS).
     phase_label = (
         pipeline_jobs.PHASE1_CRON_LABEL if candidate.phase == PHASE_1
         else pipeline_jobs.PHASE2_CRON_LABEL
     )
-    job_id = _start_cron_job(candidate.school_id, phase_label)
+    job_id = _start_rotation_job(candidate.school_id, phase_label)
     if job_id is None:
         return _PassOutcome("not_recorded", "job non enregistré en base : passe non lancée")
 
@@ -259,7 +246,7 @@ def _run_rotation_pass(candidate, key_manager) -> _PassOutcome:
     logger.info(f"🚀 [ROTATION] {_describe(candidate)} ({candidate.reason})")
     try:
         if candidate.phase == PHASE_1:
-            # Jamais de collecte du rattachement campus depuis le cron
+            # Jamais de collecte du rattachement campus depuis les passes dues
             # (architecture.md §5.4) : ~15 crédits par école, souvent pour rien.
             result = run_phase1_research(
                 candidate.school_id, watch,
@@ -273,50 +260,76 @@ def _run_rotation_pass(candidate, key_manager) -> _PassOutcome:
                 skip_pending=True,
             )
     except QuotaExhaustedError as e:
-        _finish_cron_job(job_id, pipeline_jobs.STATUS_FAILED, error=str(e))
+        _finish_rotation_job(job_id, pipeline_jobs.STATUS_FAILED, error=str(e))
         return _PassOutcome(pipeline_jobs.STATUS_FAILED, str(e), quota_exhausted=True)
     except Exception as e:
         logger.error(f"❌ [ROTATION] {_describe(candidate)} : {e}")
-        _finish_cron_job(job_id, pipeline_jobs.STATUS_FAILED, error=str(e))
+        _finish_rotation_job(job_id, pipeline_jobs.STATUS_FAILED, error=str(e))
         return _PassOutcome(pipeline_jobs.STATUS_FAILED, str(e))
 
     if watch.refused or key_manager.available_keys == 0:
         logger.error(f"🛑 [ROTATION] {_describe(candidate)} : {_QUOTA_CUT_ERROR}")
-        _finish_cron_job(job_id, pipeline_jobs.STATUS_FAILED, result=result, error=_QUOTA_CUT_ERROR)
+        _finish_rotation_job(job_id, pipeline_jobs.STATUS_FAILED, result=result, error=_QUOTA_CUT_ERROR)
         return _PassOutcome(pipeline_jobs.STATUS_FAILED, _QUOTA_CUT_ERROR, quota_exhausted=True)
 
     if result.get("success"):
         logger.info(f"✅ [ROTATION] {_describe(candidate)} : {result.get('message')}")
-        _finish_cron_job(job_id, pipeline_jobs.STATUS_COMPLETED, result=result)
+        _finish_rotation_job(job_id, pipeline_jobs.STATUS_COMPLETED, result=result)
         return _PassOutcome(pipeline_jobs.STATUS_COMPLETED)
 
     message = result.get("message") or "Échec inconnu"
     logger.warning(f"⚠️ [ROTATION] {_describe(candidate)} : {message}")
-    _finish_cron_job(job_id, pipeline_jobs.STATUS_FAILED, error=message)
+    _finish_rotation_job(job_id, pipeline_jobs.STATUS_FAILED, error=message)
     return _PassOutcome(pipeline_jobs.STATUS_FAILED, message)
 
 
-def research_rotation(key_manager, now: datetime | None = None) -> None:
+def _select_passes(candidates, used: int, max_passes: int) -> list:
     """
-    Job APScheduler nocturne : au plus PASSES_PER_NIGHT passe(s), sous plafond.
+    Ce qui partirait : dans l'ordre, au plus `max_passes` candidats qui tiennent
+    sous le plafond, chaque passe retenue comptée à son estimation. C'est une
+    prévision : l'exécution relit les crédits réels après chaque passe, et
+    saute une école devenue occupée entre-temps.
+    """
+    selected = []
+    for candidate in candidates:
+        if len(selected) >= max_passes:
+            break
+        if used + candidate.estimated_credits > MONTHLY_CREDIT_CEILING:
+            continue
+        selected.append(candidate)
+        used += candidate.estimated_credits
+    return selected
 
-    Lit l'état, planifie (rotation.plan_rotation), puis lance le PREMIER
-    candidat dont l'estimation tient sous MONTHLY_CREDIT_CEILING avec les
-    crédits déjà consommés ce mois-ci. Aucun candidat ne tient : rien ce soir,
-    et le registre le dit. Un quota épuisé clôt la nuit.
+
+def _new_report(key_manager, max_passes: int, dry_run: bool, usage_sync: dict | None) -> dict:
+    return {
+        "dry_run": dry_run,
+        "max_passes": max_passes,
+        "status": "failed",
+        "detail": None,
+        "monthly_ceiling": MONTHLY_CREDIT_CEILING,
+        "month_credits_used": None,
+        "due_count": 0,
+        "planned": [],
+        "launched": [],
+        "usage_sync": usage_sync if usage_sync is not None else (
+            key_manager.last_sync if key_manager is not None else None
+        ),
+    }
+
+
+def _plan_due_passes(key_manager, max_passes: int, dry_run: bool, now, usage_sync=None):
+    """
+    Lit l'état, planifie, et rend `(rapport, candidats)`. Le rapport vaut
+    `planned` si des passes doivent partir ; sinon il est final (`success` :
+    rien de dû, plafond atteint ; `failed` : planification impossible).
     """
     from backend.db import get_db_connection
     from backend.scheduler.rotation import load_rotation_state, plan_rotation
 
-    logger.info("⏰ [ROTATION] research_rotation démarré")
-
-    if key_manager is None:
-        logger.error("❌ [ROTATION] Aucun TavilyKeyManager : rotation abandonnée")
-        _record_job_run(ROTATION_JOB_ID, "failed", "TavilyKeyManager absent : aucune clé chargée")
-        return
-
+    report = _new_report(key_manager, max_passes, dry_run, usage_sync)
     try:
-        # Un job mort encore marqué actif ferait sauter son école ce soir.
+        # Un job mort encore marqué actif ferait sauter son école.
         pipeline_jobs.reap_stale_jobs()
         with get_db_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -328,17 +341,19 @@ def research_rotation(key_manager, now: datetime | None = None) -> None:
         used = key_manager.credits_used_this_month()
     except Exception as e:
         logger.error(f"❌ [ROTATION] Planification impossible : {e}")
-        _record_job_run(ROTATION_JOB_ID, "failed", f"planification : {e}")
-        return
+        report["detail"] = f"planification : {e}"
+        return report, []
 
+    report["month_credits_used"] = used
+    report["due_count"] = len(candidates)
     logger.info(
         f"📋 [ROTATION] {len(candidates)} passe(s) due(s) ; crédits du mois "
         f"{used}/{MONTHLY_CREDIT_CEILING} ; en tête : "
         + (", ".join(f"{_describe(c)} ({c.reason})" for c in candidates[:5]) or "—")
     )
     if not candidates:
-        _record_job_run(ROTATION_JOB_ID, "success", "aucune passe due")
-        return
+        report.update(status="success", detail="aucune passe due")
+        return report, candidates
 
     if not any(used + c.estimated_credits <= MONTHLY_CREDIT_CEILING for c in candidates):
         detail = (
@@ -347,12 +362,29 @@ def research_rotation(key_manager, now: datetime | None = None) -> None:
             f"~{min(c.estimated_credits for c in candidates)} crédits"
         )
         logger.info(f"⏸️ [ROTATION] {detail}")
-        _record_job_run(ROTATION_JOB_ID, "success", detail)
-        return
+        report.update(status="success", detail=detail)
+        return report, candidates
 
+    planned = _select_passes(candidates, used, max_passes)
+    report["planned"] = [_candidate_dict(c) for c in planned]
+    report.update(
+        status=REPORT_PLANNED,
+        detail=f"{len(planned)} passe(s) au départ : " + " ; ".join(_describe(c) for c in planned),
+    )
+    return report, candidates
+
+
+def _launch(report: dict, candidates, key_manager, max_passes: int) -> None:
+    """
+    Lance les passes, dans l'ordre du plan, et complète le rapport. Même règle
+    que l'ancien cron : un candidat qui ne tient pas sous le plafond est sauté,
+    une école occupée aussi ; un quota épuisé ou un job non créé arrête tout ;
+    les crédits sont relus au gestionnaire de clés après chaque passe.
+    """
+    used = report["month_credits_used"]
     launched: list[tuple] = []
     for candidate in candidates:
-        if len(launched) >= PASSES_PER_NIGHT:
+        if len(launched) >= max_passes:
             break
         if used + candidate.estimated_credits > MONTHLY_CREDIT_CEILING:
             logger.info(f"⏭️ [ROTATION] {_describe(candidate)} : ne tient pas sous le plafond")
@@ -366,23 +398,152 @@ def research_rotation(key_manager, now: datetime | None = None) -> None:
             break
         used = key_manager.credits_used_this_month()
 
+    report["launched"] = [
+        {**_candidate_dict(c), "status": o.status, "error": o.error} for c, o in launched
+    ]
     if not launched:
-        _record_job_run(ROTATION_JOB_ID, "success", "aucune passe lancée : écoles occupées")
+        report.update(status="success", detail="aucune passe lancée : écoles occupées")
         return
 
     failed = [o for _, o in launched if o.status != pipeline_jobs.STATUS_COMPLETED]
-    detail = " ; ".join(
-        _describe(c) + (f" — {o.error}" if o.error else "") for c, o in launched
+    report.update(
+        status="failed" if failed else "success",
+        detail=" ; ".join(
+            _describe(c) + (f" — {o.error}" if o.error else "") for c, o in launched
+        ),
     )
-    _record_job_run(ROTATION_JOB_ID, "failed" if failed else "success", detail)
+
+
+def _close(record_id: str, report: dict) -> dict:
+    """Inscrit l'issue au registre, puis rend le rapport."""
+    _record_job_run(record_id, "failed" if report["status"] == "failed" else "success", report["detail"])
+    return report
+
+
+# Une exécution réelle à la fois, dans ce processus. Ne vaut que par
+# processus : deux backends feraient deux verrous (backend-local.md §7).
+_run_lock = threading.Lock()
+
+
+def run_due_passes(key_manager, max_passes: int = 1, dry_run: bool = False,
+                   now: datetime | None = None, on_planned=None) -> dict:
+    """
+    Les passes dues, sous plafond : au plus `max_passes` (1 à
+    MAX_PASSES_PER_RUN) passes Phase 1 ou Phase 2, choisies par
+    `rotation.plan_rotation`. Rend le rapport, et l'inscrit au registre.
+
+    - `dry_run=True` : lit l'état, planifie et rend le plan (`planned`), sans
+      synchro /usage, sans créer de job ni appeler Research. Pas de verrou :
+      elle n'écrit aucun job et ne paie rien. Elle remplace l'ancienne astuce
+      du plafond à 0.
+    - Réel : verrou de module (RotationAlreadyRunning si une exécution tourne
+      déjà), puis synchro /usage bloquante. Si une clé n'a pas pu être
+      recalée, UsageSyncFailed et rien ne part : les compteurs repartent de
+      zéro à chaque démarrage (F8). Ensuite, planification, puis
+      `on_planned(rapport)` avec ce qui va partir (statut `planned`), avant la
+      première passe. La route HTTP s'en sert pour répondre 202 sans attendre
+      la fin des passes.
+
+    Rapport : `{dry_run, max_passes, status, detail, monthly_ceiling,
+    month_credits_used, due_count, planned, launched, usage_sync}`. `status`
+    vaut `success` ou `failed` une fois l'exécution finie.
+    """
+    if not 1 <= max_passes <= MAX_PASSES_PER_RUN:
+        raise ValueError(f"max_passes doit être compris entre 1 et {MAX_PASSES_PER_RUN}")
+
+    record_id = DRY_RUN_JOB_ID if dry_run else ROTATION_JOB_ID
+    if key_manager is None:
+        logger.error("❌ [ROTATION] Aucun TavilyKeyManager : aucune passe ne part")
+        report = _new_report(None, max_passes, dry_run, None)
+        report["detail"] = "TavilyKeyManager absent : aucune clé chargée"
+        return _close(record_id, report)
+
+    if dry_run:
+        logger.info("🧪 [ROTATION] Simulation des passes dues")
+        report, _ = _plan_due_passes(key_manager, max_passes, dry_run=True, now=now)
+        if report["status"] == REPORT_PLANNED:
+            report["status"] = "success"
+        report["detail"] = f"simulation : {report['detail']}"
+        return _close(record_id, report)
+
+    if not _run_lock.acquire(blocking=False):
+        raise RotationAlreadyRunning("Une exécution des passes dues tourne déjà")
+    try:
+        logger.info(f"⏰ [ROTATION] Passes dues demandées (au plus {max_passes})")
+        usage_sync = key_manager.sync_usage()
+        if not usage_sync.get("ok"):
+            failed_keys = ", ".join(usage_sync.get("failed_keys") or []) or "clé inconnue"
+            detail = f"synchro /usage en échec ({failed_keys}) : aucune passe lancée"
+            logger.error(f"❌ [ROTATION] {detail}")
+            _record_job_run(record_id, "failed", detail)
+            raise UsageSyncFailed(detail, usage_sync)
+
+        report, candidates = _plan_due_passes(
+            key_manager, max_passes, dry_run=False, now=now, usage_sync=usage_sync,
+        )
+        if on_planned is not None:
+            on_planned(copy.deepcopy(report))
+        if report["status"] == REPORT_PLANNED:
+            _launch(report, candidates, key_manager, max_passes)
+        return _close(record_id, report)
+    finally:
+        _run_lock.release()
+
+
+# ── Traitement des contributions ──────────────────────────────────
+
+def _describe_crowdsourcing(outcome: dict | None) -> tuple[str, str]:
+    """Le bilan d'un passage du crowdsourcing, en (statut, détail) pour le registre."""
+    if not outcome or not outcome.get("tickets"):
+        return "success", "aucune contribution en attente"
+    detail = (
+        f"{outcome['tickets']} contribution(s) : {outcome.get('validated', 0)} en attente "
+        f"de l'admin, {outcome.get('api_errors', 0)} en erreur d'API (gardée(s) en attente), "
+        f"{outcome.get('rejected', 0)} en échec"
+    )
+    if outcome.get("quota_exhausted"):
+        # Les contributions restantes attendent en Pending_AI : l'admin doit le voir.
+        return "failed", f"quota Tavily épuisé : traitement interrompu ; {detail}"
+    return "success", detail
+
+
+def _crowdsourcing_job(key_manager) -> None:
+    """
+    Un passage du traitement des contributions, inscrit au registre (F4).
+
+    Ne lève jamais : APScheduler ne ferait que journaliser l'exception, et
+    pipeline-status n'en saurait rien. L'échec se lit dans `last_runs`.
+    """
+    from backend.crowdsourcing.processor import process_pending_submissions
+
+    try:
+        outcome = process_pending_submissions(key_manager)
+    except Exception as e:
+        logger.error(f"❌ [Crowdsourcing] Passage en échec : {e}")
+        _record_job_run(CROWDSOURCING_JOB_ID, "failed", str(e)[:300])
+        return
+    _record_job_run(CROWDSOURCING_JOB_ID, *_describe_crowdsourcing(outcome))
+
+
+def _crowdsourcing_interval_minutes() -> int:
+    """Une valeur illisible retombe sur le défaut, au lieu d'empêcher le démarrage (F9)."""
+    return env_int(
+        "CRON_CROWDSOURCING_INTERVAL_MINUTES",
+        CROWDSOURCING_DEFAULT_INTERVAL_MINUTES,
+        minimum=1,
+    )
 
 
 # ── Démarrage / Arrêt ─────────────────────────────────────────────
 
 def start_scheduler(key_manager):
     """
-    Démarre le scheduler : la rotation des recherches (production seulement) et
-    le traitement Crowdsourcing. Appelé depuis le lifespan FastAPI (main.py).
+    Démarre le scheduler, qui ne porte que le traitement des contributions.
+    Appelé depuis le lifespan FastAPI (main.py).
+
+    Aucune recherche n'y est inscrite : les passes dues partent sur demande
+    (run_due_passes). Le premier passage du crowdsourcing part tout de suite :
+    les contributions attendent en Pending_AI entre deux lancements du backend.
     """
     scheduler = get_scheduler()
 
@@ -390,46 +551,22 @@ def start_scheduler(key_manager):
         logger.warning("⚠️ Scheduler déjà en cours — skip")
         return
 
-    research_enabled, research_reason = research_cron_enabled()
-
-    if research_enabled:
-        # Heure fixe, indépendante du démarrage : voir l'en-tête du module.
-        scheduler.add_job(
-            func=research_rotation,
-            trigger=CronTrigger(hour=RESEARCH_HOUR, minute=0, timezone=ROTATION_TIMEZONE),
-            args=[key_manager],
-            id=ROTATION_JOB_ID,
-            name=f"Rotation des recherches (chaque nuit à {RESEARCH_HOUR}h)",
-            misfire_grace_time=3600,
-            coalesce=True,
-            max_instances=1,
-            replace_existing=True,
-        )
-    else:
-        logger.warning(f"⏸️ Rotation des recherches non inscrite — {research_reason}")
-
-    # ── Job Crowdsourcing ────────────────────────────────────────
-    from backend.crowdsourcing.processor import process_pending_submissions
+    interval = _crowdsourcing_interval_minutes()
     scheduler.add_job(
-        func=process_pending_submissions,
-        trigger=IntervalTrigger(minutes=CROWDSOURCING_INTERVAL_MINUTES),
+        func=_crowdsourcing_job,
+        trigger=IntervalTrigger(minutes=interval),
         args=[key_manager],
-        id="crowdsourcing_processor",
-        name=f"Process Crowdsourcing Submissions (toutes les {CROWDSOURCING_INTERVAL_MINUTES}m)",
+        id=CROWDSOURCING_JOB_ID,
+        name=f"Traitement des contributions (toutes les {interval} min)",
+        next_run_time=datetime.now(timezone.utc),
         replace_existing=True,
     )
 
     scheduler.start()
-    research_part = (
-        f"Rotation({RESEARCH_HOUR}h {ROTATION_TIMEZONE}, {PASSES_PER_NIGHT} passe(s) par nuit, "
-        f"plafond {MONTHLY_CREDIT_CEILING} crédits/mois), "
-        if research_enabled
-        else "Rotation désactivée, "
-    )
     logger.info(
-        f"✅ Scheduler démarré ({research_reason}): "
-        f"{research_part}"
-        f"Crowdsourcing({CROWDSOURCING_INTERVAL_MINUTES}m)"
+        f"✅ Scheduler démarré : contributions toutes les {interval} min, première "
+        "passe maintenant. Aucune recherche planifiée : les passes dues partent sur "
+        "demande (POST /internal/run-due-passes)."
     )
 
 
@@ -448,15 +585,16 @@ def stop_scheduler():
 ROTATION_STATUS_NEXT_COUNT = 5
 
 
-def _rotation_status(enabled: bool, key_manager) -> dict:
+def _rotation_status(key_manager) -> dict:
     """
-    Le bloc `rotation` de pipeline-status : ce que la rotation va faire, et ce
-    qu'elle a coûté, sans lire les journaux.
+    Le bloc `rotation` de pipeline-status : les passes dues, ce qu'elles ont
+    coûté, et si les crédits du mois sont recalés sur Tavily.
 
-    `next` : les premiers candidats du planificateur, tels que la nuit les
-    verrait maintenant. Lecture en base courte ; une erreur se rend dans le
-    bloc (`{"error": …}`) sans faire échouer pipeline-status. `last_night` vient
-    du registre en mémoire : vide après un redémarrage.
+    `next` : les premières passes que run_due_passes choisirait maintenant.
+    Lecture en base courte ; une erreur se rend dans le bloc (`{"error": …}`)
+    sans faire échouer pipeline-status. `last_run` vient du registre en
+    mémoire : vide après un redémarrage. `usage_sync` : la dernière synchro
+    /usage de toutes les clés (`{ok, at, failed_keys}`), ou null.
     """
     from backend.db import get_db_connection
     from backend.scheduler.rotation import INTERVAL_DAYS, load_rotation_state, plan_rotation
@@ -475,64 +613,43 @@ def _rotation_status(enabled: bool, key_manager) -> dict:
         return {"error": str(e)[:300]}
 
     return {
-        "enabled": enabled,
-        "hour": RESEARCH_HOUR,
-        "timezone": ROTATION_TIMEZONE,
         "interval_days": INTERVAL_DAYS,
-        "passes_per_night": PASSES_PER_NIGHT,
         "monthly_ceiling": MONTHLY_CREDIT_CEILING,
         "month_credits_used": used,
         "due_count": len(candidates),
-        "next": [
-            {
-                "school_name": c.school_name,
-                "phase": c.phase,
-                "reason": c.reason,
-                "last_pass_at": c.last_pass_at.isoformat() if c.last_pass_at else None,
-                "estimated_credits": c.estimated_credits,
-            }
-            for c in candidates[:ROTATION_STATUS_NEXT_COUNT]
-        ],
-        "last_night": _last_job_runs.get(ROTATION_JOB_ID),
+        "next": [_candidate_dict(c) for c in candidates[:ROTATION_STATUS_NEXT_COUNT]],
+        "last_run": _last_job_runs.get(ROTATION_JOB_ID),
+        "usage_sync": key_manager.last_sync if key_manager is not None else None,
     }
 
 
 def get_scheduler_status(key_manager=None) -> dict:
     """
     Retourne le statut du scheduler (pour pipeline-status). `key_manager` sert
-    aux crédits du mois du bloc `rotation`.
+    aux crédits du mois et à la synchro /usage du bloc `rotation`.
     """
     scheduler = _scheduler
-    if not scheduler or not scheduler.running:
-        return {
-            "running": False,
-            "jobs": [],
-            "last_runs": dict(_last_job_runs),
-            "research_cron": dict(zip(("enabled", "reason"), research_cron_enabled())),
-            "rotation": _rotation_status(False, key_manager),
-        }
+    running = bool(scheduler and scheduler.running)
 
     jobs = []
-    for job in scheduler.get_jobs():
-        next_run = job.next_run_time
-        jobs.append({
-            "id": job.id,
-            "name": job.name,
-            "next_run": next_run.isoformat() if next_run else None,
-            "last_run": _last_job_runs.get(job.id),
-        })
+    if running:
+        for job in scheduler.get_jobs():
+            next_run = job.next_run_time
+            jobs.append({
+                "id": job.id,
+                "name": job.name,
+                "next_run": next_run.isoformat() if next_run else None,
+                "last_run": _last_job_runs.get(job.id),
+            })
 
     return {
-        "running": True,
+        "running": running,
         "jobs": jobs,
         "last_runs": dict(_last_job_runs),
-        # Vrai des qu'un job periodique a echoue a son dernier passage : c'est
-        # ce drapeau que le panneau admin doit surveiller.
+        # Vrai dès qu'un job a échoué à son dernier passage : c'est ce drapeau
+        # que le panneau admin doit surveiller.
         "has_failure": any(
             run.get("status") == "failed" for run in _last_job_runs.values()
         ),
-        # Pourquoi research_rotation manque a `jobs`, le cas echeant :
-        # l'absence doit se lire, pas se deviner.
-        "research_cron": dict(zip(("enabled", "reason"), research_cron_enabled())),
-        "rotation": _rotation_status(scheduler.get_job(ROTATION_JOB_ID) is not None, key_manager),
+        "rotation": _rotation_status(key_manager),
     }

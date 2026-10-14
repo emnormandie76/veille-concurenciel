@@ -112,17 +112,17 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 ### Edge Case 14 : Timeout ou réponse vide de Tavily
 - **Contexte :** Le backend FastAPI envoie une URL à Tavily pour récupérer le contenu Markdown d'une page d'école.
 - **Problème :** Tavily met plus de 30 secondes à répondre (serveur surchargé, page très lourde) ou renvoie un body complètement vide (la page existe mais n'a aucun contenu textuel exploitable).
-- **Impact :** Le worker FastAPI reste bloqué en attente, consomme les ressources limitées de l'instance Koyeb EcoFree, et peut potentiellement faire tomber le backend si plusieurs requêtes s'accumulent.
+- **Impact :** Le worker FastAPI reste bloqué en attente, consomme les ressources limitées du backend (un seul processus), et peut potentiellement le faire tomber si plusieurs requêtes s'accumulent.
 - **Solution confirmée :** **Imposer un timeout strict de 15 secondes sur tous les appels Tavily (via le paramètre `timeout` du client HTTP). Si Tavily renvoie un body vide ou un contenu de moins de 50 caractères, traiter comme un échec standard (incrémenter `failed_attempts_count` dans `CronTarget`). Aucune requête IA n'est déclenchée.**
 - **Mise en œuvre :** un délai explicite **par type d'appel**, réglable par variable (`TAVILY_EXTRACT_TIMEOUT_SECONDS` 30 s, `SEARCH` 60 s, `MAP` 120 s) — 15 s coupait des extractions légitimes. `CronTarget` n'existe plus : en crowdsourcing, un contenu de moins de 50 caractères lève `TavilyExtractionError` et le ticket est **supprimé** (l'URL ne sera jamais exploitable).
 
 
-### Edge Case 15 : Cold Start de l'instance Koyeb EcoFree
-- **Contexte :** L'instance FastAPI tourne sur Koyeb EcoFree (gratuit, 24/7) mais peut subir des redémarrages imprévus.
-- **Problème :** Après un redémarrage, l'instance met 10 à 30 secondes à redevenir opérationnelle. Durant ce laps de temps, les requêtes du frontend Next.js (soumissions utilisateur, chargement du dashboard Admin) échouent avec une erreur réseau ou un timeout.
-- **Impact :** L'utilisateur lambda voit une erreur incompréhensible en soumettant son information. L'Admin croit que le backend est en panne.
-- **Solution confirmée :** **Côté Next.js (frontend), implémenter un mécanisme de retry automatique avec un message UX explicite ("Le serveur redémarre, nouvelle tentative dans quelques secondes..."). Côté Koyeb, configurer un healthcheck HTTP sur `/health` pour que Koyeb ne route le trafic qu'une fois le backend prêt.**
-- **Mise en œuvre :** `/health` existe. La reconnexion automatique existe sur `/admin/cron` (« Reconnexion automatique en cours… ») ; le formulaire public `/contribute`, lui, n'appelle pas FastAPI — il écrit directement dans l'inbox.
+### Edge Case 15 : Backend indisponible (à l'origine : Cold Start de Koyeb)
+- **Contexte d'origine :** L'instance FastAPI devait tourner sur Koyeb EcoFree (gratuit, 24/7) et pouvait subir des redémarrages imprévus.
+- **Problème :** Après un redémarrage, l'instance mettait 10 à 30 secondes à redevenir opérationnelle. Durant ce laps de temps, les requêtes du frontend Next.js (chargement du dashboard Admin) échouaient avec une erreur réseau ou un timeout.
+- **Impact :** L'Admin croit que le backend est en panne.
+- **Solution d'origine :** retry automatique côté Next.js avec un message explicite, et healthcheck `/health` côté Koyeb.
+- **Depuis le 14 octobre 2026, Koyeb est abandonné** ([`backend-local.md`](features/backend-local.md)) : le backend n'est plus hébergé, l'admin le lance à la main sur son poste. Il n'y a plus de redémarrage imprévu, mais un backend **non lancé**. `/health` dit maintenant si le démarrage a réussi : `degraded`, avec la liste `errors`, quand la base, le gestionnaire de clés Tavily ou le scheduler ont échoué (voir l'Edge Case 31). Le bandeau « Cold Start » et la reconnexion automatique de `/admin/cron` restent en place jusqu'à l'étape 5 du plan, qui les remplace par trois états (en ligne, backend local non lancé, backend prêt). Le formulaire public `/contribute` n'appelle pas FastAPI : il écrit directement dans l'inbox.
 
 ## Session 8
 
@@ -157,7 +157,8 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 ### Edge Case 22 : Des passes payantes lancées sans clic
 - **Contexte :** Le backend local est lancé pour développer (`uvicorn`).
 - **Problème :** APScheduler inscrivait `phase1_scanner`, qui passait 5 minutes plus tard sur toutes les écoles `ACTIVE` sans campus — EMLV et Essec, ~30 crédits chacune.
-- **Solution actuelle :** le job qui paie Research, `research_rotation` (qui a remplacé `phase1_scanner` et `phase2_enricher`), n'est inscrit qu'avec `ENVIRONMENT=production`, ou forcé par `CRON_RESEARCH_ENABLED=true|false` (une valeur inconnue le coupe). Forcé en local, il lance une vraie passe à l'heure dite : jamais sans `CRON_MONTHLY_CREDIT_CEILING=0`. Le traitement du crowdsourcing reste inscrit, et appelle Tavily et Gemma s'il trouve des tickets `Pending_AI`.
+- **Première parade (septembre 2026) :** le job qui payait Research, `research_rotation` (qui avait remplacé `phase1_scanner` et `phase2_enricher`), n'était inscrit qu'avec `ENVIRONMENT=production` ou `CRON_RESEARCH_ENABLED=true`.
+- **Solution actuelle (14 octobre 2026) :** **plus aucun job planifié ne paie Research.** Le cron est supprimé, avec `ENVIRONMENT`, `CRON_RESEARCH_ENABLED`, `CRON_RESEARCH_HOUR` et `CRON_ROTATION_PASSES_PER_NIGHT`. Une passe de recherche ne part que par une demande de l'admin : `POST /internal/run-due-passes` (passes dues, sous plafond), ou une recherche manuelle. Un test (`test_scheduler_registration.py`) vérifie que le scheduler n'inscrit que le crowdsourcing, quelles que soient les anciennes variables. **Le crowdsourcing, lui, part dès le démarrage**, puis chaque minute : il appelle Tavily et Gemma s'il trouve des tickets `Pending_AI`.
 
 ### Edge Case 23 : Le site et la base ne découpent pas les programmes de la même façon
 - **Contexte :** Rattachement campus. La base a **un** `Programme Grande École` ; le site publie trois fiches (en 5 ans, en 2 ou 3 ans, en blended learning).
@@ -181,9 +182,10 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Solution actuelle :** en passe automatique (`skip_pending=True`), `pending_guard.read_pending_targets` lit les tickets `Pending_Admin` `Automated_AI` de l'école créés depuis le début de la période cible, et la passe saute la catégorie d'école, le programme (Pricing) ou l'arête (Capacity) concernés. Ranking garde la liste complète des programmes. Côté Phase 1, une école dont une découverte attend n'est pas candidate. Les recherches manuelles restent libres ; un ticket de crowdsourcing ne bloque rien.
 
 ### Edge Case 27 : Redémarrages et déclencheurs à intervalle
-- **Contexte :** Koyeb redémarre l'instance ; APScheduler compte un `IntervalTrigger` depuis le démarrage.
+- **Contexte :** L'hébergeur prévu (Koyeb) redémarrait l'instance ; APScheduler compte un `IntervalTrigger` depuis le démarrage.
 - **Problème :** la Phase 1 (premier passage à +5 min) partait à chaque redémarrage ; la Phase 2 (toutes les 24 h, sans date de départ) ne partait jamais si l'instance redémarrait au moins une fois par jour.
-- **Solution actuelle :** un seul job à heure fixe, `research_rotation` (`CronTrigger`, 3 h Europe/Paris), qui lit le dernier passage de chaque école dans `PipelineJob` (passages gardés 400 jours) et lance au plus une passe par nuit sous un plafond mensuel. Un démarrage après l'heure saute la nuit sans la rattraper : le cycle étant de six mois, le retard est d'un jour.
+- **Première parade (septembre 2026) :** un seul job à heure fixe, `research_rotation` (`CronTrigger`, 3 h Europe/Paris), au plus une passe par nuit sous un plafond mensuel.
+- **Solution actuelle (14 octobre 2026) :** le backend n'est plus hébergé, donc plus de cron du tout. Les passes dues partent à la demande de l'admin (`run_due_passes`, au plus 5 par exécution), avec la même logique : dernier passage de chaque école lu dans `PipelineJob` (passages gardés 400 jours), mêmes libellés de job, même plafond mensuel. Une passe ne dépend plus ni de l'heure ni du démarrage.
 
 ### Edge Case 28 : La Phase 1 relancée sur une école déjà cartographiée
 - **Contexte :** Une découverte repasse sur une école dont les campus et programmes sont en base.
@@ -191,11 +193,30 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Solution actuelle :** `discovery_diff.filter_new_discoveries` ne garde que ce qui manque en base ; un campus ou un programme reconnu est réécrit à l'orthographe de la base, un ambigu est gardé tel quel et signalé. Rien de nouveau → aucun ticket. Base illisible → ticket complet, signalé dans `diff_against_base.error`.
 
 ### Edge Case 29 : Un quota épuisé au milieu d'une passe automatique
-- **Contexte :** Les clés Tavily s'épuisent pendant une Phase 2 lancée par la rotation.
+- **Contexte :** Les clés Tavily s'épuisent pendant une Phase 2 lancée par les passes dues.
 - **Problème :** les phases avalent `QuotaExhaustedError` ; la Phase 2 passe à la cible suivante, puis se dit réussie. Le job aurait fini `completed` et l'école attendu six mois ce qu'elle n'avait pas reçu.
-- **Solution actuelle :** le job enveloppe le gestionnaire de clés dans un `_QuotaWatch` qui note tout refus, et contrôle `available_keys == 0` en fin de passe : job `failed`, reprise à 14 jours (la garde de l'Edge Case 26 évite de repayer ce qui a été déposé), et plus aucune passe cette nuit.
+- **Solution actuelle :** le job enveloppe le gestionnaire de clés dans un `_QuotaWatch` qui note tout refus, et contrôle `available_keys == 0` en fin de passe : job `failed`, reprise à 14 jours (la garde de l'Edge Case 26 évite de repayer ce qui a été déposé), et plus aucune passe dans cette exécution.
 
 ### Edge Case 30 : Une passe automatique déclarée morte en pleine exécution
 - **Contexte :** Une Phase 2 dure plus d'une heure.
 - **Problème :** sans progression, `updated_at` ne bouge pas ; au bout de `PIPELINE_JOB_STALE_SECONDS` (30 min), `reap_stale_jobs` la clôt en `failed` et l'école paraît libre pour un lancement concurrent.
 - **Solution actuelle :** chaque passe de la rotation passe un `progress_callback` qui met à jour le job : c'est son battement de cœur.
+
+## Session 11 — backend local sur demande (octobre 2026)
+
+Défauts F3, F4, F8 et F9 de [`backend-local.md`](features/backend-local.md) §5, corrigés à l'étape 3.
+
+### Edge Case 31 : Un démarrage raté qui se dit prêt
+- **Contexte :** Démarrage du backend (`lifespan` de `backend/main.py`).
+- **Problème :** un échec de la reprise des jobs, du `TavilyKeyManager` ou du scheduler n'était qu'un avertissement, suivi de « ✅ Backend prêt », et `/health` répondait `ok`. Une valeur illisible de `CRON_CROWDSOURCING_INTERVAL_MINUTES`, lue par `int()`, empêchait tout le scheduler de démarrer, et cet échec était masqué de la même façon. La base n'était pas contrôlée.
+- **Solution actuelle :** chaque échec est journalisé en `ERROR` et s'ajoute à `app.state.startup_errors`. `/health` rend alors `{"status": "degraded", "errors": [...]}`, et `pipeline-status` porte `startup_errors` et passe en `degraded`. Le démarrage fait un `SELECT 1` : en cas d'échec, le message cite le pilote et l'hôte (sans secret) et suggère `DB_DRIVER=neon-ws`. L'intervalle du crowdsourcing est lu par `env_int` : une valeur illisible retombe sur 1 minute.
+
+### Edge Case 32 : Des crédits du mois repartis de zéro
+- **Contexte :** Les compteurs de crédits Tavily vivent en mémoire. En local, chaque lancement du backend est un démarrage.
+- **Problème :** si la synchro `/usage` d'arrière-plan échouait, le plafond mensuel croyait le mois vierge et laissait partir des passes au-delà du budget.
+- **Solution actuelle :** une passe réelle commence par `sync_usage()`, une synchro bloquante de toutes les clés (20 s au plus). Si une clé n'a pas pu être recalée, rien ne part (`USAGE_SYNC_FAILED`, 503). Le résultat de la dernière synchro (`{ok, at, failed_keys}`) est dans `pipeline-status` (`rotation.usage_sync`).
+
+### Edge Case 33 : Des contributions bloquées sans que rien ne le dise
+- **Contexte :** Traitement des contributions, chaque minute.
+- **Problème :** base injoignable : le traitement faisait `return` chaque minute, sans trace dans `pipeline-status`. Le job n'était pas suivi.
+- **Solution actuelle :** un échec de lecture de la file lève `SubmissionQueueUnavailable`. Le job passe par une enveloppe qui inscrit chaque passage au registre (`last_runs.crowdsourcing_processor`) : `failed` sur une base injoignable ou un quota Tavily épuisé, sinon `success` avec le bilan du passage. `has_failure` dégrade alors `pipeline-status`.

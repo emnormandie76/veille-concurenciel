@@ -2,6 +2,11 @@
 
 > **Version :** 2.1 — 12 octobre 2026
 > **Statut :** Aligné sur le code de la branche `newresearch` (commit `827db5e`).
+> **Mises à jour du plan [backend-local](../features/backend-local.md)**
+> (branche `localpython`, octobre 2026) : pont WebSocket et migrations en 443
+> (§10.8) ; **plus de cron** : les passes dues partent sur demande (§5.5), et un
+> démarrage raté se voit (§2.3). Les sections qui citent encore Koyeb (§1.2,
+> §2.1, §2.2) seront reprises à l'étape 8 du plan.
 > Depuis la v2.0 : les deux crons Research (`phase1_scanner`, `phase2_enricher`)
 > sont remplacés par une **rotation nocturne** sous plafond mensuel (§5.5) ; une
 > passe automatique ne repaie pas une cible dont le ticket attend l'admin
@@ -96,40 +101,95 @@ Le système extrait, vérifie et structure les informations depuis les sites off
   - `POST /internal/trigger-enrichment/{school_id}` — Relancer la Phase 2
   - `POST /internal/trigger-targeted-research/{school_id}` — Recherche ciblée lancée depuis `/admin/cron` : Phase 1, ou Phase 2 sur un programme et des catégories choisis. Porte `collect_campus_attachments` (faux par défaut, voir §5.4)
   - `POST /internal/research-test/{school_id}` — Pipeline Research en `dry_run` : rend le rapport sans rien écrire
-  - `GET /internal/pipeline-status` — État du pipeline, crédits Tavily, **connexion BDD réelle** et **état des jobs périodiques** (bloc `scheduler`, détaillé ci-dessous)
+  - `POST /internal/run-due-passes` — **les passes dues, sur demande** (§5.5) : `{max_passes: 1..5, dry_run: bool}`. Seul départ d'une passe de rotation : il n'y a plus de cron
+  - `GET /internal/pipeline-status` — État du pipeline, crédits Tavily, **connexion BDD réelle**, **erreurs du démarrage** (`startup_errors`) et **état des jobs** (bloc `scheduler`, détaillé ci-dessous)
 
-  `GET /health` (hors `/internal`, sans jeton) sert de sonde de disponibilité.
+  `GET /health` (hors `/internal`, sans jeton) sert de sonde de disponibilité :
+  `{"status": "ok", "version"}`, ou `{"status": "degraded", "version", "errors": [...]}`
+  si le démarrage a échoué en partie. Toujours 200.
+
+**Un démarrage raté se voit** (`lifespan` de `backend/main.py`, défaut F3 du
+plan backend-local). Dans l'ordre :
+
+1. `db_connection_error()` (`backend/db.py`) fait un `SELECT 1`. Avec
+   `DB_DRIVER=neon-ws`, c'est là que le pont WebSocket démarre. En cas
+   d'échec, le message est celui de `get_pool()` (pilote et hôte, sans
+   secret), suivi d'une piste selon `DB_DRIVER` ;
+2. si la base répond : `reap_orphaned_jobs()` et `purge_finished_jobs()`. Base
+   injoignable : pas d'essai, chacun attendrait le délai de connexion pour la
+   même erreur ;
+3. `TavilyKeyManager()`, qui lance la synchro `/usage` en arrière-plan ;
+4. `start_scheduler()`.
+
+Chaque échec est journalisé en `ERROR` et s'ajoute à
+`app.state.startup_errors` (`"Base de données : …"`, `"Gestionnaire de clés
+Tavily : …"`…). Le journal se termine par « ✅ Backend prêt » seulement si la
+liste est vide. `pipeline-status` porte la liste et passe en `degraded` si elle
+n'est pas vide.
+
+**`POST /internal/run-due-passes`** (jeton interne) :
+
+| Cas | Réponse |
+|---|---|
+| `dry_run: true` | **200**, le rapport : le plan, sans job ni appel Research |
+| `dry_run: false` | **202**, le rapport tel qu'annoncé avant la première passe (`status: "planned"`), ou final si rien ne part (rien de dû, plafond atteint, planification impossible). Les passes tournent ensuite dans un fil (`run_in_executor`) |
+| une exécution réelle tourne déjà | **409**, `detail.code = "ALREADY_RUNNING"` |
+| aucun gestionnaire de clés | **503**, `detail.code = "KEY_MANAGER_MISSING"` |
+| synchro `/usage` en échec | **503**, `detail.code = "USAGE_SYNC_FAILED"`, avec `detail.usage_sync` |
+| `max_passes` hors de 1..5, `dry_run` absent ou non booléen, champ inconnu | **422** |
+
+`dry_run` est **exigé** et doit être un vrai booléen (`StrictBool`) : une passe
+réelle ne part jamais par défaut, ni sur `"false"` ou `0`. Un champ inconnu est
+refusé (`extra="forbid"`) : sinon une faute de frappe (`dryRun`) laisserait
+`dry_run` à sa valeur. Une passe réelle attend la synchro `/usage` (20 s au plus)
+avant de répondre.
+
+Le rapport : `{dry_run, max_passes, status, detail, monthly_ceiling,
+month_credits_used, due_count, planned, launched, usage_sync}`. `planned` porte
+ce qui part (ou partirait), au même format que `rotation.next` ; c'est une
+prévision, qui compte chaque passe retenue à son estimation. `launched` porte les
+passes réellement lancées, chacune avec son `status` et son `error`. `status`
+vaut `planned` dans la réponse 202, puis `success` ou `failed` dans le registre.
 
 **Le bloc `scheduler` de `pipeline-status`** vient de
 `get_scheduler_status(key_manager)` (`backend/scheduler/jobs.py`) :
 
 | Clé | Contenu |
 |---|---|
-| `running`, `jobs` | état d'APScheduler et prochain passage de chaque job inscrit |
-| `last_runs`, `has_failure` | dernière issue de chaque job, en mémoire du processus (vide après un redémarrage) ; `has_failure` dégrade le statut global |
-| `research_cron` | `{enabled, reason}` : pourquoi `research_rotation` est inscrit ou non (§5.5) |
-| `rotation` | `{enabled, hour, timezone, interval_days, passes_per_night, monthly_ceiling, month_credits_used, due_count, next, last_night}` — ou `{"error": "…"}` si la lecture en base échoue, sans faire échouer `pipeline-status` |
+| `running`, `jobs` | état d'APScheduler et prochain passage de chaque job inscrit : le seul est `crowdsourcing_processor` |
+| `last_runs`, `has_failure` | dernière issue de chaque job, en mémoire du processus (vide après un redémarrage) : `crowdsourcing_processor`, `run_due_passes` et `run_due_passes_dry_run`. `has_failure` dégrade le statut global |
+| `rotation` | `{interval_days, monthly_ceiling, month_credits_used, due_count, next, last_run, usage_sync}` — ou `{"error": "…"}` si la lecture en base échoue, sans faire échouer `pipeline-status` |
 
-`research_cron` et `rotation` sont présents **même scheduler arrêté** (alors
-`rotation.enabled` vaut faux). `rotation.enabled` dit si le job est réellement
-inscrit. `next` porte les 5 premières passes que la nuit choisirait maintenant
-(`school_name`, `phase`, `reason`, `last_pass_at`, `estimated_credits`) ;
-`due_count`, leur nombre total. `last_night` est la dernière issue de
-`research_rotation` (`status`, `detail`, `finished_at`), `null` depuis le
-démarrage.
+`rotation` est présent **même scheduler arrêté**. `next` porte les 5 premières
+passes que `run_due_passes` choisirait maintenant (`school_name`, `phase`,
+`reason`, `last_pass_at`, `estimated_credits`) ; `due_count`, leur nombre total.
+`last_run` est la dernière issue d'une exécution **réelle** (`status`, `detail`,
+`finished_at`), `null` depuis le démarrage : une simulation ne l'écrase pas, elle
+s'inscrit sous `last_runs.run_due_passes_dry_run`. `usage_sync` est la dernière
+synchro `/usage` de toutes les clés (`{ok, at, failed_keys}`), `null` tant
+qu'aucune n'est terminée ou sans gestionnaire de clés.
 
 > **`month_credits_used` est une estimation**, sur le mois calendaire UTC
 > (`TavilyKeyManager.credits_used_this_month()`), qui n'est pas forcément le
 > cycle de facturation Tavily. Les compteurs vivent en mémoire : ils **repartent
-> de zéro à chaque redémarrage** jusqu'à ce que la synchronisation `/usage`,
-> lancée en arrière-plan au démarrage, les recale. `null` si le backend n'a
-> chargé aucune clé.
+> de zéro à chaque démarrage** jusqu'à ce que la synchro `/usage`, lancée en
+> arrière-plan au démarrage, les recale. C'est pourquoi une passe réelle
+> commence par une synchro bloquante (§5.5). `null` si le backend n'a chargé
+> aucune clé.
+
+**Les jobs actifs** sont triés sur `PipelineJob.source` : `"rotation"` (passes
+dues) et `"cron"` (lignes de l'ancien cron, encore en base) vont sous
+`cron_jobs`, nom de clé historique que lit `app/admin/cron/page.tsx` ; le reste
+sous `pipeline_jobs`.
 
 Le panneau « Rotation automatique » de `/admin/cron`
 (`app/admin/cron/RotationPanel.tsx`) affiche ce bloc ; les décisions
-d'affichage (mode actif, à blanc ou inactif, jauge du plafond, passe « hors
-plafond ») vivent dans `lib/rotation-status.ts`, testées sans serveur. La route
-Next `/api/admin/pipeline-status` relaie la réponse et **coupe à 4 s** : au-delà,
+d'affichage vivent dans `lib/rotation-status.ts`, testées sans serveur.
+**Jusqu'à l'étape 5 du plan backend-local, ce front lit encore l'ancien bloc**
+(`research_cron`, `hour`, `timezone`, `passes_per_night`, `last_night`) :
+contre le backend de l'étape 3, le panneau est incohérent (rotation dite
+inactive, heure absente, aucune « dernière nuit »). La route Next
+`/api/admin/pipeline-status` relaie la réponse et **coupe à 4 s** : au-delà,
 l'écran tient le backend pour indisponible (503, « Cold Start possible »), même
 s'il tourne. C'est ce qu'on voit quand le backend joint mal la base (§10 bis) :
 `pipeline-status` est `async` mais ses lectures en base sont bloquantes, et le
@@ -250,7 +310,7 @@ appVC/
 │   │
 │   ├── crowdsourcing/processor.py      # Tickets User_Submission : extract → compatibilité → extraction
 │   ├── routers/internal.py             # Routes /internal/* (§2.3)
-│   ├── scheduler/jobs.py               # APScheduler : research_rotation (production), crowdsourcing ; bloc `rotation` de pipeline-status
+│   ├── scheduler/jobs.py               # Passes dues sur demande (run_due_passes) ; APScheduler : crowdsourcing seul ; bloc `rotation` de pipeline-status
 │   ├── scheduler/rotation.py           # Planificateur de la rotation : passes dues, ordre, coût estimé (pur) + lecture d'état
 │   ├── utils/academic_year.py          # Années cible et courante, début de période cible
 │   ├── utils/env.py                    # env_int : entier d'environnement, défaut + avertissement si illisible
@@ -276,9 +336,10 @@ appVC/
 │   ├── test_crowdsourcing_processor.py
 │   ├── test_campus_attachment.py · test_campus_attachment_collector.py
 │   ├── test_program_identity.py · test_attachment_plan.py
-│   ├── test_phase1_collection_switch.py · test_phase1_parked_report.py · test_scheduler_research_gate.py
+│   ├── test_phase1_collection_switch.py · test_phase1_parked_report.py · test_scheduler_registration.py
 │   ├── test_ranking_program_match.py · test_pending_guard.py · test_discovery_diff.py
 │   ├── test_rotation_plan.py · test_research_rotation_job.py · test_rotation_status.py
+│   ├── test_internal_run_due_passes.py · test_startup.py · test_usage_sync.py · test_db_driver.py
 │   ├── campus-attachment.test.ts · contribution.test.ts · trigger-research.test.ts · rotation-status.test.ts
 │   ├── api/                            # routes Next.js : admin-guards.test.ts (statique) · inbox-ticket.test.ts
 │   ├── helpers/                        # banc des routes : fake-prisma.ts · session.ts (§10 bis, Tests)
@@ -563,9 +624,12 @@ clôturait le ticket sans rien écrire.
 
 ### 3.5 bis. Suivi des exécutions — PipelineJob
 
-Chaque passe, manuelle (`source = "manual"`) ou cron (`"cron"`), est une ligne
-`PipelineJob` : `status` (`queued`, `running`, `completed`, `failed`, gardé par
-`CHECK`), `progress` et `result` en JSON, `error`, horodatages et `worker_id`.
+Chaque passe, manuelle (`source = "manual"`) ou passe due (`"rotation"`), est
+une ligne `PipelineJob` : `status` (`queued`, `running`, `completed`, `failed`,
+gardé par `CHECK`), `progress` et `result` en JSON, `error`, horodatages et
+`worker_id`. `source` n'a pas de `CHECK` : des lignes écrites par l'ancien cron
+portent encore `"cron"`, et le code qui lit `source` accepte les deux
+(`pipeline_jobs.ROTATION_SOURCES`). Aucune écriture ne les convertit.
 `backend/pipeline_jobs.py` porte les règles :
 
 - **un seul job actif par école** — la garde de concurrence des points d'entrée ;
@@ -592,12 +656,15 @@ mémoire en silence) :
 | Phase | `PipelineJob.phase` | Écrit par |
 |---|---|---|
 | 1 | `Phase 1 — Cartographie` (`PHASE1_LABEL`) | `trigger-scan`, recherche ciblée Phase 1 |
-| 1 | `Phase 1 — Cartographie (Auto)` (`PHASE1_CRON_LABEL`) | rotation |
+| 1 | `Phase 1 — Cartographie (Auto)` (`PHASE1_CRON_LABEL`) | passes dues (`run_due_passes`) |
 | 2 | `Phase 2 — Enrichissement` (`PHASE2_LABEL`) | `trigger-enrichment` |
-| 2 | `Phase 2 — Enrichissement (Auto)` (`PHASE2_CRON_LABEL`) | rotation |
+| 2 | `Phase 2 — Enrichissement (Auto)` (`PHASE2_CRON_LABEL`) | passes dues (`run_due_passes`) |
 
-`Phase 2 — Enrichissement ciblé` (`PHASE2_TARGETED_LABEL` : un programme, des
-catégories choisies) **n'en fait pas partie** : ce n'est pas une passe complète.
+Les libellés « (Auto) » et les noms `*_CRON_LABEL` datent du cron. **On ne les
+renomme pas** : les passages déjà en base les portent, et la mémoire du dernier
+passage se lit sur eux. `Phase 2 — Enrichissement ciblé`
+(`PHASE2_TARGETED_LABEL` : un programme, des catégories choisies) **n'en fait
+pas partie** : ce n'est pas une passe complète.
 `read_last_passes` rend, par `(école, phase)`, le dernier job `completed` ou
 `failed` portant un de ces libellés ; `finished_at`, écrit sans fuseau par
 `now()`, est lu comme de l'UTC.
@@ -798,12 +865,12 @@ boucle.
 
 ### 5.1. Phase 1 : Cartographie (Program Discovery)
 
-**Déclencheurs :**
-- la rotation nocturne `research_rotation` (§5.5), **production seulement** :
-  toute école `ACTIVE` dont la Phase 1 est due (jamais passée, 182 jours après
-  un passage réussi, 14 jours après un échec), sauf si une découverte de
-  l'école attend déjà l'admin. Les écoles sans aucun `Program` passent en
-  premier. Le cron n'active jamais la collecte du rattachement campus ;
+**Déclencheurs** — tous à la demande de l'admin, aucun planifié :
+- les passes dues, `POST /internal/run-due-passes` (§5.5) : toute école
+  `ACTIVE` dont la Phase 1 est due (jamais passée, 182 jours après un passage
+  réussi, 14 jours après un échec), sauf si une découverte de l'école attend
+  déjà l'admin. Les écoles sans aucun `Program` passent en premier. Une passe
+  due n'active jamais la collecte du rattachement campus ;
 - l'écran `/admin/cron` → `POST /internal/trigger-targeted-research` (ADMIN) ;
 - `POST /internal/trigger-scan/{school_id}`.
 
@@ -836,7 +903,7 @@ chacun) sont partis avec l'échec : ils n'étaient enregistrés qu'avec le ticke
 Désormais, une extraction indisponible, en erreur ou de forme inattendue range
 le rapport dans un ticket `Failed` (`raw_report`, charge
 `parked_reason: "research_report_parked"`, dernière erreur, nombre de
-tentatives). La passe suivante de la même école — manuelle ou cron — le reprend
+tentatives). La passe suivante de la même école — manuelle ou passe due — le reprend
 tant qu'il a moins de `PARKED_REPORT_MAX_AGE_DAYS` (7) jours. Un nouvel échec
 s'inscrit sur le même ticket sans en créer un second. Rejeter ce ticket dans
 l'inbox empêche qu'il soit repris. Une panne de lecture ou d'écriture de ce
@@ -929,10 +996,10 @@ Quand l'Admin ouvre un ticket `Program_Discovery` portant `discovered_campuses` 
 
 ### 5.3. Phase 2 : Enrichissement Chirurgical (Deep Dive)
 
-**Déclencheurs :** la rotation nocturne `research_rotation` (§5.5, **production
-seulement**) sur toute école `ACTIVE` ayant au moins un `Program` dont la
-Phase 2 est due, avec `skip_pending=True` ; l'écran `/admin/cron` pour une
-école, un programme et des catégories choisis ;
+**Déclencheurs** — tous à la demande de l'admin, aucun planifié : les passes
+dues (`POST /internal/run-due-passes`, §5.5) sur toute école `ACTIVE` ayant au
+moins un `Program` dont la Phase 2 est due, avec `skip_pending=True` ; l'écran
+`/admin/cron` pour une école, un programme et des catégories choisis ;
 `POST /internal/trigger-enrichment/{school_id}`. `PHASE2_MAX_PROGRAMS` borne le
 nombre de programmes d'une passe complète (tests).
 
@@ -989,7 +1056,7 @@ correspondants dans `extraction_prompts.py`. Ils ne sont plus passés en `output
 **Garde « en attente » — passes automatiques seulement.** `has_data_changed` ne
 compare qu'à la **production** et `_insert_ticket` n'interroge pas l'Inbox : un
 ticket que l'admin n'avait pas encore validé était repayé et recréé à chaque
-passe. Avec `skip_pending=True` (la rotation, §5.5), `run_phase2_research` lit
+passe. Avec `skip_pending=True` (les passes dues, §5.5), `run_phase2_research` lit
 `read_pending_targets` (`backend/pipeline/pending_guard.py`) — une requête sur
 `ContributionInbox`, `status = 'Pending_Admin'`, `source_type =
 'Automated_AI'`, l'école — et saute :
@@ -1033,7 +1100,7 @@ fiches formation (`Campus   Caen Le Havre Paris Dublin`) et dans une section
 **Désactivé par défaut.** La collecte coûte ~15 à 17 crédits Tavily et 9 appels
 Gemini par école, y compris là où elle ne produit rien. L'admin l'active pour
 une passe et une école par la case de `/admin/cron`
-(`collect_campus_attachments`, faux à chaque étage). Le cron ne l'active jamais.
+(`collect_campus_attachments`, faux à chaque étage). Une passe due ne l'active jamais.
 Désactivée, le résultat du job porte `campus_attachments: {"status": "disabled"}`.
 
 **Collecte (`campus_attachment_collector.py`) :**
@@ -1092,40 +1159,52 @@ Le plan existe en **deux implémentations** — `lib/campus-attachment.ts`
 EM Normandie. Em Lyon ne publie aucune année ; EM Strasbourg ne publie aucun
 lieu. `ProgramPlacement` n'a pas de chemin d'écriture.
 
-### 5.5. Rotation nocturne des recherches (cron de production)
+### 5.5. Passes dues sur demande
 
-**Le seul job qui paie Research de lui-même.** `research_rotation`
-(`backend/scheduler/jobs.py`) remplace `phase1_scanner` et `phase2_enricher`,
-qui tournaient sur des intervalles comptés depuis le démarrage : sur Koyeb, qui
-redémarre, la Phase 1 partait à chaque redémarrage et la Phase 2 jamais ; et la
-Phase 2 repassait chaque jour sur tout (~54 000 crédits par mois pour trois
-écoles). Cible décidée par le propriétaire le 29 septembre 2026 : ~30 écoles,
-~10 000 crédits Tavily par mois, **Phase 1 et Phase 2 deux fois par an et par
-école**. Plan, chiffrage et journal :
+**Aucun job planifié ne paie Research.** Les passes de rotation partent quand
+l'admin les demande : `run_due_passes` (`backend/scheduler/jobs.py`), appelé par
+`POST /internal/run-due-passes` (§2.3). Le backend n'est plus hébergé : l'admin
+le lance sur son poste (décision du 14 octobre 2026,
+[`backend-local.md`](../features/backend-local.md)). Un cron à heure fixe ne
+tournerait que si le poste est allumé à l'heure dite, et lancer `uvicorn` ne
+doit jamais suffire à payer Research (Edge Case 22).
+
+**Historique.** Le 29 septembre 2026, un cron nocturne, `research_rotation`
+(3 h, Europe/Paris, inscrit en production seulement), avait remplacé
+`phase1_scanner` et `phase2_enricher`, deux déclencheurs à intervalle comptés
+depuis le démarrage (Edge Case 27). Il est supprimé, avec `ENVIRONMENT`,
+`CRON_RESEARCH_ENABLED`, `CRON_RESEARCH_HOUR` et
+`CRON_ROTATION_PASSES_PER_NIGHT`. Sa logique est reprise telle quelle :
+planificateur, plafond mensuel, garde « école occupée », `_QuotaWatch`, arrêt au
+premier quota épuisé, et **mêmes libellés de job**, qui font la mémoire des
+passages (§3.5 bis). Seule `source` change : `"rotation"` au lieu de `"cron"`.
+La cible du propriétaire ne change pas : ~30 écoles, ~10 000 crédits Tavily par
+mois, Phase 1 et Phase 2 deux fois par an et par école. Plan et chiffrage :
 [`cron-rotation-production.md`](../features/cron-rotation-production.md).
 
-**Inscription — `research_cron_enabled()`, règle inchangée.**
-`CRON_RESEARCH_ENABLED` vaut `true`/`1`/`yes`/`on` → inscrit ;
-`false`/`0`/`no`/`off` → non inscrit ; toute autre valeur → non inscrit, raison
-journalisée ; vide → inscrit seulement si `ENVIRONMENT` vaut `production` (ou
-`prod`). La raison est au log de démarrage et dans `research_cron` (§2.3). Le
-traitement du crowdsourcing est toujours inscrit.
-
-**Déclencheur.** `CronTrigger(hour=CRON_RESEARCH_HOUR, minute=0,
-timezone="Europe/Paris")`, `misfire_grace_time=3600`, `coalesce=True`,
-`max_instances=1`. L'heure ne dépend pas du démarrage. Le délai de grâce
-rattrape, dans l'heure, un passage qu'un processus **vivant** n'a pas pu tenir à
-l'heure dite (instance gelée puis réveillée, exécuteur occupé). Il ne rattrape
-**pas** une nuit où le processus a (re)démarré après l'heure : le magasin de
-jobs est en mémoire, et le premier passage est calculé à partir du démarrage —
-le lendemain à la même heure. Sur un cycle de six mois, une nuit sautée ne
-coûte qu'un jour de retard.
-
-**Une nuit :**
+**Une exécution** — `run_due_passes(key_manager, max_passes=1, dry_run=False,
+now=None, on_planned=None)` :
 
 ```
-research_rotation(key_manager)
- ├─ aucun TavilyKeyManager → dernière nuit « failed », rien
+run_due_passes
+ ├─ max_passes hors de 1..5                → ValueError
+ ├─ aucun TavilyKeyManager                 → « failed », rien
+ ├─ dry_run : ni verrou ni synchro ; PLANIFICATION ; rapport rendu
+ └─ réel :
+      verrou de module déjà pris           → RotationAlreadyRunning (409)
+      sync_usage() : synchro /usage bloquante de toutes les clés (20 s au plus)
+        une clé non recalée                → « failed », UsageSyncFailed (503), rien ne part
+      PLANIFICATION
+      on_planned(rapport « planned »)      → la route répond 202
+      dans l'ordre, jusqu'à max_passes passes lancées :
+        ne tient pas sous le plafond → candidat suivant
+        école occupée (job actif)    → candidat suivant
+        sinon : UNE PASSE (ci-dessous)
+          quota épuisé, ou job non créé → fin de l'exécution
+          sinon : crédits relus au gestionnaire de clés, candidat suivant
+      verrou rendu
+
+PLANIFICATION
  ├─ reap_stale_jobs() : un job mort encore « actif » ferait sauter son école
  ├─ load_rotation_state(cur) : 3 requêtes, connexion courte
  │    écoles ACTIVE + nb Program + nb ProgramCampus + job actif ;
@@ -1133,21 +1212,40 @@ research_rotation(key_manager)
  ├─ plan_rotation(...) : liste ordonnée des passes dues, fonction PURE
  ├─ used = credits_used_this_month()
  │    erreur à l'une de ces étapes → « failed », « planification : … »
- ├─ aucune passe due                        → « success », « aucune passe due »
+ ├─ aucune passe due                       → « success », « aucune passe due »
  ├─ aucune ne tient (used + estimation > plafond)
- │                                          → « success », « plafond mensuel atteint : … »
- └─ dans l'ordre, jusqu'à CRON_ROTATION_PASSES_PER_NIGHT passes lancées :
-      ne tient pas sous le plafond → candidat suivant
-      école occupée (job actif)    → candidat suivant
-      sinon : UNE PASSE (ci-dessous)
-        quota épuisé, ou job non créé → fin de la nuit
-        sinon : used relu au gestionnaire de clés, candidat suivant
+ │                                         → « success », « plafond mensuel atteint : … »
+ └─ sinon : planned = les max_passes premières qui tiennent,
+            chacune comptée à son estimation
 ```
 
-L'issue de la nuit (`last_night`, §2.3) vaut `success` si toutes les passes
-lancées finissent `completed`, `failed` sinon ; son détail nomme chaque passe
-(`Em Lyon, Phase 2, ~785 crédits`) et son erreur. Toutes les écoles dues
-occupées : « aucune passe lancée : écoles occupées ».
+**Le rapport** (forme au §2.3) est rendu et inscrit au registre :
+`last_runs.run_due_passes` pour une exécution réelle (c'est
+`rotation.last_run`), `last_runs.run_due_passes_dry_run` pour une simulation.
+L'issue vaut `success` si toutes les passes lancées finissent `completed`,
+`failed` sinon ; son détail nomme chaque passe (`Em Lyon, Phase 2, ~785
+crédits`) et son erreur. Toutes les écoles dues occupées : « aucune passe
+lancée : écoles occupées ». `planned` est une **prévision** : l'exécution relit
+les crédits réels après chaque passe et saute une école devenue occupée
+entre-temps ; `launched` dit ce qui est réellement parti.
+
+**Simulation (`dry_run=True`).** Elle lit l'état, planifie, journalise le plan
+(`📋 [ROTATION] n passe(s) due(s) ; crédits du mois x/plafond ; en tête : …`)
+et rend `planned`, **sans créer de job, sans appeler Research ni `/usage`**. Elle
+remplace l'ancienne vérification « à blanc » par `CRON_MONTHLY_CREDIT_CEILING=0`.
+Elle ne prend pas le verrou, puisqu'elle ne paie rien et n'ouvre aucun job :
+seul `reap_stale_jobs` peut y clore un job mort, comme le fait `pipeline-status`
+à chaque appel. Ses crédits du mois sont ceux du moment, sans synchro ;
+`usage_sync` dit s'ils ont été recalés.
+
+**La synchro `/usage` d'abord (F8).** Les compteurs de crédits vivent en mémoire
+et repartent de zéro à chaque démarrage : en local, chaque lancement est un
+démarrage. Le démarrage lance la synchro en arrière-plan ; une passe réelle en
+refait une **bloquante** (`TavilyKeyManager.sync_usage(timeout=20)`, clés
+interrogées en parallèle) et ne part pas si une clé n'a pas été recalée. Sinon,
+le plafond croirait le mois vierge. `sync_usage` mémorise
+`last_sync = {ok, at, failed_keys}`, avec des suffixes de clés seulement. Une
+erreur, une réponse sans bloc `key` ou un délai dépassé comptent comme un échec.
 
 **Passe due** (`plan_rotation`, `backend/scheduler/rotation.py`), par école et
 par phase, d'après le dernier job terminé portant un libellé de passage complet
@@ -1164,8 +1262,9 @@ En plus : seules les écoles `ACTIVE` ; **Phase 1** pas due si une découverte d
 l'école attend l'admin (`read_discovery_pending`, §5.3) ; **Phase 2** pas due
 sans aucun `Program`. Un passage manuel complet (`trigger-scan`,
 `trigger-enrichment`, recherche ciblée Phase 1) compte comme un passage ; une
-Phase 2 ciblée, non. Le délai court après un échec évite de repayer chaque nuit
-une découverte qui échoue, sans attendre six mois après une simple coupure.
+Phase 2 ciblée, non. Le délai court après un échec évite de repayer à chaque
+lancement une découverte qui échoue, sans attendre six mois après une simple
+coupure.
 
 **Ordre :** (1) Phase 1 des écoles sans aucun `Program` — tout le reste en
 dépend ; (2) Phase 2 jamais passée — la découverte vient d'être validée ;
@@ -1186,14 +1285,15 @@ rangé) — l'estimation est prudente :
 1. `_school_is_busy` : un job actif sur l'école → passée, candidat suivant
    (base injoignable : le contrôle ne bloque pas) ;
 2. `create_job(school_id, "Phase 1 — Cartographie (Auto)" | "Phase 2 —
-   Enrichissement (Auto)", source="cron")` puis `mark_running`. **Si le job ne
-   peut pas être créé, la passe n'est pas lancée** et la nuit s'arrête : le job
-   est la mémoire du passage, sans lui l'école serait repayée la nuit suivante ;
+   Enrichissement (Auto)", source="rotation")` puis `mark_running`. **Si le job
+   ne peut pas être créé, la passe n'est pas lancée** et l'exécution s'arrête :
+   le job est la mémoire du passage, sans lui l'école serait repayée au
+   lancement suivant ;
 3. **battement de cœur** : `progress_callback` → `update_progress`. Une passe
    de Phase 2 dure plus d'une heure ; muette, elle serait déclarée morte au bout
    de 30 minutes et l'école paraîtrait libre ;
-4. Phase 1 : `run_phase1_research(..., collect_campus_attachments=False)` — le
-   cron n'active jamais la collecte (§5.4). Phase 2 :
+4. Phase 1 : `run_phase1_research(..., collect_campus_attachments=False)` —
+   une passe due n'active jamais la collecte (§5.4). Phase 2 :
    `run_phase2_research(..., skip_pending=True)` ;
 5. clôture : `result["success"]` → `completed`, sinon `failed` avec le message.
    Une Phase 1 sans nouveauté (`no_new_discoveries`) est un succès : l'école est
@@ -1207,7 +1307,7 @@ donc aux phases un `_QuotaWatch`, qui enveloppe le gestionnaire de clés et note
 tout refus de `get_active_key`, et contrôle `available_keys == 0` en fin de
 passe. Dans les deux cas : job `failed` (« Quota Tavily épuisé pendant la
 passe… »), reprise après 14 jours — la garde du §5.3 évite de repayer ce qui a
-déjà été déposé — et **fin de la nuit**. Une `QuotaExhaustedError` qui
+déjà été déposé — et **fin de l'exécution**. Une `QuotaExhaustedError` qui
 remonterait malgré tout est traitée de même.
 
 **Plafond mensuel.** Une passe ne part que si `crédits du mois + estimation ≤
@@ -1216,42 +1316,53 @@ la place aux recherches manuelles et au crowdsourcing).
 `credits_used_this_month()` remet d'abord à zéro, sous le verrou, une clé
 restée sur le mois précédent (`get_status()` ne le fait pas : le 1er du mois, il
 rend encore la consommation du mois écoulé). Ce sont des **estimations**, sur le
-mois calendaire UTC, et les compteurs **repartent de zéro à chaque redémarrage**
-jusqu'à la synchronisation `/usage` en arrière-plan : si elle échoue, le plafond
-sous-estime le mois. D'où la marge entre plafond et budget.
+mois calendaire UTC, recalées sur `/usage` avant chaque exécution réelle.
+`/usage` n'est pas en temps réel : même recalé, le compteur sous-estime les
+dernières minutes. D'où la marge entre plafond et budget.
 
-**À blanc : `CRON_MONTHLY_CREDIT_CEILING=0`.** Aucune estimation ne tient sous
-0 : le job lit l'état, planifie, journalise le plan (`📋 [ROTATION] n passe(s)
-due(s) ; crédits du mois x/0 ; en tête : …`) et rend « plafond mensuel atteint »,
-sans créer de job ni appeler Research. C'est le mode de vérification avant mise
-en ligne ([`manual_testing_cron.md`](../testing/manual_testing_cron.md)).
+**Une exécution à la fois.** Le verrou de module (`RotationAlreadyRunning`) ne
+vaut que dans le processus : il suppose **un seul backend** à la fois, comme
+`reap_orphaned_jobs` (§3.5 bis). Deux backends feraient aussi deux
+`TavilyKeyManager`, et deux comptabilités qui s'ignorent.
 
-**Redémarrage pendant une passe.** `reap_orphaned_jobs` clôt le job en `failed`
-au démarrage suivant : l'école est reprise 14 jours plus tard, et la garde
-évite de recréer les tickets déjà déposés. Cela suppose **un seul processus
-backend** (§3.5 bis) ; `max_instances=1` ne vaut, lui aussi, que par processus.
+**Backend fermé pendant une passe.** Le job reste `running` en base ;
+`reap_orphaned_jobs` le clôt en `failed` au démarrage suivant. L'école est
+reprise 14 jours plus tard, et la garde évite de recréer les tickets déjà
+déposés.
 
-**Variables** — toutes avec défaut, lues **une fois au démarrage** par
-`env_int` (`backend/utils/env.py`) : une valeur non entière ou hors bornes
-retombe sur le défaut avec un avertissement, sans faire tomber le démarrage.
+**Variables** — toutes avec défaut, lues par `env_int`
+(`backend/utils/env.py`) : une valeur non entière ou hors bornes retombe sur le
+défaut avec un avertissement, sans faire tomber le démarrage. Le préfixe
+`CRON_` est historique : on garde les noms, plutôt qu'un renommage sans gain.
 
 | Variable | Défaut | Bornes | Lue dans | Rôle |
 |---|---|---|---|---|
-| `CRON_RESEARCH_HOUR` | 3 | 0–23 | `scheduler/jobs.py` | heure de la passe, Europe/Paris |
-| `CRON_MONTHLY_CREDIT_CEILING` | 7000 | ≥ 0 | `scheduler/jobs.py` | plafond du cron ; 0 = à blanc |
-| `CRON_ROTATION_PASSES_PER_NIGHT` | 1 | ≥ 1 | `scheduler/jobs.py` | passes lancées par nuit, au plus |
-| `CRON_RESEARCH_INTERVAL_DAYS` | 182 | ≥ 1 | `scheduler/rotation.py` | écart entre deux passages réussis |
-| `CRON_RESEARCH_RETRY_FAILED_DAYS` | 14 | ≥ 1 | `scheduler/rotation.py` | écart après un passage en échec |
-| `PIPELINE_JOB_ROTATION_RETENTION_DAYS` | 400 | ≥ 1 | `pipeline_jobs.py` | rétention des passages ; **doit rester supérieure à l'intervalle** (§3.5 bis) |
+| `CRON_MONTHLY_CREDIT_CEILING` | 7000 | ≥ 0 | `scheduler/jobs.py`, au démarrage | plafond des passes dues ; 0 = aucune passe ne tient |
+| `CRON_RESEARCH_INTERVAL_DAYS` | 182 | ≥ 1 | `scheduler/rotation.py`, au démarrage | écart entre deux passages réussis |
+| `CRON_RESEARCH_RETRY_FAILED_DAYS` | 14 | ≥ 1 | `scheduler/rotation.py`, au démarrage | écart après un passage en échec |
+| `PIPELINE_JOB_ROTATION_RETENTION_DAYS` | 400 | ≥ 1 | `pipeline_jobs.py`, au démarrage | rétention des passages ; **doit rester supérieure à l'intervalle** (§3.5 bis) |
+| `CRON_CROWDSOURCING_INTERVAL_MINUTES` | 1 | ≥ 1 | `scheduler/jobs.py`, à `start_scheduler` | intervalle du traitement des contributions |
 
+**Supprimées** le 14 octobre 2026 : `ENVIRONMENT`, `CRON_RESEARCH_ENABLED`,
+`CRON_RESEARCH_HOUR`, `CRON_ROTATION_PASSES_PER_NIGHT` (remplacée par
+`max_passes`, 1 à 5 par exécution). Plus anciennes :
 `CRON_PHASE1_INTERVAL_HOURS`, `CRON_PHASE2_INTERVAL_HOURS` et
-`CRON_PHASE1_INITIAL_DELAY_MINUTES` n'existent plus. `CRON_CROWDSOURCING_INTERVAL_MINUTES`
-est encore lue par `int()` : une valeur illisible empêche le scheduler entier
-de démarrer.
+`CRON_PHASE1_INITIAL_DELAY_MINUTES`. Le code ne les lit plus.
+
+**Le traitement des contributions** reste le seul job d'APScheduler
+(`crowdsourcing_processor`) : toutes les `CRON_CROWDSOURCING_INTERVAL_MINUTES`
+tant que le backend tourne, et **une première passe dès le démarrage**
+(`next_run_time`). Entre deux lancements, les contributions attendent en
+`Pending_AI`. Il passe par une enveloppe, `_crowdsourcing_job`, qui inscrit
+chaque passage au registre (`last_runs.crowdsourcing_processor`) : `failed` si
+la file n'a pas pu être lue (`SubmissionQueueUnavailable`, F4) ou si le quota
+Tavily a interrompu le traitement ; sinon `success`, avec le bilan du passage.
+**Il paie** (Tavily `extract`, Gemma) dès qu'il trouve des tickets
+`Pending_AI` : lancer le backend suffit à le déclencher.
 
 **Régime attendu.** ~3 150 crédits par mois pour 30 écoles en régime établi.
-Au déploiement, aucune école n'a de passage en mémoire (la purge était à 7
-jours) : toutes sont « jamais passées », et le plafond les étale sur deux à
+Au premier lancement, aucune école n'a de passage en mémoire (la purge était à
+7 jours) : toutes sont « jamais passées », et le plafond les étale sur deux à
 trois mois. Le volume de tickets qui en sort (jusqu'à 30 à 40 au premier
 passage d'une école) dépasse la capacité de validation prévue : à mesurer dès
 les premiers mois (plan, §3).
@@ -1503,22 +1614,25 @@ Format : `{ "error": "Description" }`
 | 12 | Ambiguïté devise (UE vs intl) | Colonnes `intl_*` séparées | `edgecase.md` |
 | 13 | Prompt Injection / Fake News | Délimiteurs `<TEXTE_SOURCE>`, whitelist domaines, isolation totale du commentaire utilisateur `user_text` des invites de l'IA | `edgecase.md` |
 | 14 | Timeout / réponse vide Tavily | Délai explicite par appel (`TAVILY_*_TIMEOUT_SECONDS` : extract 30 s, search 60 s, map 120 s), body < 50 chars = `TavilyExtractionError` → ticket **supprimé** de la BDD (URL définitivement invalide) | `processor.py` |
-| 15 | Cold Start Koyeb | Retry frontend + healthcheck `/health` | `edgecase.md` |
+| 15 | Backend indisponible (à l'origine : Cold Start Koyeb, abandonné le 14 octobre 2026) | Backend lancé à la main sur le poste. `/health` dit `degraded`, avec ses `errors`, si le démarrage a échoué (EC 31). Le bandeau « Cold Start » de `/admin/cron` reste jusqu'à l'étape 5 du plan backend-local | `edgecase.md`, `main.py` |
 | 16 | Faux-négatifs compatibilité (menus longs) | Plafonds explicites par appel : 25 000 caractères pour la compatibilité (un booléen, tranché sur le début de la page), 80 000 pour l'extraction mono-programme, 25 000 en multi-programme | `processor.py` |
 | 17 | Timeout transaction Prisma (validation) | Upserts **sérialisés** (`tx` n'a qu'une connexion : un `Promise.all` n'y gagne rien et dépasse le délai sous charge) + timeout de 60 s pour les imports volumineux (ex: EDHEC, 9 campus et 30+ programmes) | `app/api/admin/inbox/[id]/validate/route.ts` |
 | 18 | URL invalide / faux lien utilisateur (ex: `http://localhost`, domaine inexistant) | Tavily retourne contenu vide → `TavilyExtractionError` → ticket **supprimé** (pas de `Rejected` parasite en BDD) | `processor.py` |
 | 19 | Accumulation de tickets `Validated`/`Rejected` en BDD (quota Neon 500 MB) | Bouton "🗑️ Purger" dans `admin/inbox` (`DELETE /api/admin/inbox/purge`) avec sélection des statuts + compteur avant confirmation | `app/api/admin/inbox/purge/route.ts` |
 | 20 | Timeout d'inactivité BDD pendant requêtes API/IA longues (`connection already closed`) | Pattern "Ephemeral DB Connections" : isolation des contextes de connexion BDD des requêtes Tavily/Gemma longues. Connexions éphémères courtes pour la lecture et par-ticket pour l'écriture. | `phase2_research.py`, `processor.py` |
 | 21 | Gemini saturé (503) après un Research déjà payé | Rapport rangé en ticket `Failed`, repris par la passe suivante pendant 7 jours sans rappeler Research | `phase1_research.py` |
-| 22 | Backend lancé en développement → passes payantes sans clic | `research_rotation` inscrit seulement si `ENVIRONMENT=production` ou `CRON_RESEARCH_ENABLED=true` ; forcé en local, toujours avec `CRON_MONTHLY_CREDIT_CEILING=0` | `scheduler/jobs.py` |
+| 22 | Backend lancé → passes payantes sans clic | **Plus aucun job planifié ne paie Research** : le scheduler n'inscrit que le crowdsourcing (test `test_scheduler_registration.py`) ; une passe de recherche ne part que par `POST /internal/run-due-passes` ou une recherche manuelle (§5.5). Le crowdsourcing, lui, part dès le démarrage et paie s'il trouve des `Pending_AI` | `scheduler/jobs.py` |
 | 23 | Le site découpe par voie d'accès, la base par diplôme (3 fiches PGE → 1 `Program`) | Appariement par variante de parcours (liste fermée) + fusion des affirmations identiques ; divergentes → aucune ligne | `program_identity.py`, `campus_attachment.py` |
 | 24 | Cartes de rubrique au même format que les cartes de programme (Em Lyon) | Une carte n'est un programme que si l'ancrage de son lien porte le titre et le lieu | `campus_attachment.py` |
 | 25 | École qui ne publie aucun lieu sur ses fiches (EM Strasbourg) | Zéro ligne, aucun ticket, aucune erreur ; la collecte reste désactivée par défaut | `campus_attachment_collector.py` |
 | 26 | Ticket en attente repayé : une passe automatique relançait et recréait chaque cible dont le ticket n'était pas encore validé (`has_data_changed` ne compare qu'à la production) | Garde « en attente » : Phase 2 avec `skip_pending=True` saute l'école-catégorie, le programme ou l'arête porteurs d'un ticket `Pending_Admin` `Automated_AI` de la période cible ; Phase 1 pas candidate tant qu'une découverte attend. Passes manuelles libres (§5.3) | `pending_guard.py`, `scheduler/rotation.py` |
-| 27 | Redémarrages Koyeb et déclencheurs à intervalle : la Phase 1 partait à chaque redémarrage, la Phase 2 (24 h) jamais | Un seul job à heure fixe (`CronTrigger`, Europe/Paris), dernier passage lu dans `PipelineJob` (rétention 400 j), au plus une passe par nuit sous plafond mensuel. Un démarrage après l'heure saute la nuit, sans rattrapage (§5.5) | `scheduler/jobs.py`, `pipeline_jobs.py` |
+| 27 | Redémarrages de l'hébergeur et déclencheurs à intervalle : la Phase 1 partait à chaque redémarrage, la Phase 2 (24 h) jamais | Plus de déclencheur planifié : passes dues sur demande (`run_due_passes`, au plus 5 par exécution), dernier passage lu dans `PipelineJob` (rétention 400 j), sous plafond mensuel (§5.5). Le cron à heure fixe du 29 septembre a été supprimé avec l'hébergement | `scheduler/jobs.py`, `pipeline_jobs.py` |
 | 28 | Phase 1 relancée sur une école cartographiée : ticket complet, et « Ecole » au lieu de « École » créait un second `Program` à la validation | Phase 1 différentielle : ne garder que ce qui manque, noms réécrits à l'orthographe de la base, ambigus signalés ; rien de nouveau → pas de ticket (§5.1) | `discovery_diff.py`, `phase1_research.py` |
-| 29 | Quota Tavily épuisé au milieu d'une passe cron : la Phase 2 avale l'erreur et se dit réussie, l'école attendrait six mois | `_QuotaWatch` note tout refus de clé, `available_keys == 0` contrôlé en fin de passe → job `failed`, reprise à 14 jours, fin de la nuit (§5.5) | `scheduler/jobs.py` |
-| 30 | Passe cron muette déclarée morte au bout de 30 min, école vue comme libre | Battement de cœur : `progress_callback` → `update_progress` sur chaque passe de la rotation | `scheduler/jobs.py`, `pipeline_jobs.py` |
+| 29 | Quota Tavily épuisé au milieu d'une passe due : la Phase 2 avale l'erreur et se dit réussie, l'école attendrait six mois | `_QuotaWatch` note tout refus de clé, `available_keys == 0` contrôlé en fin de passe → job `failed`, reprise à 14 jours, fin de l'exécution (§5.5) | `scheduler/jobs.py` |
+| 30 | Passe due muette déclarée morte au bout de 30 min, école vue comme libre | Battement de cœur : `progress_callback` → `update_progress` sur chaque passe de la rotation | `scheduler/jobs.py`, `pipeline_jobs.py` |
+| 31 | Démarrage raté qui se dit prêt (F3) ; intervalle du crowdsourcing illisible qui bloquait tout le scheduler (F9) | Chaque échec du démarrage (base, reprise des jobs, clés Tavily, scheduler) journalisé en `ERROR` et ajouté à `startup_errors` ; `/health` et `pipeline-status` en `degraded`. `SELECT 1` au démarrage, message qui cite le pilote. Intervalle lu par `env_int` (§2.3) | `main.py`, `db.py`, `scheduler/jobs.py` |
+| 32 | Crédits du mois repartis de zéro à chaque lancement : plafond qui croit le mois vierge (F8) | Synchro `/usage` bloquante avant toute passe réelle ; une clé non recalée → rien ne part (`USAGE_SYNC_FAILED`). Dernière synchro dans `rotation.usage_sync` (§5.5) | `tavily_service/key_manager.py`, `scheduler/jobs.py` |
+| 33 | Base injoignable : le crowdsourcing faisait `return` chaque minute, sans trace (F4) | `SubmissionQueueUnavailable` levée ; chaque passage inscrit au registre (`last_runs.crowdsourcing_processor`), `failed` aussi sur un quota épuisé ; `has_failure` dégrade `pipeline-status` | `crowdsourcing/processor.py`, `scheduler/jobs.py` |
 
 ---
 
@@ -1654,19 +1768,29 @@ Voir §3.6 pour la politique de rôles complète. Les principes :
 
 ### 10.6. Surface du backend FastAPI
 
+**Le backend n'a plus de production** (décision D5 du plan backend-local,
+14 octobre 2026) : il tourne sur le poste de l'admin et **n'écoute que sur
+`127.0.0.1`** (`uvicorn backend.main:app`, jamais `--host 0.0.0.0`).
+`ENVIRONMENT`, `IS_PRODUCTION` et la variable `ALLOWED_ORIGINS` sont retirés du
+code.
+
 | Réglage | Comportement |
 |---|---|
-| `docs_url`, `redoc_url`, **`openapi_url`** | `None` dès que `ENVIRONMENT=production` |
-| `ALLOWED_ORIGINS` absente en production | liste **vide** + erreur journalisée |
+| `docs_url`, `redoc_url`, `openapi_url` | **ouverts** : `/docs`, `/redoc` et `/openapi.json`, joignables depuis le poste seulement |
+| CORS `allow_origins` | `["http://localhost:3000"]`, en dur : le seul client est le Next.js local. Aucune variable d'environnement ne la change |
 | `allow_methods` | `["GET", "POST"]` (et non `["*"]`) |
 | `allow_headers` | `["Authorization", "Content-Type"]` |
+| routes `/internal/*` | jeton Bearer `INTERNAL_API_TOKEN`, comparé en temps constant |
 
-**`openapi_url` compte autant que les deux autres** : le fermer est ce qui
-empêche de retélécharger le schéma et de reconstruire `/docs` ailleurs.
+Les appels serveur à serveur (Next.js → FastAPI) ne passent pas par CORS.
+**Écouter sur `0.0.0.0`** sur le réseau de l'établissement rendrait joignables
+depuis le réseau local la documentation et l'API interne, protégée par le seul
+jeton. (Le pont WebSocket, lui, écoute sur `127.0.0.1` quoi qu'il arrive,
+§10.8.)
 
-L'ancien repli `http://localhost:3000` de `ALLOWED_ORIGINS` **partait tel quel en
-production**. Aucune origine vaut mieux qu'une mauvaise : les appels serveur à
-serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
+Avant le 14 octobre 2026, `ENVIRONMENT=production` fermait les trois URL de
+documentation, et une `ALLOWED_ORIGINS` absente en production donnait une
+liste vide. Ces réglages visaient un backend hébergé (Koyeb), abandonné.
 
 ### 10.7. Validation des domaines (pipeline)
 
@@ -1862,10 +1986,42 @@ contrat.
 
 Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
 (+25 sous-tests) et 36 tests TypeScript ; au 12 octobre, 291 et 43 ; le
-14 octobre, après l'étape 1 du plan backend-local, 291 et 50. **Au 14 octobre
-2026, après l'étape 2 : 319 tests Python (+25 sous-tests) et 68 tests
-TypeScript**, tous verts. Les deux suites lisent des fixtures communes quand une
-règle existe en deux langages (`test/fixtures/attachment_plan_cases.json`).
+14 octobre, après l'étape 1 du plan backend-local, 291 et 50 ; après l'étape 2,
+319 et 68. **Au 14 octobre 2026, après l'étape 3 : 362 tests Python (+25
+sous-tests) et 68 tests TypeScript**, tous verts. Les deux suites lisent des
+fixtures communes quand une règle existe en deux langages
+(`test/fixtures/attachment_plan_cases.json`).
+
+**Passes dues et démarrage** (étape 3, §2.3 et §5.5), sans base ni réseau :
+
+- `test/test_scheduler_registration.py` (remplace
+  `test_scheduler_research_gate.py`) : le scheduler n'inscrit **que** le
+  crowdsourcing, quelles que soient `ENVIRONMENT` et `CRON_RESEARCH_ENABLED` —
+  la garde contre le retour d'un cron qui paie ; première passe au démarrage ;
+  intervalle illisible ramené au défaut ; chaque passage au registre, base
+  injoignable et quota épuisé compris ;
+- `test/test_research_rotation_job.py` : `run_due_passes` (plafond, quota,
+  battement de cœur, drapeaux des phases, `max_passes`, `dry_run` sans job ni
+  Research, verrou contre une seconde exécution, synchro `/usage` en échec →
+  rien ne part, plan annoncé avant la première passe) ;
+- `test/test_rotation_status.py` : forme du bloc `rotation` (`last_run`,
+  `usage_sync`, plus de `research_cron`), tri des jobs `rotation`/`cron`,
+  `startup_errors` dans `pipeline-status` ;
+- `test/test_internal_run_due_passes.py` : la route sur une application qui ne
+  porte que le routeur interne (pas de `lifespan`) : jeton absent, faux ou non
+  configuré, 200, 202 puis exécution dans un fil, 409, 503 (deux cas), 422 ;
+- `test/test_startup.py` : le `lifespan` sous `TestClient`, tout ce qu'il
+  touche remplacé. `backend.main` y est importé à neuf, **sans `load_dotenv`**
+  et dans un environnement restauré ensuite : `backend/.env` ne se charge
+  jamais dans le processus de test. Clés Tavily qui lèvent → `degraded` ; base
+  injoignable → erreur qui cite le pilote, sans le mot de passe ; surface
+  locale (documentation ouverte, CORS limité à `localhost:3000`) ;
+- `test/test_usage_sync.py` : `sync_usage()` contre un `urlopen` simulé, où
+  tout appel non prévu échoue. Clé en erreur, en retard, réponse sans bloc
+  `key` ; suffixes seulement ; synchro du démarrage hors du fil principal.
+
+Une garde réseau (connexions et résolutions refusées hors de `127.0.0.1`)
+passée sur toute la suite le 14 octobre : aucune tentative.
 
 **Pilote réseau** (étape 2, §10.8), sans jamais sortir de la machine :
 
@@ -2204,10 +2360,10 @@ suffit, toujours sans `--force`.
 | Collecte du rattachement | Désactivée par défaut, case par passe et par école | 15 à 17 crédits par école, même là où elle ne produit rien |
 | Appariement fiche → programme | Clauses fermées ; ambigu → rien | Un non-apparié se voit, un mauvais appariement non. Jaccard et l'inclusion rattachaient un doctorat à un bachelor |
 | Deux fiches pour un même diplôme | Fusion des affirmations identiques, pas de colonne de voie | Les deux voies d'accès du PGE se recouvrent sur une seule année, à l'identique ; une colonne de voie ne serait lue par rien |
-| Cron Research | Inscrit seulement en production (`ENVIRONMENT`) | Démarrer le backend en local payait deux découvertes 5 minutes plus tard |
-| Cadence des recherches automatiques | Un job nocturne à heure fixe (`research_rotation`), au plus une passe par nuit, chaque phase revenant tous les 182 jours par école | Décision du propriétaire (29 septembre 2026) : ~30 écoles, ~10 000 crédits par mois, deux passes par an. Les intervalles comptés depuis le démarrage partaient à chaque redémarrage Koyeb, ou jamais |
+| Cron Research | **Supprimé** (14 octobre 2026) ; d'abord inscrit seulement en production (`ENVIRONMENT`) | Démarrer le backend en local payait deux découvertes 5 minutes plus tard ; puis le backend n'a plus été hébergé, et un cron ne tournerait que poste allumé à l'heure dite |
+| Cadence des recherches automatiques | Passes dues lancées par l'admin (`POST /internal/run-due-passes`, 1 à 5 par exécution), chaque phase revenant tous les 182 jours par école. De septembre au 14 octobre 2026 : un job nocturne à heure fixe (`research_rotation`) | Décision du propriétaire (29 septembre 2026) : ~30 écoles, ~10 000 crédits par mois, deux passes par an. Les intervalles comptés depuis le démarrage partaient à chaque redémarrage Koyeb, ou jamais. Koyeb abandonné le 14 octobre : le backend se lance à la main (`backend-local.md`) |
 | Mémoire du dernier passage | Table `PipelineJob`, passages complets gardés 400 jours | Pas de nouvelle table ni de migration ; le job ouvert pour chaque passe est déjà la trace. Sans job créé, pas de passe |
-| Plafond du cron | `CRON_MONTHLY_CREDIT_CEILING` (7 000) sous le budget, premier candidat qui tient | Les crédits Research sont estimés, comptés sur le mois UTC et remis à zéro au redémarrage : la marge couvre l'erreur et laisse ~3 000 crédits au manuel et au crowdsourcing |
+| Plafond des passes dues | `CRON_MONTHLY_CREDIT_CEILING` (7 000) sous le budget, premiers candidats qui tiennent ; synchro `/usage` bloquante avant toute passe réelle | Les crédits Research sont estimés, comptés sur le mois UTC et remis à zéro à chaque démarrage : la synchro les recale, la marge couvre l'erreur et laisse ~3 000 crédits au manuel et au crowdsourcing |
 | Garde « en attente » | Passes automatiques seulement, tickets `Automated_AI` de la période cible | Un ticket non validé était repayé et recréé à chaque passe. L'admin qui lance à la main a choisi de payer ; un ticket de crowdsourcing ne doit pas bloquer le pipeline |
 | Phase 1 sur une école connue | Ne proposer que ce qui manque, noms réécrits à l'orthographe de la base, pour toutes les passes | L'`upsert` sur le nom exact créait des `Program` en double, que la Phase 2 payait ensuite. Rien de nouveau → pas de ticket |
 | Pas de journal par donnée | Une passe par école et par semestre, sans mémoriser « cherché, rien trouvé » | Décision du propriétaire (29 septembre 2026) : une passe par école et par semestre suffit |

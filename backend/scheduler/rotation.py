@@ -4,8 +4,8 @@ backend/scheduler/rotation.py — Quelles passes la rotation doit lancer, dans q
 Le propriétaire a retenu deux passes par an et par école, Phase 1 comme Phase 2,
 sur ~30 écoles et ~10 000 crédits Tavily par mois. Ce module dit, pour un instant
 donné, quelles passes sont dues et dans quel ordre les lancer. Il ne lance rien :
-c'est le job nocturne `research_rotation` (backend/scheduler/jobs.py) qui choisit,
-sous le plafond mensuel, le premier candidat qui tient.
+c'est `run_due_passes` (backend/scheduler/jobs.py), à la demande de l'admin, qui
+choisit sous le plafond mensuel les premiers candidats qui tiennent.
 
 ## La mémoire du dernier passage
 
@@ -23,7 +23,7 @@ PIPELINE_JOB_ROTATION_RETENTION_DAYS jours au lieu de 7. L'enrichissement ciblé
 | `failed` il y a plus de CRON_RESEARCH_RETRY_FAILED_DAYS (14) | oui — `retry_after_failure` |
 | sinon, ou job actif sur l'école | non |
 
-Le délai court après un échec évite de repayer chaque nuit une découverte qui
+Le délai court après un échec évite de repayer à chaque lancement une découverte qui
 échoue, sans attendre six mois après une simple coupure. En plus : Phase 1 pas
 due si une découverte attend l'admin ; Phase 2 pas due sans aucun `Program` ;
 seules les écoles ACTIVE sont candidates.
@@ -41,7 +41,8 @@ Tiré de `ESTIMATED_CREDITS` et des catégories de la Phase 2, sans rien
 soustraire — ni les cibles en attente que la passe sautera, ni les rapports
 rangés : l'estimation est prudente. Phase 1 : catalogue ~5 + Research pro 25.
 
-Référence : docs/features/cron-rotation-production.md, étape 3.
+Référence : docs/features/cron-rotation-production.md, étape 3 ; le cron a été
+remplacé par les passes dues sur demande (docs/features/backend-local.md, étape 3).
 """
 
 from __future__ import annotations

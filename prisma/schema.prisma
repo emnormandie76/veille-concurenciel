@@ -42,7 +42,9 @@ model PipelineJob {
   id          String    @id @default(uuid())
   schoolId    String
   phase       String
-  // "manual" (panneau admin) | "cron" (APScheduler)
+  // "manual" (panneau admin) | "rotation" (passes dues, run_due_passes).
+  // "cron" : ancien cron research_rotation, supprime le 14/10/2026 ; des lignes
+  // le portent encore. Voir backend/pipeline_jobs.py (ROTATION_SOURCES).
   source      String    @default("manual")
   // "queued" | "running" | "completed" | "failed"
   status      String    @default("queued")

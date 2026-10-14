@@ -80,8 +80,8 @@ confrontées aux `Program`, `Campus` et arêtes RÉELS de l'école.
 9 appels Gemini par école, y compris là où elle ne produit rien (Em Lyon ne
 publie aucune ligne-année, EM Strasbourg aucun lieu). L'admin l'active pour une
 passe précise, sur une école précise, par la case de l'écran qui déclenche la
-Phase 1 : `collect_campus_attachments` descend de la requête jusqu'ici. Le cron
-`research_rotation` et `trigger-scan` ne l'activent jamais. Désactivée, elle
+Phase 1 : `collect_campus_attachments` descend de la requête jusqu'ici. Les
+passes dues (`run_due_passes`) et `trigger-scan` ne l'activent jamais. Désactivée, elle
 n'émet aucun appel et le résultat le dit : `campus_attachments` vaut
 `{"status": "disabled"}`.
 

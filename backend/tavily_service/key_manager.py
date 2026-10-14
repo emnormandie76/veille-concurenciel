@@ -7,8 +7,11 @@ Gestion de la rotation des clés API Tavily avec :
   - QuotaExhaustedError si toutes les clés sont épuisées
   - Thread-safe (Lock pour les accès concurrents)
   - Reset des compteurs au début de chaque mois
+  - Synchro `/usage` : en arrière-plan au démarrage, ou bloquante
+    (`sync_usage`) avant une passe réelle
 
-Référence : task.md §4.3, architecture.md §4.3 (TavilyKeyManager)
+Référence : task.md §4.3, architecture.md §4.3 (TavilyKeyManager),
+docs/features/backend-local.md étape 3 (F8)
 """
 
 import os
@@ -23,6 +26,12 @@ from datetime import datetime, timezone
 logger = logging.getLogger("pipeline.tavily")
 
 CREDITS_PER_SEARCH = 1            # 1 crédit par requête de recherche
+
+USAGE_URL = "https://api.tavily.com/usage"
+# Délai d'une synchro de toutes les clés (sync_usage), et d'une requête /usage
+# d'une clé seule en arrière-plan (_fetch_quota_in_background).
+USAGE_SYNC_TIMEOUT_SECONDS = 20.0
+USAGE_FETCH_TIMEOUT_SECONDS = 5.0
 
 
 class QuotaExhaustedError(Exception):
@@ -61,6 +70,11 @@ def is_quota_error(error: Exception) -> bool:
     return any(phrase in message for phrase in QUOTA_ERROR_PHRASES)
 
 
+def _key_suffix(api_key: str) -> str:
+    """La seule partie d'une clé qui sort du gestionnaire (journaux, statut)."""
+    return f"...{api_key[-6:]}"
+
+
 class TavilyKeyManager:
     """
     Gestionnaire de rotation des clés API Tavily avec suivi de quota dynamique.
@@ -76,10 +90,14 @@ class TavilyKeyManager:
         # sélection de la première clé disponible (get_active_key), qui parcourt
         # la liste à chaque appel. Le compteur ne servait plus à rien.
         self._load_keys()
-        
-        # Lancer la synchro initiale des quotas en arrière-plan pour toutes les clés
-        for key_state in self._keys:
-            self._fetch_quota_in_background(key_state)
+
+        # Dernière synchro /usage de toutes les clés : {ok, at, failed_keys}, ou
+        # None tant qu'aucune n'est terminée. Voir sync_usage().
+        self._last_sync: dict | None = None
+
+        # Synchro initiale des quotas, en arrière-plan : le démarrage n'attend
+        # pas Tavily.
+        self._sync_usage_in_background()
 
     def _load_keys(self):
         """Charge les clés depuis les variables d'environnement."""
@@ -115,65 +133,150 @@ class TavilyKeyManager:
         self._keys = keys_found
         logger.info(f"✅ TavilyKeyManager initialisé avec {len(self._keys)} clé(s)")
 
+    def _fetch_quota(self, key_state: TavilyKeyState, timeout: float) -> bool:
+        """
+        Recale le quota d'une clé sur `GET /usage`, en bloquant. Vrai si la
+        réponse a été lue et appliquée.
+
+        Code commun au fil d'arrière-plan (_fetch_quota_in_background) et à la
+        synchro bloquante (sync_usage). Une réponse sans bloc `key` est un
+        échec : elle passait auparavant sans rien dire, et la clé gardait son
+        compteur local comme s'il avait été recalé.
+        """
+        req = urllib.request.Request(
+            USAGE_URL,
+            headers={
+                "Authorization": f"Bearer {key_state.api_key}",
+                "User-Agent": "FastAPI-Backend-Agent"
+            }
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                if response.status != 200:
+                    raise RuntimeError(f"HTTP {response.status}")
+                data = json.loads(response.read().decode("utf-8"))
+            if not isinstance(data, dict) or not isinstance(data.get("key"), dict):
+                raise RuntimeError("réponse sans bloc « key »")
+
+            usage = data["key"].get("usage")
+            if usage is None:
+                usage = 0
+
+            limit = data["key"].get("limit")
+            if limit is None:
+                if isinstance(data.get("account"), dict):
+                    limit = data["account"].get("plan_limit")
+            if limit is None:
+                limit = 1000
+
+            with self._lock:
+                # max() et non affectation directe : la synchro est declenchee par
+                # mark_exhausted() lui-meme. Une valeur distante en retard ecrasait le
+                # compteur local et rouvrait la cle.
+                key_state.credits_used = max(key_state.credits_used, usage)
+                key_state.credits_limit = limit
+                key_state.last_fetched_at = time.time()
+
+                # Seuil de securite : rotation s'il reste 10 credits ou moins
+                rotation_threshold = limit - 10
+                if key_state.credits_used >= rotation_threshold:
+                    key_state.exhausted = True
+                # JAMAIS de branche else remettant exhausted a False : c etait la
+                # boucle de sollicitation d une cle refusee par l API. Seul le
+                # passage au mois suivant (_reset_if_new_month) leve le drapeau.
+
+            logger.info(
+                f"📊 Synchro Quota Tavily ({_key_suffix(key_state.api_key)}) réussie : "
+                f"{usage}/{limit} crédits (restant: {limit - usage})"
+            )
+            return True
+        except Exception as e:
+            # Réinitialiser pour retenter au prochain cycle si erreur
+            with self._lock:
+                key_state.last_fetched_at = 0.0
+            logger.error(f"❌ Échec de la synchro de quota Tavily ({_key_suffix(key_state.api_key)}) : {e}")
+            return False
+
     def _fetch_quota_in_background(self, key_state: TavilyKeyState):
         """Met à jour le quota de la clé via l'API en arrière-plan (sans bloquer)."""
         # On définit temporairement la date de synchro pour éviter de spawner plusieurs threads
-        now = time.time()
-        key_state.last_fetched_at = now
+        key_state.last_fetched_at = time.time()
+        threading.Thread(
+            target=self._fetch_quota,
+            args=(key_state, USAGE_FETCH_TIMEOUT_SECONDS),
+            daemon=True,
+        ).start()
 
-        def run():
-            url = "https://api.tavily.com/usage"
-            req = urllib.request.Request(
-                url,
-                headers={
-                    "Authorization": f"Bearer {key_state.api_key}",
-                    "User-Agent": "FastAPI-Backend-Agent"
-                }
+    def sync_usage(self, timeout: float = USAGE_SYNC_TIMEOUT_SECONDS) -> dict:
+        """
+        Recale toutes les clés sur `GET /usage`, en bloquant au plus `timeout`
+        secondes, et mémorise le résultat : `{ok, at, failed_keys}`.
+
+        Les compteurs vivent en mémoire et repartent de zéro à chaque
+        démarrage. Une passe réelle appelle cette synchro d'abord, et ne part
+        pas si une clé n'a pas pu être recalée : sinon le plafond mensuel
+        croirait le mois vierge (F8, backend-local.md).
+
+        Les clés sont interrogées en parallèle. Une clé qui n'a pas répondu
+        dans le délai compte comme un échec ; sa requête peut encore aboutir
+        plus tard et recaler la clé, sans changer le résultat rendu ici.
+        `failed_keys` ne porte que des suffixes (`...abc123`).
+        """
+        with self._lock:
+            keys = list(self._keys)
+            started_at = time.time()
+            for key_state in keys:
+                # Comme _fetch_quota_in_background : get_status() ne relance pas
+                # une requête pour une clé en cours de synchro.
+                key_state.last_fetched_at = started_at
+
+        results: dict[int, bool] = {}
+
+        def run(index: int, key_state: TavilyKeyState) -> None:
+            results[index] = self._fetch_quota(key_state, timeout)
+
+        threads = [
+            threading.Thread(target=run, args=(index, key_state), daemon=True)
+            for index, key_state in enumerate(keys)
+        ]
+        for thread in threads:
+            thread.start()
+        deadline = time.monotonic() + timeout
+        for thread in threads:
+            thread.join(max(0.0, deadline - time.monotonic()))
+
+        failed = [
+            _key_suffix(key_state.api_key)
+            for index, key_state in enumerate(keys)
+            if not results.get(index)
+        ]
+        last_sync = {
+            "ok": not failed,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "failed_keys": failed,
+        }
+        with self._lock:
+            self._last_sync = last_sync
+        if failed:
+            logger.error(
+                f"❌ Synchro /usage incomplète : {len(failed)}/{len(keys)} clé(s) "
+                f"non recalée(s) ({', '.join(failed)})"
             )
-            try:
-                # 5s timeout
-                with urllib.request.urlopen(req, timeout=5.0) as response:
-                    if response.status == 200:
-                        data = json.loads(response.read().decode("utf-8"))
-                        if "key" in data:
-                            usage = data["key"].get("usage")
-                            if usage is None:
-                                usage = 0
-                            
-                            limit = data["key"].get("limit")
-                            if limit is None:
-                                if "account" in data:
-                                    limit = data["account"].get("plan_limit")
-                            if limit is None:
-                                limit = 1000
-                            
-                            with self._lock:
-                                # max() et non affectation directe : la synchro est declenchee par
-                                # mark_exhausted() lui-meme. Une valeur distante en retard ecrasait le
-                                # compteur local et rouvrait la cle.
-                                key_state.credits_used = max(key_state.credits_used, usage)
-                                key_state.credits_limit = limit
-                                key_state.last_fetched_at = time.time()
+        else:
+            logger.info(f"✅ Synchro /usage : {len(keys)} clé(s) recalée(s)")
+        return {**last_sync, "failed_keys": list(failed)}
 
-                                # Seuil de securite : rotation s'il reste 10 credits ou moins
-                                rotation_threshold = limit - 10
-                                if key_state.credits_used >= rotation_threshold:
-                                    key_state.exhausted = True
-                                # JAMAIS de branche else remettant exhausted a False : c etait la
-                                # boucle de sollicitation d une cle refusee par l API. Seul le
-                                # passage au mois suivant (_reset_if_new_month) leve le drapeau.
-                            
-                            logger.info(
-                                f"📊 Synchro Quota Tavily (...{key_state.api_key[-6:]}) réussie : "
-                                f"{usage}/{limit} crédits (restant: {limit - usage})"
-                            )
-            except Exception as e:
-                # Réinitialiser pour retenter au prochain cycle si erreur
-                with self._lock:
-                    key_state.last_fetched_at = 0.0
-                logger.error(f"❌ Échec de la synchro de quota Tavily (...{key_state.api_key[-6:]}) : {e}")
+    def _sync_usage_in_background(self) -> None:
+        """Lance sync_usage() dans un fil démon : le démarrage n'attend pas Tavily."""
+        threading.Thread(target=self.sync_usage, daemon=True).start()
 
-        threading.Thread(target=run, daemon=True).start()
+    @property
+    def last_sync(self) -> dict | None:
+        """La dernière synchro de toutes les clés (`{ok, at, failed_keys}`), ou None."""
+        with self._lock:
+            if self._last_sync is None:
+                return None
+            return {**self._last_sync, "failed_keys": list(self._last_sync["failed_keys"])}
 
     def _reset_if_new_month(self, key_state: TavilyKeyState):
         """Remet les compteurs à zéro si on est dans un nouveau mois."""

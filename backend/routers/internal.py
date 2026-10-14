@@ -15,10 +15,12 @@ import logging
 import asyncio
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from backend import pipeline_jobs
+from backend.scheduler import jobs as scheduler_jobs
 
 logger = logging.getLogger("pipeline.internal")
 
@@ -48,6 +50,17 @@ def _spawn(coro) -> asyncio.Task:
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return task
+
+
+# Même motif pour les exécutions des passes dues, qui tournent dans un fil de
+# l'exécuteur (run_in_executor) : leur future est gardée jusqu'à la fin.
+_background_runs: set[asyncio.Future] = set()
+
+
+def _track(future: asyncio.Future) -> asyncio.Future:
+    _background_runs.add(future)
+    future.add_done_callback(_background_runs.discard)
+    return future
 
 
 # ── Authentification ──────────────────────────────────────────────
@@ -125,6 +138,21 @@ class TargetedResearchRequest(BaseModel):
     # coûte 15 à 17 crédits Tavily et 9 appels Gemini par école, même quand
     # l'école ne publie rien. L'admin l'active passe par passe.
     collect_campus_attachments: bool = False
+
+
+class RunDuePassesRequest(BaseModel):
+    """
+    Corps de POST /internal/run-due-passes.
+
+    `dry_run` est exigé, et doit être un vrai booléen : une passe réelle paie
+    Research, elle ne part jamais par défaut ni sur une valeur qui se lirait
+    comme un non (`"false"`, `0`). Un champ inconnu est refusé : une faute de
+    frappe (`dryRun`) laisserait sinon `dry_run` à sa valeur.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    max_passes: int = Field(default=1, ge=1, le=scheduler_jobs.MAX_PASSES_PER_RUN)
+    dry_run: StrictBool
 
 
 # ── Endpoints ─────────────────────────────────────────────────────
@@ -305,6 +333,107 @@ async def trigger_targeted_research(
     }
 
 
+def _resolve(future: asyncio.Future, result=None, error: BaseException | None = None) -> None:
+    """Résout `future` une seule fois. Appelé dans la boucle (call_soon_threadsafe)."""
+    if future.done():
+        return
+    if error is not None:
+        future.set_exception(error)
+    else:
+        future.set_result(result)
+
+
+def _notify(loop: asyncio.AbstractEventLoop, future: asyncio.Future, result=None, error=None) -> None:
+    """Depuis un fil : résout `future` dans sa boucle, si elle tourne encore."""
+    try:
+        loop.call_soon_threadsafe(_resolve, future, result, error)
+    except RuntimeError:
+        # Boucle fermée (arrêt du serveur) : plus personne n'attend la réponse.
+        pass
+
+
+@router.post("/run-due-passes")
+async def run_due_passes(
+    body: RunDuePassesRequest,
+    request: Request,
+    _token: str = Depends(verify_internal_token),
+):
+    """
+    POST /internal/run-due-passes
+
+    Les passes dues (Phase 1 ou Phase 2), au plus `max_passes`, sous le plafond
+    mensuel. C'est le seul départ d'une passe de rotation : il n'y a plus de
+    cron. Logique : `run_due_passes` (backend/scheduler/jobs.py).
+
+    - `dry_run: true` → 200 avec le plan, sans job ni appel Research ;
+    - `dry_run: false` → 202 avec ce qui va partir (`status: "planned"`), ou
+      avec le rapport final si rien ne part (rien de dû, plafond atteint,
+      planification impossible). Les passes tournent ensuite dans un fil
+      (run_in_executor) ; leur issue se lit dans pipeline-status
+      (`scheduler.rotation.last_run`, et les jobs sous `cron_jobs`) ;
+    - 409 `ALREADY_RUNNING` si une exécution réelle tourne déjà ;
+    - 503 `KEY_MANAGER_MISSING` sans gestionnaire de clés ;
+    - 503 `USAGE_SYNC_FAILED` si la synchro /usage n'a pas recalé toutes les
+      clés (jusqu'à 20 s d'attente avant la réponse) ;
+    - 422 hors bornes, `dry_run` absent ou non booléen, champ inconnu.
+
+    Référence : docs/features/backend-local.md, étape 3.
+    """
+    key_manager = getattr(request.app.state, "tavily_manager", None)
+    if key_manager is None:
+        raise HTTPException(status_code=503, detail={
+            "code": "KEY_MANAGER_MISSING",
+            "message": "TavilyKeyManager non initialisé : aucune clé Tavily chargée au démarrage",
+        })
+
+    loop = asyncio.get_running_loop()
+
+    if body.dry_run:
+        # Lectures en base bloquantes : hors de la boucle.
+        return await loop.run_in_executor(
+            None,
+            lambda: scheduler_jobs.run_due_passes(
+                key_manager, max_passes=body.max_passes, dry_run=True,
+            ),
+        )
+
+    # Résolue par le fil dès que l'issue du départ est connue : le plan
+    # annoncé (on_planned), un refus, ou le rapport final si rien ne part.
+    announced: asyncio.Future = loop.create_future()
+
+    def announce(report: dict) -> None:
+        _notify(loop, announced, report)
+
+    def work() -> None:
+        # Ne lève jamais : l'issue part dans `announced` et dans le registre
+        # des passages (_record_job_run).
+        try:
+            report = scheduler_jobs.run_due_passes(
+                key_manager, max_passes=body.max_passes, on_planned=announce,
+            )
+        except Exception as exc:
+            if not isinstance(exc, (scheduler_jobs.RotationAlreadyRunning, scheduler_jobs.UsageSyncFailed)):
+                logger.exception("❌ Passes dues : erreur inattendue")
+            _notify(loop, announced, error=exc)
+            return
+        _notify(loop, announced, report)
+
+    _track(loop.run_in_executor(None, work))
+
+    try:
+        report = await announced
+    except scheduler_jobs.RotationAlreadyRunning as exc:
+        raise HTTPException(status_code=409, detail={"code": exc.code, "message": str(exc)})
+    except scheduler_jobs.UsageSyncFailed as exc:
+        raise HTTPException(status_code=503, detail={
+            "code": exc.code,
+            "message": str(exc),
+            "usage_sync": exc.usage_sync,
+        })
+    logger.info(f"🚀 Passes dues : {report.get('detail')}")
+    return JSONResponse(status_code=202, content=report)
+
+
 @router.get("/pipeline-status")
 async def pipeline_status(request: Request, _token: str = Depends(verify_internal_token)):
     """
@@ -315,6 +444,7 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
     - Jobs en cours (avec progress_details granulaires)
     - Statut des clés Tavily
     - Version Gemma configurée
+    - Erreurs du démarrage (`startup_errors`)
 
     Référence : task.md §4.2, architecture.md §6.1
     """
@@ -349,8 +479,9 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
     # terminait « normalement » du point de vue d'APScheduler et n'apparaissait
     # nulle part. get_scheduler_status() existait mais n'était jamais appelé.
     try:
-        from backend.scheduler.jobs import get_scheduler_status
-        scheduler_status = get_scheduler_status(getattr(request.app.state, "tavily_manager", None))
+        scheduler_status = scheduler_jobs.get_scheduler_status(
+            getattr(request.app.state, "tavily_manager", None)
+        )
     except Exception as e:
         scheduler_status = {"running": False, "jobs": [], "error": str(e)}
 
@@ -366,21 +497,28 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
         active_jobs = []
         jobs_error = str(e)
 
-    manual_jobs = [job for job in active_jobs if job.get("source", "manual") != "cron"]
-    cron_jobs = [job for job in active_jobs if job.get("source") == "cron"]
+    # Les passes dues portent `source = "rotation"` ; les lignes de l'ancien
+    # cron, encore en base, `"cron"`. Les deux vont sous `cron_jobs`, nom de
+    # clé historique que lit app/admin/cron/page.tsx.
+    rotation_jobs = [job for job in active_jobs if job.get("source") in pipeline_jobs.ROTATION_SOURCES]
+    manual_jobs = [job for job in active_jobs if job.get("source") not in pipeline_jobs.ROTATION_SOURCES]
 
     # Un job periodique en echec degrade le pipeline, meme si la BDD repond.
     scheduler_failed = bool(scheduler_status.get("has_failure")) or bool(
         scheduler_status.get("error")
     )
+    # Un démarrage raté aussi : base, gestionnaire de clés ou scheduler (main.py).
+    startup_errors = list(getattr(request.app.state, "startup_errors", []))
 
+    healthy = db_ok and not scheduler_failed and not jobs_error and not startup_errors
     return {
-        "status": "ok" if (db_ok and not scheduler_failed and not jobs_error) else "degraded",
+        "status": "ok" if healthy else "degraded",
         "database": "connected" if db_ok else "disconnected",
+        "startup_errors": startup_errors,
         "scheduler": scheduler_status,
-        "pipeline_jobs_active": len(manual_jobs) + len(cron_jobs),
+        "pipeline_jobs_active": len(manual_jobs) + len(rotation_jobs),
         "pipeline_jobs": manual_jobs[:10],  # Limiter à 10 pour la lisibilité
-        "cron_jobs": cron_jobs[:10],        # Limiter à 10 pour la lisibilité
+        "cron_jobs": rotation_jobs[:10],    # Limiter à 10 pour la lisibilité
         "jobs_error": jobs_error,
         "tavily": tavily_status,
         "ai_model_primary": "models/gemma-4-31b-it",

@@ -732,7 +732,21 @@ def process_crowdsourcing_ticket(ticket_id: str, key_manager=None) -> None:
         _mark_ticket_failed(ticket_id, str(e))
         raise
 
-def process_pending_submissions(key_manager):
+class SubmissionQueueUnavailable(RuntimeError):
+    """La file des contributions n'a pas pu être lue en base."""
+
+
+def process_pending_submissions(key_manager) -> dict:
+    """
+    Traite au plus 20 contributions en attente (`Pending_AI`, et les `Failed`
+    rejouables), et rend le bilan du passage :
+    `{tickets, validated, api_errors, rejected, quota_exhausted}`.
+
+    Une lecture de la file en échec lève SubmissionQueueUnavailable. Elle se
+    terminait par un `return` muet, chaque minute, sans que rien ne remonte à
+    pipeline-status (F4, backend-local.md). Le job du scheduler inscrit
+    l'issue au registre (`_crowdsourcing_job`, scheduler/jobs.py).
+    """
     from backend.db import get_db_connection
     logger.info("🔄 [Crowdsourcing] Démarrage du traitement des soumissions utilisateurs")
 
@@ -771,16 +785,20 @@ def process_pending_submissions(key_manager):
                 tickets = cur.fetchall()
     except Exception as e:
         logger.error(f"❌ [Crowdsourcing] Erreur lecture BDD: {e}")
-        return
+        raise SubmissionQueueUnavailable(f"lecture de la file impossible : {e}") from e
     # ── Connexion BDD FERMÉE ici — le traitement commence maintenant ───
-
-    if not tickets:
-        logger.info("✅ [Crowdsourcing] Aucune soumission en attente.")
-        return
 
     success_tickets = []
     api_error_tickets = []
     parsing_error_tickets = []
+    quota_exhausted = False
+
+    if not tickets:
+        logger.info("✅ [Crowdsourcing] Aucune soumission en attente.")
+        return {
+            "tickets": 0, "validated": 0, "api_errors": 0, "rejected": 0,
+            "quota_exhausted": False,
+        }
 
     # ── PHASE 2 : Traitement ticket-par-ticket, sans connexion BDD persistante ──
     for ticket in tickets:
@@ -799,6 +817,7 @@ def process_pending_submissions(key_manager):
             success_tickets.append(ticket_id)
         except QuotaExhaustedError as e:
             logger.error(f"🛑 [Crowdsourcing] Quota Tavily épuisé — arrêt du traitement: {e}")
+            quota_exhausted = True
             break
         except GemmaAPIError as e:
             logger.error(f"🛑 [Crowdsourcing] Erreur API sur le ticket {ticket_id}: {e}")
@@ -815,6 +834,13 @@ def process_pending_submissions(key_manager):
     logger.info(f"⏳ Erreurs API (Pending_AI) : {len(api_error_tickets)} ticket(s) -> {api_error_tickets}")
     logger.info(f"❌ Rejetés (Rejected)       : {len(parsing_error_tickets)} ticket(s) -> {parsing_error_tickets}")
     logger.info("==================================")
+    return {
+        "tickets": len(tickets),
+        "validated": len(success_tickets),
+        "api_errors": len(api_error_tickets),
+        "rejected": len(parsing_error_tickets),
+        "quota_exhausted": quota_exhausted,
+    }
 
 def _update_ticket_status(ticket_id: str, status: str, error_details=None):
     from backend.db import get_db_connection

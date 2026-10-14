@@ -20,9 +20,9 @@ Deux mécanismes remplacent la disparition silencieuse :
      PIPELINE_JOB_STALE_SECONDS est réputé mort et repasse en « failed ».
   2. Au démarrage du processus, `reap_orphaned_jobs()` clôt immédiatement les
      jobs actifs laissés par un autre worker (ou par une exécution précédente).
-     Cela suppose UN SEUL processus backend à la fois — c'est le déploiement
-     Koyeb EcoFree actuel. Passer à plusieurs instances imposerait de retirer
-     cet appel et de s'en remettre au seul battement de cœur.
+     Cela suppose UN SEUL processus backend à la fois — le backend lancé à la
+     main sur le poste de l'admin. Passer à plusieurs instances imposerait de
+     retirer cet appel et de s'en remettre au seul battement de cœur.
 
 Aucune écriture Prisma ici : le backend Python parle à PostgreSQL en psycopg2.
 Le schéma, lui, est déclaré côté Prisma (modèle `PipelineJob`) et créé par la
@@ -55,6 +55,15 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 
 ACTIVE_STATUSES = (STATUS_QUEUED, STATUS_RUNNING)
+
+# ── Origines ──────────────────────────────────────────────────────
+# PipelineJob.source. La colonne n'a pas de contrainte CHECK.
+SOURCE_MANUAL = "manual"          # recherche lancée depuis le panneau admin
+SOURCE_ROTATION = "rotation"      # passe due (scheduler/jobs.py, run_due_passes)
+# Écrite par l'ancien cron research_rotation, supprimé le 14 octobre 2026. Des
+# lignes la portent encore en base : on les lit, on n'en écrit plus.
+SOURCE_LEGACY_CRON = "cron"
+ROTATION_SOURCES = (SOURCE_ROTATION, SOURCE_LEGACY_CRON)
 
 # Au-delà de ce silence, un job actif est réputé mort. Doit rester nettement
 # supérieur à la durée d'un pas de pipeline : un Tavily Research « pro » peut
@@ -134,7 +143,7 @@ def _row_to_job(row) -> dict:
 def create_job(
     school_id: str,
     phase: str,
-    source: str = "manual",
+    source: str = SOURCE_MANUAL,
     progress: dict | None = None,
 ) -> str:
     """Insère un job en statut « queued » et retourne son identifiant."""

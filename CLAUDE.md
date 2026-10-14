@@ -47,11 +47,18 @@ Chantier « backend local sur demande »
   job `ts-tests` vert en CI (50 tests) ;
 - étape 2 (réseau, `DB_DRIVER=neon-ws`) faite le 14 octobre : pont Python,
   `npm run db:status` / `db:migrate`, 319 tests Python et 68 TypeScript ;
-  vérifiée sur la base en lecture seule. Elle attend la validation du
-  propriétaire avant l'étape 3 ;
+  vérifiée sur la base en lecture seule, commit `02da0d7`, CI verte, validée
+  par le propriétaire ;
 - hors plan, le 14 octobre : `next` et `eslint-config-next` montés en 16.3.8
   pour lever un avis critique qui faisait échouer le job `validate` ; tests,
-  build et contrôles manuels rejoués (`architecture.md` §10 bis).
+  build et contrôles manuels rejoués (`architecture.md` §10 bis) ;
+- étape 3 (plus de cron, passes dues sur demande, démarrage qui ne ment plus :
+  F3, F4, F8, F9) codée le 14 octobre : `POST /internal/run-due-passes`,
+  `startup_errors`, synchro `/usage` bloquante ; 362 tests Python et 68
+  TypeScript. Aucune vérification réelle (ni `uvicorn`, ni appel de la route).
+  **En attente de la validation du propriétaire.** Jusqu'à l'étape 5,
+  `/admin/cron` en local lit encore l'ancien bloc de la rotation et s'affiche
+  incohérent.
 
 L'étape en cours se lit dans le journal du plan (§11).
 
@@ -80,9 +87,15 @@ L'étape en cours se lit dans le journal du plan (§11).
      fait réellement (§10 du plan) ;
    - faire un compte rendu.
 7. **Dépenses réelles.** Aucun appel payant (Tavily, Gemini, Gemma) sans accord
-   explicite du propriétaire, et les tests ne touchent jamais le réseau. Tant
-   que l'étape 3 du plan n'est pas faite : ne jamais lancer le backend avec
-   `CRON_RESEARCH_ENABLED=true` sans `CRON_MONTHLY_CREDIT_CEILING=0`.
+   explicite du propriétaire, et les tests ne touchent jamais le réseau.
+   - Plus aucun cron ne paie Research (étape 3). Une passe réelle ne part que
+     par `POST /internal/run-due-passes` avec `dry_run: false`, et seulement
+     avec l'accord du propriétaire. La simulation (`dry_run: true`) ne paie
+     rien.
+   - Lancer le backend suffit pourtant à dépenser : le traitement des
+     contributions part dès le démarrage et paie Tavily et Gemma s'il trouve
+     des tickets `Pending_AI`. Le démarrage écrit aussi dans la base (reprise
+     et purge des jobs). Pas de `uvicorn` sans l'accord du propriétaire.
 8. **Base de données.** Jamais `prisma db push`, `prisma migrate dev` ni
    `prisma migrate reset`. Jamais de modification d'un `migration.sql` déjà
    appliqué, même un commentaire : son empreinte change. Jamais

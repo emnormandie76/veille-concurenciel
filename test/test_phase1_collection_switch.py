@@ -3,7 +3,7 @@ L'interrupteur de la collecte du rattachement campus, de FastAPI au resultat du 
 
 La requete de l'ecran admin arrive sur POST /internal/trigger-targeted-research.
 Ces tests suivent `collect_campus_attachments` jusqu'a `PipelineJob.result`,
-dans les deux etats, puis verifient que le cron `research_rotation` et
+dans les deux etats, puis verifient que les passes dues (`run_due_passes`) et
 `trigger-scan` ne l'activent jamais. Ni base ni reseau : la table PipelineJob et
 la decouverte sont des doubles, et le pas de collecte leve s'il est appele alors
 qu'il ne devrait pas l'etre.
@@ -137,14 +137,14 @@ class TestTargetedResearchSwitch(unittest.TestCase):
 
 
 class TestOtherEntryPointsNeverCollect(unittest.TestCase):
-    def test_the_nightly_rotation(self):
+    def test_the_due_passes(self):
         from backend.scheduler import jobs
         from backend.scheduler.rotation import Candidate
 
         candidate = Candidate("s1", "Nouvelle école", "1", "never", None, 30)
         finished = []
         step = forbidden_step()
-        with patch.object(jobs, "_school_is_busy", return_value=False),              patch.object(jobs, "_start_cron_job", return_value="cron-job"),              patch.object(jobs, "_finish_cron_job",
+        with patch.object(jobs, "_school_is_busy", return_value=False),              patch.object(jobs, "_start_rotation_job", return_value="rotation-job"),              patch.object(jobs, "_finish_rotation_job",
                           side_effect=lambda job_id, status, result=None, error=None: finished.append((status, result))),              patch.object(phase1_research, "_run_program_discovery", side_effect=fake_discovery),              patch.object(phase1_research, "_run_campus_attachment_step", step):
             jobs._run_rotation_pass(candidate, MagicMock(available_keys=3))
 

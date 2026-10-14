@@ -1,9 +1,18 @@
 # ⚙️ Fiche de Test Manuel : Dashboard Admin & Monitoring Cron
 
-Ce guide détaille les étapes nécessaires pour tester localement le tableau de bord de monitoring des tâches (`/admin/cron`), le serveur backend (FastAPI), le lancement de recherches manuelles, et la vérification **à blanc** de la rotation nocturne des recherches (étape 5).
+Ce guide détaille les étapes nécessaires pour tester localement le tableau de bord de monitoring des tâches (`/admin/cron`), le serveur backend (FastAPI), le lancement de recherches manuelles, et la **simulation des passes dues** (étape 5).
 
-> **Revu le 12 octobre 2026.** Aucun identifiant n'est écrit dans ce document :
-> le compte admin est créé par le seed avec un mot de passe que vous fournissez.
+> **Revu le 14 octobre 2026** (plan [`backend-local.md`](../features/backend-local.md), étape 3) :
+> plus de cron ni de rotation nocturne. Les passes dues partent sur demande
+> (`POST /internal/run-due-passes`). Aucun identifiant n'est écrit dans ce
+> document : le compte admin est créé par le seed avec un mot de passe que vous
+> fournissez.
+
+> **Où faire ces tests.** Lancer le backend **écrit dans la base** au démarrage
+> (reprise des jobs orphelins, purge des jobs terminés) et **traite aussitôt les
+> contributions en attente**, ce qui coûte des crédits. La seule branche Neon,
+> `main`, est aussi la production Vercel : la vérification de bout en bout se
+> fait sur une branche `dev` (décision D7, étape 9 du plan).
 
 ---
 
@@ -15,6 +24,7 @@ La base de données est hébergée sur **Neon (PostgreSQL cloud)**. Il n'est pas
 La liste complète et commentée est dans [`.env.example`](../../.env.example). Pour ce test :
 * Dans `.env.local` (racine) : `DATABASE_URL` (pooler), `DIRECT_URL` (connexion directe), `NEXTAUTH_SECRET`, `FASTAPI_URL="http://localhost:8000"` et `INTERNAL_API_TOKEN`.
 * Dans `backend/.env` : `DATABASE_URL`, `INTERNAL_API_TOKEN` (**la même valeur** que côté Next.js), `GEMINI_API_KEY`, et les clés Tavily (`TAVILY_API_KEYS="cle1,cle2"` ou `TAVILY_API_KEY_1` … `TAVILY_API_KEY_10`).
+* Sur un réseau où le port 5432 est fermé (celui de l'établissement) : `DB_DRIVER=neon-ws` dans `.env.development.local` **et** dans `backend/.env`. Jamais sur Vercel.
 
 > `INTERNAL_TOKEN` et `FASTAPI_INTERNAL_TOKEN` sont les anciens noms du jeton :
 > encore acceptés, ils journalisent un avertissement.
@@ -30,7 +40,7 @@ L'identifiant créé est `admin`, ou la valeur de `SEED_ADMIN_USERNAME`. Changez
 
 ## 🐍 Étape 2 : Lancer le Serveur Backend (FastAPI)
 
-Le backend FastAPI porte APScheduler, la rotation des clés Tavily, la cascade Gemini du pipeline et les appels Gemma du crowdsourcing.
+Le backend FastAPI porte la rotation des clés Tavily, la cascade Gemini du pipeline, les passes dues (sur demande) et le traitement des contributions (Gemma), seul job d'APScheduler.
 
 ### 2.1 Activer l'environnement virtuel Python
 ```powershell
@@ -41,33 +51,33 @@ Le backend FastAPI porte APScheduler, la rotation des clés Tavily, la cascade G
 ```bash
 python -m uvicorn backend.main:app --port 8000 --reload
 ```
-*`backend/main.py` charge `backend/.env` au démarrage.*
+*`backend/main.py` charge `backend/.env` au démarrage. Uvicorn écoute sur `127.0.0.1` par défaut : ne passez jamais `--host 0.0.0.0` sur le réseau de l'établissement.*
 
-> **La rotation des recherches ne démarre pas en local.** Tant que `ENVIRONMENT`
-> ne vaut pas `production`, `research_rotation` — le seul job qui paie Research
-> de lui-même — n'est pas inscrit. Le log de démarrage le dit
-> (« ⏸️ Rotation des recherches non inscrite — ENVIRONMENT=development : … »), et
-> le panneau « Rotation automatique » affiche **inactive**. Avant septembre 2026,
-> démarrer le backend lançait 5 minutes plus tard une Phase 1 payante sur toutes
-> les écoles sans campus. **Ne posez jamais `ENVIRONMENT=production` sur un poste
-> de développement, ni `CRON_RESEARCH_ENABLED=true` sans
-> `CRON_MONTHLY_CREDIT_CEILING=0`** : la rotation lancerait une vraie passe à
-> l'heure dite.
+> **Aucune recherche ne part seule.** Le cron `research_rotation` est supprimé :
+> une passe de recherche ne part que si vous la demandez (recherche manuelle,
+> étape 4.3, ou passes dues, étape 5). `ENVIRONMENT` et `CRON_RESEARCH_ENABLED`
+> ne sont plus lues. Avant septembre 2026, démarrer le backend lançait 5 minutes
+> plus tard une Phase 1 payante sur toutes les écoles sans campus.
 
-> **Le crowdsourcing, lui, tourne toutes les minutes**, en local comme en
-> production. S'il trouve des tickets `Pending_AI`, il appelle Tavily (`extract`)
-> et Gemma : des crédits réels, sans clic. Regardez l'inbox avant de lancer le
-> backend. Pour l'écarter le temps d'un test, `CRON_CROWDSOURCING_INTERVAL_MINUTES=1440`
-> repousse son premier passage à 24 h (un `IntervalTrigger` part à démarrage +
-> intervalle).
+> **Le traitement des contributions, lui, part dès le démarrage**, puis toutes
+> les minutes. S'il trouve des tickets `Pending_AI`, il appelle Tavily
+> (`extract`) et Gemma : des crédits réels, sans clic. **Regardez l'inbox avant
+> de lancer le backend.** L'ancienne astuce `CRON_CROWDSOURCING_INTERVAL_MINUTES=1440`
+> ne retarde plus le premier passage : elle n'espace que les suivants.
 
 > **Un seul backend à la fois sur la base.** Au démarrage, `reap_orphaned_jobs`
-> clôt en `failed` tout job actif ouvert par un autre processus. Un backend local
-> lancé pendant qu'un backend de production travaille interromprait donc ses
-> passes, et les deux traiteraient le crowdsourcing.
+> clôt en `failed` tout job actif ouvert par un autre processus. Deux backends
+> s'interrompraient leurs passes, traiteraient deux fois les contributions et
+> tiendraient deux comptabilités de crédits qui s'ignorent.
 
 ### 2.3 Vérifier le bon démarrage
 * `http://127.0.0.1:8000/health` doit renvoyer `{"status":"ok","version":"0.5.0"}`.
+* **`"status": "degraded"`** : le démarrage a échoué en partie, et `errors` dit
+  où (base, reprise des jobs, clés Tavily, scheduler). Le journal porte les mêmes
+  lignes en `ERROR`, et ne se termine pas par « ✅ Backend prêt ». Une base
+  injoignable cite le pilote (`psycopg2 direct` ou `neon-ws`) et l'hôte ; sans
+  `DB_DRIVER`, le message rappelle que le 5432 est fermé sur le réseau de
+  l'établissement.
 
 ---
 
@@ -90,18 +100,25 @@ npm run dev
 3. Connectez-vous avec le compte créé à l'étape 1.2. La connexion est plafonnée à 5 tentatives par IP toutes les 15 minutes.
 
 ### 4.2 Vérification des composants du tableau de bord
-1. **Statut Backend** : pastille verte **Opérationnel**. Si le backend est arrêté, un bandeau de reconnexion automatique s'affiche avec compte à rebours.
+
+> **Écran incohérent jusqu'à l'étape 5 du plan backend-local.** `/admin/cron`
+> lit encore l'ancien bloc de la rotation (`research_cron`, heure, fuseau,
+> « dernière nuit »), que le backend ne rend plus. Le panneau « Rotation
+> automatique » affiche donc une rotation **inactive**, sans heure ni dernière
+> nuit, et aucun bouton ne lance les passes dues. Pour le vrai état, lisez
+> `GET /internal/pipeline-status` (étape 5.1).
+
+1. **Statut Backend** : pastille verte **Opérationnel**. Si le backend est arrêté, un bandeau de reconnexion automatique s'affiche avec compte à rebours (« Cold Start », remplacé à l'étape 5 du plan).
 2. **Modèle IA Principal** : affiche `models/gemma-4-31b-it`. ⚠️ Cette valeur est **écrite en dur** dans `/internal/pipeline-status` et n'est plus exacte : le pipeline extrait par la cascade Gemini ; Gemma ne sert qu'au crowdsourcing.
 3. **Quotas Tavily** : crédits restants par clé. Le compteur est local et estimé — Research ne déclare pas son coût, et `GET /usage` de Tavily n'est pas en temps réel.
-4. **Tâches en cours** : les jobs `PipelineJob` actifs, avec leur progression.
-5. **Rotation automatique** (sous les quotas Tavily) : badge **inactive** en local, avec la raison tirée de `research_cron` ; crédits du mois (estimés) sur le plafond ; prochaines passes dues avec leur coût estimé ; dernière nuit. Le détail du bloc est dans [`architecture.md`](../architecture/architecture.md) §2.3 et §5.5.
-6. **Tâches automatiques (Cron)** : les passes de la rotation en cours. Vide hors production.
+4. **Tâches en cours** : les jobs `PipelineJob` actifs lancés à la main, avec leur progression.
+5. **Rotation automatique** : voir l'encadré ci-dessus.
+6. **Tâches automatiques (Cron)** : les passes dues en cours (`source = "rotation"`, ou `"cron"` pour d'anciennes lignes).
 7. **Recherche Manuelle** : sélecteurs Phase / École / Programme / Catégories, et en Phase 1 la case **« collecte du rattachement campus »**, décochée par défaut.
 
-> L'écran n'affiche pas `scheduler.last_runs` ni `has_failure` : un échec du
-> traitement Crowdsourcing ne s'y voit pas. La dernière nuit de la rotation, elle,
-> est dans le panneau. Lisez `GET /internal/pipeline-status` directement pour le
-> reste.
+> L'écran n'affiche ni `startup_errors`, ni `scheduler.last_runs`, ni
+> `has_failure` : un échec du traitement des contributions ne s'y voit pas.
+> Lisez `GET /internal/pipeline-status` directement (étape 5.1).
 
 ### 4.3 Tester le lancement d'une recherche manuelle
 **Chaque lancement dépense des crédits réels** (bouton réservé au rôle ADMIN) :
@@ -120,135 +137,72 @@ npm run dev
 
 ---
 
-## 🌙 Étape 5 : Vérifier la rotation à blanc (`CRON_MONTHLY_CREDIT_CEILING=0`)
+## 🧭 Étape 5 : Simuler les passes dues (`dry_run`)
 
-C'est la **passe à blanc** de l'étape 7 de
-[`cron-rotation-production.md`](../features/cron-rotation-production.md), à
-faire avant toute mise en ligne. Avec un plafond à 0, aucune estimation ne tient :
-le job lit l'état, planifie, journalise le plan et **ne lance aucune passe**.
-Fonctionnement complet : [`architecture.md`](../architecture/architecture.md) §5.5.
+La simulation remplace la **passe à blanc** de l'étape 7 de
+[`cron-rotation-production.md`](../features/cron-rotation-production.md)
+(plafond à 0, sur Koyeb, à l'heure dite). Elle lit l'état, planifie et rend le
+plan, **sans créer de job, sans appeler Research ni `/usage`**. Fonctionnement
+complet : [`architecture.md`](../architecture/architecture.md) §5.5.
 
-> ### ⛔ Point bloquant : pas depuis le poste de développement tant que Neon refuse le 5432
->
-> Depuis le poste du propriétaire, Neon refuse souvent le port **5432** :
-> `psycopg2` dépasse son délai (45 s par tentative) — ce fut le cas **toute la
-> journée du 29 septembre 2026**. Le backend local ne lit alors pas la base :
-> le job ne peut pas planifier, et `GET /internal/pipeline-status` dépasse le
-> délai de **4 s** de la route Next, si bien que `/admin/cron` affiche le
-> backend « Indisponible » alors qu'il tourne. Next, lui, fonctionne : il passe
-> par WebSocket sur le port 443. **Un `npm run dev` qui marche ne prouve donc
-> pas que le backend joint la base.**
->
-> La passe à blanc se prévoit donc **sur Koyeb** (§5.1), ou **en local un jour
-> où `psycopg2` passe** (§5.2) — à vérifier avant d'y consacrer une heure.
+Le bouton « Simuler » de `/admin/cron` arrive à l'étape 5 du plan
+backend-local. D'ici là, on appelle le backend directement, avec le jeton
+interne posé dans la session PowerShell (jamais collé dans un chat ni dans un
+fichier suivi) :
 
-> ⚠️ **Contrôlez le plafond au log de démarrage, toujours.** Une valeur illisible
-> de `CRON_MONTHLY_CREDIT_CEILING` (`O` au lieu de `0`, espace, guillemets mal
-> fermés…) **retombe sur le défaut, 7 000**, avec un simple avertissement : la
-> rotation lancerait une vraie passe. La ligne attendue :
-> `✅ Scheduler démarré (…): Rotation(15h Europe/Paris, 1 passe(s) par nuit, plafond 0 crédits/mois), Crowdsourcing(1m)`.
-> Si elle ne dit pas `plafond 0`, **arrêtez le backend avant l'heure dite**.
-
-### 5.1 Sur Koyeb (recommandé)
-
-1. Sur le service du backend, poser **dans la même modification** (chaque
-   changement de variable redéploie, donc redémarre l'instance) :
-   - `ENVIRONMENT=production` ;
-   - `CRON_MONTHLY_CREDIT_CEILING=0` ;
-   - `CRON_RESEARCH_HOUR` = **l'heure suivante**, heure de Paris (à 14 h 20,
-     `15`). L'instance doit avoir redémarré **avant** cette heure : un démarrage
-     après l'heure renvoie le premier passage au lendemain, sans rattrapage.
-2. Après le redéploiement, lire les journaux du service : la ligne
-   `✅ Scheduler démarré (ENVIRONMENT=production): Rotation(… plafond 0 crédits/mois) …`.
-3. Lire l'état, de l'une de ces deux façons :
-   - directement, avec le jeton interne du backend de production :
-     ```powershell
-     $h = @{ Authorization = "Bearer $env:INTERNAL_API_TOKEN" }
-     (Invoke-RestMethod "https://<backend-koyeb>/internal/pipeline-status" -Headers $h).scheduler | ConvertTo-Json -Depth 6
-     ```
-   - ou par `/admin/cron` d'un Next local dont `.env.local` pointe sur Koyeb
-     (`FASTAPI_URL` et `INTERNAL_API_TOKEN` de production). **Les boutons de
-     lancement visent alors la production : n'en touchez aucun.**
-4. Noter, avant l'heure dite, la consommation affichée sur le tableau de bord
-   Tavily.
-
-Ne lancez pas de backend local pendant ce temps (voir l'étape 2.2 : chacun
-clôt les jobs actifs de l'autre).
-
-### 5.2 En local, un jour où `psycopg2` passe
-
-1. **Vérifier d'abord la base.** Lancer le backend normalement (étape 2), ouvrir
-   `/admin/cron` : la pastille doit être **Opérationnel** et le panneau
-   « Rotation automatique » rempli, sans « État de la rotation illisible ». Si
-   la page affiche « Indisponible », ou si
-   `GET http://127.0.0.1:8000/internal/pipeline-status` met plus de 4 s ou porte
-   `"database": "disconnected"`, le 5432 est fermé : arrêtez ici.
-2. Regarder l'inbox : des tickets `Pending_AI` seront traités par le
-   crowdsourcing, à vos frais (voir l'étape 2.2 pour l'écarter).
-3. Arrêter le backend, puis le relancer **sans `--reload`** (un rechargement
-   après l'heure dite la ferait sauter), variables posées dans la session — elles
-   l'emportent sur `backend/.env`, que `load_dotenv` ne laisse pas les écraser :
-   ```powershell
-   $env:CRON_MONTHLY_CREDIT_CEILING = "0"
-   $env:CRON_RESEARCH_ENABLED = "true"
-   $env:CRON_RESEARCH_HOUR = "15"    # l'heure suivante, heure de Paris
-   python -m uvicorn backend.main:app --port 8000
-   ```
-4. Contrôler la ligne `plafond 0 crédits/mois` au démarrage (encadré ci-dessus).
-5. Après la vérification, fermer la session PowerShell, ou retirer les trois
-   variables (`Remove-Item Env:CRON_RESEARCH_ENABLED`, etc.).
-
-### 5.3 Résultat attendu
-
-**Avant l'heure dite**, dans `scheduler` (ou le panneau) :
-- `research_cron` : `{"enabled": true, "reason": "ENVIRONMENT=production"}` (ou
-  `CRON_RESEARCH_ENABLED=true` en local) ;
-- dans `jobs`, `research_rotation` avec `next_run` à l'heure dite, aujourd'hui ;
-- `rotation.enabled: true`, `monthly_ceiling: 0`, `hour` réglé ; le panneau
-  porte le badge **à blanc** et « À blanc — plafond à 0 : la rotation planifie et
-  journalise sans rien dépenser (…) » ;
-- `rotation.next` : les premières passes dues, chacune avec `reason` et
-  `estimated_credits` (Phase 1 : 30 ; Phase 2 : `45 + 25 × programmes + 10 ×
-  arêtes`) ; `due_count` : leur nombre. Au premier déploiement, toutes les
-  écoles sont « Jamais passée » : la mémoire des passages n'existait pas ;
-- `rotation.last_night: null` (« Aucune nuit depuis le démarrage du backend »).
-
-**À l'heure dite**, dans les journaux :
+### 5.1 Lire l'état
+```powershell
+$h = @{ Authorization = "Bearer $env:INTERNAL_API_TOKEN" }
+$s = Invoke-RestMethod "http://127.0.0.1:8000/internal/pipeline-status" -Headers $h
+$s.startup_errors; $s.scheduler.rotation | ConvertTo-Json -Depth 6
 ```
-⏰ [ROTATION] research_rotation démarré
-📋 [ROTATION] N passe(s) due(s) ; crédits du mois x/0 ; en tête : <École>, Phase 1, ~30 crédits (never), …
-⏸️ [ROTATION] plafond mensuel atteint : x/0 crédits, N passe(s) en attente, la moins chère ~M crédits
+Attendu : `startup_errors` vide ; dans `rotation`, `due_count`, les 5 premières
+passes dues (`next`, chacune avec `reason` et `estimated_credits` — Phase 1 : 30 ;
+Phase 2 : `45 + 25 × programmes + 10 × arêtes`), `monthly_ceiling`,
+`month_credits_used`, `last_run` (`null` depuis le démarrage) et `usage_sync`
+(`{ok, at, failed_keys}` une fois la synchro du démarrage terminée).
+
+### 5.2 Simuler
+```powershell
+$body = '{"max_passes": 5, "dry_run": true}'
+Invoke-RestMethod -Method Post "http://127.0.0.1:8000/internal/run-due-passes" `
+  -Headers $h -ContentType "application/json" -Body $body | ConvertTo-Json -Depth 6
 ```
-puis `rotation.last_night` : `status: "success"`, `detail` « plafond mensuel
-atteint : … ». `x` est la consommation estimée du mois, pas forcément 0 : le
-gestionnaire de clés se recale sur Tavily (`/usage`) après le démarrage.
+**Résultat attendu** (200) : `dry_run: true`, `status: "success"`, `due_count`,
+`planned` (au plus 5 passes, celles qui tiendraient sous le plafond, chacune
+comptée à son estimation), `launched: []`, `detail` « simulation : … ». Au
+journal :
+```
+🧪 [ROTATION] Simulation des passes dues
+📋 [ROTATION] N passe(s) due(s) ; crédits du mois x/7000 ; en tête : <École>, Phase 1, ~30 crédits (never), …
+```
+`dry_run` est **exigé** et doit être un booléen : `{"max_passes": 5}` seul, ou
+`"dry_run": "true"` entre guillemets, répondent 422 — une passe réelle ne part
+jamais par défaut.
 
-**Ce qui ne doit PAS arriver** : aucune ligne `🚀 [ROTATION]`, aucune tâche dans
-« Tâches automatiques (Cron) », aucun nouveau `PipelineJob` `source = 'cron'`,
-aucune consommation nouvelle sur le tableau de bord Tavily, hormis ce que le
-crowdsourcing aurait traité (à vérifier dans l'inbox). La moindre ligne
-`🚀 [ROTATION]` : arrêtez le backend et relisez le plafond.
+**Ce qui ne doit PAS arriver** : aucune ligne `🚀 [ROTATION]`, aucun nouveau
+`PipelineJob` `source = 'rotation'` (le compter avant et après par le MCP Neon,
+en `SELECT`), aucune consommation nouvelle sur le tableau de bord Tavily, hormis
+ce que le crowdsourcing aurait traité (à vérifier dans l'inbox).
 
-**Rien à l'heure dite** : regarder `next_run` de `research_rotation`. Au
-lendemain, l'instance a démarré après l'heure ; absent de `jobs`, le job n'est
-pas inscrit (`research_cron.reason`). Une instance mise en veille ou
-redémarrée à ce moment ne lance rien non plus.
-
-### 5.4 Après la vérification
-
-Laisser `CRON_MONTHLY_CREDIT_CEILING=0` tant que le propriétaire n'a pas fixé la
-première passe réelle (étape 7 du plan : une seule école, plafond juste
-au-dessus de son estimation, coût relevé sur le tableau de bord Tavily). Ou
-couper la rotation (`CRON_RESEARCH_ENABLED=false`, ou retirer
-`ENVIRONMENT=production` — qui rouvre alors `/docs` en production). Remettre
-`CRON_RESEARCH_HOUR` à 3, ou le retirer.
+### 5.3 Passe réelle — avec l'accord du propriétaire seulement
+`"dry_run": false` lance les passes : **des crédits réels** (Phase 1 : ~30 ;
+Phase 2 : jusqu'à plusieurs centaines par école). Ce qui se passe :
+1. synchro `/usage` bloquante de toutes les clés (20 s au plus). Une clé non
+   recalée → **503 `USAGE_SYNC_FAILED`**, rien ne part ;
+2. réponse **202** avec ce qui part (`status: "planned"`, `planned`) ; les
+   passes tournent ensuite en arrière-plan ;
+3. une seconde demande pendant ce temps → **409 `ALREADY_RUNNING`** ;
+4. l'issue se lit dans `pipeline-status` : `rotation.last_run`, et les jobs en
+   cours sous `cron_jobs`.
 
 ---
 
 ## 🛠️ Dépannage en cas de 500 ou d'erreur de connexion
 
-* **`P1001` ou « connection refused » côté backend, alors que Next.js marche** : le backend se connecte en **psycopg2 sur le port 5432**, Next.js en **WebSocket sur le port 443** (`@neondatabase/serverless`). Certains réseaux — dont celui du poste de développement — coupent le protocole Postgres sur 5432 : `npm run dev` fonctionne, le backend et la CLI Prisma non. Changez de réseau (partage de connexion).
+* **`/health` en `degraded`, « Base de données : Connexion PostgreSQL impossible (pilote : psycopg2 direct, …) »** : le backend vise le port 5432, fermé sur le réseau de l'établissement. Posez `DB_DRIVER=neon-ws` dans `backend/.env` (pont WebSocket, port 443), puis relancez. Avec `neon-ws` déjà posée, lisez les avertissements du pont dans le journal.
 * **« Database connection error » avec un réseau qui passe** : vérifiez que votre IP est autorisée dans les paramètres de sécurité du projet Neon.
 * **Le statut du backend reste « Indisponible »** : erreurs d'import dans la console FastAPI, port `8000` déjà pris, ou `INTERNAL_API_TOKEN` différent des deux côtés (401).
-* **« Indisponible » alors qu'uvicorn tourne et que `/health` répond** : `pipeline-status` met plus de 4 s, la route Next abandonne et renvoie 503. Cause habituelle : `psycopg2` attend Neon sur le 5432 (voir le premier point et l'étape 5).
-* **« État de la rotation illisible » dans le panneau** : la lecture en base du bloc `rotation` a échoué (message tronqué à 300 caractères) ; le reste de `pipeline-status` est servi normalement.
+* **« Indisponible » alors qu'uvicorn tourne et que `/health` répond** : `pipeline-status` met plus de 4 s, la route Next abandonne et renvoie 503. Cause habituelle : la base répond lentement (réveil de Neon, ou 5432 fermé sans `DB_DRIVER=neon-ws`).
+* **« État de la rotation illisible »**, ou `rotation: {"error": …}` : la lecture en base du bloc `rotation` a échoué (message tronqué à 300 caractères) ; le reste de `pipeline-status` est servi normalement.
+* **`last_runs.crowdsourcing_processor` en `failed`** : la file des contributions n'a pas pu être lue (base injoignable), ou le quota Tavily a interrompu le traitement. Le détail le dit ; `has_failure` passe `pipeline-status` en `degraded`.

@@ -9,7 +9,7 @@ Deux exécutions distinctes :
 | | Rôle |
 |---|---|
 | **Next.js 16** (`app/`, `lib/`) | back-office d'administration, API publique `/api/v1`, formulaire public de contribution |
-| **FastAPI** (`backend/`) | pipeline IA — recherche Tavily, extraction Gemma, tâches périodiques |
+| **FastAPI** (`backend/`) | pipeline IA — recherche Tavily, extraction Gemini et Gemma, traitement des contributions ; lancé à la main sur le poste, les recherches partent sur demande |
 
 Les deux partagent une base **PostgreSQL (Neon)** : Prisma côté TypeScript,
 psycopg2 côté Python.
@@ -62,13 +62,13 @@ Le back-office est sur `/admin`, la connexion sur `/admin/login`.
 ## Variables d'environnement
 
 La liste complète, commentée et classée par exécution, est dans
-[`.env.example`](.env.example). Les quatre pièges à connaître :
+[`.env.example`](.env.example). Les pièges à connaître :
 
 | Variable | Piège |
 |----------|-------|
 | `INTERNAL_API_TOKEN` | Le même secret a porté trois noms. C'est celui-ci le bon ; `FASTAPI_INTERNAL_TOKEN` et `INTERNAL_TOKEN` restent acceptés mais sont à supprimer. |
-| `ENVIRONMENT` | Tant qu'elle ne vaut pas `production`, `/docs`, `/redoc` et `/openapi.json` du backend restent **ouverts**. À `production`, elle inscrit la rotation nocturne des recherches, qui **paie Tavily** sous le plafond `CRON_MONTHLY_CREDIT_CEILING` (`0` = à blanc) — voir `docs/architecture/architecture.md` §5.5. |
-| `ALLOWED_ORIGINS` | Absente en production, aucune origine croisée n'est acceptée (et une erreur est journalisée). |
+| `ENVIRONMENT`, `ALLOWED_ORIGINS`, `CRON_RESEARCH_ENABLED`, `CRON_RESEARCH_HOUR`, `CRON_ROTATION_PASSES_PER_NIGHT` | **Supprimées le 14 octobre 2026**, le code ne les lit plus : les poser ne change rien. Le backend n'a plus de production. Il tourne sur le poste et n'écoute que sur `127.0.0.1`, `/docs` reste ouvert et CORS n'accepte que `http://localhost:3000`. Aucun cron ne paie Tavily : les passes dues partent sur demande (`POST /internal/run-due-passes`), sous le plafond `CRON_MONTHLY_CREDIT_CEILING`. Voir `docs/architecture/architecture.md` §5.5 et §10.6. |
+| `CRON_CROWDSOURCING_INTERVAL_MINUTES` | Le traitement des contributions part **dès le démarrage** du backend, puis à cet intervalle. S'il trouve des tickets `Pending_AI`, il appelle Tavily et Gemma : lancer le backend suffit à payer. |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Sans magasin partagé, la limitation de débit retombe en mémoire — elle ralentit une attaque mais ne la bloque pas sur une plateforme sans état. |
 
 ---
@@ -121,7 +121,7 @@ obligatoire (exigence de Prisma 7).
 ```bash
 npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
-npm test              # 319 tests Python (pytest)
+npm test              # 362 tests Python (pytest)
 npm run test:ts       # 68 tests TypeScript (node --test), dont les routes de test/api/
 ```
 

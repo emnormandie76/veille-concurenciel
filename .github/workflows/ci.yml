@@ -29,7 +29,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Même version majeure que le poste de développement (v24.21.0).
+          node-version: "24"
           cache: "npm"
 
       - name: Install dependencies
@@ -98,6 +99,45 @@ jobs:
         # Bloque uniquement sur les vulnérabilités CRITIQUES
         # Les HIGH/MODERATE sont documentées dans docs/memory/memorystep2.md §8
         continue-on-error: false
+
+  # ═══════════════════════════════════════════════════════════════════════
+  #  Tests TypeScript — fonctions de lib/ et routes Next.js
+  #
+  #  Ajouté par le plan backend-local (étape 1, défaut F7) : `npm run test:ts`
+  #  ne tournait nulle part. Les routes se testent avec un faux Prisma et des
+  #  sessions simulées (test/helpers/) : aucun test ne touche la base.
+  # ═══════════════════════════════════════════════════════════════════════
+  ts-tests:
+    name: Tests TypeScript
+    runs-on: ubuntu-latest
+
+    env:
+      # prisma.config.ts exige la variable dès son chargement, même pour
+      # `prisma generate`, qui ne se connecte pas. Une URL factice suffit :
+      # le vrai secret n'a rien à faire dans ce job.
+      DATABASE_URL: "postgresql://ci:ci@127.0.0.1:5432/ci"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Aujourd'hui, seul lib/prisma.ts charge @prisma/client, et les tests de
+      # routes le remplacent. Un futur test qui chargerait le client échouerait
+      # pourtant sans lui : on le génère, comme dans le job validate.
+      - name: Prisma — génération du client
+        run: npx prisma generate
+
+      - name: node --test
+        run: npm run test:ts
 
   # ═══════════════════════════════════════════════════════════════════════
   #  Tests Python — backend FastAPI

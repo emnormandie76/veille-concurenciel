@@ -10,7 +10,7 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "python -m pytest -q",
-    "test:ts": "node --import tsx --test test/*.test.ts"
+    "test:ts": "node --import tsx --experimental-test-module-mocks --test \"test/**/*.test.ts\""
   },
   "prisma": {
     "seed": "tsx --env-file=.env.local prisma/seed.ts"

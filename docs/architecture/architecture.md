@@ -278,6 +278,8 @@ appVC/
 │   ├── test_ranking_program_match.py · test_pending_guard.py · test_discovery_diff.py
 │   ├── test_rotation_plan.py · test_research_rotation_job.py · test_rotation_status.py
 │   ├── campus-attachment.test.ts · contribution.test.ts · trigger-research.test.ts · rotation-status.test.ts
+│   ├── api/                            # routes Next.js : admin-guards.test.ts (statique) · inbox-ticket.test.ts
+│   ├── helpers/                        # banc des routes : fake-prisma.ts · session.ts (§10 bis, Tests)
 │   └── fixtures/attachment_plan_cases.json    # 21 cas lus par les deux suites
 │
 └── .github/workflows/ci.yml            # §10 bis
@@ -1747,8 +1749,8 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
 | `npm run build` | **`prisma generate && next build`** |
 | `npm run lint` / `lint:fix` | ESLint 9, configuration plate |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | `python -m pytest -q` (venv actif requis) |
-| `npm run test:ts` | `node --import tsx --test test/*.test.ts` — tests TypeScript, sans dépendance nouvelle |
+| `npm test` | `python -m pytest -q`, avec le `python` du `PATH` : celui du venv s'il est activé, sinon le Python global du poste, comme la CI (décision du 14 octobre 2026) |
+| `npm run test:ts` | `node --import tsx --experimental-test-module-mocks --test "test/**/*.test.ts"` — tests TypeScript (fonctions de `lib/`, routes dans `test/api/`), sans dépendance nouvelle |
 
 **`prisma generate` fait partie du build**, et ce n'est pas décoratif : Prisma 7
 n'a plus de hook `postinstall` qui génère le client. Sans cet appel explicite, un
@@ -1807,15 +1809,49 @@ bascule désormais en mode multi-programme. Il a été réécrit pour tester ce
 contrat.
 
 Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
-(+25 sous-tests) et 36 tests TypeScript. **Au 12 octobre 2026 : 291 tests
-Python (+25 sous-tests) et 43 tests TypeScript**, tous verts. Les deux suites
-lisent des fixtures communes quand une règle existe en deux langages
-(`test/fixtures/attachment_plan_cases.json`).
+(+25 sous-tests) et 36 tests TypeScript ; au 12 octobre, 291 et 43. **Au
+14 octobre 2026 : 291 tests Python (+25 sous-tests) et 50 tests TypeScript**,
+tous verts. Les deux suites lisent des fixtures communes quand une règle existe
+en deux langages (`test/fixtures/attachment_plan_cases.json`).
 
-> **La CI ne lance pas encore `npm run test:ts`** : le job `python-tests` n'exécute
-> que `pytest`, et le job `validate` que `tsc`, ESLint et Prisma. Les 43 tests
-> TypeScript — dont ceux qui prouvent qu'aucune arête n'est créée par le
-> rattachement campus — ne tournent qu'en local.
+**Banc des routes Next.js** (`test/api/`, plan backend-local, étape 1). Une
+route se teste en important son handler et en l'appelant avec une `Request` et
+`{ params: Promise.resolve({ id }) }` : dans Next 16, `params` est une promesse.
+Deux modules sont remplacés par `mock.module` de `node:test`, ce qui exige le
+drapeau `--experimental-test-module-mocks` (encore requis sous Node 24.21) :
+
+| Aide | Remplace | Rôle |
+|---|---|---|
+| `test/helpers/fake-prisma.ts` | `@/lib/prisma` | chaque test déclare les seules méthodes dont il a besoin (`db.use({...})`) ; tout appel est enregistré dans `db.calls`, une méthode non déclarée lève ; `$transaction` accepte une fonction (appelée avec le même faux, l'exception remonte) ou un tableau |
+| `test/helpers/session.ts` | `@/lib/auth` | trois profils (`none`, `MODERATOR`, `ADMIN`) ; `guardAuth` et `guardAdmin` rendent les mêmes 401 et 403 que `lib/auth.ts`, et `session.guards` liste les gardes appelées |
+
+- **Ordre d'import.** Les aides s'importent en tête du fichier, et la route
+  par un `import()` dans `before()`. Un import statique de la route serait
+  évalué avant le remplacement.
+- **Garde-fou réseau.** `fake-prisma.ts` pose une `DATABASE_URL` locale morte
+  (`127.0.0.1:9`). Un test qui chargerait par erreur le vrai `lib/prisma`
+  échouerait sur place sans jamais joindre Neon, et dotenv ne laisserait pas
+  `.env.local` reprendre la main.
+- **Contrôle positif.** `inbox-ticket.test.ts` vérifie aussi qu'un
+  MODERATOR reçoit le ticket rendu par le faux. Sans ce test, un remplacement
+  raté passerait inaperçu.
+- On utilise l'option `exports` de `mock.module` : `namedExports` est
+  dépréciée, et Node 24.21 émet un avertissement.
+
+**Les gardes des routes admin** (`test/api/admin-guards.test.ts`) se vérifient
+par analyse statique, avec le compilateur TypeScript et sans mock. Chaque
+`app/api/admin/**/route.ts` est énuméré :
+
+- chaque handler exporté doit **attendre** `guardAuth()` ou `guardAdmin()`,
+  importés de `@/lib/auth`. Une garde sans `await` rend une promesse, dont
+  `error` vaut `undefined` : la route s'ouvrirait à tous ;
+- aucun fichier ne touche `getServerSession` ;
+- les handlers sous `guardAdmin` sont **exactement** la liste ADMIN du §3.6.
+  Une route ajoutée ou modifiée impose de mettre à jour ensemble le code, le
+  tableau du §3.6 et la liste du test ;
+- une forme d'export que l'analyse ne sait pas lire (`export { h as GET }`)
+  est refusée plutôt que tenue pour sûre ;
+- un cas synthétique prouve que l'analyse repère ces défauts.
 
 > Le test le plus important vérifie que **`user_text` n'atteint jamais un modèle
 > d'IA**. C'est une garantie de confidentialité, pas un détail.
@@ -1918,12 +1954,23 @@ suffit, toujours sans `--force`.
 
 ### Intégration continue
 
-`.github/workflows/ci.yml`, deux jobs :
+`.github/workflows/ci.yml`, trois jobs :
 
 | Job | Étapes |
 |---|---|
-| `validate` | **prisma generate** · tsc · ESLint · prisma validate · prisma migrate status · garde-fou « pas de synchro hors migration » · `npm audit --audit-level=critical` |
+| `validate` | Node 24 · **prisma generate** · tsc · ESLint · prisma validate · prisma migrate status · garde-fou « pas de synchro hors migration » · `npm audit --audit-level=critical` |
+| `ts-tests` | Node 24 · `npm ci` · prisma generate · `npm run test:ts` |
 | `python-tests` | Python 3.12 · `pip install -r backend/requirements-dev.txt` · `pytest` |
+
+> **Node 24 dans les deux jobs Node**, comme sur le poste (v24.21.0). Le job
+> `validate` tournait en Node 20 jusqu'au 14 octobre 2026. Le job
+> `python-tests` reste en Python 3.12 alors que le poste est en 3.14 : le code
+> doit rester compatible 3.12.
+>
+> **`ts-tests` reçoit une `DATABASE_URL` factice.** `prisma.config.ts` appelle
+> `env()` de `prisma/config` dès son chargement, et `env()` lève si la variable
+> manque, même pour `prisma generate`, qui ne se connecte pas. Le vrai secret
+> n'a rien à faire dans un job de tests qui ne touche jamais la base.
 
 > **`prisma generate` doit précéder `tsc`, et c'est une correction, pas un
 > détail.** Le workflow lançait `npx tsc --noEmit` **avant** de générer le

@@ -1,8 +1,8 @@
 # Feature — Backend local sur demande : fin de l'hébergement du backend
 
-> **Statut :** plan rédigé le 14 octobre 2026. Étape 0 terminée le même jour :
-> décisions D1 à D7 tranchées (§2.2). L'étape 1 attend la validation du
-> propriétaire.
+> **Statut :** plan rédigé et validé par le propriétaire le 14 octobre 2026.
+> Étape 0 terminée le même jour : décisions D1 à D7 tranchées (§2.2). Étape 1
+> codée : reste à vérifier le job `ts-tests` sur un push de `localpython`.
 > **Branche de travail :** `localpython`, créée le 14 octobre 2026 depuis
 > `newresearch` (`295044e`) à la demande du propriétaire.
 > **Lire avant de coder :** ce document en entier, puis
@@ -326,13 +326,13 @@ TypeScript en CI (F7).
     le code doit rester compatible 3.12.
 
 **Tests :**
-- [ ] `test/api/admin-guards.test.ts` (statique, sans mock) : chaque handler
+- [x] `test/api/admin-guards.test.ts` (statique, sans mock) : chaque handler
   exporté (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) de
   `app/api/admin/**/route.ts` appelle `guardAuth` ou `guardAdmin` ; aucun fichier
   n'importe `getServerSession`. Chaque route de la liste ADMIN
   d'`architecture.md` §3.6 utilise `guardAdmin`. Le test énumère les fichiers :
   une nouvelle route est couverte d'office.
-- [ ] Le banc fonctionne : `GET /api/admin/inbox/[id]` sans session → 401, sans
+- [x] Le banc fonctionne : `GET /api/admin/inbox/[id]` sans session → 401, sans
   appel au faux Prisma.
 - [ ] La CI exécute `npm run test:ts` (vérifier sur un push de la branche).
 
@@ -887,3 +887,4 @@ ne tourne pas en CI.
 | 2026-10-14 | 0 | **Relevés de départ**, sur `newresearch` (`295044e`) : `npm test` 291 tests Python verts et 25 sous-tests (2,1 s) ; `npm run test:ts` 43 verts ; `npm run typecheck` propre ; `npm run lint` 0 erreur, 124 avertissements, dont 112 sur des fichiers suivis et 12 dans `tmp/` (ignoré par git, mais lu par ESLint sur le poste). Défauts F1 à F9 (§5) revérifiés dans le code : tous présents aux endroits cités. | **Surprise** : `npm test` lance le `python` du `PATH`, c'est-à-dire le Python 3.14 global, et non `backend/.venv`. Les deux environnements peuvent diverger. **Arbre non propre** : `.mcp.json` (serveurs Neon et Vercel), `skills-lock.json`, `.claude/skills/` et ce plan ne sont pas commités. Restent : arbre propre, branche confirmée, décisions D1 à D7. |
 | 2026-10-14 | 0 | **Décisions du propriétaire** : D1 à D7 retenues telles que recommandées. D1 : pont dans le processus Python. D2 : une Phase 2 finit `failed` dès qu'une cible échoue. D3 : hors du plan. D4 : tests dans `test/` et `test/api/`. D5 : retrait d'`ENVIRONMENT`, du masquage de `/docs` et du CORS de production. D6 : plus tard. D7 : branche Neon `dev` à créer avant l'étape 9. **Branche de travail `localpython`**, créée depuis `newresearch` à sa demande. Plan, `.mcp.json`, `skills-lock.json` et `.claude/skills/` commités dessus ; arbre propre. **Étape 0 terminée.** | Écart : la branche de travail n'est plus `newresearch` (choix du propriétaire). `CLAUDE.md` est ignoré par git : sa mise à jour reste sur le poste. Prochaine session : étape 1, après validation du plan par le propriétaire. La question de `npm test` et du Python global reste ouverte (voir la ligne précédente). |
 | 2026-10-14 | 0 | **`npm test`, décision du propriétaire** : on garde le `python` du `PATH`, comme la CI qui repart d'un environnement neuf. Rien ne change dans `package.json`. À l'étape 2, vérifier `websockets` dans les deux interpréteurs : relevé ce jour, les deux ont la 16.0. **`CLAUDE.md` est désormais suivi par git**, à la demande du propriétaire : retiré de `.gitignore`. `AGENTS.md` reste ignoré : seul `CLAUDE.md` était demandé. | **Surprise** : le Python du `PATH` a déjà dérivé des versions épinglées (`google-genai` 2.3.0 au lieu de 2.4.0, `bcrypt` absent, `pytest-asyncio` 1.4.0 au lieu de 1.3.0). `backend/.venv` est conforme. Les 291 tests passent quand même. Réaligner revient au propriétaire : `python -m pip install -r backend/requirements-dev.txt`. Dans une copie neuve du dépôt, l'import `@AGENTS.md` de `CLAUDE.md` ne se résout qu'après un premier `next dev`. |
+| 2026-10-14 | 1 | **Plan validé par le propriétaire ; étape 1 codée.** `test:ts` passe à `node --import tsx --experimental-test-module-mocks --test "test/**/*.test.ts"` : les 43 tests existants sont toujours trouvés, sous `cmd` comme sous `sh`. Nouveau banc : `test/helpers/fake-prisma.ts` et `test/helpers/session.ts`, plus `test/api/inbox-ticket.test.ts` (3 tests) et `test/api/admin-guards.test.ts` (4 tests). CI : job `ts-tests` (Node 24, `npm ci`, `prisma generate`, `npm run test:ts`) ; job `validate` passé de Node 20 à Node 24. Docs : `architecture.md` §2.4 et §10 bis (*Commandes*, *Tests*, *Intégration continue*), README (*Commandes*, *Tests et qualité*), `CLAUDE.md`. Fin d'étape : `npm test` 291 verts (+25 sous-tests), `npm run test:ts` **50** verts, `typecheck` propre, `lint` 0 erreur et 124 avertissements (aucun dans les nouveaux fichiers). | **Reste** : la case CI, qui exige un push de `localpython` (accord du propriétaire). **Constats** : sous Node 24.21, `mock.module` exige encore le drapeau ; `namedExports` est déprécié, on passe par `exports`. `mock.module` marche du premier coup avec tsx et les alias `@/`, et le repli du plan (extraire la logique dans `lib/`) n'a pas servi. **Écarts** : (1) le test des gardes vérifie l'**égalité** entre les handlers sous `guardAdmin` et la liste ADMIN du §3.6, pas seulement l'inclusion ; il exige aussi un `await` devant la garde, refuse les exports qu'il ne sait pas lire, et un cas synthétique prouve qu'il repère ces défauts ; (2) le banc ajoute deux contrôles positifs (200, 404) qui prouvent que le faux Prisma est bien branché ; (3) `fake-prisma.ts` pose une `DATABASE_URL` locale morte, pour qu'un test ne puisse jamais joindre Neon ; (4) le job `ts-tests` reçoit une `DATABASE_URL` factice, car `env()` de `prisma/config` lève dès le chargement de `prisma.config.ts`, `prisma generate` compris. **Surprise** : le commentaire de `prisma.config.ts` décrit `env()` comme une référence résolue plus tard. Faux : la fonction lève tout de suite (`node_modules/@prisma/config/dist/index.js`). La logique du fichier reste juste, et on n'y touche pas dans ce plan. |

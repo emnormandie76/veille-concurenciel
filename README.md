@@ -70,7 +70,8 @@ La liste complète, commentée et classée par exécution, est dans
 | `npm run lint` | ESLint (configuration plate, `eslint.config.mjs`) |
 | `npm run lint:fix` | idem, avec correction automatique |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | suite Python (`pytest`) |
+| `npm test` | suite Python (`pytest`), avec le `python` du `PATH` |
+| `npm run test:ts` | suite TypeScript (`node --test`) : fonctions de `lib/` et routes Next.js |
 | `npx prisma migrate deploy` | applique les migrations en attente |
 | `npx prisma migrate status` | état de l'historique face à la base |
 | `npx prisma db seed` | crée le compte administrateur initial |
@@ -106,8 +107,15 @@ obligatoire (exigence de Prisma 7).
 ```bash
 npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
-npm test              # 11 tests Python
+npm test              # 291 tests Python (pytest)
+npm run test:ts       # 50 tests TypeScript (node --test), dont les routes de test/api/
 ```
+
+Les routes Next.js se testent sans base ni serveur : `test/helpers/` remplace
+`@/lib/prisma` par un faux client et `@/lib/auth` par des sessions simulées.
+`test/api/admin-guards.test.ts` vérifie que **chaque route admin attend sa
+garde**, et que la liste des routes ADMIN est celle d'`architecture.md` §3.6.
+La CI lance les deux suites (`.github/workflows/ci.yml`).
 
 Le test le plus important vérifie une garantie de confidentialité : **le texte
 libre saisi par un contributeur (`user_text`) n'atteint jamais un modèle d'IA.**

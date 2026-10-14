@@ -42,9 +42,10 @@ Chantier « backend local sur demande »
 - plan rédigé le 14 octobre 2026 ;
 - étape 0 terminée le même jour : sonde du pont réussie, relevés de départ faits
   (291 tests Python, 43 tests TypeScript), décisions D1 à D7 retenues telles que
-  recommandées.
+  recommandées ;
+- plan validé par le propriétaire ; étape 1 (filet de tests et CI) codée, en
+  attente d'un push de `localpython` pour vérifier le job `ts-tests`.
 
-**Avant l'étape 1, obtenir du propriétaire la validation explicite du plan.**
 L'étape en cours se lit dans le journal du plan (§11).
 
 ## Règles pour tout agent
@@ -182,7 +183,7 @@ l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 | `npm run dev` | Next.js sur http://localhost:3000 (back-office : `/admin`) |
 | `backend/.venv/Scripts/python -m uvicorn backend.main:app --reload` | backend FastAPI sur `127.0.0.1:8000` ; jamais `--host 0.0.0.0` |
 | `npm test` | tests Python (pytest), avec le `python` du `PATH` comme la CI, et non `backend/.venv` (décision du 14/10/2026) |
-| `npm run test:ts` | tests TypeScript (`node --test`) ; pas encore en CI (plan, étape 1) |
+| `npm run test:ts` | tests TypeScript (`node --test`), dont les routes de `test/api/` (banc : `test/helpers/`) ; en CI, job `ts-tests` |
 | `npm run typecheck` / `npm run lint` | types / ESLint (les avertissements sont la dette connue) |
 | `npm run build` | `prisma generate` puis `next build` |
 | `npx prisma migrate status` / `deploy` | migrations : exigent le port 5432, fermé sur le réseau de l'établissement |

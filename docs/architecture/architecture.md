@@ -7,7 +7,8 @@
 > (§10.8) ; **plus de cron** : les passes dues partent sur demande (§5.5), et un
 > démarrage raté se voit (§2.3) ; une Phase 2 dont une cible a échoué finit
 > `failed` et nomme ses cibles (§5.3) ; le site en ligne n'a pas de backend :
-> `/admin/cron` y lit la base, et ne pilote le backend qu'en local (§2.3, §7.4).
+> `/admin/cron` y lit la base, et ne pilote le backend qu'en local (§2.3, §7.4) ;
+> `npm run local` lance le backend dans sa propre fenêtre, puis Next.js (§10.6).
 > Les sections qui citent encore Koyeb
 > (§1.2, §2.1, §2.2) seront reprises à l'étape 8 du plan.
 > Depuis la v2.0 : les deux crons Research (`phase1_scanner`, `phase2_enricher`)
@@ -254,7 +255,7 @@ appVC/
 ├── proxy.ts                            # Middleware Next 16 : limitation de débit + protection /admin/* (§3.6)
 ├── prisma.config.ts                    # Prisma 7 : connexion des migrations (DIRECT_URL, repli DATABASE_URL)
 ├── eslint.config.mjs
-├── package.json                        # scripts : dev, build, lint, typecheck, test (pytest), test:ts (node --test)
+├── package.json                        # scripts : dev, local, backend, build, lint, typecheck, test (pytest), test:ts (node --test), db:*
 ├── pytest.ini
 │
 ├── prisma/
@@ -359,7 +360,10 @@ appVC/
 │       ├── resolve_program_identity.py         # Confrontation fiches ↔ Program sur un dump
 │       └── replay_phase1_campus_attachment.py  # Le pas de Phase 1, rejoué sur cache
 │
-├── scripts/dump-program-identity.ts    # Dump en lecture seule : écoles, campus, programmes, arêtes, lignes-années
+├── scripts/
+│   ├── start-local.ps1                 # npm run local : backend dans sa fenêtre (127.0.0.1:8000), /health, puis Next.js (§10.6)
+│   ├── db-migrate.ts · lib/            # npm run db:status / db:migrate, en WebSocket avec DB_DRIVER=neon-ws (§10.8)
+│   └── dump-program-identity.ts        # Dump en lecture seule : écoles, campus, programmes, arêtes, lignes-années
 │
 ├── docs/                               # ── DOCUMENTATION ─────────────────────────
 │   ├── architecture/                   # architecture.md (CE FICHIER), bdd.md, API-rest.md, task.md, gemma-python-guide.md
@@ -381,6 +385,7 @@ appVC/
 │   ├── test_internal_run_due_passes.py · test_startup.py · test_usage_sync.py · test_db_driver.py
 │   ├── campus-attachment.test.ts · contribution.test.ts · trigger-research.test.ts · rotation-status.test.ts
 │   ├── internal-api.test.ts · backend-state.test.ts · pipeline-history.test.ts · migration-plan.test.ts
+│   ├── local-launcher.test.ts          # npm run backend et scripts/start-local.ps1, lus sans rien lancer
 │   ├── api/                            # routes Next.js : admin-guards.test.ts (statique) · inbox-ticket · pipeline-status
 │   │                                   #   · trigger-research · run-due-passes · pipeline-jobs
 │   ├── helpers/                        # banc des routes : fake-prisma.ts · session.ts · fake-backend.ts (§10 bis, Tests)
@@ -1610,9 +1615,9 @@ backend vient de `pipeline-status` toutes les 5 s, un appel à la fois ;
 Tout autre cas (jeton absent ou refusé, délai, réponse illisible) s'affiche en
 bandeau rouge, avec son message. Le bandeau « Cold Start » a disparu.
 
-La commande citée est aujourd'hui `backend/.venv/Scripts/python -m uvicorn
-backend.main:app` ; l'étape 6 la remplace par `npm run local` (décision du
-propriétaire du 14 octobre 2026 : rien de faux à l'écran entre les deux).
+La commande citée est `npm run local` (étape 6, §10.6). Elle ouvre le backend
+dans sa propre fenêtre et ne relance pas Next.js s'il tourne déjà : c'est le
+cas chaque fois que l'écran l'affiche.
 
 - **Historique** (`JobHistory.tsx`), dans tous les états : les 30 derniers jobs
   lus en base par `pipeline-jobs` toutes les 10 s (début, école, phase,
@@ -1922,6 +1927,42 @@ code.
 | `allow_headers` | `["Authorization", "Content-Type"]` |
 | routes `/internal/*` | jeton Bearer `INTERNAL_API_TOKEN`, comparé en temps constant |
 
+**Lancement** (étape 6 du plan) : `npm run backend` lance
+`"backend/.venv/Scripts/python" -m uvicorn backend.main:app --host 127.0.0.1
+--port 8000` dans le terminal courant. Les guillemets sont nécessaires :
+`cmd.exe`, le shell des scripts npm sous Windows, lit sinon `backend/…` comme
+« backend » suivi d'une option. Il n'y a pas de `--reload` : il relancerait le
+processus au premier fichier modifié, tuerait une passe en cours et laisserait
+son job `running`. `npm run local` (`scripts/start-local.ps1`, Windows
+PowerShell 5.1) :
+
+1. refuse si le port 8000 est déjà pris, en nommant le programme qui le
+   tient. Deux backends feraient deux `TavilyKeyManager` : le verrou de
+   `run_due_passes` et le plafond ne valent que par processus ;
+2. ouvre le backend dans sa propre fenêtre (`cmd /k`), avec les mêmes
+   arguments. Fermer Next.js ne coupe pas une passe. La fenêtre reste ouverte
+   quand le backend s'arrête, pour qu'on y lise son erreur ;
+3. attend `/health` jusqu'à 60 s, sans proxy, en testant le port d'abord :
+   sous Windows, une connexion refusée sur `127.0.0.1` met 2 s à échouer. Il
+   affiche ensuite « prêt » ou les `startup_errors`. Si le backend meurt au
+   démarrage, il s'arrête aussitôt sans lancer Next.js ;
+4. lance `npm run dev`, sauf si Next.js écoute déjà sur le port 3000. L'écran
+   « backend local non lancé » cite `npm run local` alors que Next.js tourne.
+
+`test/local-launcher.test.ts` tient ces garanties (§10 bis, *Tests*). Les
+fonctions du script ont été exercées le 14 octobre 2026 contre un faux
+`/health` : port libre ou pris, `ok`, `degraded` avec accents, 404, fenêtre
+vivante, backend mort, fenêtre fermée. Le même jour, avec l'accord du
+propriétaire et aucun ticket `Pending_AI` en base, le vrai `npm run local` a
+été joué de bout en bout, `/admin/cron` étant suivi dans Chromium (Playwright,
+session ADMIN). Backend `ok` puis Next.js prêt ; écran « prêt » sans erreur de
+démarrage ; « Simuler » (« 1 passe partirait — ESSCA, Phase 1, ~30 crédits »),
+sans clic sur « Lancer ». Un second `npm run local` est refusé (« port 8000
+déjà pris par python »). Une fois la fenêtre du backend fermée, l'écran passe à
+« non lancé » et cite `npm run local`. Relancé, le backend est prêt, Next.js
+n'est pas relancé et l'écran repasse à « prêt ». En base, avant et après : même
+nombre de jobs, aucun ticket traité.
+
 Les appels serveur à serveur (Next.js → FastAPI) ne passent pas par CORS.
 **Écouter sur `0.0.0.0`** sur le réseau de l'établissement rendrait joignables
 depuis le réseau local la documentation et l'API interne, protégée par le seul
@@ -2127,11 +2168,22 @@ contrat.
 Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
 (+25 sous-tests) et 36 tests TypeScript ; au 12 octobre, 291 et 43 ; le
 14 octobre, après l'étape 1 du plan backend-local, 291 et 50 ; après l'étape 2,
-319 et 68 ; après l'étape 3, 362 et 68 ; après l'étape 4, 379 et 68. **Au
-14 octobre 2026, après l'étape 5 : 379 tests Python (+25 sous-tests) et
-122 tests TypeScript**, tous verts. Les deux suites lisent des
-fixtures communes quand une règle existe en deux langages
+319 et 68 ; après l'étape 3, 362 et 68 ; après l'étape 4, 379 et 68 ; après
+l'étape 5, 379 et 122. **Au 14 octobre 2026, après l'étape 6 : 379 tests
+Python (+25 sous-tests) et 128 tests TypeScript**, tous verts. Les deux suites
+lisent des fixtures communes quand une règle existe en deux langages
 (`test/fixtures/attachment_plan_cases.json`).
+
+**Le lanceur local** (étape 6, §10.6) : `test/local-launcher.test.ts` lit
+`package.json` et `scripts/start-local.ps1` sans rien lancer (le script ne
+tourne que sous Windows, et lancer le backend peut payer). Il vérifie que
+`npm run backend` et le lanceur passent à `uvicorn` les mêmes arguments,
+`127.0.0.1:8000` sans `--reload`, que ni l'un ni l'autre ne contient
+`0.0.0.0`, que l'interpréteur du venv est entre guillemets (sans eux,
+`cmd.exe`, le shell des scripts npm sous Windows, refuse le chemin), que le
+lanceur commence par un BOM UTF-8 (sans lui, Windows PowerShell 5.1 le lit en
+ANSI) et que l'écran cite `npm run local`. Les fonctions du script ont été
+exercées une fois à la main contre un faux `/health` (§10.6).
 
 **Un site en ligne sans backend** (étape 5, §2.3 et §7.4), sans réseau :
 

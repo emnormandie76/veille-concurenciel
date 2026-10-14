@@ -36,11 +36,11 @@ export type BackendErrorCode =
 
 /**
  * La commande qui lance le backend sur le poste, citée par l'écran quand le
- * backend ne répond pas. L'étape 6 du plan la remplace par `npm run local`
- * (décision du propriétaire du 14 octobre 2026 : rien de faux à l'écran entre
- * les deux étapes). Jamais `--host 0.0.0.0`.
+ * backend ne répond pas : `scripts/start-local.ps1` (plan, étape 6). Elle
+ * ouvre le backend dans sa propre fenêtre, sur 127.0.0.1, et ne relance pas
+ * Next.js s'il tourne déjà.
  */
-export const LOCAL_BACKEND_COMMAND = "backend/.venv/Scripts/python -m uvicorn backend.main:app";
+export const LOCAL_BACKEND_COMMAND = "npm run local";
 
 export type BackendState =
   | { kind: "ready" }

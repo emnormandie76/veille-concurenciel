@@ -410,8 +410,9 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
         <div className="backend-banner banner-warning">
           <strong>⏸️ Backend local non lancé.</strong>
           <p>
-            Lancez-le depuis la racine du dépôt : <code>{LOCAL_BACKEND_COMMAND}</code>. L&apos;écran le
-            détecte tout seul (nouvel essai toutes les {STATUS_POLL_MS / 1000} s).
+            Lancez-le depuis la racine du dépôt : <code>{LOCAL_BACKEND_COMMAND}</code>. Il s&apos;ouvre
+            dans sa propre fenêtre, et Next.js n&apos;est pas relancé. L&apos;écran le détecte tout seul
+            (nouvel essai toutes les {STATUS_POLL_MS / 1000} s).
           </p>
         </div>
       )}

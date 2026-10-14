@@ -62,7 +62,7 @@ test("message d'erreur : Next.js, puis le détail de FastAPI sous ses trois form
   assert.equal(describeBackendError(500, "pas un objet"), "Erreur du backend (HTTP 500)");
 });
 
-test("la commande de lancement citée existe aujourd'hui (npm run local arrive à l'étape 6)", () => {
-  assert.match(LOCAL_BACKEND_COMMAND, /uvicorn backend\.main:app/);
-  assert.doesNotMatch(LOCAL_BACKEND_COMMAND, /0\.0\.0\.0/);
+test("la commande de lancement citée est le lanceur local (étape 6)", () => {
+  // Le script lui-même est vérifié par test/local-launcher.test.ts.
+  assert.equal(LOCAL_BACKEND_COMMAND, "npm run local");
 });

@@ -39,12 +39,28 @@ npm run db:status                         # état des migrations (lecture seule)
 npm run db:migrate                        # applique l'historique complet
 npx prisma db seed                        # exige SEED_ADMIN_PASSWORD
 
-# 4. Lancement
-npm run dev                               # http://localhost:3000
-backend/.venv/Scripts/python -m uvicorn backend.main:app --reload   # :8000
+# 4. Lancement (Windows)
+npm run local                             # backend (fenêtre à part) puis Next.js
 ```
 
 Le back-office est sur `/admin`, la connexion sur `/admin/login`.
+
+`npm run local` (`scripts/start-local.ps1`) :
+
+1. refuse si le port 8000 est déjà pris : deux backends tiendraient deux
+   comptabilités de crédits Tavily qui s'ignorent ;
+2. ouvre le backend dans **sa propre fenêtre**, sur `127.0.0.1:8000`. Fermer
+   Next.js ne coupe pas une passe en cours. Ctrl+C dans cette fenêtre arrête le
+   backend, et la fenêtre reste ouverte pour qu'on y lise une erreur ;
+3. attend `/health` jusqu'à 60 s et affiche les erreurs de démarrage ;
+4. lance `npm run dev` sur http://localhost:3000, sauf si Next.js tourne déjà.
+
+Pour le backend seul, dans le terminal courant : `npm run backend`. Pour le
+site seul : `npm run dev`.
+
+> **Lancer le backend peut payer.** Le traitement des contributions part dès le
+> démarrage : s'il trouve des tickets `Pending_AI`, il appelle Tavily et Gemma.
+> Regardez l'inbox avant.
 
 > **Aucun mot de passe par défaut n'existe.** `prisma db seed` échoue tant que
 > `SEED_ADMIN_PASSWORD` n'est pas renseignée (12 caractères minimum).
@@ -78,6 +94,8 @@ La liste complète, commentée et classée par exécution, est dans
 
 | Commande | Effet |
 |----------|-------|
+| `npm run local` | backend FastAPI dans sa propre fenêtre, puis Next.js (`scripts/start-local.ps1`, Windows) |
+| `npm run backend` | backend seul, dans le terminal courant : `uvicorn` sur `127.0.0.1:8000`, sans `--reload` |
 | `npm run dev` | serveur de développement Next.js |
 | `npm run build` / `npm start` | build et exécution de production |
 | `npm run lint` | ESLint (configuration plate, `eslint.config.mjs`) |
@@ -123,7 +141,7 @@ obligatoire (exigence de Prisma 7).
 npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
 npm test              # 379 tests Python (pytest)
-npm run test:ts       # 122 tests TypeScript (node --test), dont les routes de test/api/
+npm run test:ts       # 128 tests TypeScript (node --test), dont les routes de test/api/
 ```
 
 Les routes Next.js se testent sans base ni serveur : `test/helpers/` remplace

@@ -67,8 +67,17 @@ Chantier « backend local sur demande »
   `GET /api/admin/pipeline-jobs` (historique en base) ; `/admin/cron` en trois
   états, avec « Simuler » et « Lancer » ; bandeau `Pending_AI` dans l'inbox ;
   379 tests Python et 122 TypeScript. Vérifiée dans Chromium contre un faux
-  backend et une base morte (ni vrai backend, ni Neon). **En attente de la
-  validation du propriétaire.**
+  backend et une base morte (ni vrai backend, ni Neon). Commit `16ee824`, CI
+  verte, validée par le propriétaire ;
+- étape 6 (le lanceur local) codée le 14 octobre sur le poste : `npm run local`
+  (`scripts/start-local.ps1`) et `npm run backend` ; l'écran cite
+  `npm run local` ; 379 tests Python et 128 TypeScript. Avec l'accord du
+  propriétaire, vrai `npm run local` joué de bout en bout et `/admin/cron`
+  suivi dans Chromium : prêt, « Simuler », refus d'un second lancement,
+  « non lancé », relance sans second Next.js. Aucun ticket ni job en plus en
+  base. Validée par le propriétaire ;
+- prochaine : étape 7 (tests des parties non couvertes : P0, P1, P2, F2 et
+  F6).
 
 L'étape en cours se lit dans le journal du plan (§11).
 
@@ -105,7 +114,8 @@ L'étape en cours se lit dans le journal du plan (§11).
    - Lancer le backend suffit pourtant à dépenser : le traitement des
      contributions part dès le démarrage et paie Tavily et Gemma s'il trouve
      des tickets `Pending_AI`. Le démarrage écrit aussi dans la base (reprise
-     et purge des jobs). Pas de `uvicorn` sans l'accord du propriétaire.
+     et purge des jobs). Pas de `uvicorn`, `npm run backend` ni
+     `npm run local` sans l'accord du propriétaire.
 8. **Base de données.** Jamais `prisma db push`, `prisma migrate dev` ni
    `prisma migrate reset`. Jamais de modification d'un `migration.sql` déjà
    appliqué, même un commentaire : son empreinte change. Jamais
@@ -210,8 +220,9 @@ l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 
 | Commande | Rôle |
 |---|---|
+| `npm run local` | backend FastAPI dans sa propre fenêtre, puis Next.js (`scripts/start-local.ps1`) ; refuse si le port 8000 est pris, ne relance pas Next.js s'il tourne. **Lance le backend : accord du propriétaire requis (règle 7)** |
+| `npm run backend` | backend seul, dans le terminal courant : `uvicorn` sur `127.0.0.1:8000`, sans `--reload` ; jamais `--host 0.0.0.0`. Même règle 7 |
 | `npm run dev` | Next.js sur http://localhost:3000 (back-office : `/admin`) |
-| `backend/.venv/Scripts/python -m uvicorn backend.main:app --reload` | backend FastAPI sur `127.0.0.1:8000` ; jamais `--host 0.0.0.0` |
 | `npm test` | tests Python (pytest), avec le `python` du `PATH` comme la CI, et non `backend/.venv` (décision du 14/10/2026) |
 | `npm run test:ts` | tests TypeScript (`node --test`), dont les routes de `test/api/` (banc : `test/helpers/`) ; en CI, job `ts-tests` |
 | `npm run typecheck` / `npm run lint` | types / ESLint (les avertissements sont la dette connue) |
@@ -219,7 +230,5 @@ l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 | `npm run db:status` | état des migrations, en lecture seule : CLI Prisma sans `DB_DRIVER`, WebSocket avec `DB_DRIVER=neon-ws` |
 | `npm run db:migrate` / `db:migrate:dry` | applique les migrations en attente / passe à blanc terminée par `ROLLBACK` (`neon-ws` seulement). Jamais sans l'accord du propriétaire : la base partagée est aussi la production |
 | `npx prisma migrate status` / `deploy` | la CLI Prisma directe : exige le port 5432, fermé sur le réseau de l'établissement |
-
-Le plan ajoutera `npm run backend` et `npm run local` (étape 6).
 
 @AGENTS.md

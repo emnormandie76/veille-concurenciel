@@ -42,16 +42,25 @@ L'identifiant créé est `admin`, ou la valeur de `SEED_ADMIN_USERNAME`. Changez
 
 Le backend FastAPI porte la rotation des clés Tavily, la cascade Gemini du pipeline, les passes dues (sur demande) et le traitement des contributions (Gemma), seul job d'APScheduler.
 
-### 2.1 Activer l'environnement virtuel Python
+### 2.1 Une commande : `npm run local`
 ```powershell
-.\backend\.venv\Scripts\Activate.ps1
+npm run local
 ```
+*Depuis la racine du dépôt (`scripts/start-local.ps1`, plan backend-local,
+étape 6). Le lanceur refuse si le port 8000 est déjà pris. Il ouvre le backend
+dans **sa propre fenêtre**, sur `127.0.0.1:8000`, attend `/health` (60 s au plus)
+et affiche les erreurs de démarrage. Il lance enfin Next.js (étape 3 ci-dessous),
+sauf s'il tourne déjà. Ctrl+C dans la fenêtre du backend l'arrête, et la fenêtre
+reste ouverte pour qu'on y lise une erreur.*
 
-### 2.2 Démarrer le backend avec Uvicorn
-```bash
-python -m uvicorn backend.main:app --port 8000 --reload
+### 2.2 Ou le backend seul : `npm run backend`
+```powershell
+npm run backend
 ```
-*`backend/main.py` charge `backend/.env` au démarrage. Uvicorn écoute sur `127.0.0.1` par défaut : ne passez jamais `--host 0.0.0.0` sur le réseau de l'établissement.*
+*Dans le terminal courant, sans activer le venv : `uvicorn` sur `127.0.0.1:8000`,
+sans `--reload` (un rechargement tuerait une passe en cours).
+`backend/main.py` charge `backend/.env` au démarrage. Ne passez jamais
+`--host 0.0.0.0` sur le réseau de l'établissement.*
 
 > **Aucune recherche ne part seule.** Le cron `research_rotation` est supprimé :
 > une passe de recherche ne part que si vous la demandez (recherche manuelle,
@@ -84,6 +93,8 @@ python -m uvicorn backend.main:app --port 8000 --reload
 ## 💻 Étape 3 : Lancer le Serveur Frontend (Next.js)
 
 Le frontend Next.js héberge le dashboard d'administration et sert de proxy sécurisé pour communiquer avec le backend.
+
+`npm run local` le lance après le backend. Seul :
 
 ```bash
 npm run dev
@@ -206,6 +217,7 @@ estimé. Ce qui se passe :
 
 * **`/health` en `degraded`, « Base de données : Connexion PostgreSQL impossible (pilote : psycopg2 direct, …) »** : le backend vise le port 5432, fermé sur le réseau de l'établissement. Posez `DB_DRIVER=neon-ws` dans `backend/.env` (pont WebSocket, port 443), puis relancez. Avec `neon-ws` déjà posée, lisez les avertissements du pont dans le journal.
 * **« Database connection error » avec un réseau qui passe** : vérifiez que votre IP est autorisée dans les paramètres de sécurité du projet Neon.
+* **`npm run local` : « Le port 8000 est déjà pris par … »** : un backend tourne déjà (gardez sa fenêtre ; si Next.js est arrêté, lancez seulement `npm run dev`), ou un autre programme tient le port : arrêtez-le. **« Le backend s'est arrêté au démarrage »** : l'erreur est dans la fenêtre du backend, restée ouverte. **« Interpréteur introuvable »** : créez `backend/.venv` (README, *Démarrage rapide*).
 * **« Backend local non lancé » alors qu'uvicorn tourne** : erreurs d'import dans la console FastAPI, port `8000` déjà pris par autre chose, ou `FASTAPI_URL` qui vise une autre adresse.
 * **« Le backend refuse le jeton »** : `INTERNAL_API_TOKEN` n'a pas la même valeur dans `.env.local` et dans `backend/.env` (401). **« INTERNAL_API_TOKEN absente »** : `FASTAPI_URL` est posée dans `.env.local`, mais pas le jeton.
 * **« Pilotage depuis le poste local » en local** : `FASTAPI_URL` est absente de `.env.local`, ou Next n'a pas été relancé après l'avoir posée.

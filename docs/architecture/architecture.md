@@ -1697,6 +1697,53 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
 > les threads APScheduler, et deux pools concurrents à froid ouvraient jusqu'à
 > 10 connexions sur un palier Neon qui en autorise 5.
 
+**Pilote `DB_DRIVER=neon-ws` et pont WebSocket local** (plan backend-local,
+étape 2). Le réseau de l'établissement ne laisse sortir que les ports 80 et
+443 : le 5432 de Neon y est fermé. La variable se pose sur le poste seulement
+(`.env.development.local` côté Node, `backend/.env` côté Python), **jamais sur
+Vercel**.
+
+| Qui | Sans `DB_DRIVER` | Avec `DB_DRIVER=neon-ws` |
+|---|---|---|
+| Next.js (`lib/prisma.ts`) | `PrismaNeon` en WebSocket (443) | identique : la variable n'est pas lue |
+| Migrations (`npm run db:status`, `db:migrate`) | CLI Prisma, 5432 | `scripts/db-migrate.ts` : `Pool` de `@neondatabase/serverless` en WebSocket |
+| Backend Python (`get_pool()`) | psycopg2 sur `DATABASE_URL`, 5432 | psycopg2 → pont sur `127.0.0.1` → `wss://<hôte>/v2` |
+
+- **Le pont** (`backend/neon_ws_bridge.py`) vit dans le processus Python
+  (décision D1) : une boucle asyncio dans un fil démon, démarrée une seule fois
+  par processus par `get_pool()`. Il écoute sur **`127.0.0.1` uniquement**,
+  sur un port libre ou `NEON_WS_BRIDGE_PORT`. Pour chaque connexion, il ouvre
+  `wss://<hôte>/v2` (`websockets` 16 : `max_size=None`, `compression=None`,
+  `open_timeout=20`) et recopie les octets dans les deux sens, en trames
+  binaires. La fermeture d'un côté ferme l'autre. Une erreur de connexion est
+  journalisée en `WARNING` avec l'hôte.
+- **`build_dsn()`** (`backend/db.py`), fonction pure : sans pilote, la
+  `DATABASE_URL` passe inchangée et le module du pont **n'est pas importé** ;
+  avec `neon-ws`, hôte `127.0.0.1`, port du pont, `sslmode=disable`, sans
+  `channel_binding`, identifiants et autres paramètres recopiés tels quels.
+  Toute autre valeur lève une `RuntimeError`, sans repli.
+- **Le segment psycopg2 ↔ pont est en clair** (`sslmode=disable` ; le
+  chiffrement est celui de `wss`), et Neon peut y demander le mot de passe en
+  clair. Il **doit rester sur `127.0.0.1`** : le pont n'écoute nulle part
+  ailleurs, et `build_dsn()` refuse les paramètres d'URL `host`, `hostaddr` et
+  `port`, qui détourneraient la connexion hors du pont.
+- **Aucun secret dans les messages.** Un échec de connexion du pool lève une
+  `RuntimeError` qui cite le pilote et l'hôte. Le message de libpq y est repris
+  sans l'URL ni le mot de passe, et l'exception d'origine n'est pas chaînée,
+  car libpq recopie parfois la chaîne de connexion. `db-migrate.ts` n'affiche
+  que l'hôte, et nettoie de même ses messages d'erreur.
+- **Migrations en WebSocket.** `scripts/lib/migration-plan.ts` (module pur)
+  compare `prisma/migrations` à `_prisma_migrations`. L'empreinte est le sha256
+  des octets du fichier, acceptée en brut, en LF ou en CRLF : la base mélange
+  les deux, et trois migrations ne concordent qu'en LF alors que le fichier du
+  poste est en CRLF. `db:migrate` refuse de partir si une migration appliquée a
+  changé ou si une autre est en échec. Il applique ensuite chaque migration
+  dans sa transaction (fichier, puis `INSERT` dans `_prisma_migrations`).
+  `db:migrate:dry` fait la même suite dans **une seule** transaction terminée
+  par `ROLLBACK`. Il n'existe qu'avec `neon-ws`. `status` lit dans une
+  transaction `READ ONLY`. Une base sans `_prisma_migrations` (jamais migrée)
+  exige la CLI Prisma, donc le 5432.
+
 ### 10.9. Contraintes Gemma (crowdsourcing) et gestion d'erreurs
 
 > Le pipeline (Phases 1 et 2, rattachement campus) passe par la cascade Gemini
@@ -1753,6 +1800,9 @@ serveur (Next.js → FastAPI) ne passent pas par CORS et ne sont pas affectés.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | `python -m pytest -q`, avec le `python` du `PATH` : celui du venv s'il est activé, sinon le Python global du poste, comme la CI (décision du 14 octobre 2026) |
 | `npm run test:ts` | `node --import tsx --experimental-test-module-mocks --test "test/**/*.test.ts"` — tests TypeScript (fonctions de `lib/`, routes dans `test/api/`), sans dépendance nouvelle |
+| `npm run db:status` | `tsx scripts/db-migrate.ts status` : état des migrations, en lecture seule. CLI Prisma (5432) sans `DB_DRIVER`, WebSocket avec `DB_DRIVER=neon-ws` (§10.8) |
+| `npm run db:migrate` | `tsx scripts/db-migrate.ts deploy` : applique les migrations en attente, par le même aiguillage |
+| `npm run db:migrate:dry` | `tsx scripts/db-migrate.ts deploy --dry-run` : avec `neon-ws` seulement, applique tout puis `ROLLBACK` |
 
 **`prisma generate` fait partie du build**, et ce n'est pas décoratif : Prisma 7
 n'a plus de hook `postinstall` qui génère le client. Sans cet appel explicite, un
@@ -1811,10 +1861,25 @@ bascule désormais en mode multi-programme. Il a été réécrit pour tester ce
 contrat.
 
 Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
-(+25 sous-tests) et 36 tests TypeScript ; au 12 octobre, 291 et 43. **Au
-14 octobre 2026 : 291 tests Python (+25 sous-tests) et 50 tests TypeScript**,
-tous verts. Les deux suites lisent des fixtures communes quand une règle existe
-en deux langages (`test/fixtures/attachment_plan_cases.json`).
+(+25 sous-tests) et 36 tests TypeScript ; au 12 octobre, 291 et 43 ; le
+14 octobre, après l'étape 1 du plan backend-local, 291 et 50. **Au 14 octobre
+2026, après l'étape 2 : 319 tests Python (+25 sous-tests) et 68 tests
+TypeScript**, tous verts. Les deux suites lisent des fixtures communes quand une
+règle existe en deux langages (`test/fixtures/attachment_plan_cases.json`).
+
+**Pilote réseau** (étape 2, §10.8), sans jamais sortir de la machine :
+
+- `test/test_db_driver.py` : `build_dsn()` (réécriture, mot de passe encodé
+  intact, valeur inconnue refusée sans citer le mot de passe) ; `get_pool()`
+  sans pilote n'importe pas le pont (pool simulé) ; un échec du pool cite le
+  pilote, jamais le DSN. Le pont est testé contre un **faux serveur WebSocket
+  d'écho sur `127.0.0.1`**, l'URL cible étant injectable : octets dans les deux
+  sens, fermeture d'un côté qui ferme l'autre, échec journalisé avec l'hôte,
+  écoute sur `127.0.0.1` seulement ;
+- `test/migration-plan.test.ts` : `planMigrations` (appliquée, en attente dans
+  l'ordre des noms, LF ou CRLF, empreinte divergente, échec, inconnue en base) ;
+  la suite de requêtes de `deploy` et de `--dry-run` sur un faux client SQL ;
+  l'aiguillage `DB_DRIVER`, le choix de l'URL et le nettoyage des messages.
 
 **Banc des routes Next.js** (`test/api/`, plan backend-local, étape 1). Une
 route se teste en important son handler et en l'appelant avec une `Request` et

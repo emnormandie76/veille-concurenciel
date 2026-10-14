@@ -44,7 +44,11 @@ Chantier « backend local sur demande »
   (291 tests Python, 43 tests TypeScript), décisions D1 à D7 retenues telles que
   recommandées ;
 - plan validé par le propriétaire ; étape 1 (filet de tests et CI) terminée :
-  job `ts-tests` vert en CI (50 tests). L'étape 2 attend sa validation ;
+  job `ts-tests` vert en CI (50 tests) ;
+- étape 2 (réseau, `DB_DRIVER=neon-ws`) faite le 14 octobre : pont Python,
+  `npm run db:status` / `db:migrate`, 319 tests Python et 68 TypeScript ;
+  vérifiée sur la base en lecture seule. Elle attend la validation du
+  propriétaire avant l'étape 3 ;
 - hors plan, le 14 octobre : `next` et `eslint-config-next` montés en 16.3.8
   pour lever un avis critique qui faisait échouer le job `validate` ; tests,
   build et contrôles manuels rejoués (`architecture.md` §10 bis).
@@ -122,9 +126,9 @@ Le réseau de l'établissement ne laisse sortir que les ports 80 et 443. Le port
 
 | Qui se connecte à Neon | État |
 |---|---|
-| Next.js (Prisma + `@neondatabase/serverless`, `lib/prisma.ts`) | marche, en WebSocket sur 443 |
-| CLI Prisma (`migrate status`, `migrate deploy`) | bloquée ; en attendant `npm run db:migrate` (plan, étape 2.2), lire l'état par le MCP Neon |
-| Backend Python (psycopg2) | bloqué tant que le pont `DB_DRIVER=neon-ws` (étape 2.1) n'est pas en place ; montage éprouvé le 14/10/2026 |
+| Next.js (Prisma + `@neondatabase/serverless`, `lib/prisma.ts`) | marche, en WebSocket sur 443, sans lire `DB_DRIVER` |
+| Migrations | CLI Prisma bloquée (5432). Avec `DB_DRIVER=neon-ws` dans `.env.development.local` (posée le 14/10/2026), `npm run db:status` et `npm run db:migrate` passent en WebSocket (`scripts/db-migrate.ts`) ; `db:status` vérifié le 14/10/2026 |
+| Backend Python (psycopg2) | avec `DB_DRIVER=neon-ws` dans `backend/.env` (posée le 14/10/2026), passe par le pont local `backend/neon_ws_bridge.py` (`127.0.0.1` → `wss://<hôte>/v2`) ; `get_pool()` vérifié le 14/10/2026. Sans la variable : 5432, donc bloqué |
 
 ## MCP Neon
 
@@ -189,9 +193,10 @@ l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 | `npm run test:ts` | tests TypeScript (`node --test`), dont les routes de `test/api/` (banc : `test/helpers/`) ; en CI, job `ts-tests` |
 | `npm run typecheck` / `npm run lint` | types / ESLint (les avertissements sont la dette connue) |
 | `npm run build` | `prisma generate` puis `next build` |
-| `npx prisma migrate status` / `deploy` | migrations : exigent le port 5432, fermé sur le réseau de l'établissement |
+| `npm run db:status` | état des migrations, en lecture seule : CLI Prisma sans `DB_DRIVER`, WebSocket avec `DB_DRIVER=neon-ws` |
+| `npm run db:migrate` / `db:migrate:dry` | applique les migrations en attente / passe à blanc terminée par `ROLLBACK` (`neon-ws` seulement). Jamais sans l'accord du propriétaire : la base partagée est aussi la production |
+| `npx prisma migrate status` / `deploy` | la CLI Prisma directe : exige le port 5432, fermé sur le réseau de l'établissement |
 
-Le plan ajoutera `npm run db:status` et `npm run db:migrate` (étape 2), puis
-`npm run backend` et `npm run local` (étape 6).
+Le plan ajoutera `npm run backend` et `npm run local` (étape 6).
 
 @AGENTS.md

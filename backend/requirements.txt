@@ -16,3 +16,6 @@ tavily-python==0.7.24
 google-genai==2.4.0
 bcrypt==5.0.0
 python-dotenv==1.2.2
+# Pont WebSocket vers Neon (backend/neon_ws_bridge.py, DB_DRIVER=neon-ws).
+# Deja tire par uvicorn[standard] : declare ici parce que le code l'importe.
+websockets==16.0

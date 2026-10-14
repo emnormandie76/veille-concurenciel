@@ -29,10 +29,14 @@ pip install -r backend/requirements-dev.txt
 # 2. Configuration
 cp .env.example .env.local                # renseigner les valeurs
 cp .env.example backend/.env              # idem, section FastAPI
+# Réseau où le port 5432 est fermé (seuls 80 et 443 sortent) :
+# DB_DRIVER=neon-ws dans .env.development.local (Node) ET dans backend/.env
+# (Python). Poste local seulement, jamais sur Vercel.
 
 # 3. Base de données
 npx prisma generate
-npx prisma migrate deploy                 # applique l'historique complet
+npm run db:status                         # état des migrations (lecture seule)
+npm run db:migrate                        # applique l'historique complet
 npx prisma db seed                        # exige SEED_ADMIN_PASSWORD
 
 # 4. Lancement
@@ -44,6 +48,14 @@ Le back-office est sur `/admin`, la connexion sur `/admin/login`.
 
 > **Aucun mot de passe par défaut n'existe.** `prisma db seed` échoue tant que
 > `SEED_ADMIN_PASSWORD` n'est pas renseignée (12 caractères minimum).
+
+> **Port 5432 fermé ?** Avec `DB_DRIVER=neon-ws`, tout passe par le proxy
+> WebSocket de Neon (443) : `npm run db:status` et `npm run db:migrate` par
+> `@neondatabase/serverless`, le backend par un pont local
+> (`backend/neon_ws_bridge.py`). Next.js est déjà en WebSocket et ne lit pas
+> la variable. Sans elle, rien ne change : la CLI Prisma et psycopg2 se
+> connectent en 5432. Le premier déploiement d'une base vide exige la CLI
+> Prisma, donc le 5432.
 
 ---
 
@@ -72,8 +84,10 @@ La liste complète, commentée et classée par exécution, est dans
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | suite Python (`pytest`), avec le `python` du `PATH` |
 | `npm run test:ts` | suite TypeScript (`node --test`) : fonctions de `lib/` et routes Next.js |
-| `npx prisma migrate deploy` | applique les migrations en attente |
-| `npx prisma migrate status` | état de l'historique face à la base |
+| `npm run db:status` | état de l'historique face à la base, en lecture seule : `npx prisma migrate status` sans `DB_DRIVER`, WebSocket (443) avec `DB_DRIVER=neon-ws` |
+| `npm run db:migrate` | applique les migrations en attente, une transaction chacune ; refuse si une migration appliquée a changé ou si une autre est en échec |
+| `npm run db:migrate:dry` | avec `DB_DRIVER=neon-ws` seulement : applique tout dans une transaction puis `ROLLBACK`, rien n'est inscrit |
+| `npx prisma migrate deploy` / `status` | la CLI Prisma directe, en 5432 |
 | `npx prisma db seed` | crée le compte administrateur initial |
 
 > **`prisma db push` est proscrit hors développement local.** C'est son usage
@@ -107,8 +121,8 @@ obligatoire (exigence de Prisma 7).
 ```bash
 npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
-npm test              # 291 tests Python (pytest)
-npm run test:ts       # 50 tests TypeScript (node --test), dont les routes de test/api/
+npm test              # 319 tests Python (pytest)
+npm run test:ts       # 68 tests TypeScript (node --test), dont les routes de test/api/
 ```
 
 Les routes Next.js se testent sans base ni serveur : `test/helpers/` remplace

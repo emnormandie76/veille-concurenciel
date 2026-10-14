@@ -2,7 +2,9 @@
 
 > **Statut :** plan rédigé et validé par le propriétaire le 14 octobre 2026.
 > Étapes 0 et 1 terminées le même jour : décisions D1 à D7 tranchées (§2.2),
-> tests TypeScript en CI. L'étape 2 attend la validation du propriétaire.
+> tests TypeScript en CI. Étape 2 (`DB_DRIVER=neon-ws`) faite et vérifiée sur
+> la base le 14 octobre ; elle attend la validation du propriétaire avant
+> l'étape 3.
 > **Branche de travail :** `localpython`, créée le 14 octobre 2026 depuis
 > `newresearch` (`295044e`) à la demande du propriétaire.
 > **Lire avant de coder :** ce document en entier, puis
@@ -387,17 +389,17 @@ C'est **le propriétaire** qui pose la variable. L'agent ne lit ni n'écrit ces 
   les deux interpréteurs ont `websockets` 16.0.
 
 **Tests** — nouveau `test/test_db_driver.py`, sans réseau :
-- [ ] `build_dsn` sans pilote : chaîne identique ; avec `neon-ws` : hôte, port,
+- [x] `build_dsn` sans pilote : chaîne identique ; avec `neon-ws` : hôte, port,
   `sslmode` réécrits, mot de passe à caractères spéciaux intact, `channel_binding`
   retiré ;
-- [ ] valeur inconnue → `RuntimeError` dont le message ne contient pas le mot
+- [x] valeur inconnue → `RuntimeError` dont le message ne contient pas le mot
   de passe ;
-- [ ] sans pilote, `backend.neon_ws_bridge` absent de `sys.modules` après
+- [x] sans pilote, `backend.neon_ws_bridge` absent de `sys.modules` après
   `get_pool()` (pool simulé) ;
-- [ ] le pont recopie les octets dans les deux sens, et la fermeture d'un côté
+- [x] le pont recopie les octets dans les deux sens, et la fermeture d'un côté
   ferme l'autre. Utiliser un faux serveur WebSocket d'écho sur `127.0.0.1`, et
   rendre l'URL cible injectable pour le test ;
-- [ ] le pont n'écoute que sur `127.0.0.1`.
+- [x] le pont n'écoute que sur `127.0.0.1`.
 
 #### 2.2. Migrations
 
@@ -437,12 +439,12 @@ C'est **le propriétaire** qui pose la variable. L'agent ne lit ni n'écrit ces 
   attente. **Ne pas lancer `deploy`** : il n'y a rien à appliquer.
 
 **Tests** — nouveau `test/migration-plan.test.ts` :
-- [ ] répertoire et base identiques → tout `applied` ;
-- [ ] dossier absent de la base → `pending`, dans l'ordre des noms ;
-- [ ] empreinte calculée en LF ou en CRLF → `applied` ; contenu réellement
+- [x] répertoire et base identiques → tout `applied` ;
+- [x] dossier absent de la base → `pending`, dans l'ordre des noms ;
+- [x] empreinte calculée en LF ou en CRLF → `applied` ; contenu réellement
   différent → `checksumMismatch` ;
-- [ ] ligne sans `finished_at` ni `rolled_back_at` → `failed` ;
-- [ ] ligne en base sans dossier → `unknownInDb`.
+- [x] ligne sans `finished_at` ni `rolled_back_at` → `failed` ;
+- [x] ligne en base sans dossier → `unknownInDb`.
 
 #### 2.3. Next.js
 
@@ -454,7 +456,7 @@ et « Commandes » ; `.env.example` (`DB_DRIVER` commenté, avec la mention
 `architecture.md` §10.8 (pont, sécurité du segment local en clair) et
 §10 bis (*Commandes*).
 
-- [ ] Étape 2 terminée
+- [x] Étape 2 terminée (code, tests et vérification réelle ; reste la validation du propriétaire)
 
 ### Étape 3 — Backend : plus de cron, passes dues sur demande, démarrage qui ne ment plus
 
@@ -890,3 +892,5 @@ ne tourne pas en CI.
 | 2026-10-14 | 1 | **Plan validé par le propriétaire ; étape 1 codée.** `test:ts` passe à `node --import tsx --experimental-test-module-mocks --test "test/**/*.test.ts"` : les 43 tests existants sont toujours trouvés, sous `cmd` comme sous `sh`. Nouveau banc : `test/helpers/fake-prisma.ts` et `test/helpers/session.ts`, plus `test/api/inbox-ticket.test.ts` (3 tests) et `test/api/admin-guards.test.ts` (4 tests). CI : job `ts-tests` (Node 24, `npm ci`, `prisma generate`, `npm run test:ts`) ; job `validate` passé de Node 20 à Node 24. Docs : `architecture.md` §2.4 et §10 bis (*Commandes*, *Tests*, *Intégration continue*), README (*Commandes*, *Tests et qualité*), `CLAUDE.md`. Fin d'étape : `npm test` 291 verts (+25 sous-tests), `npm run test:ts` **50** verts, `typecheck` propre, `lint` 0 erreur et 124 avertissements (aucun dans les nouveaux fichiers). | **Reste** : la case CI, qui exige un push de `localpython` (accord du propriétaire). **Constats** : sous Node 24.21, `mock.module` exige encore le drapeau ; `namedExports` est déprécié, on passe par `exports`. `mock.module` marche du premier coup avec tsx et les alias `@/`, et le repli du plan (extraire la logique dans `lib/`) n'a pas servi. **Écarts** : (1) le test des gardes vérifie l'**égalité** entre les handlers sous `guardAdmin` et la liste ADMIN du §3.6, pas seulement l'inclusion ; il exige aussi un `await` devant la garde, refuse les exports qu'il ne sait pas lire, et un cas synthétique prouve qu'il repère ces défauts ; (2) le banc ajoute deux contrôles positifs (200, 404) qui prouvent que le faux Prisma est bien branché ; (3) `fake-prisma.ts` pose une `DATABASE_URL` locale morte, pour qu'un test ne puisse jamais joindre Neon ; (4) le job `ts-tests` reçoit une `DATABASE_URL` factice, car `env()` de `prisma/config` lève dès le chargement de `prisma.config.ts`, `prisma generate` compris. **Surprise** : le commentaire de `prisma.config.ts` décrit `env()` comme une référence résolue plus tard. Faux : la fonction lève tout de suite (`node_modules/@prisma/config/dist/index.js`). La logique du fichier reste juste, et on n'y touche pas dans ce plan. |
 | 2026-10-14 | 1 | **Commit `a449194` poussé sur `origin/localpython`**, avec l'accord du propriétaire, ainsi que les deux commits de l'étape 0. Run CI `38541040467` : **`ts-tests` vert, 50 tests lancés et réussis** ; `python-tests` vert. Case CI cochée. **Étape 1 terminée.** | **`validate` en échec, sans lien avec l'étape** : types, ESLint, Prisma et garde-fou passent, mais `npm audit --audit-level=critical` trouve **1 critique** (`next` 16.0.0 à 16.3.7 ; le projet est en 16.3.4) et 13 hautes. Le lock n'a pas changé : ce sont des avis publiés depuis le dernier run vert (28 septembre). `next/og`, siège de la faille d'exécution de code, n'est pas utilisé ; les avis de cache et de SSRF visent un site en ligne. npm corrige par `npm audit fix` sans `--force`. **Décision du propriétaire en attente** : montée de `next` hors du plan, puis les sept contrôles manuels d'`architecture.md` §10 bis. Doc mise à jour (*Sécurité des dépendances*, *Intégration continue*). Avertissement GitHub non bloquant : `actions/checkout@v4` et `actions/setup-node@v4` visent Node 20, que GitHub force en Node 24. |
 | 2026-10-14 | hors plan | **Montée de `next`, à la demande du propriétaire**, entre les étapes 1 et 2. `next` 16.3.4 → **16.3.8**, le correctif de la même mineure ; plancher de `package.json` à `^16.3.8`. `npm audit fix` sans `--force` : `brace-expansion`, `fast-uri`, `sharp` 0.35.5, `source-map-js`. `eslint-config-next` réaligné sur 16.3.8 (`audit fix` l'avait monté en 16.4.0). Audit : **0 critique**, 9 hautes, toutes liées à un `--force` refusé (Prisma 6, `eslint-config-next` 14). `npm test` 291, `test:ts` 50, `typecheck` et `lint` inchangés (0 erreur, 124 avertissements), `npm run build` vert. Contrôles manuels d'`architecture.md` §10 bis : n°1 à n°6 verts ; n°7 vert en développement sur 11 pages, dont 6 en session ADMIN. Identifiants lus dans les variables utilisateur Windows, jamais affichés ; 0 occurrence du mot de passe dans le journal du serveur. | **n°7 en production, complété après reconnexion de l'extension** : zéro violation CSP sur les pages publiques et le back-office en session ADMIN ; un message témoin en début et en fin de parcours prouve que la console était suivie. Commit `3ccd016` poussé ; **run CI `38543458606` entièrement vert** (`validate`, `ts-tests`, `python-tests`). Sur `/admin/cron`, `pipeline-status` répond 503 toutes les 5 s et l'écran annonce un « démarrage à froid » : c'est F5, corrigé à l'étape 5. **Surprises** : (1) npm 11.19 n'exécute plus les scripts d'installation non approuvés (`@prisma/engines`, `esbuild`, `prisma`, `unrs-resolver`). Ces paquets n'ont pas changé de version, donc sans effet ici ; à surveiller à leur prochaine montée. (2) `next dev` et `next start` écoutent aussi sur l'adresse réseau (`172.30.208.1`), pas seulement sur `localhost`. (3) En développement, Next 16 recopie les requêtes Prisma du serveur dans la console du navigateur. |
+| 2026-10-14 | 2 | **Passage à l'étape 2 validé par le propriétaire.** Départ : `localpython` en `1d9898a`, arbre propre ; CI `38543458606` verte ; `npm test` 291 (+25 sous-tests), `test:ts` 50, `typecheck` propre, `lint` 0 erreur et 124 avertissements. | Étape 2 en cours (cette ligne sera suivie du compte rendu de fin d'étape). **Lecture des `.env` autorisée par le propriétaire** (exception à §0) : vérifiés par script, noms des variables seulement, plus la valeur de `DB_DRIVER` et l'hôte des URL ; aucun secret affiché. Constat : `DB_DRIVER=neon-ws` posée dans `.env.local` et dans `.env` (racine), `.env.development.local` absent, `backend/.env` sans `DB_DRIVER`. |
+| 2026-10-14 | 2 | **Étape 2 codée, testée et vérifiée sur la base.** Tests d'abord, vus en échec (27 sur 28 en Python, le 28ᵉ décrivant l'état existant ; le fichier TypeScript entier), puis le code. Python : `backend/neon_ws_bridge.py` (classe `Bridge` à URL cible injectable, `start_bridge` unique par processus, `stop_bridge`, `NEON_WS_BRIDGE_PORT`), `build_dsn()` et branchement dans `get_pool()` (`backend/db.py`), `websockets==16.0` déclaré (16.0 dans le Python du `PATH` comme dans `backend/.venv`, déjà dans le lock). Node : `scripts/lib/migration-plan.ts` (pur), `scripts/lib/migration-runner.ts`, `scripts/db-migrate.ts`, scripts `db:status`, `db:migrate`, `db:migrate:dry`. Aucune dépendance npm ajoutée. Fin d'étape : `npm test` **319** (+28, +25 sous-tests), `test:ts` **68** (+18), `typecheck` propre, `lint` 0 erreur et 124 avertissements (aucun nouveau). **Vérification réelle, en lecture seule** : `npm run db:status` en WebSocket vers l'hôte direct : **10 appliquées, 0 en attente**, recoupé avec `_prisma_migrations` lue par le MCP (10 lignes finies, aucune annulée ; rejeu hors ligne de `planMigrations` : les trois migrations « LF seulement » sortent bien `applied`). Python : `get_pool()` avec `neon-ws`, script hors dépôt chargeant `backend/.env` : `SELECT 1`, PostgreSQL 17.11, 6 écoles, dans une transaction `READ ONLY`. Aucune URL dans les sorties (0 occurrence de `postgres`). Ni `deploy`, ni `--dry-run`, ni `uvicorn`. **Variables** : à la demande du propriétaire (option A), l'agent a déplacé `DB_DRIVER` de `.env.local` et `.env` vers un nouveau `.env.development.local`, par un script qui ne touche que cette ligne, vérifie que les 7 autres variables sont inchangées à l'octet près et n'affiche aucune valeur ; le propriétaire a ajouté la ligne à `backend/.env`. `db:status` rejoué ensuite : identique. Docs : README (*Démarrage rapide*, *Commandes*, nombre de tests), `.env.example`, `architecture.md` §10.8 et §10 bis, `CLAUDE.md`. | **Écarts** : (1) `scripts/lib/migration-runner.ts` en plus : la suite de requêtes de `deploy` et `--dry-run` ne sera pas jouée contre la base, elle est donc testée sur un faux client SQL ; le module porte aussi l'aiguillage `DB_DRIVER`, le choix de l'URL et le nettoyage des messages. (2) `--dry-run` : toutes les migrations dans **une** transaction terminée par `ROLLBACK`, pour qu'une migration qui dépend de la précédente soit vérifiée ; le déploiement garde une transaction par migration. Sans `DB_DRIVER`, `--dry-run` refuse (la CLI Prisma n'en a pas). (3) Garde-fous ajoutés : `build_dsn()` refuse `host`, `hostaddr` et `port` en paramètres d'URL avec `neon-ws` (le segment local est en clair) ; un échec du pool lève une `RuntimeError` nettoyée du mot de passe, sans chaîner l'exception de libpq, qui recopie parfois le DSN ; c'est le seul changement visible sans pilote. `status` lit dans une transaction `READ ONLY`, et une base sans `_prisma_migrations` est renvoyée vers la CLI Prisma. (4) `CLAUDE.md` : `db:migrate` jamais sans l'accord du propriétaire. **Surprises** : (a) le pilote WebSocket rejette un `ErrorEvent` de `ws` et non une `Error` (premier essai : « [object Object] ») : `describeError()` le lit ; (b) l'ouverture du pool a pris 5 s (réveil de Neon probable) ; (c) `backend/.env` garde l'ancien nom `INTERNAL_TOKEN` et `.env.local` `FASTAPI_INTERNAL_TOKEN` (étape 5) ; `CRON_PHASE1_INTERVAL_HOURS` et `CRON_PHASE2_INTERVAL_HOURS` ne sont plus lues ; `.env` (racine) est un doublon de `.env.local`. **Reste** : validation du propriétaire ; CI à vérifier au prochain push (Python 3.12 non disponible sur le poste). Prochaine étape : 3. |

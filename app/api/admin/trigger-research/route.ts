@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { guardAdmin } from "@/lib/auth";
-import { internalApiToken, fastapiUrl } from "@/lib/internal-api";
+import { BACKEND_TIMEOUTS_MS, backendTarget, backendUnavailable, relayToBackend } from "@/lib/internal-api";
 import { parseTriggerResearchBody } from "@/lib/trigger-research";
 
 /**
@@ -8,68 +8,43 @@ import { parseTriggerResearchBody } from "@/lib/trigger-research";
  *
  * Proxy vers FastAPI /internal/trigger-targeted-research/{school_id}
  * Permet de lancer une recherche ciblée depuis le panneau admin/cron.
+ * ADMIN seulement : elle paie Research.
  *
  * Body: { school_id, phase, program_id?, categories?, collect_campus_attachments? }
  *
  * `collect_campus_attachments` (Phase 1 seulement) vaut false par défaut :
  * voir lib/trigger-research.ts.
+ *
+ * En ligne, sans `FASTAPI_URL` : 503 `BACKEND_LOCAL_ONLY`, sans appel. Corps
+ * invalide ou illisible : 400. Sinon la réponse du backend passe telle quelle
+ * (lib/internal-api.ts, `relayToBackend`).
  */
 export async function POST(request: Request) {
   const { error } = await guardAdmin();
   if (error) return error;
 
-  const baseUrl = fastapiUrl();
-  const token = internalApiToken();
+  const target = backendTarget();
+  if (!target.ok) return backendUnavailable(target.code);
 
+  let body: unknown;
   try {
-    const body = await request.json();
-    const parsed = parseTriggerResearchBody(body);
-
-    if (!parsed.ok) {
-      return NextResponse.json(
-        { error: parsed.error },
-        { status: 400 }
-      );
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-    const res = await fetch(
-      `${baseUrl}/internal/trigger-targeted-research/${parsed.schoolId}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(parsed.forward),
-        signal: controller.signal,
-      }
-    );
-    clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: errorData.detail || `Erreur backend (${res.status})` },
-        { status: res.status }
-      );
-    }
-
-    const data = await res.json();
-    return NextResponse.json(data);
-  } catch (err: any) {
-    console.error("Erreur trigger-research:", err);
-    if (err.name === "AbortError") {
-      return NextResponse.json(
-        { error: "Timeout — le backend n'a pas répondu dans les temps" },
-        { status: 504 }
-      );
-    }
-    return NextResponse.json(
-      { error: "Backend indisponible" },
-      { status: 503 }
-    );
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Corps JSON illisible" }, { status: 400 });
   }
+
+  const parsed = parseTriggerResearchBody(body);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  return relayToBackend(
+    `/internal/trigger-targeted-research/${encodeURIComponent(parsed.schoolId)}`,
+    {
+      method: "POST",
+      body: parsed.forward,
+      timeoutMs: BACKEND_TIMEOUTS_MS.trigger,
+      mayHaveStarted: true,
+    }
+  );
 }

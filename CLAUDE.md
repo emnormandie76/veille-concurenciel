@@ -56,13 +56,19 @@ Chantier « backend local sur demande »
   F3, F4, F8, F9) codée le 14 octobre : `POST /internal/run-due-passes`,
   `startup_errors`, synchro `/usage` bloquante ; 362 tests Python et 68
   TypeScript. Aucune vérification réelle (ni `uvicorn`, ni appel de la route).
-  Commit `6f82c2e`, CI verte, validée par le propriétaire. Jusqu'à l'étape 5,
-  `/admin/cron` en local lit encore l'ancien bloc de la rotation et s'affiche
-  incohérent ;
+  Commit `6f82c2e`, CI verte, validée par le propriétaire ;
 - étape 4 (une Phase 2 qui dit la vérité : F1, règle D2) codée le 14 octobre :
   une Phase 2 dont une cible a échoué rend `success: False`, avec `outcomes`,
-  `unchanged` et `failed_targets` ; 379 tests Python et 68 TypeScript. Aucune
-  vérification réelle. **En attente de la validation du propriétaire.**
+  `unchanged` et `failed_targets` ; 379 tests Python et 68 TypeScript. Commit
+  `df8730e`, CI verte ; le propriétaire a confié l'étape 5 ;
+- étape 5 (un site en ligne sans backend : F5) codée le 14 octobre : sans
+  `FASTAPI_URL`, les routes de relais répondent 503 `BACKEND_LOCAL_ONLY` sans
+  appel ; `POST /api/admin/run-due-passes` (ADMIN) et
+  `GET /api/admin/pipeline-jobs` (historique en base) ; `/admin/cron` en trois
+  états, avec « Simuler » et « Lancer » ; bandeau `Pending_AI` dans l'inbox ;
+  379 tests Python et 122 TypeScript. Vérifiée dans Chromium contre un faux
+  backend et une base morte (ni vrai backend, ni Neon). **En attente de la
+  validation du propriétaire.**
 
 L'étape en cours se lit dans le journal du plan (§11).
 

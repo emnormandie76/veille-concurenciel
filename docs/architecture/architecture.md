@@ -6,7 +6,9 @@
 > (branche `localpython`, octobre 2026) : pont WebSocket et migrations en 443
 > (§10.8) ; **plus de cron** : les passes dues partent sur demande (§5.5), et un
 > démarrage raté se voit (§2.3) ; une Phase 2 dont une cible a échoué finit
-> `failed` et nomme ses cibles (§5.3). Les sections qui citent encore Koyeb
+> `failed` et nomme ses cibles (§5.3) ; le site en ligne n'a pas de backend :
+> `/admin/cron` y lit la base, et ne pilote le backend qu'en local (§2.3, §7.4).
+> Les sections qui citent encore Koyeb
 > (§1.2, §2.1, §2.2) seront reprises à l'étape 8 du plan.
 > Depuis la v2.0 : les deux crons Research (`phase1_scanner`, `phase2_enricher`)
 > sont remplacés par une **rotation nocturne** sous plafond mensuel (§5.5) ; une
@@ -180,21 +182,51 @@ qu'aucune n'est terminée ou sans gestionnaire de clés.
 
 **Les jobs actifs** sont triés sur `PipelineJob.source` : `"rotation"` (passes
 dues) et `"cron"` (lignes de l'ancien cron, encore en base) vont sous
-`cron_jobs`, nom de clé historique que lit `app/admin/cron/page.tsx` ; le reste
-sous `pipeline_jobs`.
+`cron_jobs`, nom de clé historique que lit `app/admin/cron/CronMonitoringClient.tsx`
+(« Passes dues en cours ») ; le reste sous `pipeline_jobs`.
 
-Le panneau « Rotation automatique » de `/admin/cron`
+Le panneau « Passes dues » de `/admin/cron`
 (`app/admin/cron/RotationPanel.tsx`) affiche ce bloc ; les décisions
-d'affichage vivent dans `lib/rotation-status.ts`, testées sans serveur.
-**Jusqu'à l'étape 5 du plan backend-local, ce front lit encore l'ancien bloc**
-(`research_cron`, `hour`, `timezone`, `passes_per_night`, `last_night`) :
-contre le backend de l'étape 3, le panneau est incohérent (rotation dite
-inactive, heure absente, aucune « dernière nuit »). La route Next
-`/api/admin/pipeline-status` relaie la réponse et **coupe à 4 s** : au-delà,
-l'écran tient le backend pour indisponible (503, « Cold Start possible »), même
-s'il tourne. C'est ce qu'on voit quand le backend joint mal la base (§10 bis) :
-`pipeline-status` est `async` mais ses lectures en base sont bloquantes, et le
-bloc `rotation` en ajoute trois à chaque rafraîchissement.
+d'affichage, le corps de `run-due-passes` et la lecture de son rapport vivent
+dans `lib/rotation-status.ts`, testés sans serveur.
+
+**Côté Next.js : un site en ligne sans backend** (étape 5 du plan
+backend-local, défaut F5). Le backend ne tourne que sur le poste de l'admin ;
+seul le Next.js de ce poste le connaît, par `FASTAPI_URL` et
+`INTERNAL_API_TOKEN` (`.env.local`). Le site en ligne n'a ni l'une ni
+l'autre. Quatre routes servent `/admin/cron` :
+
+| Route Next | Garde | Appel | Délai |
+|---|---|---|---|
+| `GET /api/admin/pipeline-status` | `guardAuth` | `GET /internal/pipeline-status` | 8 s |
+| `POST /api/admin/trigger-research` | `guardAdmin` | `POST /internal/trigger-targeted-research/{id}` | 30 s |
+| `POST /api/admin/run-due-passes` | `guardAdmin` | `POST /internal/run-due-passes` | 60 s |
+| `GET /api/admin/pipeline-jobs` | `guardAuth` | **aucun** : Prisma seul | — |
+
+Les trois premières relaient le backend par `relayToBackend`
+(`lib/internal-api.ts`). `backendTarget()` décide **avant tout appel réseau** :
+
+| Cas | Réponse de la route |
+|---|---|
+| `FASTAPI_URL` absente (le site en ligne) | **503** `BACKEND_LOCAL_ONLY`, tout de suite, sans `fetch`. Plus de repli sur `localhost:8000`, qui faisait attendre 4 s puis annonçait un « Cold Start » |
+| `FASTAPI_URL` sans jeton | **500** `TOKEN_MISSING` : plus jamais `Authorization: Bearer null` |
+| connexion impossible (backend non lancé) | **503** `BACKEND_NOT_RUNNING`, avec le code réseau (`ECONNREFUSED`) |
+| délai dépassé | **504** `BACKEND_TIMEOUT`. Pour un lancement, le message dit que la demande **a pu partir** : le backend continue sans Next |
+| corps illisible | **502** `BACKEND_BAD_RESPONSE` |
+| sinon | la réponse du backend **telle quelle**, statut et corps : 200, 202, et ses refus (401 jeton refusé, 409, 422, 503 `USAGE_SYNC_FAILED`…) |
+
+Une erreur côté Next porte `{error, code}` ; un refus du backend, son `detail`.
+`describeBackendError` (`lib/backend-state.ts`) lit les deux. Le délai de
+`run-due-passes` couvre la synchro `/usage` d'une passe réelle (20 s au plus)
+et la planification. `run-due-passes` relit le corps comme le backend : `dry_run`
+**exigé** et booléen, `max_passes` entier de 1 à 5 (1 s'il manque), aucun
+autre champ ; un refus part en 400, sans appel. Le corps d'une recherche ciblée
+illisible ou invalide part aussi en 400.
+
+`pipeline-jobs` rend les 30 derniers `PipelineJob` (nom de l'école, statut,
+progression, `error` bornée à 2 000 caractères) et le nombre de contributions
+`Pending_AI` : c'est l'historique de `/admin/cron`, lisible en ligne comme en
+local (§7.4).
 
 > **Nom du jeton : `INTERNAL_API_TOKEN`.** Ce secret a porté trois noms de part
 > et d'autre de la même frontière de confiance — Next.js envoyait
@@ -244,8 +276,10 @@ appVC/
 │   │   ├── schools/[id]/manage/page.tsx       # Gestion d'une école : programmes, tarifs, classements, capacités, stats, accréditations
 │   │   ├── schools/[id]/manage/components/    # ProgramSelector, YearSelector
 │   │   ├── schools/[id]/manage/tabs/          # 7 onglets : infos, accréditations, stats, campus & programmes, tarifs, classements, capacités
-│   │   ├── cron/page.tsx               # Suivi du pipeline, recherche ciblée, case « collecte campus »
-│   │   ├── cron/RotationPanel.tsx      # Panneau « Rotation automatique » (§2.3, §5.5)
+│   │   ├── cron/page.tsx               # Lit le rôle (serveur) et rend CronMonitoringClient
+│   │   ├── cron/CronMonitoringClient.tsx      # État du backend local (3 états), jobs actifs, recherche ciblée, case « collecte campus »
+│   │   ├── cron/RotationPanel.tsx      # Panneau « Passes dues » : simuler, lancer (ADMIN) (§2.3, §5.5)
+│   │   ├── cron/JobHistory.tsx         # Historique des 30 derniers jobs, lu en base (§7.4)
 │   │   └── users/page.tsx              # Comptes (ADMIN)
 │   │
 │   └── api/                            # ── ROUTES API ────────────────────────────
@@ -253,7 +287,7 @@ appVC/
 │       ├── contribute/                 # POST soumission crowdsourcing (publique, limitée)
 │       ├── schools/ · schools/[id]/ · schools/[id]/programs/[pid]/   # Lectures du site public
 │       ├── v1/                         # API REST publique en lecture — 15 routes, voir §8
-│       └── admin/                      # 33 routes, toutes gardées par guardAuth ou guardAdmin
+│       └── admin/                      # 35 routes, toutes gardées par guardAuth ou guardAdmin
 │           ├── inbox/                  # GET liste ; purge/ (DELETE, ADMIN)
 │           │   └── [id]/               # GET · validate/ (PUT) · reject/ (PUT) · create-programs/ (POST)
 │           │                           #   · attachments/ (PUT, rattachement campus — §5.4)
@@ -262,8 +296,10 @@ appVC/
 │           ├── campuses/[id]/ · programs/[id]/ · programs/[id]/{pricing,rankings}/
 │           ├── pricing/[id]/ · rankings/[id]/ · capacities/[id]/ · accreditations/[id]/
 │           ├── program-campuses/[id]/capacity/
-│           ├── schools-with-programs/ · pipeline-status/
+│           ├── schools-with-programs/ · pipeline-status/ (relais du backend local)
+│           ├── pipeline-jobs/          # GET : historique des jobs et compte Pending_AI, Prisma seul
 │           ├── trigger-research/       # POST → FastAPI trigger-targeted-research (ADMIN)
+│           ├── run-due-passes/         # POST → FastAPI run-due-passes (ADMIN)
 │           └── users/ · users/[id]/ · users/[id]/password/
 │
 ├── lib/                                # ── UTILITAIRES NEXT.JS ───────────────────
@@ -271,11 +307,13 @@ appVC/
 │   ├── auth.ts                         # NextAuth + guardAuth / guardAdmin
 │   ├── password.ts                     # Politique de mot de passe (12 à 72 octets)
 │   ├── rate-limit.ts                   # Limitation de débit unique (Upstash, repli mémoire)
-│   ├── internal-api.ts                 # Appels vers FastAPI (INTERNAL_API_TOKEN)
+│   ├── internal-api.ts                 # Backend local : cible (FASTAPI_URL, INTERNAL_API_TOKEN), relais, délais (serveur)
+│   ├── backend-state.ts                # Codes d'erreur du relais, trois états de l'écran, commande de lancement
+│   ├── pipeline-history.ts             # Historique des jobs : libellés, durée, aperçu de l'erreur
 │   ├── contribution.ts                 # Énumérations partagées (statuts, catégories) + marque « rapport rangé »
 │   ├── campus-attachment.ts            # Plan et écriture du rattachement campus (types AttachmentTx, PolicyNoteTx)
 │   ├── trigger-research.ts             # Corps d'une recherche ciblée (interrupteur de collecte)
-│   ├── rotation-status.ts              # Lecture du bloc `rotation` de pipeline-status, sans React
+│   ├── rotation-status.ts              # Bloc `rotation` de pipeline-status, corps et rapport de run-due-passes, sans React
 │   └── utils.ts
 │
 ├── backend/                            # ── FASTAPI (Python) ──────────────────────
@@ -342,8 +380,10 @@ appVC/
 │   ├── test_rotation_plan.py · test_research_rotation_job.py · test_rotation_status.py
 │   ├── test_internal_run_due_passes.py · test_startup.py · test_usage_sync.py · test_db_driver.py
 │   ├── campus-attachment.test.ts · contribution.test.ts · trigger-research.test.ts · rotation-status.test.ts
-│   ├── api/                            # routes Next.js : admin-guards.test.ts (statique) · inbox-ticket.test.ts
-│   ├── helpers/                        # banc des routes : fake-prisma.ts · session.ts (§10 bis, Tests)
+│   ├── internal-api.test.ts · backend-state.test.ts · pipeline-history.test.ts · migration-plan.test.ts
+│   ├── api/                            # routes Next.js : admin-guards.test.ts (statique) · inbox-ticket · pipeline-status
+│   │                                   #   · trigger-research · run-due-passes · pipeline-jobs
+│   ├── helpers/                        # banc des routes : fake-prisma.ts · session.ts · fake-backend.ts (§10 bis, Tests)
 │   └── fixtures/attachment_plan_cases.json    # 21 cas lus par les deux suites
 │
 └── .github/workflows/ci.yml            # §10 bis
@@ -705,6 +745,7 @@ système et assume l'irréversible.**
 | `POST /api/admin/schools` | créer une école est structurant, pas de la modération |
 | `DELETE /api/admin/inbox/purge` | effacement de masse de l'historique |
 | `POST /api/admin/trigger-research` | déclenche des dépenses réelles en crédits Tavily |
+| `POST /api/admin/run-due-passes` | lance les passes dues : dépenses réelles (Research, Gemini) ; la simulation passe par la même route |
 | `GET`/`POST /api/admin/users`, `DELETE /api/admin/users/[id]` | gestion des comptes |
 
 | Ouvert à toute session (`guardAuth`) | Pourquoi |
@@ -712,11 +753,12 @@ système et assume l'irréversible.**
 | toute la file d'inbox : lecture, validation, rejet, création de programmes, écriture du rattachement campus (`attachments`) | **c'est le métier du modérateur** — le lui retirer viderait le rôle de sens |
 | créations et mises à jour de tarifs, classements, capacités, accréditations, stats, campus | travail de correction courant |
 | suppressions **d'un enregistrement isolé** (`pricing/[id]`, `rankings/[id]`, `capacities/[id]`, `accreditations/[id]`, `stats/[recordId]`) | corriger une ligne fausse est de la modération, et c'est réversible |
-| lectures (`pipeline-status`, `schools-with-programs`, `manage`…) | aucun effet |
+| lectures (`pipeline-status`, `pipeline-jobs`, `schools-with-programs`, `manage`…) | aucun effet |
 
 > **`guardAuth` et `guardAdmin` sont le seul moyen de protéger une route admin.**
 > `getServerSession` nu ne doit plus réapparaître : il ne subsiste sur aucune des
-> 33 routes. Toute nouvelle route doit choisir explicitement.
+> 35 routes. Toute nouvelle route doit choisir explicitement, et une route
+> ADMIN se reporte aussi dans ce tableau et dans `test/api/admin-guards.test.ts`.
 
 #### Mot de passe
 
@@ -1551,8 +1593,47 @@ entrée écartée**, avec motif.
 | CRUD Écoles | `/admin/schools` | Admin ou Moderator |
 | CRUD Campus | `/admin/schools/[id]/campuses` | Admin ou Moderator |
 | Gestion d'une école (programmes, tarifs, classements, capacités, stats, accréditations) | `/admin/schools/[id]/manage` | Admin ou Moderator |
-| Monitoring Cron, rotation automatique (§5.5), recherche ciblée (case « collecte campus ») | `/admin/cron` | lecture : Admin ou Moderator · lancement : **Admin** |
+| Pipeline de recherche : passes dues (§5.5), recherche ciblée (case « collecte campus »), historique des jobs | `/admin/cron` | lecture : Admin ou Moderator · lancement : **Admin** |
 | Gestion Modérateurs | `/admin/users` | **Admin uniquement** |
+
+**`/admin/cron` en ligne et en local** (plan backend-local, étape 5). La page
+serveur (`page.tsx`) lit le rôle et rend `CronMonitoringClient.tsx`. L'état du
+backend vient de `pipeline-status` toutes les 5 s, un appel à la fois ;
+`lib/backend-state.ts` en tire trois états :
+
+| État | Quand | L'écran |
+|---|---|---|
+| *Pilotage depuis le poste local* | en ligne : `BACKEND_LOCAL_ONLY` | bandeau d'information, tout de suite ; plus de nouvel essai (rien ne changera sans redéploiement) ; ni jobs actifs, ni quotas, ni lancement |
+| *Backend local non lancé* | `BACKEND_NOT_RUNNING` | bandeau qui cite la commande de lancement (`LOCAL_BACKEND_COMMAND`) ; nouvel essai toutes les 5 s, le backend est vu dès qu'il démarre |
+| *Backend prêt* | 200 | jobs actifs (manuels et « passes dues en cours »), quotas Tavily, panneau « Passes dues » ; `startup_errors` en rouge ; « dégradé » ou « base injoignable » à côté de l'état |
+
+Tout autre cas (jeton absent ou refusé, délai, réponse illisible) s'affiche en
+bandeau rouge, avec son message. Le bandeau « Cold Start » a disparu.
+
+La commande citée est aujourd'hui `backend/.venv/Scripts/python -m uvicorn
+backend.main:app` ; l'étape 6 la remplace par `npm run local` (décision du
+propriétaire du 14 octobre 2026 : rien de faux à l'écran entre les deux).
+
+- **Historique** (`JobHistory.tsx`), dans tous les états : les 30 derniers jobs
+  lus en base par `pipeline-jobs` toutes les 10 s (début, école, phase,
+  origine, statut, durée, détail). Le détail d'un job en cours est son action ;
+  celui d'un job `failed` est son erreur : 300 caractères, le texte entier au
+  survol (décision du propriétaire du 14 octobre 2026). Une Phase 2 y nomme
+  ses cibles ratées (§5.3). Au-dessus : « N contributions attendent le
+  traitement par le backend local ».
+- **Passes dues** (`RotationPanel.tsx`) : mode (sur demande, ou plafond à 0),
+  crédits du mois, synchro `/usage` (recalés, en échec, ou jamais depuis le
+  démarrage), prochaines passes, dernière exécution réelle. Pour un ADMIN,
+  backend prêt : « Simuler » (`dry_run: true`) et « Lancer N passes dues »
+  (1 à 5, `dry_run: false`). Le lancement demande une **confirmation** qui
+  donne un aperçu, calculé comme le backend sur les passes affichées, et le
+  coût estimé. `dry_run` part toujours explicite. Le rapport s'affiche :
+  ce qui partirait, ce qui est parti, ou pourquoi rien n'est parti.
+- **Recherche ciblée** : le formulaire n'apparaît que pour un ADMIN, backend
+  prêt ; sinon une ligne dit pourquoi.
+- **Inbox** (`/admin/inbox`) : le même bandeau des contributions `Pending_AI`,
+  avec « Voir », qui filtre la liste sur ce statut. Le compte suit chaque
+  rechargement de la liste.
 
 ---
 
@@ -1669,7 +1750,7 @@ Format : `{ "error": "Description" }`
 | 12 | Ambiguïté devise (UE vs intl) | Colonnes `intl_*` séparées | `edgecase.md` |
 | 13 | Prompt Injection / Fake News | Délimiteurs `<TEXTE_SOURCE>`, whitelist domaines, isolation totale du commentaire utilisateur `user_text` des invites de l'IA | `edgecase.md` |
 | 14 | Timeout / réponse vide Tavily | Délai explicite par appel (`TAVILY_*_TIMEOUT_SECONDS` : extract 30 s, search 60 s, map 120 s), body < 50 chars = `TavilyExtractionError` → ticket **supprimé** de la BDD (URL définitivement invalide) | `processor.py` |
-| 15 | Backend indisponible (à l'origine : Cold Start Koyeb, abandonné le 14 octobre 2026) | Backend lancé à la main sur le poste. `/health` dit `degraded`, avec ses `errors`, si le démarrage a échoué (EC 31). Le bandeau « Cold Start » de `/admin/cron` reste jusqu'à l'étape 5 du plan backend-local | `edgecase.md`, `main.py` |
+| 15 | Backend indisponible (à l'origine : Cold Start Koyeb, abandonné le 14 octobre 2026) | Backend lancé à la main sur le poste. `/health` dit `degraded`, avec ses `errors`, si le démarrage a échoué (EC 31). `/admin/cron` distingue le site en ligne (pas de backend), le backend local non lancé et le backend prêt, sans attente ; l'historique se lit en base (§7.4) | `edgecase.md`, `main.py` |
 | 16 | Faux-négatifs compatibilité (menus longs) | Plafonds explicites par appel : 25 000 caractères pour la compatibilité (un booléen, tranché sur le début de la page), 80 000 pour l'extraction mono-programme, 25 000 en multi-programme | `processor.py` |
 | 17 | Timeout transaction Prisma (validation) | Upserts **sérialisés** (`tx` n'a qu'une connexion : un `Promise.all` n'y gagne rien et dépasse le délai sous charge) + timeout de 60 s pour les imports volumineux (ex: EDHEC, 9 campus et 30+ programmes) | `app/api/admin/inbox/[id]/validate/route.ts` |
 | 18 | URL invalide / faux lien utilisateur (ex: `http://localhost`, domaine inexistant) | Tavily retourne contenu vide → `TavilyExtractionError` → ticket **supprimé** (pas de `Rejected` parasite en BDD) | `processor.py` |
@@ -1818,7 +1899,10 @@ production : il en est bien absent).
 Voir §3.6 pour la politique de rôles complète. Les principes :
 
 - Chaque route admin choisit **explicitement** `guardAuth` ou `guardAdmin`.
-- `getServerSession` nu ne subsiste sur **aucune** des 33 routes.
+- `getServerSession` nu ne subsiste sur **aucune** des 35 routes.
+- Le site en ligne ne joint pas le backend : sans `FASTAPI_URL`, les routes de
+  relais répondent 503 `BACKEND_LOCAL_ONLY` sans appel, et le jeton interne
+  n'existe que sur le poste (§2.3).
 - Le jeton de l'API interne est comparé par `secrets.compare_digest`.
 - Aucun mot de passe par défaut ; politique unique dans `lib/password.ts`.
 
@@ -2043,11 +2127,37 @@ contrat.
 Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
 (+25 sous-tests) et 36 tests TypeScript ; au 12 octobre, 291 et 43 ; le
 14 octobre, après l'étape 1 du plan backend-local, 291 et 50 ; après l'étape 2,
-319 et 68 ; après l'étape 3, 362 et 68. **Au 14 octobre 2026, après
-l'étape 4 : 379 tests Python (+25 sous-tests) et 68 tests TypeScript**, tous
-verts. Les deux suites lisent des
+319 et 68 ; après l'étape 3, 362 et 68 ; après l'étape 4, 379 et 68. **Au
+14 octobre 2026, après l'étape 5 : 379 tests Python (+25 sous-tests) et
+122 tests TypeScript**, tous verts. Les deux suites lisent des
 fixtures communes quand une règle existe en deux langages
 (`test/fixtures/attachment_plan_cases.json`).
+
+**Un site en ligne sans backend** (étape 5, §2.3 et §7.4), sans réseau :
+
+- `test/internal-api.test.ts` : URL absente ou vide → `BACKEND_LOCAL_ONLY`,
+  même avec un jeton ; URL sans jeton → `TOKEN_MISSING` ; l'ancien nom du jeton
+  accepté avec **un seul** avertissement, qui ne cite pas le jeton ;
+- `test/api/pipeline-status.test.ts`, `trigger-research.test.ts`,
+  `run-due-passes.test.ts` : sans `FASTAPI_URL`, 503 et `fetch` **jamais
+  appelé** ; jeton absent → 500 ; connexion refusée → `BACKEND_NOT_RUNNING` ;
+  réponses du backend (200, 202, 400, 401, 409, 503) transmises telles
+  quelles ; jeton dans l'en-tête ; corps relu (400 sans appel) ; garde ADMIN
+  sur les lancements ; bornes de `max_passes`, `dry_run` exigé et booléen,
+  champ inconnu refusé ; délais sous horloge simulée (`mock.timers`) : 504
+  au bout du délai et pas avant, `run-due-passes` qui ne coupe pas avant
+  25 s ;
+- `test/api/pipeline-jobs.test.ts` : session requise, forme de la réponse
+  (dates ISO, nom de l'école, erreur bornée), requêtes (30 derniers, seuls
+  les `Pending_AI` comptés), erreur de base → 500 sans le message interne ;
+- `test/rotation-status.test.ts` (adapté : plus de nuit, d'heure ni de
+  fuseau), `test/backend-state.test.ts`, `test/pipeline-history.test.ts` :
+  les décisions d'affichage, le corps de `run-due-passes`, l'aperçu d'un
+  lancement, la lecture du rapport et des refus.
+
+Les tests de l'étape 5 ont été vus en échec avant le code : sans
+`FASTAPI_URL`, les routes appelaient `http://localhost:8000` ; sans jeton,
+elles appelaient le backend quand même.
 
 **Une Phase 2 qui dit la vérité** (étape 4, §5.3), sans base ni réseau :
 `test/test_phase2_outcomes.py` fait tourner la vraie `run_phase2_research`
@@ -2117,6 +2227,7 @@ drapeau `--experimental-test-module-mocks` (encore requis sous Node 24.21) :
 |---|---|---|
 | `test/helpers/fake-prisma.ts` | `@/lib/prisma` | chaque test déclare les seules méthodes dont il a besoin (`db.use({...})`) ; tout appel est enregistré dans `db.calls`, une méthode non déclarée lève ; `$transaction` accepte une fonction (appelée avec le même faux, l'exception remonte) ou un tableau |
 | `test/helpers/session.ts` | `@/lib/auth` | trois profils (`none`, `MODERATOR`, `ADMIN`) ; `guardAuth` et `guardAdmin` rendent les mêmes 401 et 403 que `lib/auth.ts`, et `session.guards` liste les gardes appelées |
+| `test/helpers/fake-backend.ts` | `fetch` (global) | le backend FastAPI : chaque test choisit `reply` (JSON), `replyText`, `refuse` (connexion refusée) ou `hang` (aucune réponse avant l'abandon) ; un appel non prévu lève ; `backend.calls` garde URL, méthode, en-têtes et corps ; `env()` pose `FASTAPI_URL` et le jeton, `reset()` les retire |
 
 - **Ordre d'import.** Les aides s'importent en tête du fichier, et la route
   par un `import()` dans `before()`. Un import statique de la route serait
@@ -2183,7 +2294,29 @@ après la montée `next@16.3.4` / `next-auth@4.24.15` — tous au vert :
   parcours prouve qu'elle était bien suivie. Là encore, la seule erreur vient
   de `/admin/cron` : `pipeline-status` répond 503 toutes les 5 s, faute de
   backend, et l'écran l'annonce comme un « démarrage à froid » (défaut F5 du
-  plan backend-local, étape 5).
+  plan backend-local, corrigé à l'étape 5, ci-dessous).
+
+**`/admin/cron` après l'étape 5, vérifié le 14 octobre 2026** sur le build de
+production (`next start`), en session cloud, dans Chromium piloté par
+Playwright. Sessions ADMIN et MODERATOR fabriquées avec un secret de test ;
+base factice et morte (`127.0.0.1:9`) ; à la place du backend, un faux serveur
+sur `127.0.0.1` qui rend des fixtures. Ni Neon, ni vrai backend, ni appel
+payant :
+- sans `FASTAPI_URL` : « Pilotage depuis le poste local » en 0,3 à 0,6 s
+  (avant : 4 s puis « Cold Start ») ; aucun bouton de lancement ;
+- `FASTAPI_URL` vers un port fermé : « Backend local non lancé », avec la
+  commande ;
+- faux backend : `startup_errors` en rouge, synchro `/usage` en échec signalée,
+  « Simuler » puis « Lancer 2 passes dues » (confirmation avec aperçu à
+  ~815 crédits) ; le faux backend a reçu exactement
+  `{"max_passes":2,"dry_run":true}` puis `{"max_passes":2,"dry_run":false}`.
+  Un MODERATOR ne voit ni ces boutons ni le formulaire de recherche ciblée ;
+- historique et bandeau de l'inbox sur des réponses simulées dans le
+  navigateur : tableau, erreur tronquée à 300 caractères et entière au survol,
+  « Voir » qui filtre sur `Pending_AI`. Aucune erreur de page.
+
+Reste à faire avec le propriétaire (étape 9) : les mêmes états contre le vrai
+backend et la vraie base.
 
 Le n°2 s'est fait avec les identifiants posés par le propriétaire en variables
 utilisateur Windows, sans qu'ils soient jamais affichés. Ils n'apparaissent pas

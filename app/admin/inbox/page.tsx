@@ -15,8 +15,9 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { CONTRIBUTION_CATEGORIES, CONTRIBUTION_STATUSES } from "@/lib/contribution";
+import { CONTRIBUTION_CATEGORIES, CONTRIBUTION_STATUSES, STATUS_PENDING_AI } from "@/lib/contribution";
 import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
+import { describePendingAi } from "@/lib/pipeline-history";
 
 // ──────────────────────────────────────────────
 // Types
@@ -99,6 +100,10 @@ export default function InboxPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Contributions Pending_AI : elles attendent le backend local, qui ne tourne
+  // que lorsque l'admin le lance (plan backend-local).
+  const [pendingAi, setPendingAi] = useState<number | null>(null);
+
   // Purge
   const [purgeModalOpen, setPurgeModalOpen] = useState(false);
   const [purgeStatuses, setPurgeStatuses] = useState<string[]>(["Validated", "Rejected"]);
@@ -106,6 +111,20 @@ export default function InboxPage() {
   const [purgeLoading, setPurgeLoading] = useState(false);
 
   const LIMIT = 20;
+
+  // Le compte suit chaque rechargement de la liste (filtres, validation, purge).
+  const fetchPendingAi = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/inbox?status=${STATUS_PENDING_AI}&limit=1`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setPendingAi(data.pagination.total);
+    } catch (err: unknown) {
+      // La liste affiche déjà l'erreur de lecture : le bandeau s'efface.
+      console.warn("[inbox] Compte des contributions Pending_AI impossible :", err);
+      setPendingAi(null);
+    }
+  }, []);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
@@ -120,12 +139,13 @@ export default function InboxPage() {
       const data = await res.json();
       setTickets(data.data);
       setTotal(data.pagination.total);
+      void fetchPendingAi();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setLoading(false);
     }
-  }, [page, filterStatus, filterCategory]);
+  }, [page, filterStatus, filterCategory, fetchPendingAi]);
 
   useEffect(() => {
     fetchTickets();
@@ -247,6 +267,26 @@ export default function InboxPage() {
           </button>
         </div>
       </div>
+
+      {pendingAi !== null && describePendingAi(pendingAi) && (
+        <div className="pending-ai-banner">
+          <span>
+            ⏳ {describePendingAi(pendingAi)} Passage en <code>Pending_Admin</code> au prochain
+            lancement du backend, sur le poste de l&apos;admin.
+          </span>
+          {filterStatus !== STATUS_PENDING_AI && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setFilterStatus(STATUS_PENDING_AI);
+                setPage(1);
+              }}
+            >
+              Voir
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="alert alert-danger">
@@ -669,6 +709,12 @@ export default function InboxPage() {
 
         /* ── Badges status ── */
         .badge-warning { background: rgba(234,179,8,0.15); color: #ca8a04; }
+        .pending-ai-banner {
+          display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          margin-bottom: 20px; padding: 12px 16px; border-radius: var(--radius-md);
+          background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.3);
+          color: #ca8a04; font-size: 0.9rem;
+        }
         .badge-info    { background: rgba(59,130,246,0.12); color: #2563eb; }
         .badge-danger  { background: rgba(239,68,68,0.12); color: #dc2626; }
 

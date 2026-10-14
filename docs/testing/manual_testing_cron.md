@@ -101,24 +101,22 @@ npm run dev
 
 ### 4.2 Vérification des composants du tableau de bord
 
-> **Écran incohérent jusqu'à l'étape 5 du plan backend-local.** `/admin/cron`
-> lit encore l'ancien bloc de la rotation (`research_cron`, heure, fuseau,
-> « dernière nuit »), que le backend ne rend plus. Le panneau « Rotation
-> automatique » affiche donc une rotation **inactive**, sans heure ni dernière
-> nuit, et aucun bouton ne lance les passes dues. Pour le vrai état, lisez
-> `GET /internal/pipeline-status` (étape 5.1).
+L'écran est décrit en entier dans
+[`architecture.md`](../architecture/architecture.md) §7.4.
 
-1. **Statut Backend** : pastille verte **Opérationnel**. Si le backend est arrêté, un bandeau de reconnexion automatique s'affiche avec compte à rebours (« Cold Start », remplacé à l'étape 5 du plan).
+1. **État du backend local** : *prêt* (bandeau absent, pastille verte), *non lancé* (bandeau orange qui cite la commande de lancement ; l'écran voit le backend dès qu'il démarre, nouvel essai toutes les 5 s) ou *injoignable* (bandeau rouge, avec la raison : jeton absent ou refusé, délai…). Sur le site en ligne, sans backend : *pilotage depuis le poste local*. Les erreurs du démarrage (`startup_errors`) s'affichent en rouge ; « (dégradé) » suit l'état quand `pipeline-status` est `degraded`.
 2. **Modèle IA Principal** : affiche `models/gemma-4-31b-it`. ⚠️ Cette valeur est **écrite en dur** dans `/internal/pipeline-status` et n'est plus exacte : le pipeline extrait par la cascade Gemini ; Gemma ne sert qu'au crowdsourcing.
 3. **Quotas Tavily** : crédits restants par clé. Le compteur est local et estimé — Research ne déclare pas son coût, et `GET /usage` de Tavily n'est pas en temps réel.
-4. **Tâches en cours** : les jobs `PipelineJob` actifs lancés à la main, avec leur progression.
-5. **Rotation automatique** : voir l'encadré ci-dessus.
-6. **Tâches automatiques (Cron)** : les passes dues en cours (`source = "rotation"`, ou `"cron"` pour d'anciennes lignes).
-7. **Recherche Manuelle** : sélecteurs Phase / École / Programme / Catégories, et en Phase 1 la case **« collecte du rattachement campus »**, décochée par défaut.
+4. **Tâches manuelles en cours** : les jobs `PipelineJob` actifs lancés à la main, avec leur progression.
+5. **Passes dues** : mode (*sur demande*, ou *plafond à 0*), crédits du mois sur le plafond, état de la synchro `/usage`, les 5 premières passes dues, la dernière exécution réelle ; pour un ADMIN, les boutons **« Simuler »** et **« Lancer N passes dues »** (étape 5 ci-dessous).
+6. **Passes dues en cours** : les passes en cours d'exécution (`source = "rotation"`, ou `"cron"` pour d'anciennes lignes).
+7. **Recherche Manuelle** (ADMIN) : sélecteurs Phase / École / Programme / Catégories, et en Phase 1 la case **« collecte du rattachement campus »**, décochée par défaut.
+8. **Historique du pipeline** : les 30 derniers jobs, lus en base, même backend arrêté ; l'erreur d'un job en échec (300 caractères, le texte entier au survol) ; au-dessus, le nombre de contributions `Pending_AI` qui attendent le backend.
 
-> L'écran n'affiche ni `startup_errors`, ni `scheduler.last_runs`, ni
-> `has_failure` : un échec du traitement des contributions ne s'y voit pas.
-> Lisez `GET /internal/pipeline-status` directement (étape 5.1).
+> L'écran n'affiche pas le détail de `scheduler.last_runs` : un échec du
+> traitement des contributions passe `pipeline-status` en `degraded` (« prêt
+> (dégradé) »), sans dire lequel. Lisez `GET /internal/pipeline-status`
+> directement (étape 5.1).
 
 ### 4.3 Tester le lancement d'une recherche manuelle
 **Chaque lancement dépense des crédits réels** (bouton réservé au rôle ADMIN) :
@@ -145,10 +143,14 @@ La simulation remplace la **passe à blanc** de l'étape 7 de
 plan, **sans créer de job, sans appeler Research ni `/usage`**. Fonctionnement
 complet : [`architecture.md`](../architecture/architecture.md) §5.5.
 
-Le bouton « Simuler » de `/admin/cron` arrive à l'étape 5 du plan
-backend-local. D'ici là, on appelle le backend directement, avec le jeton
-interne posé dans la session PowerShell (jamais collé dans un chat ni dans un
-fichier suivi) :
+**Depuis l'écran** (ADMIN, backend prêt) : panneau « Passes dues » de
+`/admin/cron`, choisir le nombre de passes (1 à 5), puis **« Simuler »**. Le
+message liste ce qui partirait (« Simulation : 2 passes partiraient — … »),
+ou dit pourquoi rien ne partirait. La route Next
+`POST /api/admin/run-due-passes` envoie `{"max_passes": N, "dry_run": true}`.
+
+**Ou directement au backend**, avec le jeton interne posé dans la session
+PowerShell (jamais collé dans un chat ni dans un fichier suivi) :
 
 ### 5.1 Lire l'état
 ```powershell
@@ -187,7 +189,9 @@ ce que le crowdsourcing aurait traité (à vérifier dans l'inbox).
 
 ### 5.3 Passe réelle — avec l'accord du propriétaire seulement
 `"dry_run": false` lance les passes : **des crédits réels** (Phase 1 : ~30 ;
-Phase 2 : jusqu'à plusieurs centaines par école). Ce qui se passe :
+Phase 2 : jusqu'à plusieurs centaines par école). À l'écran : **« Lancer N
+passes dues »**, puis confirmer ; la confirmation donne un aperçu et le coût
+estimé. Ce qui se passe :
 1. synchro `/usage` bloquante de toutes les clés (20 s au plus). Une clé non
    recalée → **503 `USAGE_SYNC_FAILED`**, rien ne part ;
 2. réponse **202** avec ce qui part (`status: "planned"`, `planned`) ; les
@@ -202,7 +206,9 @@ Phase 2 : jusqu'à plusieurs centaines par école). Ce qui se passe :
 
 * **`/health` en `degraded`, « Base de données : Connexion PostgreSQL impossible (pilote : psycopg2 direct, …) »** : le backend vise le port 5432, fermé sur le réseau de l'établissement. Posez `DB_DRIVER=neon-ws` dans `backend/.env` (pont WebSocket, port 443), puis relancez. Avec `neon-ws` déjà posée, lisez les avertissements du pont dans le journal.
 * **« Database connection error » avec un réseau qui passe** : vérifiez que votre IP est autorisée dans les paramètres de sécurité du projet Neon.
-* **Le statut du backend reste « Indisponible »** : erreurs d'import dans la console FastAPI, port `8000` déjà pris, ou `INTERNAL_API_TOKEN` différent des deux côtés (401).
-* **« Indisponible » alors qu'uvicorn tourne et que `/health` répond** : `pipeline-status` met plus de 4 s, la route Next abandonne et renvoie 503. Cause habituelle : la base répond lentement (réveil de Neon, ou 5432 fermé sans `DB_DRIVER=neon-ws`).
+* **« Backend local non lancé » alors qu'uvicorn tourne** : erreurs d'import dans la console FastAPI, port `8000` déjà pris par autre chose, ou `FASTAPI_URL` qui vise une autre adresse.
+* **« Le backend refuse le jeton »** : `INTERNAL_API_TOKEN` n'a pas la même valeur dans `.env.local` et dans `backend/.env` (401). **« INTERNAL_API_TOKEN absente »** : `FASTAPI_URL` est posée dans `.env.local`, mais pas le jeton.
+* **« Pilotage depuis le poste local » en local** : `FASTAPI_URL` est absente de `.env.local`, ou Next n'a pas été relancé après l'avoir posée.
+* **« Le backend n'a pas répondu en 8 s »** alors qu'uvicorn tourne et que `/health` répond : `pipeline-status` est lent. Cause habituelle : la base répond lentement (réveil de Neon, ou 5432 fermé sans `DB_DRIVER=neon-ws`). L'écran réessaie toutes les 5 s.
 * **« État de la rotation illisible »**, ou `rotation: {"error": …}` : la lecture en base du bloc `rotation` a échoué (message tronqué à 300 caractères) ; le reste de `pipeline-status` est servi normalement.
 * **`last_runs.crowdsourcing_processor` en `failed`** : la file des contributions n'a pas pu être lue (base injoignable), ou le quota Tavily a interrompu le traitement. Le détail le dit ; `has_failure` passe `pipeline-status` en `degraded`.

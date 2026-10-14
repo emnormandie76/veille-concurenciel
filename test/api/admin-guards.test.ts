@@ -39,6 +39,7 @@ const ADMIN_ONLY = [
   "POST schools",
   "DELETE inbox/purge",
   "POST trigger-research",
+  "POST run-due-passes",
   "GET users",
   "POST users",
   "DELETE users/[id]",

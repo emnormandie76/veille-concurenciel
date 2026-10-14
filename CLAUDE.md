@@ -43,8 +43,11 @@ Chantier « backend local sur demande »
 - étape 0 terminée le même jour : sonde du pont réussie, relevés de départ faits
   (291 tests Python, 43 tests TypeScript), décisions D1 à D7 retenues telles que
   recommandées ;
-- plan validé par le propriétaire ; étape 1 (filet de tests et CI) codée, en
-  attente d'un push de `localpython` pour vérifier le job `ts-tests`.
+- plan validé par le propriétaire ; étape 1 (filet de tests et CI) terminée :
+  job `ts-tests` vert en CI (50 tests). L'étape 2 attend sa validation ;
+- le job `validate` échoue sur `npm audit` : un avis critique vise `next`
+  16.3.4, publié après le dernier run vert. La montée de `next` attend la
+  décision du propriétaire (journal du plan).
 
 L'étape en cours se lit dans le journal du plan (§11).
 

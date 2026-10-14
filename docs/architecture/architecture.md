@@ -1948,6 +1948,19 @@ même downgrade majeur, même refus.
 **Total au 2 septembre 2026 : 4 hautes, 0 critique**, toutes tirées par la CLI
 Prisma. Le garde-fou de CI (`--audit-level=critical`) reste au vert.
 
+**Au 14 octobre 2026 : 14 vulnérabilités, dont 13 hautes et 1 critique.**
+Le lock n'a pas changé depuis le 1er septembre ; ce sont de nouveaux avis.
+- **La critique vise `next` 16.0.0 à 16.3.7** (le projet est en `16.3.4`) :
+  exécution de code dans `ImageResponse` de `next/og`, que le projet n'utilise
+  pas ; empoisonnement du cache SSG et ISR ; SSRF dans l'optimisation d'images ;
+  fuite d'informations par l'endpoint MCP du serveur de développement.
+- npm la corrige par `npm audit fix`, **sans `--force`**, comme plusieurs
+  hautes (`fast-uri`, `sharp`, `source-map-js`). Les hautes tirées par la CLI
+  Prisma exigent toujours un `--force` refusé.
+- Le garde-fou fait échouer le job `validate` depuis le run `38541040467`.
+- **Décision du propriétaire en attente** (plan backend-local, journal). Une
+  montée de `next` impose les sept contrôles manuels décrits plus haut.
+
 **À surveiller** — `npm ls deepmerge-ts mysql2`. Dès qu'une version `7.x` de
 Prisma embarque `deepmerge-ts >= 8` et `mysql2 >= 3.22`, `npm update prisma`
 suffit, toujours sans `--force`.
@@ -1990,9 +2003,11 @@ suffit, toujours sans `--force`.
 > passait : l'échec était isolé au job `validate`. Lu le 2 septembre 2026 via
 > l'API GitHub Actions, run `33517269595`.
 >
-> **`npm audit` ne bloque pas la CI** : le garde-fou est réglé sur
-> `--audit-level=critical`, il ne reste aucune critique, et les quatre hautes
-> résiduelles ci-dessus ne le déclenchent pas.
+> **`npm audit` ne bloque la CI que sur une critique** : le garde-fou est
+> réglé sur `--audit-level=critical`, et les hautes résiduelles ci-dessus ne le
+> déclenchent pas. Il n'y avait aucune critique jusqu'au 14 octobre 2026.
+> Depuis, l'avis critique sur `next` fait échouer le job `validate` (voir
+> *Sécurité des dépendances*).
 >
 > **Le garde-fou « db push » se détectait lui-même.** Il lançait
 > `grep -r` du littéral sur `.github/`, donc il lisait `ci.yml` et y trouvait sa

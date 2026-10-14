@@ -73,9 +73,11 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 | Auth | NextAuth.js (Credentials Provider) | Vercel | — |
 | Cache API | Vercel Edge Cache (ISR) | Vercel | `revalidate = 3600` |
 
-> **Versions des paquets critiques**, après la remédiation des vulnérabilités npm
-> du 1er septembre 2026 : `next@16.3.4` · `next-auth@4.24.15` · `prisma@7.10.0` ·
-> `@prisma/client@7.10.0` · `ws@8.21.3`. Voir §10 bis, *Sécurité des dépendances*.
+> **Versions des paquets critiques**, après les remédiations des vulnérabilités
+> npm du 1er septembre et du 14 octobre 2026 : `next@16.3.8` ·
+> `eslint-config-next@16.3.8` · `next-auth@4.24.15` · `prisma@7.10.0` ·
+> `@prisma/client@7.10.0` · `ws@8.21.3`. Voir §10 bis, *Sécurité des
+> dépendances*. `next` et `eslint-config-next` restent sur la même version.
 >
 > **La CLI et le client Prisma doivent rester sur la même version.**
 > `npm audit fix` avait monté `prisma` en `7.10.0` sans toucher
@@ -1873,6 +1875,25 @@ après la montée `next@16.3.4` / `next-auth@4.24.15` — tous au vert :
 | 6 | ~65 appels rapides sur `/api/v1/schools?limit=1` | **429** au-delà de 60/min | ✅ premier 429 à la requête n°61 |
 | 7 | Console du navigateur sur `/admin` | aucune violation CSP | ✅ **zéro violation**, en développement *et* sur le build de production — Chrome 151 piloté par Playwright, 8 pages parcourues |
 
+**Rejoués le 14 octobre 2026**, après la montée `next@16.3.8`, sur
+`npm run dev` :
+- n°1 à n°6 identiques au 2 septembre : `307` vers `/admin/login` ; session
+  ADMIN ouverte, avec les quatre pages en 200 ; `401` × 5 puis `429` ; `401` ;
+  les 6 en-têtes ; premier `429` à la requête n°61 ;
+- n°7, en développement : **zéro violation CSP** sur 11 pages (accueil,
+  `/contribute`, `/api-docs`, une fiche d'école, `/admin/login`, puis inbox,
+  écoles, gestion et campus d'une école, comptes et cron en session ADMIN),
+  sous Chrome piloté par l'extension Claude. La seule erreur de console,
+  « Backend indisponible » sur `/admin/cron`, vient du backend non lancé, pas
+  de la CSP ;
+- n°7, sur le build de production (`next start`, CSP sans `'unsafe-eval'`) :
+  console vide sur quatre pages publiques. Le back-office n'y a pas été
+  parcouru : l'extension s'est déconnectée.
+
+Le n°2 s'est fait avec les identifiants posés par le propriétaire en variables
+utilisateur Windows, sans qu'ils soient jamais affichés. Ils n'apparaissent pas
+dans le journal du serveur (0 occurrence).
+
 > **`/admin` n'est pas une route.** Il n'existe aucun `app/admin/page.tsx` : la
 > racine du back-office renvoie 404, avec ou sans session. Le contrôle n°2 se
 > mène sur `/admin/inbox`, la page réellement protégée — c'est celle du n°1.
@@ -1948,18 +1969,29 @@ même downgrade majeur, même refus.
 **Total au 2 septembre 2026 : 4 hautes, 0 critique**, toutes tirées par la CLI
 Prisma. Le garde-fou de CI (`--audit-level=critical`) reste au vert.
 
-**Au 14 octobre 2026 : 14 vulnérabilités, dont 13 hautes et 1 critique.**
-Le lock n'a pas changé depuis le 1er septembre ; ce sont de nouveaux avis.
-- **La critique vise `next` 16.0.0 à 16.3.7** (le projet est en `16.3.4`) :
+**Le 14 octobre 2026 : 14 vulnérabilités, dont 13 hautes et 1 critique.**
+Le lock n'avait pas changé depuis le 1er septembre ; c'étaient de nouveaux avis.
+- **La critique visait `next` 16.0.0 à 16.3.7** (le projet était en `16.3.4`) :
   exécution de code dans `ImageResponse` de `next/og`, que le projet n'utilise
   pas ; empoisonnement du cache SSG et ISR ; SSRF dans l'optimisation d'images ;
   fuite d'informations par l'endpoint MCP du serveur de développement.
-- npm la corrige par `npm audit fix`, **sans `--force`**, comme plusieurs
-  hautes (`fast-uri`, `sharp`, `source-map-js`). Les hautes tirées par la CLI
-  Prisma exigent toujours un `--force` refusé.
-- Le garde-fou fait échouer le job `validate` depuis le run `38541040467`.
-- **Décision du propriétaire en attente** (plan backend-local, journal). Une
-  montée de `next` impose les sept contrôles manuels décrits plus haut.
+- Elle faisait échouer le job `validate` (run `38541040467`).
+
+**Corrigée le même jour**, à la demande du propriétaire :
+- `npm install next@16.3.8` : le correctif de la même version mineure, plutôt
+  que la 16.4.0, qui existait aussi. Plancher de `package.json` relevé à
+  `^16.3.8` ;
+- puis `npm audit fix`, **sans `--force`** : `brace-expansion`, `fast-uri`,
+  `sharp` (`0.35.5`) et `source-map-js` ;
+- `npm audit fix` avait aussi monté `eslint-config-next` en `16.4.0`. On l'a
+  réaligné sur `16.3.8`, pour qu'il suive la version de `next`.
+
+**Reste : 9 hautes, 0 critique.** Toutes exigent un `--force` refusé : Prisma 6
+pour `deepmerge-ts`, `mysql2`, `@prisma/config` et `prisma` ;
+`eslint-config-next` 14 pour `micromatch`, `braces` et `fast-glob`, tirés par
+l'outillage de lint. Aucun de ces paquets n'est servi au navigateur ni exécuté
+par l'API. Tests, types, lint, build et les sept contrôles manuels ont été
+rejoués (voir *Contrôles d'exécution non automatisés*).
 
 **À surveiller** — `npm ls deepmerge-ts mysql2`. Dès qu'une version `7.x` de
 Prisma embarque `deepmerge-ts >= 8` et `mysql2 >= 3.22`, `npm update prisma`
@@ -2005,9 +2037,9 @@ suffit, toujours sans `--force`.
 >
 > **`npm audit` ne bloque la CI que sur une critique** : le garde-fou est
 > réglé sur `--audit-level=critical`, et les hautes résiduelles ci-dessus ne le
-> déclenchent pas. Il n'y avait aucune critique jusqu'au 14 octobre 2026.
-> Depuis, l'avis critique sur `next` fait échouer le job `validate` (voir
-> *Sécurité des dépendances*).
+> déclenchent pas. Le 14 octobre 2026, un avis critique sur `next` l'a fait
+> échouer ; la montée en `16.3.8`, le même jour, l'a levé (voir *Sécurité des
+> dépendances*).
 >
 > **Le garde-fou « db push » se détectait lui-même.** Il lançait
 > `grep -r` du littéral sur `.github/`, donc il lisait `ci.yml` et y trouvait sa

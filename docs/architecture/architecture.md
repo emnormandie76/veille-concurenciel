@@ -1887,8 +1887,12 @@ après la montée `next@16.3.4` / `next-auth@4.24.15` — tous au vert :
   « Backend indisponible » sur `/admin/cron`, vient du backend non lancé, pas
   de la CSP ;
 - n°7, sur le build de production (`next start`, CSP sans `'unsafe-eval'`) :
-  console vide sur quatre pages publiques. Le back-office n'y a pas été
-  parcouru : l'extension s'est déconnectée.
+  **zéro violation CSP** sur les mêmes pages, publiques et back-office en
+  session ADMIN. Un message témoin écrit dans la console en début et en fin de
+  parcours prouve qu'elle était bien suivie. Là encore, la seule erreur vient
+  de `/admin/cron` : `pipeline-status` répond 503 toutes les 5 s, faute de
+  backend, et l'écran l'annonce comme un « démarrage à froid » (défaut F5 du
+  plan backend-local, étape 5).
 
 Le n°2 s'est fait avec les identifiants posés par le propriétaire en variables
 utilisateur Windows, sans qu'ils soient jamais affichés. Ils n'apparaissent pas

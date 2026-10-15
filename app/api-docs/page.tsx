@@ -4,15 +4,21 @@
  * - Affiche la documentation interactive des 15 endpoints de l'API publique.
  * - Mise en page en 3 colonnes de style Stripe (navigation, détails, exemples de code).
  * - Entièrement statique et sans requêtes à la base de données Neon.
+ * - Contenu dans endpoints.ts, aligné sur les réponses réelles le 15 octobre
+ *   2026 et tenu par test/api-docs.test.ts.
  * - Langue : Français.
  * - Référence : task.md §10, implementation_plan.md
  */
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { endpoints, Endpoint, EndpointParam } from "./endpoints";
+import { buildSampleUrl, endpoints, Endpoint } from "./endpoints";
+
+// L'adresse du site ne change pas pendant la vie de la page.
+const subscribeToNothing = () => () => {};
+const readOrigin = () => window.location.origin;
 
 const categoryOrder = [
   "introduction",
@@ -75,67 +81,16 @@ export default function ApiDocsPage() {
     return filteredEndpoints[0] || null;
   }, [filteredEndpoints, selectedEndpointId]);
 
-  // Génération de l'URL d'exemple réaliste
-  const sampleUrl = useMemo(() => {
-    if (!selectedEndpoint) return "";
-    const path = selectedEndpoint.path;
-    if (!path) return "http://localhost:3000";
+  // L'adresse du site qui sert la page : en ligne, le domaine public ; en
+  // local, localhost. Vide pendant le rendu serveur (page statique), puis lue
+  // dans le navigateur, sans écart d'hydratation.
+  const origin = useSyncExternalStore(subscribeToNothing, readOrigin, () => "");
 
-    // Remplacement des paramètres d'URL (path params)
-    let finalPath = path;
-    if (finalPath.includes("[id]")) {
-      if (selectedEndpoint.category === "campuses" || finalPath.includes("campuses")) {
-        finalPath = finalPath.replace("[id]", "clt456jkl-campus-ldf");
-      } else if (
-        selectedEndpoint.category === "programs" ||
-        selectedEndpoint.category === "pricing" ||
-        selectedEndpoint.category === "rankings" ||
-        selectedEndpoint.category === "capacity" ||
-        finalPath.includes("programs")
-      ) {
-        finalPath = finalPath.replace("[id]", "clt567mno-prog-pge");
-      } else {
-        finalPath = finalPath.replace("[id]", "clt123abc-school-emlv");
-      }
-    }
-
-    // Ajout de query parameters réalistes si applicables
-    const queryParams = selectedEndpoint.params.filter(
-      (p) => !p.name.includes("id") && !p.description.toLowerCase().includes("path")
-    );
-
-    if (queryParams.length > 0) {
-      const qs = queryParams
-        .map((p) => {
-          let val = "value";
-          if (p.name === "search") {
-            val = p.description.toLowerCase().includes("école") ? "emlv" : "pge";
-          } else if (p.name === "page") {
-            val = "1";
-          } else if (p.name === "limit") {
-            val = "20";
-          } else if (p.name === "year") {
-            val = "2025";
-          } else if (p.name === "alternance") {
-            val = "true";
-          } else if (p.name === "ranking_name") {
-            val = "Figaro";
-          } else if (p.name === "ids") {
-            val = "clt567mno-prog-pge";
-          } else if (p.name === "campus_id") {
-            val = "clt456jkl-campus-ldf";
-          }
-          return `${p.name}=${val}`;
-        })
-        .join("&");
-
-      if (qs) {
-        finalPath += `?${qs}`;
-      }
-    }
-
-    return `http://localhost:3000${finalPath}`;
-  }, [selectedEndpoint]);
+  // L'URL de l'exemple d'appel (endpoints.ts, testée par test/api-docs.test.ts)
+  const sampleUrl = useMemo(
+    () => (selectedEndpoint ? buildSampleUrl(selectedEndpoint, origin) : ""),
+    [selectedEndpoint, origin]
+  );
 
   // Génération des snippets de code client
   const codeSnippets = useMemo(() => {

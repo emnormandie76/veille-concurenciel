@@ -12,9 +12,11 @@
 > étape 7 : les parties non couvertes sont testées (§10 bis), et les défauts
 > trouvés corrigés : API v1 (§8.4, §8.8), CRUD admin (§7.4), inbox (§5.4, §6.2),
 > contributions (§10.2), erreurs Tavily (§6.2), déclencheurs internes (§2.3) ;
-> smoke local `npm run smoke` (§10 bis).
-> Les sections qui citent encore Koyeb
-> (§1.2, §2.1, §2.2) seront reprises à l'étape 8 du plan.
+> smoke local `npm run smoke` (§10 bis) ;
+> étape 8 : l'hébergement réel est décrit en §1.2, §2.1 et §2.2 (Vercel Hobby,
+> backend sur le poste, plus de Koyeb), et le déploiement dans
+> [`memory-deploiement-vercel.md`](../memory/memory-deploiement-vercel.md) ;
+> smoke joué contre `npm run dev` (§10 bis).
 > Depuis la v2.0 : les deux crons Research (`phase1_scanner`, `phase2_enricher`)
 > sont remplacés par une **rotation nocturne** sous plafond mensuel (§5.5) ; une
 > passe automatique ne repaie pas une cible dont le ticket attend l'admin
@@ -44,7 +46,7 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 | **Multi-Campus** | Une école possède N campus, chaque campus a ses propres programmes et tarifs |
 | **Pipeline en 2 Phases** | Phase 1 (Cartographie) → Validation Admin → Phase 2 (Enrichissement) |
 | **Double Zone** | Zone tampon (ContributionInbox) séparée des tables de production rigides |
-| **Économie de ressources** | Optimisation du Free Tier de chaque service (Tavily, Neon, Koyeb, Vercel) |
+| **Économie de ressources** | Offres gratuites : Vercel Hobby, Neon, Upstash. Le backend n'est hébergé nulle part : il tourne sur le poste de l'admin, quand celui-ci le lance (Koyeb abandonné le 14 octobre 2026). Tavily sous plafond mensuel (§5.5) |
 
 ---
 
@@ -53,38 +55,47 @@ Le système extrait, vérifie et structure les informations depuis les sites off
 ### 2.1. Architecture Globale
 
 ```
-┌─────────────────────────────┐         ┌─────────────────────────────┐
-│     Next.js (Vercel)        │         │     FastAPI (Koyeb)         │
-│                             │         │                             │
-│  • Zone Consultation (pub)  │         │  • Pipeline IA              │
-│  • Zone Crowdsourcing (pub) │  Token  │    - Tavily Research (pro)  │
-│  • Zone API Docs (pub)      │◄───────►│    - Gemini/Gemma (JSON)    │
-│  • Zone Admin (protégée)    │ interne │  • APScheduler (Cron)       │
-│  • API REST publique v1     │         │  • psycopg2 (pool)          │
-│  • Prisma ORM               │         │                             │
-│  • NextAuth.js              │         │                             │
-└──────────┬──────────────────┘         └──────────┬──────────────────┘
-           │                                       │
-           └────────────────┐   ┌──────────────────┘
-                            ▼   ▼
-                   ┌──────────────────┐
-                   │   PostgreSQL     │
-                   │   (Neon.tech)    │
-                   │   500MB Free     │
-                   └──────────────────┘
+ EN LIGNE — Vercel Hobby                     POSTE DE L'ADMIN — lancé à la main
+┌───────────────────────────────────┐       ┌───────────────────────────────────┐
+│ Next.js 16                        │       │ npm run local                     │
+│ • Zone Consultation (pub)         │       │ • FastAPI 127.0.0.1:8000          │
+│ • Zone Crowdsourcing (pub)        │       │   - Pipeline IA : Tavily Research,│
+│ • Zone API Docs (pub)             │       │     cascade Gemini                │
+│ • API REST publique v1            │       │   - passes dues sur demande       │
+│ • Zone Admin (NextAuth) ;         │       │   - contributions (Gemma), chaque │
+│   /admin/cron en lecture seule    │       │     minute tant qu'il tourne      │
+│ • FASTAPI_URL absente             │       │   - psycopg2 (pool)               │
+│ • Prisma + adaptateur Neon        │       │ • Next.js dev (localhost:3000) :  │
+│                                   │       │   back-office qui pilote le       │
+│                                   │       │   backend (jeton interne)         │
+└─────────────────┬─────────────────┘       └─────────────────┬─────────────────┘
+                  │ WebSocket 443                             │ 5432, ou WebSocket 443
+                  ▼                                           ▼ (DB_DRIVER=neon-ws)
+                  ┌───────────────────────────────────────────┐
+                  │ PostgreSQL — Neon, projet vc-bdd          │
+                  │ branche main : développement ET production│
+                  └───────────────────────────────────────────┘
 ```
+
+Le site en ligne et le backend ne se parlent pas : ils partagent la base.
+`FASTAPI_URL` et le jeton interne n'existent que sur le poste (§2.3). En ligne,
+`/admin/cron` affiche « pilotage depuis le poste local » avec l'historique lu en
+base, et une contribution attend en `Pending_AI` que l'admin lance le backend.
+Le déploiement (variables, intégration Neon, Upstash, ordre des opérations) est
+décrit dans [`memory-deploiement-vercel.md`](../memory/memory-deploiement-vercel.md).
 
 ### 2.2. Stack Détaillée
 
 | Couche | Technologie | Hébergement | Contraintes Free Tier |
 |---|---|---|---|
-| Frontend + API publique | Next.js (App Router, TypeScript) | Vercel | Generous, pas de limite bloquante |
-| Backend IA + Cron | FastAPI (Python) | Koyeb EcoFree 24/7 | Redémarrages possibles (Edge Case 15) |
-| Base de données | PostgreSQL + Prisma ORM | Neon.tech | 500MB stockage |
+| Frontend, API publique, back-office | Next.js 16 (App Router, TypeScript) | **Vercel Hobby** (usage non commercial) | 300 s au plus par fonction (Fluid compute) ; une seule région, `lhr1` recommandée, près de Neon ; aucune tâche planifiée |
+| Backend IA (pipeline, contributions) | FastAPI (Python) | **poste de l'admin**, lancé à la main (`npm run local`, `127.0.0.1:8000`) | ne tourne que lancé ; entre deux lancements, les contributions attendent en `Pending_AI` (Edge Case 15) |
+| Base de données | PostgreSQL 17 + Prisma ORM | Neon, projet `vc-bdd` (`aws-eu-west-2`), organisation gérée par Vercel | 500 Mo ; une seule branche, `main`, qui sert aussi de production |
+| Limitation de débit | Upstash Redis (REST) | SaaS | offre gratuite ; absent, repli en mémoire qui ne tient pas sur Vercel (§10.3) |
 | Recherche web | Tavily API (`research`, `search`, `extract`, `map`) | SaaS | 1000 crédits/mois par clé, rotation Greedy sur plusieurs clés |
 | IA Extraction | **Pipeline** : cascade Gemini à 3 paliers qui structure les rapports Tavily (`gemini_client.py`) · **Crowdsourcing** : Gemma 4 26B (compatibilité) et 31B (extraction) (`gemma_client.py`) · SDK `google-genai` | Google AI Studio | ~5 requêtes/min par clé (espacement 12 s), quotas journaliers par modèle |
 | Auth | NextAuth.js (Credentials Provider) | Vercel | — |
-| Cache API | Vercel Edge Cache (ISR) | Vercel | `revalidate = 3600` |
+| Cache API | Vercel Edge Cache (ISR) | Vercel | `revalidate = 3600` déclaré, **inopérant** sur l'API v1 (§8.8) |
 
 > **Versions des paquets critiques**, après les remédiations des vulnérabilités
 > npm du 1er septembre et du 14 octobre 2026 : `next@16.3.8` ·
@@ -1619,6 +1630,27 @@ entrée écartée**, avec motif.
 |---|---|
 | Documentation API REST | `/api-docs` |
 
+Le contenu vit dans `app/api-docs/endpoints.ts`. Une fiche par route de
+`app/api/v1`, avec ses paramètres, un exemple de réponse et une URL d'exemple
+qui vise l'adresse du site (lue dans le navigateur). **Jusqu'au 15 octobre
+2026, la page décrivait une API imaginaire** : champs inventés
+(`students_count`, `degree`, `school_id`…), tarifs groupés par programme,
+`ranking_name` et `year` « obligatoires » sur `/rankings`, URL d'exemple en
+`localhost:3000`, sans `?ids=` pour la comparaison, et l'identifiant d'un
+campus ou d'un programme à la place de celui de l'école sur trois routes
+`/schools/[id]/…`. Réalignée avant le
+déploiement sur décision du propriétaire. Les exemples portent une école
+fictive (« École de Commerce Exemple »).
+
+`test/api-docs.test.ts` tient l'alignement :
+- une fiche par route ;
+- les paramètres que la route lit ;
+- « obligatoire » vérifié par l'appel (sans lui : 400) ;
+- la forme de l'exemple de réponse comparée, clés et listes comprises, à
+  celle de la vraie route, appelée avec un faux Prisma qui renvoie exactement
+  les champs sélectionnés ;
+- l'identifiant de l'URL d'exemple, selon le segment.
+
 ### 7.4. Zone Dashboard Admin (Protégée — NextAuth)
 
 | Page | Route | Rôle requis |
@@ -1935,7 +1967,9 @@ sont écrasés par Vercel et ne peuvent pas être forgés.
 `UPSTASH_REDIS_REST_URL` et `UPSTASH_REDIS_REST_TOKEN` sont définies ; **repli
 mémoire sinon**, qui ralentit une attaque sans la bloquer — chaque démarrage à
 froid repart d'un compteur vide. Un avertissement est journalisé au premier
-usage.
+usage. Les noms comptent : `KV_REST_API_URL` et `KV_REST_API_TOKEN`, ceux de
+l'ancien Vercel KV, ne sont pas lus. Création et pièges :
+[`memory-deploiement-vercel.md`](../memory/memory-deploiement-vercel.md) §5.
 
 ### 10.4. En-têtes de sécurité
 
@@ -2242,8 +2276,9 @@ Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
 319 et 68 ; après l'étape 3, 362 et 68 ; après l'étape 4, 379 et 68 ; après
 l'étape 5, 379 et 122 ; après l'étape 6, 379 et 128. **Au 14 octobre 2026,
 après l'étape 7 : 570 tests Python (+25 sous-tests) et 482 tests TypeScript**,
-puis 571 Python le 15 octobre (test d'horloge ci-dessous),
-tous verts. Les deux suites lisent des fixtures communes quand une règle existe
+puis 571 Python le 15 octobre (test d'horloge ci-dessous) ; après l'étape 8,
+571 et 483 (règle du smoke, ci-dessous) ; puis 571 et 491 (`/api-docs` et
+titres des pages, ci-dessous), tous verts. Les deux suites lisent des fixtures communes quand une règle existe
 en deux langages (`test/fixtures/attachment_plan_cases.json`).
 
 **Les parties non couvertes** (étape 7 du plan backend-local). Chaque fichier
@@ -2281,7 +2316,11 @@ décisions du propriétaire, soit treize corrections et un défaut consigné
   - la logique testable est sortie dans `lib/public-schools.ts` et
     `lib/ticket-refresh.ts` ;
 - `test/request-body.test.ts`, `prisma-schema.test.ts`, `smoke-checks.test.ts` :
-  les aides du banc et du smoke.
+  les aides du banc et du smoke ;
+- après l'étape 8, deux tâches hors plan décidées par le propriétaire :
+  `test/api-docs.test.ts`, la page `/api-docs` confrontée aux 15 routes
+  (§7.3), et `test/page-titles.test.ts`, une seule fois « — EduData France »
+  dans le titre d'une page (le modèle d'`app/layout.tsx` l'ajoute déjà).
 
 **Garde réseau** (fin d'étape 7). Les deux suites ont été rejouées avec
 connexions et résolutions DNS refusées hors de `127.0.0.1`. Pour pytest, un
@@ -2466,7 +2505,16 @@ renvoi au navigateur).
 - **Rodage** : vérifié contre un faux site sur `127.0.0.1` (école sans
   programme écartée, `/stats` absent, une panne et une page d'erreur
   détectées), puis contre un port fermé (« npm run dev est-il lancé ? »).
-  **Pas encore joué contre `npm run dev`.**
+- **Joué contre `npm run dev` le 15 octobre 2026**, avec l'accord du
+  propriétaire (étape 8). Le premier passage a marqué les 5 pages « page 404
+  de Next » alors qu'elles répondaient 200 avec le bon titre : `next dev`
+  16.3.8 sérialise la frontière `not-found` par défaut, et donc la phrase
+  « This page could not be found », dans la charge RSC (`<script>`) de
+  **chaque** page. La règle ne cherche plus cette phrase que hors `<script>`
+  (`nextErrorMarker`, décision du propriétaire ; test d'abord dans
+  `test/smoke-checks.test.ts`). Le statut HTTP reste le signal principal : une
+  école inconnue rend 404 sans porter la phrase hors `<script>`. Second
+  passage : **19 bons, 0 échec, 1 absent** (`/stats` d'EM Strasbourg).
 
 ### Contrôles d'exécution non automatisés
 

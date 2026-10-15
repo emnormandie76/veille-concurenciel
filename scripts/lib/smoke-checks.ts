@@ -101,11 +101,18 @@ export function buildChecks(ids: SmokeIds): SmokeCheck[] {
 // Des « digests » que React pose sans erreur : rendu repoussé au navigateur.
 const BENIGN_DIGESTS = /^(BAILOUT_TO_CLIENT_SIDE_RENDERING|NEXT_DYNAMIC_NO_SSR_CODE)/;
 
+/** Le HTML sans ses `<script>`, où vit la charge RSC. */
+function withoutScripts(html: string): string {
+  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+}
+
 /** La marque d'une page d'erreur Next dans un HTML rendu, ou `null`. */
 export function nextErrorMarker(html: string): string | null {
   if (html.includes('id="__next_error__"')) return "page d'erreur de Next (__next_error__)";
   if (html.includes("data-next-error-digest")) return "erreur serveur rendue dans la page (data-next-error-digest)";
-  if (html.includes("This page could not be found")) return "page 404 de Next";
+  // Next 16 sérialise la frontière not-found par défaut dans la charge RSC de
+  // chaque page, page saine comprise : la phrase ne compte que hors <script>.
+  if (withoutScripts(html).includes("This page could not be found")) return "page 404 de Next";
   for (const match of html.matchAll(/data-dgst="([^"]*)"/g)) {
     if (!BENIGN_DIGESTS.test(match[1])) return `erreur de rendu (digest ${match[1]})`;
   }

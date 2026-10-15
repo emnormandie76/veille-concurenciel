@@ -67,7 +67,8 @@ export async function generateMetadata({ params }: Props) {
   const school = await getSchool(id);
   if (!school) return { title: "École introuvable" };
   return {
-    title: `${school.name} — EduData France`,
+    // « — EduData France » vient du modèle de titre d'app/layout.tsx.
+    title: school.name,
     description: `Programmes, tarifs, classements et accréditations de ${school.name}`,
   };
 }

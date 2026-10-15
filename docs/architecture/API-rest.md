@@ -4,6 +4,9 @@
 > `test/api/v1.test.ts` (15 routes `app/api/v1`). Les sections marquées
 > **« État réel »** décrivent ce que fait le code aujourd'hui, là où il s'écarte
 > de l'intention initiale.
+> **15 octobre 2026** : la page publique `/api-docs` (`app/api-docs/endpoints.ts`)
+> décrit enfin cette API, paramètres et exemples de réponse compris ;
+> `test/api-docs.test.ts` la confronte aux routes (`architecture.md` §7.3).
 
 ## Objectif
 

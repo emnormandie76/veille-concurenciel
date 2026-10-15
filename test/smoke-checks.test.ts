@@ -90,6 +90,23 @@ test("nextErrorMarker : pages d'erreur et rendus en échec, pas les reports au n
   assert.equal(nextErrorMarker("<html><body><h1>Écoles</h1></body></html>"), null);
 });
 
+// next dev 16.3.8 sérialise la frontière not-found par défaut dans la charge RSC
+// de chaque page (relevé le 15 octobre 2026 sur `/`, `/contribute`, `/api-docs`
+// et les deux fiches, toutes en HTTP 200). Une vraie 404 porte la phrase dans
+// le balisage, hors <script>.
+const RSC_NOT_FOUND =
+  '<script>self.__next_f.push([1,"20:[[\\"$\\",\\"title\\",null,{\\"children\\":\\"404: This page could not be found.\\"},\\"$23\\"]]\\n"])</script>';
+
+test("nextErrorMarker : la phrase 404 dans la charge RSC d'une page saine n'est pas une page 404", () => {
+  assert.equal(nextErrorMarker(`<html><head><title>Écoles</title></head><body><h1>Écoles</h1>${RSC_NOT_FOUND}</body></html>`), null);
+  assert.equal(nextErrorMarker(`<html><body><script type="text/javascript">"This page could not be found"</script></body></html>`), null);
+  // Une vraie page 404 : la phrase est aussi dans le balisage.
+  assert.match(
+    nextErrorMarker(`<html><head><title>404: This page could not be found.</title></head><body>${RSC_NOT_FOUND}</body></html>`)!,
+    /404/
+  );
+});
+
 test("judge : API — 200 et JSON lisible ; 404 de /stats « absent » ; le reste en échec", () => {
   const api = buildChecks(IDS).find((c) => c.route === "/api/v1/rankings")!;
   const stats = buildChecks(IDS).find((c) => c.route === "/api/v1/schools/[id]/stats")!;
@@ -114,6 +131,8 @@ test("judge : page — 200, HTML, sans marque d'erreur", () => {
   const html = (status: number, text: string, contentType = "text/html; charset=utf-8") => ({ status, contentType, text });
 
   assert.deepEqual(judge(page, html(200, "<html><body>Écoles</body></html>")), { outcome: "ok" });
+  assert.deepEqual(judge(page, html(200, `<html><body>Écoles${RSC_NOT_FOUND}</body></html>`)), { outcome: "ok" });
+  assert.deepEqual(judge(page, html(404, `<html><body>${RSC_NOT_FOUND}</body></html>`)), { outcome: "fail", detail: "HTTP 404" });
   assert.deepEqual(judge(page, html(500, "<html>")), { outcome: "fail", detail: "HTTP 500" });
   assert.equal(judge(page, html(200, '<html id="__next_error__">')).outcome, "fail");
   assert.equal(judge(page, html(200, "{}", "application/json")).outcome, "fail");

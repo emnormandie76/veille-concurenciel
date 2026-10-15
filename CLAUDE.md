@@ -90,10 +90,25 @@ Chantier « backend local sur demande »
   horloge figée sur décision du propriétaire (commit suivant) : 571 tests
   Python. Le 15 octobre, le
   propriétaire demande le commit, le push et le prompt de l'étape 8 : étape 7
-  tenue pour validée. Restent ouverts : le smoke contre `npm run dev` (accord
-  à demander) et les exemples fictifs de `/api-docs` (question à lui poser) ;
-- prochaine : étape 8 (préparer Vercel : documentation et vérifications ; le
-  propriétaire déploie).
+  tenue pour validée ;
+- étape 8 (préparer Vercel) faite le 15 octobre, sans rien déployer : CI de
+  `6315a95` verte ; variables inventoriées, aucun écart ; build vert avec une
+  `DATABASE_URL` morte pour seule variable ; Hobby : 300 s par fonction,
+  aucune tâche planifiée ; smoke joué contre `npm run dev` avec l'accord du
+  propriétaire, vert après correction de sa règle 404 (décision du
+  propriétaire) ; 571 tests Python et 483 TypeScript.
+  [`memory-deploiement-vercel.md`](docs/memory/memory-deploiement-vercel.md)
+  réécrit : variables, intégration Neon, Upstash, décisions 8.1 (branche de
+  production : `main` a 46 commits de retard) et 8.2 (préversions), ordre des
+  opérations. Le 15 octobre, le propriétaire demande le commit, le push et le
+  prompt de l'étape 9 : étape 8 tenue pour validée. Le projet Vercel reste à
+  créer par lui (mémo §8 et §9), de préférence après l'étape 9 ;
+- hors plan, le 15 octobre, à la demande du propriétaire : `/api-docs` aligné
+  sur les réponses réelles (`test/api-docs.test.ts`) et titre des fiches sans
+  « — EduData France » en double (`test/page-titles.test.ts`) ; 571 tests
+  Python et 491 TypeScript ;
+- prochaine : étape 9 (vérification de bout en bout, sur la
+  branche Neon `dev` de D7).
 
 L'étape en cours se lit dans le journal du plan (§11).
 

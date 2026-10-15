@@ -1,0 +1,552 @@
+{
+ "_doc": "Cas partages par test/test_ticket_sources.py et test/ticket-sources.test.ts (tache hors plan « trois sources », decisions du proprietaire du 15 octobre 2026). Le pipeline coupe a l'ecriture (backend/pipeline/ticket_sources.py), l'inbox plafonne les tickets deja en base (lib/ticket-sources.ts) : les deux doivent rendre les attendus, ecrits a la main. 'cases' : la selection complete ; 'cited' : les URL relevees dans la charge ; 'official' : le domaine officiel ; 'same_url' : les doublons.",
+ "cases": [
+  {
+   "name": "ordre : les URL citees (meme absentes du reservoir), puis les officielles du reservoir, puis le reste",
+   "reservoir": [
+    "https://www.letudiant.fr/essca",
+    "https://www.essca.eu/frais",
+    "https://www.challenges.fr/classement",
+    "https://www.essca.eu/admissions"
+   ],
+   "payload": {"academic_year": 2027, "source_url": "https://www.essca.eu/programmes/pge/tarifs"},
+   "official_domain": "www.essca.eu/",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.essca.eu/programmes/pge/tarifs",
+    "https://www.essca.eu/frais",
+    "https://www.essca.eu/admissions"
+   ]
+  },
+  {
+   "name": "le reste suit l'ordre de Tavily",
+   "reservoir": [
+    "https://www.letudiant.fr/em-lyon",
+    "https://www.challenges.fr/em-lyon",
+    "https://www.lefigaro.fr/etudiant/em-lyon",
+    "https://www.lesechos.fr/em-lyon"
+   ],
+   "payload": {"academic_year": 2027, "source_url": null},
+   "official_domain": "em-lyon.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.letudiant.fr/em-lyon",
+    "https://www.challenges.fr/em-lyon",
+    "https://www.lefigaro.fr/etudiant/em-lyon"
+   ]
+  },
+  {
+   "name": "moins de 3 URL : toutes, dans l'ordre decide",
+   "reservoir": [
+    "https://www.letudiant.fr/em-lyon",
+    "https://www.em-lyon.com/fr/programmes"
+   ],
+   "payload": {},
+   "official_domain": "em-lyon.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.em-lyon.com/fr/programmes",
+    "https://www.letudiant.fr/em-lyon"
+   ]
+  },
+  {
+   "name": "doublons : casse de l'hote, / final et fragment ; la premiere ecriture reste",
+   "reservoir": [
+    "https://www.em-lyon.com/fr/programmes",
+    "https://WWW.EM-LYON.COM/fr/programmes/",
+    "https://www.em-lyon.com/fr/programmes#pge",
+    "https://www.letudiant.fr/em-lyon"
+   ],
+   "payload": {"source_url": "https://www.Em-Lyon.com/fr/programmes/#bachelor"},
+   "official_domain": "em-lyon.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.Em-Lyon.com/fr/programmes/#bachelor",
+    "https://www.letudiant.fr/em-lyon"
+   ]
+  },
+  {
+   "name": "doublons www : l'extraction cite essca.eu, Tavily donne www.essca.eu (meme page, une seule place)",
+   "reservoir": [
+    "https://www.essca.eu/frais-de-scolarite",
+    "https://www.essca.eu/admissions",
+    "https://www.letudiant.fr/essca"
+   ],
+   "payload": {"academic_year": 2027, "source_url": "https://essca.eu/frais-de-scolarite"},
+   "official_domain": "www.essca.eu/",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://essca.eu/frais-de-scolarite",
+    "https://www.essca.eu/admissions",
+    "https://www.letudiant.fr/essca"
+   ]
+  },
+  {
+   "name": "doublons www : la page catalogue citee sans www ne prend pas une seconde place",
+   "reservoir": [
+    "https://www.essca.eu/programmes",
+    "https://www.essca.eu/en/10-campuses-around-the-world",
+    "https://www.letudiant.fr/essca"
+   ],
+   "payload": {
+    "source_urls": ["https://essca.eu/programmes", "https://essca.eu/en/10-campuses-around-the-world"],
+    "discovered_campuses": [
+     {"name": "Campus Angers", "programs": [
+      {"name": "BBA", "source_url": "https://essca.eu/programmes/bba"}
+     ]}
+    ]
+   },
+   "official_domain": "www.essca.eu/",
+   "priority_urls": ["https://www.essca.eu/programmes"],
+   "limit": 3,
+   "expected": [
+    "https://www.essca.eu/programmes",
+    "https://essca.eu/en/10-campuses-around-the-world",
+    "https://essca.eu/programmes/bba"
+   ]
+  },
+  {
+   "name": "la casse du chemin et le schema distinguent deux URL",
+   "reservoir": [
+    "https://www.em-lyon.com/fr/PGE",
+    "https://www.em-lyon.com/fr/pge",
+    "http://www.em-lyon.com/fr/pge"
+   ],
+   "payload": {},
+   "official_domain": "em-lyon.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.em-lyon.com/fr/PGE",
+    "https://www.em-lyon.com/fr/pge",
+    "http://www.em-lyon.com/fr/pge"
+   ]
+  },
+  {
+   "name": "un sous-domaine est officiel, une simple sous-chaine ne l'est pas",
+   "reservoir": [
+    "https://em-lyon.com.exemple.net/em-lyon",
+    "https://fakeem-lyon.com/pge",
+    "https://admissions.em-lyon.com/pge",
+    "https://www.em-lyon.com/fr/pge"
+   ],
+   "payload": {},
+   "official_domain": "em-lyon.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://admissions.em-lyon.com/pge",
+    "https://www.em-lyon.com/fr/pge",
+    "https://em-lyon.com.exemple.net/em-lyon"
+   ]
+  },
+  {
+   "name": "ecartees : vides, autres que http(s), sans hote, sans schema",
+   "reservoir": [
+    "",
+    "   ",
+    null,
+    42,
+    "ftp://www.em-lyon.com/a",
+    "javascript:alert(1)",
+    "mailto:contact@em-lyon.com",
+    "https://",
+    "www.em-lyon.com/sans-schema",
+    "https://www.em-lyon.com/fr/pge"
+   ],
+   "payload": {"source_url": "Le Figaro Etudiant", "source_urls": ["", "N/A"]},
+   "official_domain": "em-lyon.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": ["https://www.em-lyon.com/fr/pge"]
+  },
+  {
+   "name": "les espaces autour d'une URL ne font pas partie de l'URL",
+   "reservoir": [
+    "  https://www.em-lyon.com/fr/pge\n",
+    "https://www.em-lyon.com/fr/pge"
+   ],
+   "payload": {},
+   "official_domain": "em-lyon.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": ["https://www.em-lyon.com/fr/pge"]
+  },
+  {
+   "name": "un classement qui porte sa propre URL garde ce seul lien",
+   "reservoir": ["https://www.lefigaro.fr/etudiant/classement-ecoles-commerce"],
+   "payload": {
+    "ranking_name": "Le Figaro Etudiant",
+    "rank": 3,
+    "academic_year": 2026,
+    "scope": "program",
+    "program_hint": "Programme Grande Ecole",
+    "source_url": "https://www.lefigaro.fr/etudiant/classement-ecoles-commerce"
+   },
+   "official_domain": "www.em-normandie.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": ["https://www.lefigaro.fr/etudiant/classement-ecoles-commerce"]
+  },
+  {
+   "name": "Phase 2 : douze sources Research, trois liens (citee, puis officielles, en.* compris)",
+   "reservoir": [
+    "https://www.letudiant.fr/etudes/ecole-de-commerce/em-normandie.html",
+    "https://www.em-normandie.com/fr/programme-grande-ecole",
+    "https://diplomeo.com/etablissement-em_normandie",
+    "https://en.em-normandie.com/programmes/pge",
+    "https://www.studyrama.com/em-normandie",
+    "https://www.concours-passerelle.com/em-normandie",
+    "https://www.em-normandie.com/fr/frais-de-scolarite",
+    "https://www.challenges.fr/classement/em-normandie",
+    "https://www.em-normandie.com/fr/admissions",
+    "https://www.parcoursup.fr/em-normandie",
+    "https://www.linkedin.com/school/em-normandie",
+    "https://www.campusfrance.org/em-normandie"
+   ],
+   "payload": {
+    "academic_year": 2027,
+    "currency": "EUR",
+    "year_1_fee": 15900,
+    "source_url": "https://www.em-normandie.com/fr/frais-de-scolarite"
+   },
+   "official_domain": "www.em-normandie.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.em-normandie.com/fr/frais-de-scolarite",
+    "https://www.em-normandie.com/fr/programme-grande-ecole",
+    "https://en.em-normandie.com/programmes/pge"
+   ]
+  },
+  {
+   "name": "Phase 2 : chaque accreditation cite sa page",
+   "reservoir": [
+    "https://www.letudiant.fr/em-lyon",
+    "https://www.em-lyon.com/fr/accreditations",
+    "https://www.efmdglobal.org/equis/em-lyon"
+   ],
+   "payload": {
+    "accreditations": [
+     {"name": "EQUIS", "source_url": "https://www.efmdglobal.org/equis/em-lyon"},
+     {"name": "AACSB", "source_url": "https://www.aacsb.edu/accredited/em-lyon"},
+     {"name": "AMBA", "source_url": null}
+    ]
+   },
+   "official_domain": "em-lyon.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.efmdglobal.org/equis/em-lyon",
+    "https://www.aacsb.edu/accredited/em-lyon",
+    "https://www.em-lyon.com/fr/accreditations"
+   ]
+  },
+  {
+   "name": "Phase 1 : la premiere page catalogue garde la premiere place devant 25 programmes cites",
+   "reservoir": [
+    "https://www.essca.eu/programmes",
+    "https://www.essca.eu/programmes/formation-continue",
+    "https://www.essca.eu/en/10-campuses-around-the-world",
+    "https://www.letudiant.fr/essca"
+   ],
+   "payload": {
+    "discovered_campuses": [
+     {"name": "Campus Paris", "city": "Paris", "programs": [
+      {"name": "P01", "source_url": "https://www.essca.eu/programmes/p01"},
+      {"name": "P02", "source_url": "https://www.essca.eu/programmes/p02"},
+      {"name": "P03", "source_url": "https://www.essca.eu/programmes/p03"},
+      {"name": "P04", "source_url": "https://www.essca.eu/programmes/p04"},
+      {"name": "P05", "source_url": "https://www.essca.eu/programmes/p05"},
+      {"name": "P06", "source_url": "https://www.essca.eu/programmes/p06"},
+      {"name": "P07", "source_url": "https://www.essca.eu/programmes/p07"},
+      {"name": "P08", "source_url": "https://www.essca.eu/programmes/p08"},
+      {"name": "P09", "source_url": "https://www.essca.eu/programmes/p09"},
+      {"name": "P10", "source_url": "https://www.essca.eu/programmes/p10"},
+      {"name": "P11", "source_url": "https://www.essca.eu/programmes/p11"},
+      {"name": "P12", "source_url": "https://www.essca.eu/programmes/p12"},
+      {"name": "P13", "source_url": "https://www.essca.eu/programmes/p13"}
+     ]},
+     {"name": "Campus Angers", "city": "Angers", "programs": [
+      {"name": "P14", "source_url": "https://www.essca.eu/programmes/p14"},
+      {"name": "P15", "source_url": "https://www.essca.eu/programmes/p15"},
+      {"name": "P16", "source_url": "https://www.essca.eu/programmes/p16"},
+      {"name": "P17", "source_url": "https://www.essca.eu/programmes/p17"},
+      {"name": "P18", "source_url": "https://www.essca.eu/programmes/p18"},
+      {"name": "P19", "source_url": "https://www.essca.eu/programmes/p19"},
+      {"name": "P20", "source_url": "https://www.essca.eu/programmes/p20"},
+      {"name": "P21", "source_url": "https://www.essca.eu/programmes/p21"},
+      {"name": "P22", "source_url": "https://www.essca.eu/programmes/p22"},
+      {"name": "P23", "source_url": "https://www.essca.eu/programmes/p23"},
+      {"name": "P24", "source_url": "https://www.essca.eu/programmes/p24"},
+      {"name": "P25", "source_url": "https://www.essca.eu/programmes/p25"}
+     ]}
+    ],
+    "source_urls": ["https://www.essca.eu/en/10-campuses-around-the-world"],
+    "confidence_notes": null
+   },
+   "official_domain": "www.essca.eu/",
+   "priority_urls": [
+    "https://www.essca.eu/programmes",
+    "https://www.essca.eu/programmes/formation-continue"
+   ],
+   "limit": 3,
+   "expected": [
+    "https://www.essca.eu/programmes",
+    "https://www.essca.eu/programmes/p01",
+    "https://www.essca.eu/programmes/p02"
+   ]
+  },
+  {
+   "name": "Phase 1 : sans la reserve, les programmes cites prendraient les trois places",
+   "reservoir": [
+    "https://www.essca.eu/programmes",
+    "https://www.letudiant.fr/essca"
+   ],
+   "payload": {
+    "discovered_campuses": [
+     {"name": "Campus Paris", "city": "Paris", "programs": [
+      {"name": "P01", "source_url": "https://www.essca.eu/programmes/p01"},
+      {"name": "P02", "source_url": "https://www.essca.eu/programmes/p02"},
+      {"name": "P03", "source_url": "https://www.essca.eu/programmes/p03"}
+     ]}
+    ]
+   },
+   "official_domain": "www.essca.eu/",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.essca.eu/programmes/p01",
+    "https://www.essca.eu/programmes/p02",
+    "https://www.essca.eu/programmes/p03"
+   ]
+  },
+  {
+   "name": "Phase 1 : une page catalogue deja citee ne compte qu'une fois",
+   "reservoir": [
+    "https://www.essca.eu/programmes",
+    "https://www.letudiant.fr/essca"
+   ],
+   "payload": {
+    "discovered_campuses": [
+     {"name": "Campus Angers", "programs": [
+      {"name": "Programme Grande Ecole", "source_url": "https://www.essca.eu/programmes/"},
+      {"name": "BBA", "source_url": "https://www.essca.eu/programmes/bba"}
+     ]}
+    ]
+   },
+   "official_domain": "www.essca.eu/",
+   "priority_urls": ["https://www.essca.eu/programmes"],
+   "limit": 3,
+   "expected": [
+    "https://www.essca.eu/programmes",
+    "https://www.essca.eu/programmes/bba",
+    "https://www.letudiant.fr/essca"
+   ]
+  },
+  {
+   "name": "Phase 1 : les autres pages catalogue concourent avec le domaine officiel",
+   "reservoir": [
+    "https://www.essca.eu/programmes",
+    "https://catalogue.essca-partenaire.fr/formations",
+    "https://www.letudiant.fr/essca",
+    "https://www.essca.eu/campus/angers"
+   ],
+   "payload": {
+    "discovered_campuses": [
+     {"name": "Campus Angers", "programs": [{"name": "Programme Grande Ecole", "source_url": null}]}
+    ],
+    "source_urls": []
+   },
+   "official_domain": "www.essca.eu/",
+   "priority_urls": [
+    "https://www.essca.eu/programmes",
+    "https://catalogue.essca-partenaire.fr/formations"
+   ],
+   "limit": 3,
+   "expected": [
+    "https://www.essca.eu/programmes",
+    "https://catalogue.essca-partenaire.fr/formations",
+    "https://www.essca.eu/campus/angers"
+   ]
+  },
+  {
+   "name": "Phase 1 : sans page catalogue, l'ordre decide s'applique tel quel",
+   "reservoir": [
+    "https://www.letudiant.fr/emlv",
+    "https://www.emlv.fr/formations",
+    "https://www.studyrama.com/emlv"
+   ],
+   "payload": {
+    "discovered_campuses": [
+     {"name": "Campus Paris La Defense", "programs": [
+      {"name": "Programme Grande Ecole", "source_url": "https://www.emlv.fr/formations/pge"}
+     ]}
+    ],
+    "source_urls": []
+   },
+   "official_domain": "emlv.fr",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.emlv.fr/formations/pge",
+    "https://www.emlv.fr/formations",
+    "https://www.letudiant.fr/emlv"
+   ]
+  },
+  {
+   "name": "Phase 1 : le repli sur la racine du domaine reste",
+   "reservoir": ["https://emlv.fr"],
+   "payload": {
+    "discovered_campuses": [
+     {"name": "Campus Paris La Defense", "programs": [{"name": "Programme Grande Ecole"}]}
+    ]
+   },
+   "official_domain": "emlv.fr",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": ["https://emlv.fr"]
+  },
+  {
+   "name": "rattachement campus : les fiches citees par les lignes, sans reserve",
+   "reservoir": [
+    "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans",
+    "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba",
+    "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans",
+    "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"
+   ],
+   "payload": {
+    "campus_attachments": [
+     {"programId": "p-pge", "campusId": "c-caen", "study_year": 1, "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"},
+     {"programId": "p-pge", "campusId": "c-paris", "study_year": 1, "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans"},
+     {"programId": "p-ibba", "campusId": "c-caen", "study_year": 1, "source_url": "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba"},
+     {"programId": "p-bm", "campusId": "c-caen", "study_year": 1, "source_url": "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"},
+     {"programId": "p-pge", "campusId": "c-le-havre", "study_year": 4, "source_url": "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-2-ou-3-ans"}
+    ],
+    "campus_policy_notes": [],
+    "collector": {"index_pages": ["https://www.em-normandie.com/programmes"], "pages_read": 4}
+   },
+   "official_domain": "www.em-normandie.com",
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.em-normandie.com/programmes/programme-grande-ecole/programme-grande-ecole-en-5-ans",
+    "https://www.em-normandie.com/programmes/international-bachelor-business-administration/ibba",
+    "https://www.em-normandie.com/programmes/bachelor-management/bachelor-en-management-en-3-ans"
+   ]
+  },
+  {
+   "name": "domaine officiel inconnu et charge absente : le reservoir dans son ordre",
+   "reservoir": [
+    "https://www.letudiant.fr/essec",
+    "https://www.essec.edu/fr/programmes",
+    "https://www.challenges.fr/essec",
+    "https://www.essec.edu/fr/admissions"
+   ],
+   "payload": null,
+   "official_domain": null,
+   "priority_urls": [],
+   "limit": 3,
+   "expected": [
+    "https://www.letudiant.fr/essec",
+    "https://www.essec.edu/fr/programmes",
+    "https://www.challenges.fr/essec"
+   ]
+  },
+  {
+   "name": "une page catalogue illisible ne prend pas la place reservee",
+   "reservoir": ["https://www.letudiant.fr/essec", "https://www.essec.edu/fr/programmes"],
+   "payload": null,
+   "official_domain": "essec.edu/fr/",
+   "priority_urls": ["", "https://www.essec.edu/fr/programmes"],
+   "limit": 3,
+   "expected": ["https://www.essec.edu/fr/programmes", "https://www.letudiant.fr/essec"]
+  }
+ ],
+ "cited": [
+  {
+   "name": "a toute profondeur, dans l'ordre de lecture",
+   "payload": {
+    "rankings": [{"source_url": "https://a.fr/1"}, {"source_url": null}],
+    "meta": {"deep": [{"x": {"source_urls": ["https://a.fr/2", "https://a.fr/3"]}}]},
+    "source_url": "https://a.fr/4"
+   },
+   "expected": ["https://a.fr/1", "https://a.fr/2", "https://a.fr/3", "https://a.fr/4"]
+  },
+  {
+   "name": "les valeurs sont rendues telles quelles : le tri vient apres",
+   "payload": {"source_urls": ["", "N/A", "https://a.fr/1"], "source_url": "  https://a.fr/2 "},
+   "expected": ["", "N/A", "https://a.fr/1", "  https://a.fr/2 "]
+  },
+  {
+   "name": "source_url non textuel et source_urls hors liste sont ignores",
+   "payload": {"source_url": ["https://a.fr/1"], "source_urls": "https://a.fr/2", "x": {"source_url": 42, "source_urls": [null, 7, "https://a.fr/3"]}},
+   "expected": ["https://a.fr/3"]
+  },
+  {
+   "name": "une charge qui est une liste",
+   "payload": [{"source_url": "https://a.fr/1"}, [{"source_urls": ["https://a.fr/2"]}]],
+   "expected": ["https://a.fr/1", "https://a.fr/2"]
+  },
+  {
+   "name": "une charge absente",
+   "payload": null,
+   "expected": []
+  },
+  {
+   "name": "les autres cles ne comptent pas (url, urls, index_pages)",
+   "payload": {"url": "https://a.fr/1", "urls": ["https://a.fr/2"], "index_pages": ["https://a.fr/3"]},
+   "expected": []
+  }
+ ],
+ "official": [
+  {"url": "https://www.em-lyon.com/fr/pge", "official_domain": "em-lyon.com", "official": true},
+  {"url": "https://em-lyon.com", "official_domain": "em-lyon.com", "official": true},
+  {"url": "https://admissions.em-lyon.com/pge", "official_domain": "em-lyon.com", "official": true},
+  {"url": "https://WWW.EM-LYON.COM/fr/pge", "official_domain": "em-lyon.com", "official": true},
+  {"url": "https://www.em-lyon.com:443/fr/pge", "official_domain": "em-lyon.com", "official": true},
+  {"url": "https://em-lyon.com.exemple.net/pge", "official_domain": "em-lyon.com", "official": false},
+  {"url": "https://fakeem-lyon.com/pge", "official_domain": "em-lyon.com", "official": false},
+  {"url": "https://exemple.net/em-lyon.com", "official_domain": "em-lyon.com", "official": false},
+  {"url": "https://exemple.net/?u=https://www.em-lyon.com", "official_domain": "em-lyon.com", "official": false},
+  {"url": "https://www.em-lyon.com@exemple.net/pge", "official_domain": "em-lyon.com", "official": false},
+  {"url": "ftp://www.em-lyon.com/pge", "official_domain": "em-lyon.com", "official": false},
+  {"url": "https://en.em-normandie.com/programmes", "official_domain": "www.em-normandie.com", "official": true},
+  {"url": "https://em-normandie.com/programmes", "official_domain": "www.em-normandie.com", "official": true},
+  {"url": "https://www.essca.eu/programmes", "official_domain": "www.essca.eu/", "official": true},
+  {"url": "https://www.em-strasbourg.com/fr/programmes", "official_domain": "em-strasbourg.com/fr", "official": true},
+  {"url": "https://www.essec.edu/en/programmes", "official_domain": "essec.edu/fr/", "official": true},
+  {"url": "https://www.em-lyon.com/fr/pge", "official_domain": "https://www.em-lyon.com/", "official": true},
+  {"url": "https://www.em-lyon.com/fr/pge", "official_domain": "EM-LYON.COM", "official": true},
+  {"url": "https://www.em-lyon.com/fr/pge", "official_domain": "", "official": false},
+  {"url": "https://www.em-lyon.com/fr/pge", "official_domain": null, "official": false},
+  {"url": "https://www.em-lyon.com/fr/pge", "official_domain": "www.", "official": false}
+ ],
+ "same_url": [
+  {"a": "https://www.em-lyon.com/fr/programmes", "b": "https://WWW.EM-LYON.COM/fr/programmes", "same": true},
+  {"a": "https://www.em-lyon.com/fr/programmes/", "b": "https://www.em-lyon.com/fr/programmes", "same": true},
+  {"a": "https://www.em-lyon.com/fr/programmes#pge", "b": "https://www.em-lyon.com/fr/programmes", "same": true},
+  {"a": "https://www.em-lyon.com/fr/programmes/#pge", "b": "https://www.em-lyon.com/fr/programmes", "same": true},
+  {"a": "https://www.em-lyon.com/", "b": "https://www.em-lyon.com", "same": true},
+  {"a": "HTTPS://www.em-lyon.com/fr/pge", "b": "https://www.em-lyon.com/fr/pge", "same": true},
+  {"a": " https://www.em-lyon.com/fr/pge\t", "b": "https://www.em-lyon.com/fr/pge", "same": true},
+  {"a": "https://www.em-lyon.com/fr/Programmes", "b": "https://www.em-lyon.com/fr/programmes", "same": false},
+  {"a": "https://www.em-lyon.com/fr/pge?lang=en", "b": "https://www.em-lyon.com/fr/pge", "same": false},
+  {"a": "https://www.em-lyon.com/fr/pge/?lang=en", "b": "https://www.em-lyon.com/fr/pge?lang=en", "same": false},
+  {"a": "http://www.em-lyon.com/fr/pge", "b": "https://www.em-lyon.com/fr/pge", "same": false},
+  {"a": "https://em-lyon.com/fr/pge", "b": "https://www.em-lyon.com/fr/pge", "same": true},
+  {"a": "https://essca.eu/en/10-campuses-around-the-world", "b": "https://WWW.essca.eu/en/10-campuses-around-the-world/", "same": true},
+  {"a": "https://www.essca.eu:443/programmes", "b": "https://essca.eu:443/programmes", "same": true},
+  {"a": "https://www2.essca.eu/programmes", "b": "https://essca.eu/programmes", "same": false},
+  {"a": "https://en.essca.eu/programmes", "b": "https://essca.eu/programmes", "same": false},
+  {"a": "https://www.essca.eu/programmes", "b": "https://www.www.essca.eu/programmes", "same": false},
+  {"a": "https://wwwessca.eu/programmes", "b": "https://essca.eu/programmes", "same": false},
+  {"a": "https://www.em-lyon.com:443/fr/pge", "b": "https://www.em-lyon.com/fr/pge", "same": false},
+  {"a": "https://www.em-lyon.com/fr/pge//", "b": "https://www.em-lyon.com/fr/pge", "same": false}
+ ]
+}

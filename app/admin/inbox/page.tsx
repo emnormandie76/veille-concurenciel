@@ -19,6 +19,7 @@ import { CONTRIBUTION_CATEGORIES, CONTRIBUTION_STATUSES, STATUS_PENDING_AI } fro
 import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
 import { describePendingAi } from "@/lib/pipeline-history";
 import { readRefreshedTicket, TICKET_REFRESH_ERROR } from "@/lib/ticket-refresh";
+import { displayedTicketSources } from "@/lib/ticket-sources";
 
 // ──────────────────────────────────────────────
 // Types
@@ -53,6 +54,8 @@ interface Ticket {
   program_name_mismatch: boolean;
   createdAt: string;
   schoolName?: string | null;
+  /** `School.official_domain`, pour le bloc « Sources » (lib/ticket-sources.ts). */
+  schoolOfficialDomain?: string | null;
   campusName?: string | null;
   programName?: string | null;
 }
@@ -241,6 +244,11 @@ export default function InboxPage() {
   };
 
   const totalPages = Math.ceil(total / LIMIT);
+  // Trois liens au plus pour un ticket du pipeline, y compris ceux écrits
+  // avant la coupe ; les contributions du public gardent toutes leurs URL.
+  const selectedSources = selectedTicket
+    ? displayedTicketSources(selectedTicket, selectedTicket.schoolOfficialDomain ?? null)
+    : [];
 
   return (
     <div>
@@ -502,11 +510,11 @@ export default function InboxPage() {
               )}
             </div>
 
-            {/* URLs source */}
-            {selectedTicket.urls.length > 0 && (
+            {/* URLs source : trois au plus pour un ticket du pipeline (lib/ticket-sources.ts) */}
+            {selectedSources.length > 0 && (
               <div style={{ marginBottom: "16px" }}>
                 <p style={{ fontWeight: 600, marginBottom: "6px", fontSize: "0.9rem" }}>Sources :</p>
-                {selectedTicket.urls.map((url, i) => (
+                {selectedSources.map((url, i) => (
                   <a
                     key={i}
                     href={url}

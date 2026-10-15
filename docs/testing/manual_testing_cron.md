@@ -192,6 +192,13 @@ L'écran est décrit en entier dans
 3. **Résultat attendu** : toast de succès, la tâche apparaît dans « Tâches en cours ». Le résultat du job porte `campus_attachments: {"status": "disabled"}` si la case était décochée.
 4. Si l'extraction Gemini échoue (503), le résultat porte `parked_report_ticket_id` : le rapport Research est rangé dans un ticket `Failed`, et relancer la même école le reprend sans repayer Research (`research_report_reused: true`).
 5. Sur une école **déjà cartographiée**, la Phase 1 ne dépose un ticket que pour ce qui manque en base, noms réécrits à l'orthographe de la base, avec un bloc `diff_against_base`. Rien de nouveau → **aucun ticket**, résultat `no_new_discoveries: true` — Research a quand même été payé.
+6. **Dans l'inbox** (`/admin/inbox`), le ticket déposé : le bloc **« Sources »** montre **trois liens au plus** (tâche « trois sources » du 15 octobre 2026, [`architecture.md`](../architecture/architecture.md) §5.6 et §7.4).
+   - **Phase 1** : la page catalogue en premier quand la passe en a trouvé une, puis les pages citées par les programmes ; sans catalogue, les pages citées, puis celles du domaine officiel, puis les autres sources de Tavily.
+   - **Phase 2** : la page citée par la donnée (`source_url`), puis celles du domaine officiel (sous-domaines compris : `en.em-normandie.com`), puis les autres ; un classement qui porte sa propre URL n'en montre qu'une.
+   - **Rattachement campus** : les trois premières fiches citées par les lignes.
+   - **Ce qui ne change pas** : les liens par ligne (« URL source » d'un tarif, d'un classement ou des statistiques, voies de capacité, accréditations, lignes de rattachement) ; les URL d'une **contribution du public**, toutes affichées.
+   - **Tickets écrits avant la coupe** (le ticket ESSCA `28f121aa…` de `dev`, 28 URL) : la base garde toutes leurs URL, l'écran n'en montre que trois, la première (la page catalogue) en tête pour une découverte.
+   - **En base** (MCP Neon, `SELECT`) : `cardinality(urls)` vaut 3 au plus pour un ticket neuf du pipeline ; un rapport rangé (`Failed`) garde toutes ses sources, la reprise en a besoin.
 
 ---
 

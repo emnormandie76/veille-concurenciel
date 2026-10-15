@@ -60,6 +60,7 @@ from backend.pipeline.attachment_plan import (
     plan_ticket_writes,
 )
 from backend.pipeline.campus_attachment import build_rows
+from backend.pipeline.ticket_sources import select_ticket_sources
 
 logger = logging.getLogger("pipeline.campus_attachment_collector")
 
@@ -666,7 +667,7 @@ def run_campus_attachment_step(
 
     if progress:
         progress("Rattachement campus : depot du ticket")
-    urls = sorted(
+    fiche_urls = sorted(
         {c["source_url"] for c in claims if c.get("source_url")}
     ) or list(index_pages)
     payload = {
@@ -687,6 +688,11 @@ def run_campus_attachment_step(
             "extraction_failures": rows["run"]["extraction_failures"],
         },
     }
+    # Trois liens au plus (ticket_sources.py) : les fiches citees par les
+    # lignes, dans l'ordre des lignes, puis le domaine officiel. Pas de place
+    # reservee a la page catalogue ici (decision du proprietaire du 15 octobre
+    # 2026) ; chaque ligne garde son `source_url` dans la charge.
+    urls = select_ticket_sources(fiche_urls, payload, official_domain=snapshot.official_domain)
     ticket_id = emit_ticket(payload, urls)
     logger.info(
         "🧭 Rattachement campus de %s : ticket %s (%s)",

@@ -62,10 +62,12 @@ export async function GET(request: Request) {
 
     // Charger les noms correspondants en parallèle
     const [schools, campuses, programs] = await Promise.all([
+      // Le domaine officiel sert au bloc « Sources » d'un ticket du pipeline
+      // écrit avant la coupe à trois liens (lib/ticket-sources.ts).
       schoolIds.length > 0
         ? prisma.school.findMany({
             where: { id: { in: schoolIds } },
-            select: { id: true, name: true },
+            select: { id: true, name: true, official_domain: true },
           })
         : [],
       campusIds.length > 0
@@ -84,6 +86,7 @@ export async function GET(request: Request) {
 
     // Créer des maps indexées par ID pour récupération en O(1)
     const schoolMap = new Map(schools.map((s) => [s.id, s.name]));
+    const schoolDomainMap = new Map(schools.map((s) => [s.id, s.official_domain]));
     const campusMap = new Map(campuses.map((c) => [c.id, c.name]));
     const programMap = new Map(programs.map((p) => [p.id, p.name]));
 
@@ -91,6 +94,7 @@ export async function GET(request: Request) {
     const enrichedTickets = tickets.map((t) => ({
       ...t,
       schoolName: t.schoolId ? (schoolMap.get(t.schoolId) ?? null) : null,
+      schoolOfficialDomain: t.schoolId ? (schoolDomainMap.get(t.schoolId) ?? null) : null,
       campusName: t.campusId ? (campusMap.get(t.campusId) ?? null) : null,
       programName: t.programId ? (programMap.get(t.programId) ?? null) : null,
     }));

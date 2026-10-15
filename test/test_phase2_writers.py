@@ -106,7 +106,7 @@ def test_un_ticket_par_classement_relies_par_un_meme_groupe(inbox, monkeypatch):
             _ranking("Les Echos", 9, hint="MSc Supply Chain"),
         ]},
         school_id="s-normandie", programs=PROGRAMS,
-        source_urls=["https://rapport/1", "https://rapport/2"], raw_report="RAPPORT",
+        source_urls=["https://rapport/1", "https://rapport/2"], raw_report="RAPPORT", official_domain="em-normandie.com",
     )
 
     assert (created, unchanged) == (3, 0)
@@ -124,7 +124,7 @@ def test_deux_rapports_deux_groupes(inbox, monkeypatch):
     for rank in (32, 33):
         _write_ranking_tickets(
             extracted={"rankings": [_ranking("Financial Times", rank)]},
-            school_id="s-normandie", programs=PROGRAMS, source_urls=[], raw_report="R",
+            school_id="s-normandie", programs=PROGRAMS, source_urls=[], raw_report="R", official_domain="em-normandie.com",
         )
 
     assert len({t["submission_group_id"] for t in inbox.tickets}) == 2
@@ -143,7 +143,7 @@ def test_ce_qui_n_est_pas_ecrit_ne_fait_pas_de_ticket(inbox, monkeypatch):
             _ranking("Challenges", 5),                                  # identique à la production
             "pas un dict",
         ]},
-        school_id="s-normandie", programs=PROGRAMS, source_urls=[], raw_report="R",
+        school_id="s-normandie", programs=PROGRAMS, source_urls=[], raw_report="R", official_domain="em-normandie.com",
     )
 
     assert (created, unchanged) == (1, 1)
@@ -155,7 +155,7 @@ def test_une_extraction_ranking_vide_ne_fait_rien(inbox, monkeypatch):
 
     for extracted in ({}, {"rankings": []}, {"rankings": "texte"}):
         assert _write_ranking_tickets(
-            extracted=extracted, school_id="s", programs=PROGRAMS, source_urls=[], raw_report="R",
+            extracted=extracted, school_id="s", programs=PROGRAMS, source_urls=[], raw_report="R", official_domain="em-normandie.com",
         ) == (0, 0)
     assert inbox.tickets == []
 
@@ -177,7 +177,7 @@ def test_capacity_un_seul_ticket_portant_toutes_les_voies(inbox, monkeypatch):
 
     result = _write_capacity_ticket(
         extracted={"capacities": capacities}, school_id="s-normandie",
-        program_campus=PROGRAM_CAMPUS, source_urls=["https://x"], raw_report="R",
+        program_campus=PROGRAM_CAMPUS, source_urls=["https://x"], raw_report="R", official_domain="em-normandie.com",
     )
 
     assert result == (1, 0)
@@ -202,7 +202,7 @@ def test_capacity_inchangee_aucun_ticket(inbox, monkeypatch):
             {"academic_year": 2026, "spots_available": 90},
             {"academic_year": 2027, "spots_available": 120},
         ]},
-        school_id="s", program_campus=PROGRAM_CAMPUS, source_urls=[], raw_report="R",
+        school_id="s", program_campus=PROGRAM_CAMPUS, source_urls=[], raw_report="R", official_domain="em-normandie.com",
     )
 
     assert result == (0, 1)
@@ -217,7 +217,7 @@ def test_capacity_changee_sur_l_annee_la_plus_recente(inbox, monkeypatch):
 
     result = _write_capacity_ticket(
         extracted={"capacities": [{"academic_year": 2027, "spots_available": 120}]},
-        school_id="s", program_campus=PROGRAM_CAMPUS, source_urls=[], raw_report="R",
+        school_id="s", program_campus=PROGRAM_CAMPUS, source_urls=[], raw_report="R", official_domain="em-normandie.com",
     )
 
     assert result == (1, 0)
@@ -229,6 +229,6 @@ def test_capacity_vide_aucun_ticket(inbox, monkeypatch):
     for extracted in ({}, {"capacities": []}, {"capacities": ["pas un dict"]}):
         assert _write_capacity_ticket(
             extracted=extracted, school_id="s", program_campus=PROGRAM_CAMPUS,
-            source_urls=[], raw_report="R",
+            source_urls=[], raw_report="R", official_domain="em-normandie.com",
         ) == (0, 0)
     assert inbox.tickets == []

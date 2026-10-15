@@ -136,9 +136,23 @@ Chantier « backend local sur demande »
   plus 3 liens dans le bloc « Sources » (URL citées par les données, puis
   domaine officiel et catalogue, puis le reste, sans doublon), coupés à
   l'écriture du ticket et plafonnés dans l'inbox ; liens par ligne et
-  contributions du public inchangés ;
-- prochaine : **tâche hors plan « trois sources »**, tests d'abord, puis la
-  **recette de bout en bout** sur `dev` (prompts remis au propriétaire).
+  contributions du public inchangés ; en Phase 1, la première page catalogue
+  tient la première place ;
+- tâche hors plan **« trois sources »** codée le 15 octobre, tests d'abord :
+  `backend/pipeline/ticket_sources.py` (une fonction pure, appliquée par
+  `_insert_ticket` en Phase 2, par le ticket `Program_Discovery` de la Phase 1
+  et par le rattachement campus ; pas au rapport rangé), reflet
+  `lib/ticket-sources.ts` pour l'inbox, cas partagés
+  `test/fixtures/ticket_sources_cases.json` ; `GET /api/admin/inbox` rend
+  `schoolOfficialDomain`. Aucun appel payant, aucun backend lancé. Vérifiée
+  dans Chrome sur `dev`, avec l'accord du propriétaire (`npm run dev` seul) :
+  le ticket ESSCA n'affiche que 3 sources sur 28. Puis, sur décision du
+  propriétaire (option A), un `www.` de tête ne distingue plus deux URL dans la
+  règle des doublons (`essca.eu` cité, `www.essca.eu` chez Tavily) ; 722 tests
+  Python et 542 TypeScript, verts aussi sous garde réseau. Le propriétaire
+  demande le commit et le push : tâche tenue pour validée ;
+- prochaine : la **recette de bout en bout** sur `dev` (prompt remis au
+  propriétaire).
 
 L'étape en cours se lit dans le journal du plan (§11).
 

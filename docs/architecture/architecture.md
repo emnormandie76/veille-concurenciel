@@ -17,6 +17,9 @@
 > backend sur le poste, plus de Koyeb), et le déploiement dans
 > [`memory-deploiement-vercel.md`](../memory/memory-deploiement-vercel.md) ;
 > smoke joué contre `npm run dev` (§10 bis).
+> Tâche « trois sources » (15 octobre 2026) : le bloc « Sources » d'un ticket
+> du pipeline porte au plus trois liens, coupés à l'écriture et plafonnés dans
+> l'inbox (§5.6, §7.4) ; les contributions du public n'y passent pas (§6.2).
 > Depuis la v2.0 : les deux crons Research (`phase1_scanner`, `phase2_enricher`)
 > sont remplacés par une **rotation nocturne** sous plafond mensuel (§5.5) ; une
 > passe automatique ne repaie pas une cible dont le ticket attend l'admin
@@ -345,6 +348,7 @@ appVC/
 │   ├── campus-attachment.ts            # Plan et écriture du rattachement campus (types AttachmentTx, PolicyNoteTx)
 │   ├── trigger-research.ts             # Corps d'une recherche ciblée (interrupteur de collecte)
 │   ├── rotation-status.ts              # Bloc `rotation` de pipeline-status, corps et rapport de run-due-passes, sans React
+│   ├── ticket-sources.ts               # Bloc « Sources » de l'inbox : trois liens d'un ticket du pipeline, reflet de ticket_sources.py (§5.6)
 │   └── utils.ts
 │
 ├── backend/                            # ── FASTAPI (Python) ──────────────────────
@@ -374,6 +378,7 @@ appVC/
 │   │   ├── diff.py                     # has_data_changed() : ticket seulement si la donnée a bougé
 │   │   ├── pending_guard.py            # Cibles dont un ticket du pipeline attend l'admin (garde des passes automatiques)
 │   │   ├── discovery_diff.py           # Phase 1 différentielle : ne garder que ce qui manque en base (pur)
+│   │   ├── ticket_sources.py           # Les trois sources d'un ticket du pipeline : citées → officielles → Tavily (pur, §5.6)
 │   │   ├── campus_attachment_collector.py  # Collecte du rattachement : /map → /extract → Gemini → lignes
 │   │   ├── campus_attachment.py        # Règles pures : gardes de page, F8, régime, libellés, clé de campus
 │   │   ├── program_identity.py         # Appariement fiche du site → Program (clauses fermées)
@@ -415,13 +420,15 @@ appVC/
 │   ├── test_ranking_program_match.py · test_pending_guard.py · test_discovery_diff.py
 │   ├── test_rotation_plan.py · test_research_rotation_job.py · test_rotation_status.py
 │   ├── test_internal_run_due_passes.py · test_startup.py · test_usage_sync.py · test_db_driver.py
+│   ├── test_ticket_sources.py · ticket-sources.test.ts   # Trois sources par ticket (§5.6), même fichier de cas
 │   ├── campus-attachment.test.ts · contribution.test.ts · trigger-research.test.ts · rotation-status.test.ts
 │   ├── internal-api.test.ts · backend-state.test.ts · pipeline-history.test.ts · migration-plan.test.ts
 │   ├── local-launcher.test.ts          # npm run backend et scripts/start-local.ps1, lus sans rien lancer
-│   ├── api/                            # routes Next.js : admin-guards.test.ts (statique) · inbox-ticket · pipeline-status
+│   ├── api/                            # routes Next.js : admin-guards.test.ts (statique) · inbox-ticket · inbox-list · pipeline-status
 │   │                                   #   · trigger-research · run-due-passes · pipeline-jobs
 │   ├── helpers/                        # banc des routes : fake-prisma.ts · session.ts · fake-backend.ts (§10 bis, Tests)
-│   └── fixtures/attachment_plan_cases.json    # 21 cas lus par les deux suites
+│   ├── fixtures/attachment_plan_cases.json    # 21 cas lus par les deux suites
+│   └── fixtures/ticket_sources_cases.json     # Trois sources : 22 sélections, 6 relevés, 21 domaines, 20 doublons, lus par les deux suites
 │
 └── .github/workflows/ci.yml            # §10 bis
 ```
@@ -987,7 +994,8 @@ Lire School (doit être ACTIVE)
        RIEN DE NOUVEAU → pas de ticket, rapport rangé repris supprimé,
                          succès « no_new_discoveries », STOP
        BASE ILLISIBLE  → ticket complet, diff_against_base.error
- ──► INSERT ContributionInbox(Program_Discovery, Pending_Admin, raw_report, urls = catalogue + sources)
+ ──► INSERT ContributionInbox(Program_Discovery, Pending_Admin, raw_report,
+       urls = 3 liens : page catalogue en tête, puis citées, officielles, Tavily — §5.6)
        et suppression du rapport rangé repris, dans la même transaction
  ──► Rattachement campus — SEULEMENT si demandé (§5.4)
  ──► ⏸️ STOP — attente de la validation admin
@@ -999,7 +1007,9 @@ chacun) sont partis avec l'échec : ils n'étaient enregistrés qu'avec le ticke
 Désormais, une extraction indisponible, en erreur ou de forme inattendue range
 le rapport dans un ticket `Failed` (`raw_report`, charge
 `parked_reason: "research_report_parked"`, dernière erreur, nombre de
-tentatives). La passe suivante de la même école — manuelle ou passe due — le reprend
+tentatives, et **toutes** les sources Research dans `urls` : la reprise les
+relit, et la coupe à trois liens ne se fait que sur le ticket qu'elle écrit,
+§5.6). La passe suivante de la même école — manuelle ou passe due — le reprend
 tant qu'il a moins de `PARKED_REPORT_MAX_AGE_DAYS` (7) jours. Un nouvel échec
 s'inscrit sur le même ticket sans en créer un second. Rejeter ce ticket dans
 l'inbox empêche qu'il soit repris. Une panne de lecture ou d'écriture de ce
@@ -1112,8 +1122,8 @@ Charger l'école, ses programmes et ses arêtes (connexion courte, puis fermée)
    ──► Tavily Research (pro ou mini, voir tableau) → rapport rédigé
    ──► Extraction Gemini (plancher de la catégorie)
    ──► Diff vs production (has_data_changed) : IDENTIQUE → pas de ticket (Edge Case 10)
-   ──► INSERT ContributionInbox(Pending_Admin, raw_report) — un ticket par entrée
-       pour les catégories à liste, reliés par submission_group_id
+   ──► INSERT ContributionInbox(Pending_Admin, raw_report, urls = 3 liens — §5.6)
+       — un ticket par entrée pour les catégories à liste, reliés par submission_group_id
    Recherche ou extraction en échec → motif compté, cible suivante
  Bilan : success = aucune cible en échec (D2)
 ```
@@ -1270,6 +1280,7 @@ Instantané de la base : Program, Campus, arêtes et lignes-années de l'école
        divergentes → aucune ligne, conflit remonté
  ──► Plan (attachment_plan.py) : create / update / unchanged / stale
  ──► Ticket Program_Discovery + campus_attachments, SEULEMENT si create + update > 0
+       (urls = les 3 premières fiches citées par les lignes — §5.6)
 ```
 
 **Écriture (`PUT /api/admin/inbox/[id]/attachments`, `guardAuth`)** — l'admin
@@ -1530,6 +1541,68 @@ trois mois. Le volume de tickets qui en sort (jusqu'à 30 à 40 au premier
 passage d'une école) dépasse la capacité de validation prévue : à mesurer dès
 les premiers mois (plan, §3).
 
+### 5.6. Les sources d'un ticket : trois liens
+
+La colonne `urls` d'un ticket `Automated_AI` est le bloc « Sources » de
+l'inbox. Elle portait toutes les pages lues par Tavily Research (28 pour le
+ticket ESSCA de la branche `dev`, 25 pour un classement d'Em Normandie), sans
+dire laquelle prouvait la donnée. `validate` ne la lit pas : la couper ne
+change aucune donnée de production. **Décisions du propriétaire du 15 octobre
+2026** (journal du plan backend-local, §11) :
+
+- **au plus 3 liens**, quitte à ce que des informations ne soient plus
+  vérifiables (Edge Case 41) ;
+- choisis **dans cet ordre, sans doublon** : les URL citées par les données
+  extraites, puis le domaine officiel de l'école (et la page catalogue en
+  Phase 1), puis le reste, dans l'ordre de Tavily ;
+- **en Phase 1, la première page catalogue tient la première place** : un
+  ticket `Program_Discovery` porte vingt à trente programmes qui citent chacun
+  leur page, et les URL citées prendraient sinon les trois places ;
+- coupés **à l'écriture**, par **une seule fonction**,
+  `select_ticket_sources()` (`backend/pipeline/ticket_sources.py`, pure) ;
+  l'inbox plafonne en plus les tickets écrits avant (§7.4) ;
+- les **liens par ligne restent** dans la charge : `source_url` de chaque
+  programme, accréditation, ligne de rattachement, entrée de classement ;
+- les **contributions du public** ne passent jamais par là (§6.2).
+
+| Écriture | Réservoir (ce qui était stocké) | Citées | Place réservée |
+|---|---|---|---|
+| Phase 2, `_insert_ticket` (seul point d'écriture, §5.3) | sources Research ; pour un classement qui porte sa propre URL, cette seule URL : il en garde une | `source_url` de la charge (Pricing, SchoolStats), des entrées (Ranking, Capacity) et des accréditations | — |
+| Phase 1, ticket `Program_Discovery` (§5.1) | pages catalogue + sources Research (à défaut `source_urls` de l'extraction, à défaut `https://<domaine>`) | `discovered_campuses[].programs[].source_url`, `source_urls` | la première page catalogue |
+| Rattachement campus, `run_campus_attachment_step` (§5.4) | fiches citées par les lignes, triées (à défaut la page catalogue) | `source_url` des lignes, dans leur ordre | — |
+| Rapport rangé, `_park_report` (§5.1) | **pas coupé** : la reprise relit sa liste entière, puis écrit un ticket coupé | | |
+
+**Ordre exact** : la première URL prioritaire (le catalogue) → les URL citées
+(clés `source_url` ou `source_urls`, à toute profondeur de la charge, dans
+l'ordre de lecture) → les autres pages catalogue et les URL du réservoir sur
+le domaine officiel → le reste du réservoir. La coupe **n'ajoute rien** : elle
+choisit parmi ces listes, sans compléter avec la racine du domaine.
+
+- **Doublons** : même URL au schéma et à la casse de l'hôte près (RFC 3986,
+  §3.1 et §3.2.2), à un `www.` de tête de l'hôte près, au fragment `#…` près et
+  à une `/` finale près ; la première écriture reste. Le `www.` est une
+  décision du propriétaire du 15 octobre 2026 (option A) : sur le ticket
+  ESSCA, l'extraction cite `https://essca.eu/…` et Tavily donne
+  `https://www.essca.eu/…`, et une même page prenait deux des trois places. Un
+  seul `www.`, en tête seulement : `www2.` et `en.` restent distincts. Ni le
+  chemin, ni la requête, ni le port ne sont normalisés.
+- **Domaine officiel** : l'hôte ou un de ses sous-domaines, jamais une
+  sous-chaîne (`em-lyon.com.exemple.net` n'est pas officiel). La colonne
+  `official_domain` varie (`www.essca.eu/`, `em-strasbourg.com/fr`,
+  `www.em-normandie.com`) : le schéma, le chemin, le port et un `www.` de tête
+  sont retirés, sans quoi `en.em-normandie.com` ne serait pas officiel pour
+  Em Normandie. `official_domain` est un argument **obligatoire** de
+  `_insert_ticket` et des deux écrivains Ranking et Capacity : un oubli ferait
+  disparaître ce groupe en silence.
+- **Écartées** : tout ce qui n'est pas une chaîne `http(s)://` avec un hôte ;
+  les blancs ASCII autour d'une URL sont retirés. Seul l'ASCII est replié en
+  minuscules, des deux côtés.
+
+`lib/ticket-sources.ts` en est le reflet TypeScript ;
+`test/fixtures/ticket_sources_cases.json` (22 sélections, 6 relevés de
+citations, 21 domaines, 20 doublons, attendus écrits à la main) est lu par
+`test/test_ticket_sources.py` et `test/ticket-sources.test.ts`.
+
 ---
 
 ## 6. Workflow A : Crowdsourcing Utilisateur
@@ -1597,6 +1670,14 @@ Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière su
 > Une page qui donne plusieurs années ne fournit qu'une année au ticket, sans
 > règle « la plus récente » dans la consigne (le risque de C1, en moins grave :
 > aucune suppression, mais une année perdue en silence). Voir le journal du plan.
+
+**Les URL d'une contribution ne sont jamais coupées.** La coupe à trois liens
+des tickets du pipeline (§5.6) ne s'applique pas ici : `POST /api/contribute`
+écrit les URL soumises telles que validées (§10.2), le traitement les extrait
+(cinq au plus par extraction, le surplus part dans `ignored_urls`) et ne
+réécrit jamais la colonne `urls`, et l'inbox les affiche toutes (§7.4).
+`test_ticket_sources.py` le tient : aucun module de `backend/crowdsourcing/`
+n'importe la coupe, et une contribution à cinq URL les garde toutes.
 
 #### File d'attente
 
@@ -1734,6 +1815,34 @@ backend-local, étape 7, décisions 11 à 14) :
 Reste connu et accepté (décision 10) : un JSON mal formé ou `null` donne 500 au
 lieu de 400 sur ces routes et sur `create-programs`. Rien n'est écrit dans ce
 cas, et le back-office envoie toujours du JSON valide.
+
+**Le bloc « Sources » d'un ticket** (tâche « trois sources », §5.6). La
+logique vit dans `lib/ticket-sources.ts`, testée sans serveur
+(`test/ticket-sources.test.ts`) ; `displayedTicketSources()` décide :
+
+- **contribution du public** (`User_Submission`) : toutes ses URL, dans leur
+  ordre ;
+- **ticket du pipeline qui porte au plus 3 liens** : tel qu'écrit. C'est le cas
+  de tout ticket écrit depuis la coupe. Lui réappliquer la sélection pourrait y
+  faire entrer une URL citée que l'écriture n'avait pas retenue, d'autant que
+  la charge relue en `jsonb` n'a plus l'ordre de ses clés (les clés courtes
+  d'abord : `source_urls` avant `discovered_campuses`) ;
+- **au-delà** (tickets écrits avant la coupe, rapports rangés) : les 3 liens
+  que choisit `selectTicketSources`, reflet de la fonction Python. Pour une
+  découverte de Phase 1, la **première URL** tient la place réservée au
+  catalogue : la Phase 1 a toujours écrit ses pages catalogue en tête. Une
+  découverte écrite sans catalogue n'en a pas laissé de marque : sa première
+  source Tavily prend alors cette place.
+
+Le domaine officiel vient de `GET /api/admin/inbox`, qui rend désormais
+`schoolOfficialDomain` à côté de `schoolName`, lus dans la même requête
+(`test/api/inbox-list.test.ts`). La colonne `urls` n'est jamais réécrite en
+base : un ticket d'avant la coupe garde toutes ses sources, seul l'écran les
+plafonne. Les liens par ligne ne changent pas : « URL source » d'un tarif,
+d'un classement ou des statistiques, lien d'une voie de capacité, d'une
+accréditation, d'une ligne de rattachement. Le formulaire d'une découverte
+n'en a jamais affiché : les `source_url` des programmes restent dans la
+charge.
 
 **Deux blocs de la carte « État du Pipeline IA »** (tâche C1 à C4), nourris par
 des fonctions pures de `lib/`, testées sans serveur (`test/crowdsourcing-status.test.ts`) :
@@ -1940,6 +2049,7 @@ Format : `{ "error": "Description" }`
 | 38 | `/v1/schools/[id]/pricing` et `/v1/rankings` toujours en 500 (`program.campus`) ; `?page=abc` → 500 | Filtre par l'école du programme ; pagination illisible → défaut ; requêtes des tests relues contre le schéma (§8.4, §8.8, §10 bis) | `app/api/v1/**`, `lib/utils.ts` |
 | 39 | `localhost.` et `[::ffff:127.0.0.1]` passaient la garde des hôtes internes | Point final retiré, IPv4 encapsulée ramenée à sa forme pointée (§10.2) | `lib/utils.ts` |
 | 40 | Contribution à plusieurs accréditations supprimée sur une réponse juste (C1) ; ticket repayé à chaque passage sur une panne d'API (C3) ; sort d'une contribution perdu hors de la console (C2) | Un ticket `accreditations[]` ; cascade épuisée et Gemma en panne → ticket qui attend (`retry_not_before_epoch`), sans tentative consommée ; `scheduler.crowdsourcing.last_processed` (§6.2) | `crowdsourcing/processor.py`, `scheduler/jobs.py` |
+| 41 | Bloc « Sources » d'un ticket du pipeline à 25 ou 28 liens, dont aucun ne dit lequel prouve la donnée ; une fois coupé à trois, une donnée peut ne plus être vérifiable depuis l'inbox | Trois liens, citées → officielles (catalogue en tête en Phase 1) → Tavily, coupés à l'écriture et plafonnés à l'écran ; risque accepté par le propriétaire ; liens par ligne et `raw_report` gardés (§5.6, §7.4) | `pipeline/ticket_sources.py`, `lib/ticket-sources.ts` |
 
 ---
 
@@ -2348,9 +2458,14 @@ l'étape 5, 379 et 122 ; après l'étape 6, 379 et 128. **Au 14 octobre 2026,
 après l'étape 7 : 570 tests Python (+25 sous-tests) et 482 tests TypeScript**,
 puis 571 Python le 15 octobre (test d'horloge ci-dessous) ; après l'étape 8,
 571 et 483 (règle du smoke, ci-dessous) ; puis 571 et 491 (`/api-docs` et
-titres des pages, ci-dessous) ; **après la tâche C1 à C4 (15 octobre 2026) :
-635 Python (+25 sous-tests) et 507 TypeScript**, tous verts. Les deux suites lisent des fixtures communes quand une règle existe
-en deux langages (`test/fixtures/attachment_plan_cases.json`).
+titres des pages, ci-dessous) ; après la tâche C1 à C4 (15 octobre 2026),
+635 Python (+25 sous-tests) et 507 TypeScript ; **après la tâche « trois
+sources » (15 octobre 2026), doublons `www.` compris : 722 Python (+25
+sous-tests) et 542 TypeScript**,
+tous verts, aussi sous garde réseau (0 tentative). Les deux suites lisent des
+fixtures communes quand une règle existe en deux langages
+(`test/fixtures/attachment_plan_cases.json`,
+`test/fixtures/ticket_sources_cases.json`).
 
 **Les parties non couvertes** (étape 7 du plan backend-local). Chaque fichier
 est né d'un défaut possible. Les défauts trouvés ont donné lieu à quatorze
@@ -2444,6 +2559,27 @@ exercées une fois à la main contre un faux `/health` (§10.6).
 Les tests de l'étape 5 ont été vus en échec avant le code : sans
 `FASTAPI_URL`, les routes appelaient `http://localhost:8000` ; sans jeton,
 elles appelaient le backend quand même.
+
+**Trois sources par ticket** (tâche hors plan du 15 octobre 2026, §5.6), sans
+base ni réseau, vus en échec avant le code :
+
+- `test/test_ticket_sources.py` : les cas partagés ; la vraie
+  `run_phase2_research` (12 sources → 3, domaine lu dans `School`), les
+  écrivains Ranking (une URL propre → une seule) et Capacity, `_insert_ticket`
+  sans domaine → `TypeError` ; la vraie `run_phase1_research` (catalogue en
+  tête devant 26 programmes cités, liens par ligne gardés dans la charge,
+  repli sur la racine, rapport rangé à 12 sources gardé entier, reprise →
+  ticket à 3) ; `run_campus_attachment_step` (ordre des lignes, sans
+  réserve) ; une contribution à 5 URL les garde toutes, et
+  `backend/crowdsourcing/` n'importe pas la coupe ;
+- `test/ticket-sources.test.ts` : le reflet sur les mêmes cas ; l'affichage
+  (`Automated_AI` à 12 URL → 3, `User_Submission` à 5 → 5, ticket déjà coupé
+  tel qu'écrit, découverte d'avant la coupe avec son catalogue en tête,
+  rattachement sans réserve, rapport rangé, domaine inconnu) ; le bloc de
+  l'inbox branché sur `displayedTicketSources`, `POST /api/contribute` sans
+  la coupe ;
+- `test/api/inbox-list.test.ts` : `GET /api/admin/inbox` rend
+  `schoolOfficialDomain`, lu dans la même requête que le nom.
 
 **Une Phase 2 qui dit la vérité** (étape 4, §5.3), sans base ni réseau :
 `test/test_phase2_outcomes.py` fait tourner la vraie `run_phase2_research`

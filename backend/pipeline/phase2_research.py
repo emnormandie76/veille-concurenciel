@@ -52,6 +52,12 @@ une école dont toutes les cibles avaient échoué n'était pas reprise avant
 182 jours. Chaque cible rend désormais un motif ; une seule cible en échec
 fait échouer la passe (décision D2 de docs/features/backend-local.md).
 
+**Trois sources par ticket.** `urls`, le bloc « Sources » de l'inbox, portait
+toutes les pages lues par Research. `_insert_ticket` n'en garde que trois
+(ticket_sources.py, décisions du propriétaire du 15 octobre 2026) : les URL
+citées par la charge, puis le domaine officiel, puis l'ordre de Tavily. Le
+`source_url` de chaque entrée reste dans la charge.
+
 Référence : dossier « Le rapport avant le schéma », sections 04, 05 et 11.
 """
 
@@ -77,6 +83,7 @@ from backend.ai.extraction_schemas import (
 from backend.pipeline.diff import has_data_changed
 from backend.pipeline.pending_guard import read_pending_targets
 from backend.pipeline.program_identity import MATCH_AMBIGUOUS, match_program
+from backend.pipeline.ticket_sources import select_ticket_sources
 from backend.ai.research_prompts import (
     build_pricing_research_input,
     build_ranking_research_input,
@@ -253,6 +260,7 @@ def _insert_ticket(
     payload: dict,
     source_urls: list[str],
     raw_report: str | None,
+    official_domain: str | None,
     program_id: str | None = None,
     campus_id: str | None = None,
     program_campus_id: str | None = None,
@@ -264,6 +272,12 @@ def _insert_ticket(
     `raw_report` porte le rapport Tavily intégral : l'admin arbitre sur pièces,
     et la donnée reste ré-extractible si le schéma évolue — sans repayer un
     appel `pro`.
+
+    `urls`, le bloc « Sources » de l'inbox, ne garde que trois liens de
+    `source_urls` (ticket_sources.py) : les URL citées par `payload`, puis le
+    domaine officiel, puis l'ordre de Tavily. `official_domain` est obligatoire
+    pour qu'un oubli ne fasse pas disparaître ce groupe en silence. Seul point
+    d'écriture de la Phase 2 : tous ses tickets passent par cette coupe.
     """
     from backend.db import get_db_connection
 
@@ -288,7 +302,7 @@ def _insert_ticket(
                     json.dumps(payload),
                     bool(payload.get("year_assumed", False)),
                     bool(payload.get("data_conflict_warning", False)),
-                    source_urls,
+                    select_ticket_sources(source_urls, payload, official_domain=official_domain),
                     submission_group_id,
                     raw_report,
                 ),
@@ -678,6 +692,7 @@ def run_phase2_research(
                 programs=programs,
                 source_urls=source_urls,
                 raw_report=report,
+                official_domain=official_domain,
             )
             tickets_created += created
             tally.add_unchanged(category, unchanged)
@@ -691,6 +706,7 @@ def run_phase2_research(
                 payload=extracted,
                 source_urls=source_urls,
                 raw_report=report,
+                official_domain=official_domain,
             )
             tickets_created += 1
         else:
@@ -735,6 +751,7 @@ def run_phase2_research(
                     payload=extracted,
                     source_urls=source_urls,
                     raw_report=report,
+                    official_domain=official_domain,
                 )
                 tickets_created += 1
             else:
@@ -778,6 +795,7 @@ def run_phase2_research(
                 program_campus=pc,
                 source_urls=source_urls,
                 raw_report=report,
+                official_domain=official_domain,
             )
             tickets_created += created
             tally.add_unchanged(category, unchanged)
@@ -820,6 +838,7 @@ def _write_ranking_tickets(
     programs: list[dict],
     source_urls: list[str],
     raw_report: str,
+    official_domain: str | None,
 ) -> tuple[int, int]:
     """
     Un ticket par classement extrait, relié aux autres par submission_group_id.
@@ -881,6 +900,8 @@ def _write_ranking_tickets(
             unchanged += 1
             continue
 
+        # Un classement qui porte sa propre URL ne garde qu'elle : la coupe
+        # choisit dans cette liste, elle n'y ajoute rien.
         entry_urls = [entry["source_url"]] if entry.get("source_url") else source_urls
         _insert_ticket(
             category="Ranking",
@@ -889,6 +910,7 @@ def _write_ranking_tickets(
             payload=entry,
             source_urls=entry_urls,
             raw_report=raw_report,
+            official_domain=official_domain,
             submission_group_id=group_id,
         )
         created += 1
@@ -911,6 +933,7 @@ def _write_capacity_ticket(
     program_campus: dict,
     source_urls: list[str],
     raw_report: str,
+    official_domain: str | None,
 ) -> tuple[int, int]:
     """
     Un seul ticket portant le tableau des voies d'admission. Rend (tickets
@@ -962,6 +985,7 @@ def _write_capacity_ticket(
         payload=payload,
         source_urls=source_urls,
         raw_report=raw_report,
+        official_domain=official_domain,
     )
     logger.info(
         "🎟️ Capacity : %d voie(s) d'admission → 1 ticket pour %s @ %s",

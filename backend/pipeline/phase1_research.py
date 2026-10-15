@@ -132,6 +132,7 @@ from backend.ai.extraction_schemas import (
 from backend.ai.research_prompts import build_phase1_research_input
 from backend.constants import STATUS_FAILED
 from backend.pipeline.discovery_diff import filter_new_discoveries
+from backend.pipeline.ticket_sources import select_ticket_sources
 from backend.tavily_service.catalog_client import fetch_catalog
 from backend.tavily_service.research_client import create_research_task
 
@@ -416,6 +417,10 @@ def _park_report(
     Range le rapport d'une extraction échouée, ou note l'échec sur le rapport déjà
     rangé qu'on vient de reprendre. Rend l'id du ticket, None si l'écriture a
     échoué — ce qui ne doit jamais masquer l'échec d'extraction lui-même.
+
+    `urls` garde TOUTES les sources Research, sans la coupe à trois liens des
+    tickets `Pending_Admin` : la reprise relit cette liste (`_load_parked_report`)
+    et la coupe se fait alors, sur le ticket qu'elle écrit.
     """
     from backend.db import get_db_connection
 
@@ -769,9 +774,18 @@ def _run_program_discovery(
     )
 
     inbox_id = str(uuid.uuid4())
-    ticket_urls = source_urls or extracted.get("source_urls") or [f"https://{official_domain}"]
+    # Trois liens au plus (ticket_sources.py), choisis dans ce qu'on stockait
+    # jusqu'ici : le catalogue, puis les sources Research (à défaut celles de
+    # l'extraction, à défaut la racine du domaine). La première page catalogue
+    # garde la première place : sans elle, vingt programmes cités chacun par
+    # sa page prendraient les trois. Le rapport rangé, lui, garde sa liste
+    # entière (`_park_report`) : la reprise en a besoin pour choisir ici.
+    reservoir = source_urls or extracted.get("source_urls") or [f"https://{official_domain}"]
     if catalog_urls:
-        ticket_urls = list(dict.fromkeys(catalog_urls + list(ticket_urls)))
+        reservoir = list(dict.fromkeys(catalog_urls + list(reservoir)))
+    ticket_urls = select_ticket_sources(
+        reservoir, extracted, official_domain=official_domain, priority_urls=catalog_urls,
+    )
 
     with get_db_connection() as conn:
         with conn.cursor() as cur:

@@ -8,8 +8,9 @@ de la structure attendue une garantie de décodage plutôt qu'une supplique dans
 un prompt. Plus de nettoyage de balises Markdown, plus de retry sur JSON
 malformé, plus de validation structurelle a posteriori.
 
-Gemma reste en place pour le crowdsourcing (backend/crowdsourcing/processor.py),
-qui n'est pas concerné par ce chantier.
+Le crowdsourcing (backend/crowdsourcing/processor.py) passe lui aussi par cette
+cascade, aux mêmes planchers par catégorie ; Gemma n'y sert plus que de dernier
+recours, quand l'échelle est épuisée au-dessus du plancher.
 
 ## Pourquoi une cascade et pas un modèle fixe
 
@@ -250,12 +251,17 @@ class ModelRegistry:
             state.day_key = today
             state.requests_today = 0
 
-    def candidates(self, min_tier: str = "low") -> list[ModelState]:
+    def candidates(self, min_tier: str = "low", lowest_first: bool = False) -> list[ModelState]:
         """
         Modèles éligibles, du plus apte au moins apte.
 
         Écarte : les désactivés (429 limit:0), les refroidis dont le délai n'est
         pas écoulé, et tout ce qui se situe sous le plancher demandé.
+
+        `lowest_first` renverse l'ordre : du moins apte au plus apte, toujours
+        au-dessus du plancher. Il sert aux appels qui ne demandent aucune
+        finesse (la compatibilité d'une page du crowdsourcing ne rend qu'un
+        booléen) et qui ménagent ainsi les quotas rares des paliers hauts.
         """
         floor = TIER_RANK.get(min_tier, 1)
         now = time.time()
@@ -272,7 +278,29 @@ class ModelRegistry:
                 if state.cooldown_until > now:
                     continue
                 out.append(state)
+        if lowest_first:
+            out.reverse()
         return out
+
+    def seconds_until_available(self, min_tier: str = "low") -> float | None:
+        """
+        Secondes avant qu'un modèle au-dessus du plancher ne rouvre : 0 s si l'un
+        l'est déjà, `None` si tous sont désactivés pour la session.
+
+        Un quota journalier refroidit jusqu'à minuit Pacifique
+        (`parse_quota_error`) : c'est ce délai que lisent les tickets du
+        crowdsourcing pour attendre au lieu d'être rejoués et repayés.
+        """
+        floor = TIER_RANK.get(min_tier, 1)
+        now = time.time()
+        waits: list[float] = []
+        with self._lock:
+            for model_id, _ in self._ladder:
+                state = self._states[model_id]
+                if TIER_RANK.get(state.tier, 0) < floor or state.disabled:
+                    continue
+                waits.append(max(0.0, state.cooldown_until - now))
+        return min(waits) if waits else None
 
     def disable(self, model_id: str, reason: str) -> None:
         """Écarte un modèle pour toute la session (429 avec limit: 0)."""
@@ -545,6 +573,7 @@ def extract_structured(
     timeout_ms: int = DEFAULT_TIMEOUT_MS,
     source_limit: Optional[int] = None,
     registry: Optional[ModelRegistry] = None,
+    lowest_first: bool = False,
 ) -> Any:
     """
     Transforme un texte en JSON conforme à `json_schema`, via le meilleur
@@ -561,6 +590,8 @@ def extract_structured(
         timeout_ms: Timeout par appel, en millisecondes.
         source_limit: Troncature optionnelle du texte source.
         registry: Registre à utiliser (défaut : celui du processus).
+        lowest_first: Parcourt l'échelle du moins apte au plus apte (défaut :
+            du plus apte au moins apte). Réservé aux appels sans finesse.
 
     Returns:
         L'objet décodé — un dict pour tous les schémas de ce dépôt, qui
@@ -583,7 +614,7 @@ def extract_structured(
         http_options=types.HttpOptions(timeout=timeout_ms),
     )
 
-    candidates = reg.candidates(min_tier=min_tier)
+    candidates = reg.candidates(min_tier=min_tier, lowest_first=lowest_first)
     if not candidates:
         raise ExtractionUnavailable(
             f"Aucun modèle Gemini disponible au palier '{min_tier}' ou au-dessus. "

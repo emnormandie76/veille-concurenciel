@@ -462,6 +462,76 @@ test("capacité : 0 place est une donnée, pas une absence", async () => {
   assert.deepEqual(written, ["pc-caen"]);
 });
 
+// ── Accréditations d'une contribution : un ticket, une liste (C1) ───────
+
+/** Ce que le crowdsourcing écrit pour une page qui cite EQUIS, AACSB et AMBA. */
+const CONTRIBUTED_ACCREDITATIONS = {
+  accreditations: ["EQUIS", "AACSB", "AMBA"].map((name) => ({
+    accreditation_name: name,
+    accreditation_type: "international",
+    year_obtained: null,
+    is_active: true,
+    source_url: "https://em-lyon.com/en/about-emlyon-business-school/institution",
+  })),
+  ignored_urls: ["https://em-lyon.com/sixieme-url"],
+};
+
+const ACCREDITATION_STORE = {
+  accreditationRecord: {
+    upsert: ({ create }: { create: Record<string, unknown> }) => ({ id: "acc-1", ...create }),
+  },
+};
+
+test("une contribution à trois accréditations : un ticket, trois enregistrements, une seule clôture", async () => {
+  withTicket(
+    ticket({
+      source_type: "User_Submission",
+      ai_category: "Accreditation",
+      programId: null,
+      ai_extracted_json: CONTRIBUTED_ACCREDITATIONS,
+    }),
+    ACCREDITATION_STORE,
+  );
+
+  const res = await put();
+
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).count, 3);
+  const upserts = upsertsOf("accreditationRecord");
+  assert.deepEqual(
+    upserts.map((u) => u.create.accreditation_name),
+    ["EQUIS", "AACSB", "AMBA"],
+  );
+  assert.ok(upserts.every((u) => u.create.schoolId === "school-1" && u.create.year_obtained === null));
+  // `ignored_urls` accompagne la liste dans le ticket : il ne devient pas une accréditation.
+  assert.ok(upserts.every((u) => !("ignored_urls" in u.create)));
+  const closures = db
+    .writes()
+    .filter((c) => c.model === "contributionInbox" && c.method === "update");
+  assert.equal(closures.length, 1);
+  assert.ok(ticketClosed());
+});
+
+test("accréditations : la correction de l'admin (liste réduite) prime sur celle de l'IA", async () => {
+  withTicket(
+    ticket({
+      source_type: "User_Submission",
+      ai_category: "Accreditation",
+      programId: null,
+      ai_extracted_json: CONTRIBUTED_ACCREDITATIONS,
+    }),
+    ACCREDITATION_STORE,
+  );
+
+  const res = await put(JSON.stringify({ accreditations: CONTRIBUTED_ACCREDITATIONS.accreditations.slice(0, 2) }));
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(
+    upsertsOf("accreditationRecord").map((u) => u.create.accreditation_name),
+    ["EQUIS", "AACSB"],
+  );
+});
+
 // ── Une exception dans la transaction : le ticket reste Pending_Admin ──
 
 test("exception dans la transaction (forme tableau) → 500, ticket resté ouvert, rien d'écrit", async () => {

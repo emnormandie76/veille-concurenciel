@@ -185,6 +185,14 @@ vaut `planned` dans la réponse 202, puis `success` ou `failed` dans le registre
 | `running`, `jobs` | état d'APScheduler et prochain passage de chaque job inscrit : le seul est `crowdsourcing_processor` |
 | `last_runs`, `has_failure` | dernière issue de chaque job, en mémoire du processus (vide après un redémarrage) : `crowdsourcing_processor`, `run_due_passes` et `run_due_passes_dry_run`. `has_failure` dégrade le statut global |
 | `rotation` | `{interval_days, monthly_ceiling, month_credits_used, due_count, next, last_run, usage_sync}` — ou `{"error": "…"}` si la lecture en base échoue, sans faire échouer `pipeline-status` |
+| `crowdsourcing` | `{last_run, last_processed}` — `last_run` : le dernier passage, quel qu'il soit (`status`, `detail`, `finished_at`), presque toujours « aucune contribution en attente » ; `last_processed` : le dernier passage qui a **traité au moins un ticket**, `{status, detail, finished_at, counts: {tickets, validated, rejected, deleted, failed, deferred, quota_exhausted}}`, ou `null` depuis le démarrage. Il survit aux passages vides (C2, §6.2) |
+
+`pipeline-status` porte aussi, à la racine, **`ai_models`** :
+`{cascade: [{model, tier}], last_resort: {compatibility, extraction}}`
+(`describe_model_chain()`, `backend/ai/model_chain.py`) : la cascade Gemini du
+plus fort au plus faible, puis les deux modèles Gemma du dernier recours. Il
+remplace les trois champs `ai_model_primary`, `ai_model_triage` et
+`ai_model_fallback`, écrits en dur (Gemma 31B « principal », faux depuis C4).
 
 `rotation` est présent **même scheduler arrêté**. `next` porte les 5 premières
 passes que `run_due_passes` choisirait maintenant (`school_name`, `phase`,
@@ -347,8 +355,9 @@ appVC/
 │   ├── pipeline_jobs.py                # Table PipelineJob : état, progression, reprise des jobs orphelins, purge, libellés de passage, derniers passages
 │   │
 │   ├── ai/
-│   │   ├── gemini_client.py            # Cascade Gemini : 8 modèles, 3 paliers, registre de session, garde RPM, plancher min_tier
-│   │   ├── gemma_client.py             # Gemma (crowdsourcing) + wrap_source(), SEUL chemin d'injection de contenu externe
+│   │   ├── gemini_client.py            # Cascade Gemini : 8 modèles, 3 paliers, registre de session, garde RPM, plancher min_tier, lowest_first, seconds_until_available
+│   │   ├── gemma_client.py             # Gemma (dernier recours du crowdsourcing) + wrap_source(), SEUL chemin d'injection de contenu externe
+│   │   ├── model_chain.py              # Les modèles appelés (cascade, Gemma) : bloc `ai_models` de pipeline-status
 │   │   ├── extraction_prompts.py       # Prompts rapport → JSON (6 catégories, catalogue, rattachement campus)
 │   │   ├── extraction_schemas.py       # Schémas d'extraction + MIN_TIER_BY_CATEGORY
 │   │   └── research_prompts.py         # Briefs de recherche envoyés à Tavily Research
@@ -370,7 +379,8 @@ appVC/
 │   │   ├── program_identity.py         # Appariement fiche du site → Program (clauses fermées)
 │   │   └── attachment_plan.py          # Plan d'écriture, porté de lib/campus-attachment.ts
 │   │
-│   ├── crowdsourcing/processor.py      # Tickets User_Submission : extract → compatibilité → extraction
+│   ├── crowdsourcing/processor.py      # Tickets User_Submission : extract → compatibilité → extraction par la cascade Gemini, Gemma en dernier recours, attente (ExtractionDeferred)
+│   ├── crowdsourcing/schemas.py        # Schémas d'extraction propres aux contributions (Ranking, Capacity mono ; multi-programme ; compatibilité)
 │   ├── routers/internal.py             # Routes /internal/* (§2.3)
 │   ├── scheduler/jobs.py               # Passes dues sur demande (run_due_passes) ; APScheduler : crowdsourcing seul ; bloc `rotation` de pipeline-status
 │   ├── scheduler/rotation.py           # Planificateur de la rotation : passes dues, ordre, coût estimé (pur) + lecture d'état
@@ -398,7 +408,7 @@ appVC/
 │
 ├── test/                               # pytest (npm test) et node --test (npm run test:ts)
 │   ├── test_gemini_cascade.py · test_tavily_key_rotation.py · test_contribution_enums.py
-│   ├── test_crowdsourcing_processor.py
+│   ├── test_crowdsourcing_processor.py · test_crowdsourcing_cascade.py · test_crowdsourcing_report.py · test_gemini_lowest_first.py
 │   ├── test_campus_attachment.py · test_campus_attachment_collector.py
 │   ├── test_program_identity.py · test_attachment_plan.py
 │   ├── test_phase1_collection_switch.py · test_phase1_parked_report.py · test_scheduler_registration.py
@@ -879,6 +889,19 @@ faible, en s'arrêtant au **plancher** de la catégorie :
 - **408 et 499** sont traités comme transitoires : ils n'avortent pas la cascade.
 - Échelle épuisée au-dessus du plancher → `ExtractionUnavailable`. En Phase 1,
   le rapport Research est alors **rangé**, pas perdu (§5.1).
+- **Le crowdsourcing passe aussi par cette cascade** (C4, 15 octobre 2026), aux
+  **mêmes planchers** (`MIN_TIER_BY_CATEGORY`, §6.2). Deux ajouts, sans effet sur
+  le pipeline (`test_gemini_cascade.py`, resté tel quel) :
+  - `extract_structured(…, lowest_first=True)` parcourt l'échelle **par le bas**,
+    toujours au-dessus du plancher : la vérification de compatibilité d'une page ne
+    rend qu'un booléen, et ménage ainsi les quotas rares des paliers hauts ;
+  - `ModelRegistry.seconds_until_available(min_tier)` : le délai avant qu'un modèle
+    au-dessus du plancher ne rouvre (0 s si l'un l'est déjà ; `None` si tous sont
+    désactivés pour la session). Un quota journalier refroidit jusqu'à minuit
+    Pacifique : c'est ce délai que lit un ticket de contribution qui attend (§6.2).
+- **Gemma n'est plus qu'un dernier recours**, appelé seulement sur
+  `ExtractionUnavailable` (§10.9). Les modèles réellement appelés sont annoncés
+  par `pipeline-status.ai_models` (`backend/ai/model_chain.py`, §2.3).
 
 ### 4.2. Key Cycling (Rotation de Clés — Stratégie Greedy)
 
@@ -1494,8 +1517,11 @@ tant que le backend tourne, et **une première passe dès le démarrage**
 chaque passage au registre (`last_runs.crowdsourcing_processor`) : `failed` si
 la file n'a pas pu être lue (`SubmissionQueueUnavailable`, F4) ou si le quota
 Tavily a interrompu le traitement ; sinon `success`, avec le bilan du passage.
-**Il paie** (Tavily `extract`, Gemma) dès qu'il trouve des tickets
-`Pending_AI` : lancer le backend suffit à le déclencher.
+Un passage qui a traité au moins un ticket est aussi retenu à part
+(`crowdsourcing.last_processed`, §2.3) : le passage vide de la minute suivante ne
+l'efface pas. **Il paie** (Tavily `extract`, cascade Gemini, Gemma en dernier
+recours) dès qu'il trouve des tickets `Pending_AI` : lancer le backend suffit à
+le déclencher.
 
 **Régime attendu.** ~3 150 crédits par mois pour 30 écoles en régime établi.
 Au premier lancement, aucune école n'a de passage en mémoire (la purge était à
@@ -1536,52 +1562,49 @@ Utilisateur (non connecté)
 ### 6.2. Traitement Backend (Flux de Traitement et Sécurisation)
 
 Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière suivante :
-1. **Mono ou multi-programme :** pour `Pricing`, `Ranking` ou `Capacity`, un ticket rattaché à un `programId` est extrait pour ce seul programme. **Sans `programId`, il passe en mode multi-programme** : Gemma extrait une entrée par programme trouvé sur la page, et chaque nom est apparié aux `Program` de l'école par `_match_program_name` — égalité littérale (`exact`), puis clauses fermées de `program_identity.match_program` (`fuzzy`). Un nom ambigu ou inconnu part en `unmatched_programs`, jamais sur un programme voisin. L'ancienne heuristique (inclusion de sous-chaîne, Jaccard ≥ 0,4) rattachait un doctorat à un bachelor : 6 faux appariements sur 34, corrigés en `fafcdae`. Les programmes non appariés peuvent être créés depuis l'inbox (`POST …/create-programs`).
+1. **Mono ou multi-programme :** pour `Pricing`, `Ranking` ou `Capacity`, un ticket rattaché à un `programId` est extrait pour ce seul programme. **Sans `programId`, il passe en mode multi-programme** : le modèle extrait une entrée par programme trouvé sur la page, et chaque nom est apparié aux `Program` de l'école par `_match_program_name` — égalité littérale (`exact`), puis clauses fermées de `program_identity.match_program` (`fuzzy`). Un nom ambigu ou inconnu part en `unmatched_programs`, jamais sur un programme voisin. L'ancienne heuristique (inclusion de sous-chaîne, Jaccard ≥ 0,4) rattachait un doctorat à un bachelor : 6 faux appariements sur 34, corrigés en `fafcdae`. Les programmes non appariés peuvent être créés depuis l'inbox (`POST …/create-programs`).
 2. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Délai de 30 s (`TAVILY_EXTRACT_TIMEOUT_SECONDS`). Si l'extraction **réussit** mais que le contenu est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et **le ticket est supprimé** de la BDD (l'URL soumise est considérée définitivement invalide). Une extraction **qui échoue** n'est pas un contenu vide : une clé refusée pour quota passe la main à la suivante (3 essais), puis `QuotaExhaustedError` ; toute autre panne lève `TavilyRequestError`, et le ticket passe en `Failed`, rejoué plus tard (`backend/tavily_service/client.py`). Jusqu'au 14 octobre 2026, `extract_from_urls` et `search_web` avalaient ces erreurs et rendaient `""` : une panne Tavily **supprimait** la contribution.
-3. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_SYSTEM` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le texte est tronqué à **25 000 caractères** : l'appel ne rend qu'un booléen et une raison, et tranche sur le début de la page. L'extraction, elle, reçoit 80 000 caractères en mono-programme et 25 000 en multi-programme — trois plafonds délibérés, qui fixent le coût de chaque ticket. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué **`Rejected`** avec la raison écrite dans `ai_extracted_json` — c'est le seul cas où un ticket reste en `Rejected` après le traitement IA.
-4. **Extraction Structurée (Gemma 31B) :** Si compatible, Gemma 31B extrait les données structurées selon la catégorie concernée. Le champ `user_text` est à nouveau exclu.
+3. **Vérification de Compatibilité (cascade Gemini, « lite » d'abord) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_SYSTEM` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Il passe par `extract_structured` (§4.1 bis) avec le schéma `COMPATIBILITY_SCHEMA`, **sans plancher** (`low`) et **par le bas** (`lowest_first`) : il ne rend qu'un booléen, inutile d'y dépenser les quotas rares des paliers hauts. Le texte est tronqué à **25 000 caractères** : l'appel tranche sur le début de la page. L'extraction, elle, reçoit 80 000 caractères en mono-programme et 25 000 en multi-programme — trois plafonds délibérés, qui fixent le coût de chaque ticket. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt ; la source est encadrée par `wrap_source()` (par `extract_structured` pour la cascade, par le processeur pour le repli Gemma). Si incompatible, le ticket est marqué **`Rejected`** avec la raison écrite dans `ai_extracted_json` — c'est le seul cas où un ticket reste en `Rejected` après le traitement IA (hors catégorie inconnue).
+4. **Extraction Structurée (cascade Gemini au plancher de la catégorie) :** Si compatible, la même cascade extrait les données selon la catégorie, **aux mêmes planchers que le pipeline** (`MIN_TIER_BY_CATEGORY` : `Pricing` et `Ranking` `mid` ; `SchoolStats`, `Accreditation` et `Capacity` `low`), sous contrainte de schéma (`response_json_schema`). Les schémas sont ceux du pipeline quand la forme du ticket est la même (`Pricing`, `SchoolStats`, `Accreditation`) et ceux de `backend/crowdsourcing/schemas.py` sinon : le pipeline rend un **tableau** pour `Ranking` et `Capacity`, alors qu'un ticket de contribution mono-programme est un objet plat que `validate` relit, et le mode multi-programme (`{"programs": […]}`) n'existe que là. **Les formes des tickets n'ont pas changé**, hors `Accreditation` (C1). Le champ `user_text` est à nouveau exclu. **Gemma n'est appelé qu'en dernier recours** : quand la cascade est épuisée au-dessus du plancher (`ExtractionUnavailable`), avec la même consigne et la même forme (§10.9).
 5. **Validation Post-Extraction des Données Obligatoires :**
    - **`Capacity`** : validation que `spots_available` et `academic_year` ne sont pas `null`.
    - **`Ranking`** : validation que `ranking_name`, `rank` et `academic_year` ne sont pas `null`, puis `canonical_ranking_name()` ramène le média sur la liste du pipeline (« Le Figaro » → « Le Figaro Étudiant ») ; un média hors liste est gardé tel quel. Même repli en multi-programme.
    - **`Pricing`** : validation que `academic_year` n'est pas `null` et qu'au moins un des frais de scolarité extraits est non nul.
-   - Si une donnée obligatoire manque ou est extraite en tant que `null`, une `GemmaParsingError` est levée.
+   - **`Accreditation`** : au moins une accréditation nommée dans `accreditations[]`.
+   - Si une donnée obligatoire manque ou est extraite en tant que `null`, une `GemmaParsingError` est levée (le nom date du temps où Gemma extrayait seul ; l'exception porte toujours « erreur permanente »).
 6. **Statut & Triage des Erreurs :**
-   - **Succès :** Mise à jour du statut en `Pending_Admin` avec le JSON extrait (upsert temporaire), prêt pour la validation humaine.
-   - **Erreurs API Temporaires (`GemmaAPIError`) :** Si le service API Google GenAI ou le réseau échoue (ex: 429, 500, timeout temporaire), le ticket reste en `Pending_AI` afin d'être re-tenté lors du prochain run du scheduler. Le nombre d'essais LLM par ticket est étendu à 4 tentatives.
+   - **Succès :** Mise à jour du statut en `Pending_Admin` avec le JSON extrait (upsert temporaire), prêt pour la validation humaine. **Une page qui cite plusieurs accréditations donne un seul ticket** qui porte `{"accreditations": [...]}`, plus `ignored_urls` : la forme de la Phase 2 (`ACCREDITATION_EXTRACTION_SCHEMA`), que l'inbox (« Accréditations et Labels détectés ») et `validateAccreditation` traitent déjà (C1). Le repli Gemma demande la même forme : `call_gemma` refuse une liste au premier niveau, d'où un objet à clé `accreditations`.
+   - **Cascade épuisée ET Gemma en erreur d'API (`ExtractionDeferred`) :** le ticket **attend**. Il passe en `Failed` via `_defer_ticket()`, **sans tentative consommée** (`processing_attempts` gardé), avec `retry_not_before_epoch` = maintenant + max(`CROWDSOURCING_RETRY_DELAY_MINUTES`, délai avant la réouverture du premier modèle au-dessus du plancher, `seconds_until_available`) ; un quota journalier attend donc minuit Pacifique. `deferred_count` compte les attentes. La file ne le reprend qu'après cette date : **Tavily n'est pas repayé à chaque passage**, et la contribution n'est pas supprimée en 2 à 3 h par trois tentatives que la panne aurait consommées (C3, option A du propriétaire). Coût borné : au plus une extraction Tavily par fenêtre d'attente (60 minutes au minimum) ; **aucun plafond** n'est posé sur le nombre d'attentes — une panne durable de Gemini ET de Gemma, ou un ticket qui attend sans fin, se lit dans l'inbox (`deferred_count`) et dans `/admin/cron`.
+   - **Toute autre `GemmaAPIError` (hors épuisement ; chemin défensif) :** compte une tentative (`_mark_ticket_failed`), avec le délai et le plafond des tickets `Failed` : le ticket ne reste plus en `Pending_AI`, repayé à chaque passage (C3).
    - **Erreurs Permanentes (`GemmaParsingError`, `TavilyExtractionError`) :** Le ticket est **supprimé directement** via `_delete_ticket()`. La page ne sera jamais exploitable et l'admin ne peut rien en faire ; cela protège au passage le quota de 500 MB Neon.
-   - **Erreurs Inattendues (`Exception` générique, dont `TavilyRequestError`) :** **PAS de suppression.** Le ticket passe en `Failed` via `_mark_ticket_failed()`, avec un compteur de tentatives. Une coupure Neon au réveil ou un timeout ne prouve pas que la contribution est invalide — l'ancien code détruisait ici une extraction Tavily **déjà facturée**. Le ticket est rejoué après `CROWDSOURCING_RETRY_DELAY_MINUTES` (défaut 60), puis supprimé au-delà de `CROWDSOURCING_MAX_ATTEMPTS` (défaut 3). Chaque nouvelle tentative **relance une extraction facturée** : c'est le paramètre à surveiller côté coût.
+   - **Erreurs Inattendues (`Exception` générique, dont `TavilyRequestError` et `GeminiError`, l'erreur définitive d'une clé ou d'une requête invalide) :** **PAS de suppression.** Le ticket passe en `Failed` via `_mark_ticket_failed()`, avec un compteur de tentatives. Une coupure Neon au réveil ou un timeout ne prouve pas que la contribution est invalide — l'ancien code détruisait ici une extraction Tavily **déjà facturée**. Le ticket est rejoué après `CROWDSOURCING_RETRY_DELAY_MINUTES` (défaut 60), puis supprimé au-delà de `CROWDSOURCING_MAX_ATTEMPTS` (défaut 3). Chaque nouvelle tentative **relance une extraction facturée** : c'est le paramètre à surveiller côté coût.
    - **Quota Epuisé (`QuotaExhaustedError`) :** Le traitement de l'ensemble du batch est interrompu immédiatement (le ticket reste en `Pending_AI`, aucune suppression).
-7. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés/supprimés.
+7. **Synthèse et Reporting :** `process_pending_submissions()` rend `{tickets, validated, rejected, deleted, failed, deferred, quota_exhausted}`, et la console l'écrit ligne par ligne : **validés** (`Pending_Admin`), **rejetés** (`Rejected` : page incompatible, catégorie inconnue), **supprimés** (erreur permanente), **en échec** (tentative comptée), **en attente d'un modèle** (sans tentative). Le rapport rangeait une suppression sous « Rejetés » et une page incompatible sous « Validés » (C2). Le job inscrit le passage au registre (§2.3) : `scheduler.crowdsourcing.last_run`, et **`last_processed`**, le dernier passage qui a traité au moins un ticket, que ne remplace pas le passage vide d'une minute plus tard. `/admin/cron` l'affiche (§7.4).
 
-> **Défauts connus, correction décidée** (étape 9 du plan backend-local,
-> 15 octobre 2026 ; à faire avant le déploiement Vercel) :
-> - **C1** : la consigne `Accreditation` décrit un objet unique. Sur une page
->   qui en cite plusieurs, cas ordinaire, Gemma rend la bonne liste,
->   `call_gemma` la refuse (plusieurs objets là où un seul est attendu), et
->   la `GemmaParsingError` **supprime** la contribution (constaté : EQUIS,
->   AACSB et AMBA d'Em Lyon). Décision : **un seul ticket qui porte
->   `accreditations: [...]`**, la forme que produit déjà la Phase 2 et que
->   l'inbox et `validateAccreditation` savent traiter ;
-> - **C2** : le rapport ci-dessus ne vit que dans la console. Dans
->   `pipeline-status`, `last_runs.crowdsourcing_processor` est écrasé par le
->   passage suivant (« aucune contribution en attente »), et le rapport range
->   une suppression sous « Rejetés ». Décision : garder aussi le dernier
->   passage qui a traité au moins un ticket ;
-> - **C3** : une `GemmaAPIError` laisse le ticket en `Pending_AI`, et chaque
->   passage suivant **repaie l'extraction Tavily**, sans borne. Décision : la
->   compter comme une tentative, avec le délai et le plafond des tickets
->   `Failed`.
-> - **C4** (décision du propriétaire, qui modifie le cahier des charges) : le
->   crowdsourcing passe par la **cascade Gemini** (§4.1 bis), compatibilité
->   comprise, aux mêmes planchers par catégorie que le pipeline ; Gemma ne
->   sert plus qu'en dernier recours, cascade épuisée. Motif : 4 erreurs 500
->   sur 6 appels Gemma à l'étape 9, et pas de schéma JSON imposé.
+> **Historique des défauts C1 à C4** (étape 9 du plan backend-local, corrigés par
+> la tâche hors plan du 15 octobre 2026 ; le comportement est décrit ci-dessus) :
+> - **C1** : la consigne `Accreditation` décrivait un objet unique ; sur une page
+>   qui en cite plusieurs, `call_gemma` refusait la bonne liste et la contribution
+>   était **supprimée** (constaté : EQUIS, AACSB et AMBA d'Em Lyon) ;
+> - **C2** : le rapport ne vivait que dans la console, et `last_runs` était
+>   écrasé par le passage suivant ;
+> - **C3** : une `GemmaAPIError` laissait le ticket en `Pending_AI`, et chaque
+>   passage **repayait l'extraction Tavily**, sans borne ;
+> - **C4** : 4 erreurs 500 sur 6 appels Gemma à l'étape 9, et pas de schéma JSON
+>   imposé : le crowdsourcing passe par la cascade Gemini, Gemma en dernier recours.
+>
+> **Limite connue, non corrigée** : `SchoolStats` rend un objet plat (une année).
+> Une page qui donne plusieurs années ne fournit qu'une année au ticket, sans
+> règle « la plus récente » dans la consigne (le risque de C1, en moins grave :
+> aucune suppression, mais une année perdue en silence). Voir le journal du plan.
 
 #### File d'attente
 
 `process_pending_submissions()` sélectionne les 20 plus anciens tickets
 `Pending_AI` **et** les tickets `Failed` encore rejouables — c'est-à-dire ceux
-dont le compteur n'a pas atteint le plafond et dont le délai d'attente est écoulé.
+dont le compteur n'a pas atteint le plafond, dont le délai d'attente est écoulé
+**et** dont `retry_not_before_epoch` (posé par `_defer_ticket`, quand aucun modèle
+n'était disponible) est passé.
 
 Auparavant la requête ne lisait que `Pending_AI` : un ticket `Failed` n'était
 **jamais relu** et son compteur ne pouvait pas dépasser 1. Le mécanisme était
@@ -1711,6 +1734,23 @@ backend-local, étape 7, décisions 11 à 14) :
 Reste connu et accepté (décision 10) : un JSON mal formé ou `null` donne 500 au
 lieu de 400 sur ces routes et sur `create-programs`. Rien n'est écrit dans ce
 cas, et le back-office envoie toujours du JSON valide.
+
+**Deux blocs de la carte « État du Pipeline IA »** (tâche C1 à C4), nourris par
+des fonctions pures de `lib/`, testées sans serveur (`test/crowdsourcing-status.test.ts`) :
+
+- **Modèles IA** (`lib/ai-models.ts`, depuis `pipeline-status.ai_models`) : « Cascade
+  Gemini, Gemma en dernier recours », la cascade du plus fort au plus faible et
+  les deux modèles Gemma. Absent d'un backend qui ne remonte pas le bloc : rien
+  plutôt qu'un modèle faux (l'ancien champ « Modèle IA Principal » annonçait
+  Gemma 31B) ;
+- **Contributions du public** (`lib/crowdsourcing-status.ts`, depuis
+  `scheduler.crowdsourcing`) : le dernier passage qui a traité au moins un ticket,
+  avec ses comptes en mots (« 1 supprimée (erreur permanente) », « 1 différée
+  (aucun modèle disponible) »…), et à part le dernier passage s'il est plus
+  récent (le plus souvent vide). Ton neutre sans ticket traité, « ok » pour des
+  tickets validés ou rejetés, avertissement pour une suppression, un échec ou une
+  attente, erreur pour un arrêt sur quota ou une lecture de file en échec. Les
+  deux blocs ne s'affichent que si le backend est prêt (l'état vient de `pipeline-status`).
 
 **`/admin/cron` en ligne et en local** (plan backend-local, étape 5). La page
 serveur (`page.tsx`) lit le rôle et rend `CronMonitoringClient.tsx`. L'état du
@@ -1899,6 +1939,7 @@ Format : `{ "error": "Description" }`
 | 37 | Corrections illisibles prises pour « pas de corrections » : JSON de l'IA écrit (F2) | `readOptionalJsonObject` : 400 avant toute lecture en base (§5.4, §6.2) | `lib/request-body.ts`, `validate`, `attachments` |
 | 38 | `/v1/schools/[id]/pricing` et `/v1/rankings` toujours en 500 (`program.campus`) ; `?page=abc` → 500 | Filtre par l'école du programme ; pagination illisible → défaut ; requêtes des tests relues contre le schéma (§8.4, §8.8, §10 bis) | `app/api/v1/**`, `lib/utils.ts` |
 | 39 | `localhost.` et `[::ffff:127.0.0.1]` passaient la garde des hôtes internes | Point final retiré, IPv4 encapsulée ramenée à sa forme pointée (§10.2) | `lib/utils.ts` |
+| 40 | Contribution à plusieurs accréditations supprimée sur une réponse juste (C1) ; ticket repayé à chaque passage sur une panne d'API (C3) ; sort d'une contribution perdu hors de la console (C2) | Un ticket `accreditations[]` ; cascade épuisée et Gemma en panne → ticket qui attend (`retry_not_before_epoch`), sans tentative consommée ; `scheduler.crowdsourcing.last_processed` (§6.2) | `crowdsourcing/processor.py`, `scheduler/jobs.py` |
 
 ---
 
@@ -2180,10 +2221,15 @@ Vercel**.
 
 ### 10.9. Contraintes Gemma (crowdsourcing) et gestion d'erreurs
 
-> Le pipeline (Phases 1 et 2, rattachement campus) passe par la cascade Gemini
-> (§4.1 bis), avec ses propres exceptions : `GeminiError`, et
-> `ExtractionUnavailable` quand l'échelle est épuisée au-dessus du plancher. Les
-> règles ci-dessous concernent Gemma, utilisé par le crowdsourcing.
+> Le pipeline (Phases 1 et 2, rattachement campus) **et le crowdsourcing** passent
+> par la cascade Gemini (§4.1 bis), avec ses propres exceptions : `GeminiError`, et
+> `ExtractionUnavailable` quand l'échelle est épuisée au-dessus du plancher.
+> **Gemma n'est plus qu'un dernier recours du crowdsourcing** (décision C4 du
+> propriétaire, 15 octobre 2026) : `_extract_with_cascade()` ne l'appelle que sur
+> `ExtractionUnavailable`, jamais sur `GeminiError` (une clé ou une requête
+> invalide n'est pas un épuisement). Gemma 26B sert alors la compatibilité, 31B
+> l'extraction (`GEMMA_COMPATIBILITY_MODEL`, `GEMMA_EXTRACTION_MODEL`,
+> `backend/ai/model_chain.py`). Les règles ci-dessous concernent ce dernier recours.
 
 - **Pydantic interdit** avec les modèles Gemma (erreur 500)
 - JSON forcé par prompt strict, « 100 % prompting »
@@ -2302,7 +2348,8 @@ l'étape 5, 379 et 122 ; après l'étape 6, 379 et 128. **Au 14 octobre 2026,
 après l'étape 7 : 570 tests Python (+25 sous-tests) et 482 tests TypeScript**,
 puis 571 Python le 15 octobre (test d'horloge ci-dessous) ; après l'étape 8,
 571 et 483 (règle du smoke, ci-dessous) ; puis 571 et 491 (`/api-docs` et
-titres des pages, ci-dessous), tous verts. Les deux suites lisent des fixtures communes quand une règle existe
+titres des pages, ci-dessous) ; **après la tâche C1 à C4 (15 octobre 2026) :
+635 Python (+25 sous-tests) et 507 TypeScript**, tous verts. Les deux suites lisent des fixtures communes quand une règle existe
 en deux langages (`test/fixtures/attachment_plan_cases.json`).
 
 **Les parties non couvertes** (étape 7 du plan backend-local). Chaque fichier

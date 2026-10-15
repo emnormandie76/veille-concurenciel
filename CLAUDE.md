@@ -124,9 +124,21 @@ Chantier « backend local sur demande »
   aussi modifié le cahier des charges (C4 : le crowdsourcing passe par la
   cascade Gemini, Gemma en dernier recours) et retranché C1 (un seul ticket
   `accreditations[]`, la forme de la Phase 2) ;
-- prochaine : **tâche hors plan C1 à C4** (crowdsourcing), tests d'abord, sur
-  `dev`, puis la contribution d'accréditation rejouée ; elle coche l'étape 9
-  (journal du plan, §11).
+- tâche hors plan **C1 à C4** (crowdsourcing) codée le 15 octobre : la cascade
+  Gemini au plancher des catégories (compatibilité par le bas), Gemma en dernier
+  recours, un seul ticket `accreditations[]`, un ticket qui attend sans
+  tentative consommée quand aucun modèle ne répond, `last_processed` et bloc
+  `ai_models` dans `pipeline-status` ; 635 tests Python et 507 TypeScript.
+  Vérification réelle reportée à la recette de bout en bout ; la case de
+  l'étape 9 se coche quand la contribution Em Lyon atteint `Pending_Admin`
+  (journal du plan, §11). Commit et push demandés par le propriétaire ;
+- décisions du propriétaire du 15 octobre sur les **sources des tickets** : au
+  plus 3 liens dans le bloc « Sources » (URL citées par les données, puis
+  domaine officiel et catalogue, puis le reste, sans doublon), coupés à
+  l'écriture du ticket et plafonnés dans l'inbox ; liens par ligne et
+  contributions du public inchangés ;
+- prochaine : **tâche hors plan « trois sources »**, tests d'abord, puis la
+  **recette de bout en bout** sur `dev` (prompts remis au propriétaire).
 
 L'étape en cours se lit dans le journal du plan (§11).
 

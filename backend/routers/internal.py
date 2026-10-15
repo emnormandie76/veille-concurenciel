@@ -20,6 +20,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from backend import pipeline_jobs
+from backend.ai.model_chain import describe_model_chain
 from backend.scheduler import jobs as scheduler_jobs
 
 logger = logging.getLogger("pipeline.internal")
@@ -540,9 +541,10 @@ async def pipeline_status(request: Request, _token: str = Depends(verify_interna
         "cron_jobs": rotation_jobs[:10],    # Limiter à 10 pour la lisibilité
         "jobs_error": jobs_error,
         "tavily": tavily_status,
-        "ai_model_primary": "models/gemma-4-31b-it",
-        "ai_model_triage": "models/gemma-4-26b-a4b-it",
-        "ai_model_fallback": "gemini-3-flash-preview",
+        # Les modèles réellement appelés : la cascade Gemini, Gemma en dernier
+        # recours (backend/ai/model_chain.py). Trois champs `ai_model_*` écrits en
+        # dur annonçaient Gemma 31B « principal », ce qui est faux depuis C4.
+        "ai_models": describe_model_chain(),
     }
 
 

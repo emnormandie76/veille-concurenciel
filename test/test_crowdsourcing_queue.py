@@ -31,14 +31,16 @@ NOW_EPOCH = NOW.timestamp()
 
 
 def _ticket(ticket_id, *, status="Pending_AI", category="Pricing", source="User_Submission",
-            minutes_ago=0, attempts=None, failed_minutes_ago=None):
+            minutes_ago=0, attempts=None, failed_minutes_ago=None, retry_in_minutes=None):
     payload = None
-    if attempts is not None or failed_minutes_ago is not None:
+    if attempts is not None or failed_minutes_ago is not None or retry_in_minutes is not None:
         payload = {}
         if attempts is not None:
             payload["processing_attempts"] = attempts
         if failed_minutes_ago is not None:
             payload["failed_at_epoch"] = NOW_EPOCH - failed_minutes_ago * 60
+        if retry_in_minutes is not None:
+            payload["retry_not_before_epoch"] = NOW_EPOCH + retry_in_minutes * 60
     return {
         "id": ticket_id, "status": status, "ai_category": category, "source_type": source,
         "createdAt": NOW - timedelta(minutes=minutes_ago), "ai_extracted_json": payload,
@@ -86,6 +88,8 @@ class Queue:
                 assert "WHERE ti.source_type = 'User_Submission'" in sql
                 assert sql.endswith('ORDER BY ti."createdAt" ASC LIMIT 20')
                 max_attempts, delay_seconds = params
+                # La porte des tickets différés (aucun modèle disponible) est dans le SQL.
+                assert "retry_not_before_epoch" in sql
 
                 def replayable(row):
                     payload = row["ai_extracted_json"] or {}
@@ -93,6 +97,7 @@ class Queue:
                         row["status"] == "Failed"
                         and int(payload.get("processing_attempts", 0)) < max_attempts
                         and float(payload.get("failed_at_epoch", 0)) < NOW_EPOCH - delay_seconds
+                        and float(payload.get("retry_not_before_epoch", 0)) < NOW_EPOCH
                     )
 
                 selected = [
@@ -135,8 +140,8 @@ def test_les_20_plus_anciens_pending_ai_dans_l_ordre(queue, processed):
     report = processor.process_pending_submissions(key_manager="km")
 
     assert _ids(processed) == [f"t{i:02d}" for i in range(24, 4, -1)]
-    assert report == {"tickets": 20, "validated": 20, "api_errors": 0, "rejected": 0,
-                      "quota_exhausted": False}
+    assert report == {"tickets": 20, "validated": 20, "rejected": 0, "deleted": 0,
+                      "failed": 0, "deferred": 0, "quota_exhausted": False}
     assert all(c.args[1] == "km" for c in processed.call_args_list)
 
 
@@ -153,6 +158,27 @@ def test_les_failed_rejouables_selon_compteur_et_delai(queue, processed):
     processor.process_pending_submissions(key_manager=None)
 
     assert _ids(processed) == ["rejouable", "sans-compteur", "en-attente"]
+
+
+def test_un_ticket_differe_attend_sa_reouverture_meme_apres_le_delai(queue, processed):
+    """
+    Cascade épuisée et Gemma en panne : le ticket attend `retry_not_before_epoch`
+    (minuit Pacifique pour un quota journalier), même quand les 60 minutes des
+    tickets `Failed` sont passées : sans cette porte, Tavily serait repayé toutes
+    les heures (C3).
+    """
+    queue([
+        _ticket("attend", status="Failed", attempts=0, failed_minutes_ago=600,
+                retry_in_minutes=300, minutes_ago=300),
+        _ticket("rouvert", status="Failed", attempts=0, failed_minutes_ago=600,
+                retry_in_minutes=-5, minutes_ago=290),
+        _ticket("echec-ordinaire", status="Failed", attempts=1, failed_minutes_ago=120,
+                minutes_ago=280),
+    ])
+
+    processor.process_pending_submissions(key_manager=None)
+
+    assert _ids(processed) == ["rouvert", "echec-ordinaire"]
 
 
 def test_la_requete_porte_le_plafond_et_le_delai(queue, processed):
@@ -199,8 +225,8 @@ def test_categorie_inconnue_rejected_sans_traitement(queue, processed):
     assert rows["inventee"]["status"] == "Rejected"
     assert rows["inventee"]["ai_extracted_json"] == {"error": "Catégorie inconnue: Salaires"}
     assert rows["tarifs"]["status"] == "Pending_AI"  # le traitement remplacé n'écrit rien
-    assert report == {"tickets": 3, "validated": 1, "api_errors": 0, "rejected": 2,
-                      "quota_exhausted": False}
+    assert report == {"tickets": 3, "validated": 1, "rejected": 2, "deleted": 0,
+                      "failed": 0, "deferred": 0, "quota_exhausted": False}
 
 
 def test_les_cinq_categories_publiques_sont_traitees(queue, processed):
@@ -227,8 +253,8 @@ def test_quota_epuise_arrete_le_lot(queue, processed):
 
     # t2 et t3 ne sont pas tentés : chaque tentative paierait une extraction.
     assert _ids(processed) == ["t0", "t1"]
-    assert report == {"tickets": 4, "validated": 1, "api_errors": 0, "rejected": 0,
-                      "quota_exhausted": True}
+    assert report == {"tickets": 4, "validated": 1, "rejected": 0, "deleted": 0,
+                      "failed": 0, "deferred": 0, "quota_exhausted": True}
 
 
 def test_une_erreur_d_api_n_arrete_pas_le_lot(queue, processed):
@@ -245,13 +271,17 @@ def test_une_erreur_d_api_n_arrete_pas_le_lot(queue, processed):
     report = processor.process_pending_submissions(key_manager=None)
 
     assert _ids(processed) == ["t0", "t1", "t2"]
-    assert report == {"tickets": 3, "validated": 1, "api_errors": 1, "rejected": 1,
-                      "quota_exhausted": False}
+    # Une erreur d'API ne reste plus « en attente » : elle compte une tentative
+    # (C3), comme toute autre erreur inattendue. Le test les comptait à part
+    # (`api_errors`) et rangeait la seconde sous « rejected » (C2).
+    assert report == {"tickets": 3, "validated": 1, "rejected": 0, "deleted": 0,
+                      "failed": 2, "deferred": 0, "quota_exhausted": False}
 
 
 def test_file_vide(queue, processed):
     queue([])
 
     assert processor.process_pending_submissions(key_manager=None) == {
-        "tickets": 0, "validated": 0, "api_errors": 0, "rejected": 0, "quota_exhausted": False,
+        "tickets": 0, "validated": 0, "rejected": 0, "deleted": 0, "failed": 0,
+        "deferred": 0, "quota_exhausted": False,
     }

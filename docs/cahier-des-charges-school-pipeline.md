@@ -10,9 +10,11 @@
 > crowdsourcing passe à son tour par la **cascade Gemini** du pipeline ; Gemma
 > n'y sert plus qu'en dernier recours. Motif : à l'étape 9 du plan
 > backend-local, Gemma a rendu 4 erreurs 500 sur 6 appels, et ne sait pas
-> suivre un schéma JSON imposé. **À mettre en œuvre** (tâche hors plan C1 à
-> C4, journal de [`features/backend-local.md`](features/backend-local.md)) :
-> d'ici là, le code appelle encore Gemma 26B et 31B.
+> suivre un schéma JSON imposé. **Mis en œuvre le 15 octobre 2026** (tâche hors
+> plan C1 à C4, journal de [`features/backend-local.md`](features/backend-local.md)) :
+> la compatibilité et l'extraction passent par la cascade, aux mêmes planchers
+> par catégorie que le pipeline ; Gemma 26B et 31B ne sont appelés que si la
+> cascade est épuisée.
 
 ## 1. Introduction et Objectif
 Le projet vise à développer une plateforme hybride (Crowdsourcing + Pipeline IA Automatisé) permettant de centraliser les données de l'enseignement supérieur, telles que les grilles tarifaires, les classements et les places disponibles.
@@ -34,7 +36,7 @@ Le système extrait, vérifie et structure les informations issues des sites off
   - `extract` : URL fournies par les contributeurs (Workflow A). 1 crédit / 5 URL.
 - **Modèles IA (via google-genai) :**
   - *Cascade Gemini* (8 modèles, 3 paliers) : convertit les rapports Research en JSON, avec un plancher de qualité par catégorie. Utilisée par tout le pipeline et, depuis la décision C4 du 15 octobre 2026, par le crowdsourcing : contrôle de compatibilité (modèles « lite » d'abord, pour ménager les quotas) et extraction, aux mêmes planchers par catégorie que le pipeline.
-  - *Gemma 4* (`models/gemma-4-26b-a4b-it`, `models/gemma-4-31b-it`) : **dernier recours du crowdsourcing seulement**, quand la cascade est épuisée au-dessus du plancher. Jusqu'à la mise en œuvre de C4, il fait encore tout le crowdsourcing (26B : compatibilité ; 31B : extraction).
+  - *Gemma 4* (`models/gemma-4-26b-a4b-it`, `models/gemma-4-31b-it`) : **dernier recours du crowdsourcing seulement**, quand la cascade est épuisée au-dessus du plancher (26B : compatibilité ; 31B : extraction).
 - **Rotation de Clés API (Key Cycling) :** Bascule automatique entre plusieurs clés API Tavily gratuites (stratégie Greedy) pour pallier les limites du Free Tier lors de recherches massives.
 
 ## 4. Modèle de Données (Zone Buffer et Tables Rigides)
@@ -115,7 +117,7 @@ La découverte dit quelles formations existent, pas sur quel campus ni en quelle
 4. **Soumission :** L'utilisateur fournit son texte/revendication + URL(s) source(s).
 5. **Création Inbox :** Création d'une entrée `ContributionInbox` **par catégorie sélectionnée** (`source_type = User_Submission`, `status = Pending_AI`, FK rattachées au niveau sélectionné).
 6. **Acquisition des données :** FastAPI envoie l'URL à **Tavily Extract** pour récupérer le Markdown brut.
-7. **Compatibilité & Extraction (IA) :** la cascade Gemini vérifie que la page concerne bien l'école et la catégorie choisie, puis extrait le JSON ; Gemma ne prend le relais que si la cascade est épuisée (décision C4 du 15 octobre 2026, à mettre en œuvre : le code appelle encore Gemma 26B puis 31B). Le statut passe à `Pending_Admin`. **Le texte libre du contributeur (`user_text`) n'atteint jamais un modèle** : il est seulement affiché à l'admin, pour empêcher toute injection de consignes.
+7. **Compatibilité & Extraction (IA) :** la cascade Gemini vérifie que la page concerne bien l'école et la catégorie choisie, puis extrait le JSON ; Gemma ne prend le relais que si la cascade est épuisée (décision C4 du 15 octobre 2026, mise en œuvre). Si Gemma échoue à son tour, la contribution attend la réouverture d'un modèle au lieu d'être rejouée et supprimée. Le statut passe à `Pending_Admin`. **Le texte libre du contributeur (`user_text`) n'atteint jamais un modèle** : il est seulement affiché à l'admin, pour empêcher toute injection de consignes.
 
 ### 6.2. Workflow B : Pipeline IA Automatisé (2 Phases via Tavily Research)
 Voir section 5 ci-dessus pour le détail des Phases 1 et 2.

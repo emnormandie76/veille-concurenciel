@@ -500,8 +500,10 @@ def _describe_crowdsourcing(outcome: dict | None) -> tuple[str, str]:
         return "success", "aucune contribution en attente"
     detail = (
         f"{outcome['tickets']} contribution(s) : {outcome.get('validated', 0)} en attente "
-        f"de l'admin, {outcome.get('api_errors', 0)} en erreur d'API (gardée(s) en attente), "
-        f"{outcome.get('rejected', 0)} en échec"
+        f"de l'admin, {outcome.get('rejected', 0)} rejetée(s) (page incompatible), "
+        f"{outcome.get('deleted', 0)} supprimée(s) (erreur permanente), "
+        f"{outcome.get('failed', 0)} en échec (tentative comptée), "
+        f"{outcome.get('deferred', 0)} différée(s) (aucun modèle disponible)"
     )
     if outcome.get("quota_exhausted"):
         # Les contributions restantes attendent en Pending_AI : l'admin doit le voir.
@@ -509,12 +511,38 @@ def _describe_crowdsourcing(outcome: dict | None) -> tuple[str, str]:
     return "success", detail
 
 
+# Le dernier passage du crowdsourcing qui a traité au moins un ticket (C2).
+# `_last_job_runs` ne garde que le dernier passage, vide le plus souvent
+# (une fois par minute) : sans ce second registre, un passage qui avait
+# supprimé une contribution n'en laissait aucune trace hors de la fenêtre du
+# backend. En mémoire, comme lui : vide à chaque démarrage.
+_last_crowdsourcing_processed: dict | None = None
+
+
+def _record_crowdsourcing_processed(outcome: dict | None, status: str, detail: str) -> None:
+    """Retient le passage s'il a traité au moins un ticket ; un passage vide n'écrase rien."""
+    global _last_crowdsourcing_processed
+    if not outcome or not outcome.get("tickets"):
+        return
+    _last_crowdsourcing_processed = {
+        "status": status,
+        "detail": detail,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "counts": {
+            key: outcome.get(key, 0)
+            for key in ("tickets", "validated", "rejected", "deleted", "failed", "deferred")
+        } | {"quota_exhausted": bool(outcome.get("quota_exhausted"))},
+    }
+
+
 def _crowdsourcing_job(key_manager) -> None:
     """
     Un passage du traitement des contributions, inscrit au registre (F4).
 
     Ne lève jamais : APScheduler ne ferait que journaliser l'exception, et
-    pipeline-status n'en saurait rien. L'échec se lit dans `last_runs`.
+    pipeline-status n'en saurait rien. L'échec se lit dans `last_runs`. Un passage
+    qui a traité des tickets est aussi retenu dans `crowdsourcing.last_processed`
+    (C2).
     """
     from backend.crowdsourcing.processor import process_pending_submissions
 
@@ -524,7 +552,9 @@ def _crowdsourcing_job(key_manager) -> None:
         logger.error(f"❌ [Crowdsourcing] Passage en échec : {e}")
         _record_job_run(CROWDSOURCING_JOB_ID, "failed", str(e)[:300])
         return
-    _record_job_run(CROWDSOURCING_JOB_ID, *_describe_crowdsourcing(outcome))
+    status, detail = _describe_crowdsourcing(outcome)
+    _record_job_run(CROWDSOURCING_JOB_ID, status, detail)
+    _record_crowdsourcing_processed(outcome, status, detail)
 
 
 def _crowdsourcing_interval_minutes() -> int:
@@ -654,4 +684,10 @@ def get_scheduler_status(key_manager=None) -> dict:
             run.get("status") == "failed" for run in _last_job_runs.values()
         ),
         "rotation": _rotation_status(key_manager),
+        # Le dernier passage, et le dernier qui a traité au moins un ticket :
+        # le premier est vide une minute sur deux, le second garde la trace (C2).
+        "crowdsourcing": {
+            "last_run": _last_job_runs.get(CROWDSOURCING_JOB_ID),
+            "last_processed": _last_crowdsourcing_processed,
+        },
     }

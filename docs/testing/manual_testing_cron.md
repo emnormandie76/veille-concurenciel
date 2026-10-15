@@ -77,7 +77,7 @@ Le 15 octobre 2026, la bascule vers `dev` a touché exactement 5 lignes
 
 ## 🐍 Étape 2 : Lancer le Serveur Backend (FastAPI)
 
-Le backend FastAPI porte la rotation des clés Tavily, la cascade Gemini du pipeline, les passes dues (sur demande) et le traitement des contributions (Gemma), seul job d'APScheduler.
+Le backend FastAPI porte la rotation des clés Tavily, la cascade Gemini du pipeline, les passes dues (sur demande) et le traitement des contributions (cascade Gemini, Gemma en dernier recours), seul job d'APScheduler.
 
 ### 2.1 Une commande : `npm run local`
 ```powershell
@@ -107,7 +107,7 @@ sans `--reload` (un rechargement tuerait une passe en cours).
 
 > **Le traitement des contributions, lui, part dès le démarrage**, puis toutes
 > les minutes. S'il trouve des tickets `Pending_AI`, il appelle Tavily
-> (`extract`) et Gemma : des crédits réels, sans clic. **Regardez l'inbox avant
+> (`extract`) et la cascade Gemini (Gemma en dernier recours) : des crédits réels, sans clic. **Regardez l'inbox avant
 > de lancer le backend.** L'ancienne astuce `CRON_CROWDSOURCING_INTERVAL_MINUTES=1440`
 > ne retarde plus le premier passage : elle n'espace que les suivants.
 
@@ -153,7 +153,8 @@ L'écran est décrit en entier dans
 [`architecture.md`](../architecture/architecture.md) §7.4.
 
 1. **État du backend local** : *prêt* (bandeau absent, pastille verte), *non lancé* (bandeau orange qui cite la commande de lancement ; l'écran voit le backend dès qu'il démarre, nouvel essai toutes les 5 s) ou *injoignable* (bandeau rouge, avec la raison : jeton absent ou refusé, délai…). Sur le site en ligne, sans backend : *pilotage depuis le poste local*. Les erreurs du démarrage (`startup_errors`) s'affichent en rouge ; « (dégradé) » suit l'état quand `pipeline-status` est `degraded`.
-2. **Modèle IA Principal** : affiche `models/gemma-4-31b-it`. ⚠️ Cette valeur est **écrite en dur** dans `/internal/pipeline-status` et n'est plus exacte : le pipeline extrait par la cascade Gemini ; Gemma ne sert qu'au crowdsourcing.
+2. **Modèles IA** : « Cascade Gemini, Gemma en dernier recours », la cascade du plus fort au plus faible, puis les deux modèles Gemma du dernier recours. Les noms viennent de `pipeline-status.ai_models` (`backend/ai/model_chain.py`), non d'une valeur écrite en dur ; ils doivent être ceux de `MODEL_LADDER` (`backend/ai/gemini_client.py`). Avant le 15 octobre 2026, cette case affichait « Modèle IA Principal : `models/gemma-4-31b-it` », faux depuis que le crowdsourcing passe par la cascade.
+   **Contributions du public** (juste dessous) : le dernier passage qui a traité au moins un ticket, avec ses comptes en mots (validées, rejetées, supprimées, en échec, différées), et le dernier passage s'il est plus récent (« aucune contribution en attente »). Il survit aux passages vides d'une minute : après une contribution de test, il doit rester affiché, avec sa ligne « 1 en attente de l'admin » (ou la cause de l'échec).
 3. **Quotas Tavily** : crédits restants par clé. Le compteur est local et estimé — Research ne déclare pas son coût, et `GET /usage` de Tavily n'est pas en temps réel.
 4. **Tâches manuelles en cours** : les jobs `PipelineJob` actifs lancés à la main, avec leur progression.
 5. **Passes dues** : mode (*sur demande*, ou *plafond à 0*), crédits du mois sur le plafond, état de la synchro `/usage`, les 5 premières passes dues, la dernière exécution réelle ; pour un ADMIN, les boutons **« Simuler »** et **« Lancer N passes dues »** (étape 5 ci-dessous).
@@ -161,18 +162,21 @@ L'écran est décrit en entier dans
 7. **Recherche Manuelle** (ADMIN) : sélecteurs Phase / École / Programme / Catégories, et en Phase 1 la case **« collecte du rattachement campus »**, décochée par défaut.
 8. **Historique du pipeline** : les 30 derniers jobs, lus en base, même backend arrêté ; l'erreur d'un job en échec (300 caractères, le texte entier au survol) ; au-dessus, le nombre de contributions `Pending_AI` qui attendent le backend.
 
-> L'écran n'affiche pas le détail de `scheduler.last_runs` : un échec du
-> traitement des contributions passe `pipeline-status` en `degraded` (« prêt
-> (dégradé) »), sans dire lequel. Lisez `GET /internal/pipeline-status`
-> directement (étape 5.1).
+> L'écran n'affiche pas le détail des autres entrées de `scheduler.last_runs` :
+> un échec du traitement des contributions passe `pipeline-status` en `degraded`
+> (« prêt (dégradé) »), et le bloc « Contributions du public » dit lequel ;
+> pour le reste, lisez `GET /internal/pipeline-status` directement (étape 5.1).
 >
-> **Le sort d'une contribution ne se lit que dans la fenêtre du backend**
-> (défaut C2, constaté le 15 octobre 2026, correction décidée) :
-> `last_runs.crowdsourcing_processor` est écrasé une minute plus tard par
-> « aucune contribution en attente ». Remontez dans la fenêtre jusqu'à
-> `⚙️ Traitement du ticket <id>` et au `RAPPORT DE CROWDSOURCING` qui suit ;
-> une ligne `Erreur permanente … SUPPRIMÉ de l'Inbox` dit pourquoi un ticket
-> a disparu. Le rapport range ces suppressions sous « Rejetés ».
+> **Le sort d'une contribution se lit dans le bloc « Contributions du public »**
+> (défaut C2, corrigé le 15 octobre 2026) : `scheduler.crowdsourcing.last_processed`
+> garde le dernier passage qui a traité au moins un ticket, et le passage vide
+> d'une minute plus tard ne l'écrase plus. Le journal de la fenêtre du backend
+> reste la source du détail : `⚙️ Traitement du ticket <id>`, puis le
+> `RAPPORT DE CROWDSOURCING` : validés, **rejetés** (page incompatible),
+> **supprimés** (erreur permanente), en échec (tentative comptée), **en attente
+> d'un modèle** (cascade épuisée et Gemma en panne : le ticket attend, sans
+> tentative consommée). Un ticket différé porte `retry_not_before` dans son
+> `ai_extracted_json` (inbox, onglet des tickets `Failed`).
 
 ### 4.3 Tester le lancement d'une recherche manuelle
 **Chaque lancement dépense des crédits réels** (bouton réservé au rôle ADMIN) :
@@ -268,4 +272,4 @@ estimé. Ce qui se passe :
 * **« Pilotage depuis le poste local » en local** : `FASTAPI_URL` est absente de `.env.local`, ou Next n'a pas été relancé après l'avoir posée.
 * **« Le backend n'a pas répondu en 8 s »** alors qu'uvicorn tourne et que `/health` répond : `pipeline-status` est lent. Cause habituelle : la base répond lentement (réveil de Neon, ou 5432 fermé sans `DB_DRIVER=neon-ws`). L'écran réessaie toutes les 5 s.
 * **« État de la rotation illisible »**, ou `rotation: {"error": …}` : la lecture en base du bloc `rotation` a échoué (message tronqué à 300 caractères) ; le reste de `pipeline-status` est servi normalement.
-* **`last_runs.crowdsourcing_processor` en `failed`** : la file des contributions n'a pas pu être lue (base injoignable), ou le quota Tavily a interrompu le traitement. Le détail le dit ; `has_failure` passe `pipeline-status` en `degraded`.
+* **`last_runs.crowdsourcing_processor` en `failed`** : la file des contributions n'a pas pu être lue (base injoignable), ou le quota Tavily a interrompu le traitement. Le détail le dit (le bloc « Contributions du public » de l'écran aussi) ; `has_failure` passe `pipeline-status` en `degraded`.

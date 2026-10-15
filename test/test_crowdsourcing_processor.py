@@ -17,6 +17,23 @@ from backend.crowdsourcing.processor import process_crowdsourcing_ticket
 # un objet sentinelle suffit.
 FAKE_KEY_MANAGER = object()
 
+
+@pytest.fixture(autouse=True)
+def cascade_epuisee(monkeypatch):
+    """
+    La cascade Gemini est épuisée dans les tests de ce fichier : ils tiennent le
+    comportement de Gemma, qui n'est plus que le DERNIER recours du crowdsourcing
+    (tâche C1 à C4). Sans cette fixture, `extract_structured` partirait chercher
+    une clé d'API et le réseau. Le chemin par la cascade, lui, est tenu par
+    test/test_crowdsourcing_cascade.py.
+    """
+    from backend.ai.gemini_client import ExtractionUnavailable
+
+    def exhausted(**_kwargs):
+        raise ExtractionUnavailable("cascade épuisée (doublure)")
+
+    monkeypatch.setattr("backend.crowdsourcing.processor.extract_structured", exhausted)
+
 def test_user_text_never_reaches_gemma():
     """
     Vérifie que le commentaire utilisateur n'est jamais injecté
@@ -154,12 +171,18 @@ def test_valid_ticket_produces_pending_admin():
         assert any("UPDATE" in sql and "Pending_Admin" in sql for sql in executed_sqls)
 
 
-def test_api_error_keeps_pending_ai():
+def test_api_error_defers_the_ticket():
     """
-    Si Gemma API renvoie une erreur temporaire (ex: GemmaAPIError),
-    le ticket ne doit pas être rejeté et doit rester en base sans mise à jour du statut.
+    Cascade épuisée ET Gemma en erreur d'API : le ticket n'est ni rejeté, ni
+    supprimé, ni laissé en `Pending_AI` (où chaque passage repaierait Tavily, C3) :
+    il est différé (`_defer_ticket`), sans tentative consommée.
+
+    Ce test s'appelait `test_api_error_keeps_pending_ai` : « reste en
+    Pending_AI » était le défaut C3 ; le contrat change avec la décision du
+    propriétaire du 15 octobre 2026.
     """
     from backend.ai.gemma_client import GemmaAPIError
+    from backend.crowdsourcing.processor import ExtractionDeferred
     mock_ticket = {
         "id": "test-uuid-004",
         "user_text": None,
@@ -173,7 +196,10 @@ def test_api_error_keeps_pending_ai():
     with patch("backend.db.get_db_connection") as mock_get_db, \
          patch("backend.crowdsourcing.processor.extract_from_urls") as mock_extract, \
          patch("backend.crowdsourcing.processor.call_gemma") as mock_gemma, \
-         patch("backend.crowdsourcing.processor._update_ticket_status") as mock_update:
+         patch("backend.crowdsourcing.processor._update_ticket_status") as mock_update, \
+         patch("backend.crowdsourcing.processor._defer_ticket") as mock_defer, \
+         patch("backend.crowdsourcing.processor._mark_ticket_failed") as mock_failed, \
+         patch("backend.crowdsourcing.processor._delete_ticket") as mock_delete:
 
         # Mock database connection cursor
         mock_conn = mock_get_db.return_value.__enter__.return_value
@@ -183,11 +209,15 @@ def test_api_error_keeps_pending_ai():
         mock_extract.return_value = "Frais de scolarité : 9800€ par an. Ce contenu est suffisamment long pour passer la validation de longueur du processeur."
         mock_gemma.side_effect = GemmaAPIError("HTTP 500 Internal Server Error")
 
-        with pytest.raises(GemmaAPIError):
+        with pytest.raises(ExtractionDeferred):
             process_crowdsourcing_ticket("test-uuid-004", FAKE_KEY_MANAGER)
 
-        # Vérifier que le statut n'a PAS été mis à jour
+        # Ni statut Rejected, ni suppression, ni tentative consommée.
         mock_update.assert_not_called()
+        mock_delete.assert_not_called()
+        mock_failed.assert_not_called()
+        mock_defer.assert_called_once()
+        assert mock_defer.call_args.args[0] == "test-uuid-004"
 
 
 def test_parsing_error_rejects_ticket():

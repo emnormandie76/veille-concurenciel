@@ -6,6 +6,8 @@ import QuotaTavilyPanel from "./QuotaTavilyPanel";
 import RotationPanel from "./RotationPanel";
 import { buildLaunchBody, describeCampusCollection } from "@/lib/trigger-research";
 import type { RotationBlock } from "@/lib/rotation-status";
+import { describeAiModels, type AiModelsBlock } from "@/lib/ai-models";
+import { describeCrowdsourcing, type CrowdsourcingBlock } from "@/lib/crowdsourcing-status";
 import {
   LOCAL_BACKEND_COMMAND,
   backendState,
@@ -51,6 +53,7 @@ interface PipelineJob {
 interface SchedulerStatus {
   running: boolean;
   rotation?: RotationBlock;
+  crowdsourcing?: CrowdsourcingBlock;
 }
 
 interface PipelineStatus {
@@ -61,7 +64,7 @@ interface PipelineStatus {
   pipeline_jobs: PipelineJob[];
   cron_jobs: PipelineJob[];
   tavily: TavilyKeyStatus[];
-  ai_model_primary: string;
+  ai_models?: AiModelsBlock;
   scheduler?: SchedulerStatus;
 }
 
@@ -361,6 +364,10 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
   // ── Can launch? ──────────────────────────────────────────────
   // Un lancement exige un ADMIN et un backend qui répond (architecture.md §7.4).
   const backendReady = backend?.kind === "ready";
+  // Les modèles réellement appelés et le dernier passage utile du traitement des
+  // contributions : la logique d'affichage est dans lib/ (testée sans serveur).
+  const aiModels = describeAiModels(pipelineStatus?.ai_models);
+  const crowdsourcing = describeCrowdsourcing(pipelineStatus?.scheduler?.crowdsourcing);
   const canLaunch = useMemo(() => {
     if (!isAdmin || !backendReady) return false;
     if (!selectedSchoolId) return false;
@@ -570,9 +577,21 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
 
               {pipelineStatus && (
                 <>
-                  <div className="metric-box">
-                    <p className="metric-label">Modèle IA Principal</p>
-                    <p className="metric-value">{pipelineStatus.ai_model_primary || "Gemma 31B"}</p>
+                  {aiModels && (
+                    <div className="metric-box">
+                      <p className="metric-label">Modèles IA</p>
+                      <p className="metric-value">{aiModels.headline}</p>
+                      <p className="metric-detail">Cascade (du plus fort au plus faible) : {aiModels.cascade}</p>
+                      <p className="metric-detail">Dernier recours : {aiModels.lastResort}</p>
+                    </div>
+                  )}
+
+                  <div className="metric-box" data-testid="crowdsourcing-status">
+                    <p className="metric-label">Contributions du public</p>
+                    <p className={`metric-value crowdsourcing-${crowdsourcing.tone}`}>{crowdsourcing.headline}</p>
+                    {crowdsourcing.lines.map((line) => (
+                      <p key={line} className="metric-detail">{line}</p>
+                    ))}
                   </div>
 
                   <div className="tavily-quotas-section">
@@ -978,6 +997,28 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
           font-weight: 600;
           color: var(--accent);
           margin: 0;
+        }
+
+        .metric-detail {
+          font-size: 0.8rem;
+          color: var(--text-secondary);
+          margin: 4px 0 0 0;
+        }
+
+        .crowdsourcing-muted {
+          color: var(--text-secondary);
+        }
+
+        .crowdsourcing-ok {
+          color: var(--success);
+        }
+
+        .crowdsourcing-warning {
+          color: var(--warning, #f59e0b);
+        }
+
+        .crowdsourcing-error {
+          color: var(--danger);
         }
 
         .tavily-quotas-section h3 {

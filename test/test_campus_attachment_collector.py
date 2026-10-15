@@ -494,3 +494,33 @@ class TestPhase1Wiring(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LiveExtractToleranceTest(unittest.TestCase):
+    """
+    Depuis le 14 octobre 2026, extract_from_urls leve sur une panne au lieu de
+    rendre "" (etape 7 du plan backend-local). La collecte garde sa tolerance :
+    une panne vaut une page vide, et seul un quota epuise l'arrete.
+    """
+
+    def test_une_panne_tavily_vaut_une_page_vide(self):
+        from backend.pipeline.campus_attachment_collector import LiveCollectorIO
+        from backend.tavily_service.client import TavilyRequestError
+
+        with patch(
+            "backend.tavily_service.client.extract_from_urls",
+            side_effect=TavilyRequestError("Read timed out"),
+        ), self.assertLogs("pipeline.campus_attachment_collector", level="WARNING") as logs:
+            self.assertEqual(LiveCollectorIO(key_manager=None).extract(["https://x/a"]), "")
+        self.assertIn("Read timed out", "\n".join(logs.output))
+
+    def test_un_quota_epuise_arrete_la_collecte(self):
+        from backend.pipeline.campus_attachment_collector import LiveCollectorIO
+        from backend.tavily_service.key_manager import QuotaExhaustedError
+
+        with patch(
+            "backend.tavily_service.client.extract_from_urls",
+            side_effect=QuotaExhaustedError("plus de cle"),
+        ):
+            with self.assertRaises(QuotaExhaustedError):
+                LiveCollectorIO(key_manager=None).extract(["https://x/a"])

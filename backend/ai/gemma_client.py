@@ -57,8 +57,13 @@ DEFAULT_TIMEOUT_MS = int(os.environ.get("GEMMA_TIMEOUT_MS", 120_000))
 # bloc : tout ce qui suit est alors lu par le modèle comme une consigne et non
 # plus comme de la matière à analyser. Ces deux fonctions sont le seul chemin
 # autorisé pour injecter du contenu externe dans un prompt.
+#
+# Des espaces sont admises de part et d'autre de la barre : « < /TEXTE_SOURCE> »
+# n'est pas une balise XML, mais un modèle peut la lire comme une fermeture.
+# Jusqu'au 14 octobre 2026, l'expression n'en admettait qu'après la barre, et
+# cette écriture traversait la garde (test/test_wrap_source.py).
 
-_DELIMITER_RE = re.compile(r"</?\s*(TEXTE_SOURCE|REVENDICATION)\s*>", re.IGNORECASE)
+_DELIMITER_RE = re.compile(r"<\s*/?\s*(TEXTE_SOURCE|REVENDICATION)\s*>", re.IGNORECASE)
 
 
 def sanitize_source(text: str | None) -> str:

@@ -67,7 +67,10 @@ class TestTargetedResearchSwitch(unittest.TestCase):
 
     def trigger(self, **fields):
         spawned = []
-        with patch.object(internal.pipeline_jobs, "get_active_job", return_value=None), \
+        # L'école est lue avant tout job depuis l'étape 7 du plan backend-local
+        # (404 SCHOOL_NOT_FOUND) : ici, elle existe.
+        with patch.object(internal, "_require_school"), \
+             patch.object(internal.pipeline_jobs, "get_active_job", return_value=None), \
              patch.object(internal.pipeline_jobs, "create_job", side_effect=self.store.create_job), \
              patch.object(internal, "_spawn", side_effect=spawned.append):
             response = asyncio.run(

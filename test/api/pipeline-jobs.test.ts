@@ -10,13 +10,20 @@
  * contributions `Pending_AI` qui attendent le backend local.
  */
 
-import { before, beforeEach, test } from "node:test";
+import { afterEach, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { installFakePrisma } from "../helpers/fake-prisma";
+import { schemaErrors } from "../helpers/prisma-schema";
 import { installSession } from "../helpers/session";
 
 const db = installFakePrisma();
+
+// Chaque requête reçue par le faux doit exister dans le vrai schéma Prisma
+// (test/helpers/prisma-schema.ts).
+afterEach(() => {
+  assert.deepEqual(schemaErrors(db.calls), []);
+});
 const session = installSession();
 
 type Handler = (request: Request) => Promise<Response>;

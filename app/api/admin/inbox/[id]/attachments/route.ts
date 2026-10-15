@@ -42,6 +42,11 @@
  * `conflicts`, et tout ce qui reste en base sans être réaffirmé est nommé dans
  * `stale`. Les règles elles-mêmes sont dans `lib/campus-attachment.ts`.
  *
+ * Le ticket n'est clos que si une ligne ou une note a été résolue (écrite, ou
+ * déjà en base à l'identique). Sinon : 422 avec les conflits, ticket ouvert,
+ * comme la validation multi-programme. Un corps illisible est refusé (400),
+ * jamais remplacé par le bloc du ticket (F2).
+ *
  * Le même ticket peut porter `campus_policy_notes` : la note de politique de
  * campus d'un programme EXISTANT de l'école du ticket. Le type `PolicyNoteTx`
  * n'ouvre que `program.findUnique` et `program.update` sur cette seule
@@ -53,6 +58,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardAuth } from "@/lib/auth";
 import { STATUS_REJECTED, STATUS_VALIDATED } from "@/lib/contribution";
+import { adminCorrections, readOptionalJsonObject } from "@/lib/request-body";
 import {
   applyAttachmentPlan,
   applyPolicyNotePlan,
@@ -76,6 +82,13 @@ export async function PUT(
 
   const { id } = await params;
 
+  // Lu avant la base : un corps illisible est refusé, jamais remplacé en
+  // silence par le bloc du ticket (F2, lib/request-body.ts).
+  const body = await readOptionalJsonObject(request);
+  if (!body.ok) {
+    return NextResponse.json({ error: body.error }, { status: 400 });
+  }
+
   try {
     const ticket = await prisma.contributionInbox.findUnique({ where: { id } });
 
@@ -94,17 +107,11 @@ export async function PUT(
 
     // Même convention que la route de validation : le corps de la requête, s'il
     // en porte un, prime sur `ai_extracted_json`. C'est ce qui rend l'arbitrage
-    // de l'admin effectif — il peut retirer une ligne avant d'écrire.
-    let bodyData: Record<string, unknown> = {};
-    try {
-      bodyData = await request.json();
-    } catch {
-      // Pas de corps JSON : on écrit ce que le ticket porte.
-    }
+    // de l'admin effectif — il peut retirer une ligne avant d'écrire. Sans
+    // corps, ou avec `{}`, on écrit ce que le ticket porte.
     const rawJson =
-      bodyData && Object.keys(bodyData).length > 0
-        ? bodyData
-        : (ticket.ai_extracted_json as Record<string, unknown> | null);
+      adminCorrections(body.body) ??
+      (ticket.ai_extracted_json as Record<string, unknown> | null);
 
     if (!rawJson) {
       return NextResponse.json(
@@ -150,12 +157,22 @@ export async function PUT(
         const notePlan = planPolicyNoteWrites(notes);
         const noteCounts = await applyPolicyNotePlan(noteDb, notePlan);
 
-        await tx.contributionInbox.update({
-          where: { id: ticket.id },
-          data: { status: STATUS_VALIDATED },
-        });
+        // Ne clore le ticket QUE si une ligne ou une note a été résolue
+        // (écrite, ou déjà en base à l'identique). Sinon il reste ouvert :
+        // une fois l'arête créée par la validation Program_Discovery, l'admin
+        // doit pouvoir le rejouer. Même règle que `validateMultiProgram`.
+        const resolvedCount =
+          counts.created + counts.updated + counts.unchanged +
+          noteCounts.created + noteCounts.updated + noteCounts.unchanged;
+        if (resolvedCount > 0) {
+          await tx.contributionInbox.update({
+            where: { id: ticket.id },
+            data: { status: STATUS_VALIDATED },
+          });
+        }
 
         return {
+          closed: resolvedCount > 0,
           counts,
           plan,
           noteCounts,
@@ -171,6 +188,23 @@ export async function PUT(
       },
       { timeout: 60000 }
     );
+
+    if (!result.closed) {
+      // L'écran n'affiche que `error` : le décompte des conflits y figure.
+      const byType = new Map<string, number>();
+      for (const c of result.conflicts) byType.set(c.type, (byType.get(c.type) ?? 0) + 1);
+      const summary = [...byType].map(([type, n]) => `${n} ${type}`).join(", ");
+      return NextResponse.json(
+        {
+          error:
+            "Aucune ligne ni note n'a pu être résolue : rien n'a été écrit, le ticket reste ouvert pour correction." +
+            (summary ? ` Conflits : ${summary}.` : ""),
+          conflicts: result.conflicts,
+          stale: result.plan.stale,
+        },
+        { status: 422 }
+      );
+    }
 
     return NextResponse.json({
       message:

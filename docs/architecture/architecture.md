@@ -8,7 +8,11 @@
 > démarrage raté se voit (§2.3) ; une Phase 2 dont une cible a échoué finit
 > `failed` et nomme ses cibles (§5.3) ; le site en ligne n'a pas de backend :
 > `/admin/cron` y lit la base, et ne pilote le backend qu'en local (§2.3, §7.4) ;
-> `npm run local` lance le backend dans sa propre fenêtre, puis Next.js (§10.6).
+> `npm run local` lance le backend dans sa propre fenêtre, puis Next.js (§10.6) ;
+> étape 7 : les parties non couvertes sont testées (§10 bis), et les défauts
+> trouvés corrigés : API v1 (§8.4, §8.8), CRUD admin (§7.4), inbox (§5.4, §6.2),
+> contributions (§10.2), erreurs Tavily (§6.2), déclencheurs internes (§2.3) ;
+> smoke local `npm run smoke` (§10 bis).
 > Les sections qui citent encore Koyeb
 > (§1.2, §2.1, §2.2) seront reprises à l'étape 8 du plan.
 > Depuis la v2.0 : les deux crons Research (`phase1_scanner`, `phase2_enricher`)
@@ -107,6 +111,13 @@ Le système extrait, vérifie et structure les informations depuis les sites off
   - `POST /internal/research-test/{school_id}` — Pipeline Research en `dry_run` : rend le rapport sans rien écrire
   - `POST /internal/run-due-passes` — **les passes dues, sur demande** (§5.5) : `{max_passes: 1..5, dry_run: bool}`. Seul départ d'une passe de rotation : il n'y a plus de cron
   - `GET /internal/pipeline-status` — État du pipeline, crédits Tavily, **connexion BDD réelle**, **erreurs du démarrage** (`startup_errors`) et **état des jobs** (bloc `scheduler`, détaillé ci-dessous)
+
+  Les trois déclencheurs (`trigger-scan`, `trigger-enrichment`,
+  `trigger-targeted-research`) lisent l'école avant d'ouvrir un job : inconnue →
+  **404**, `detail.code = "SCHOOL_NOT_FOUND"` (avant : 500 sur la clé
+  étrangère) ; un job déjà actif pour elle → **409**,
+  `detail.code = "ALREADY_RUNNING"`, avec `job_id`, `status` et `phase` (avant :
+  200 `already_running`). Décisions 6 et 7 de l'étape 7 du plan backend-local.
 
   `GET /health` (hors `/internal`, sans jeton) sert de sonde de disponibilité :
   `{"status": "ok", "version"}`, ou `{"status": "degraded", "version", "errors": [...]}`
@@ -815,7 +826,10 @@ convertit en JSON selon `extraction_schemas.py`.
 > **Research ne déclare pas son coût** : aucun champ `usage`, ni en mini ni en
 > pro. `ESTIMATED_CREDITS` (`research_client.py`) vaut 10 et 25 — ce sont des
 > estimations. `GET /usage` n'est pas en temps réel : pour mesurer une passe, il
-> faut compter les appels, pas lire le compteur.
+> faut compter les appels, pas lire le compteur. L'estimation est comptée **dès
+> que la tâche est créée** (le `request_id` obtenu), avant l'attente du rapport :
+> Tavily facture une tâche lancée même si son rapport se perd. Jusqu'au
+> 14 octobre 2026, une tâche perdue pendant l'attente n'était pas comptée.
 
 > **Accreditation et Ranking rendent des listes.** L'extraction d'une
 > accréditation rend `{ "accreditations": [...] }` : un rapport, toutes les
@@ -1240,7 +1254,17 @@ peut retirer des lignes dans le panneau de l'inbox avant d'écrire :
   transformerait chaque lecture manquée en perte invisible ;
 - **`campus_policy_note`** dans la même transaction : `PolicyNoteTx` ne connaît
   que `program.findUnique` et `program.update` de cette seule colonne, en
-  `string` — ce chemin ne peut ni créer un programme ni effacer une note.
+  `string` — ce chemin ne peut ni créer un programme ni effacer une note ;
+- **le ticket ne passe `Validated` que si une ligne ou une note est résolue**
+  (créée, mise à jour ou déjà identique). Sinon : 422 qui décompte les conflits
+  (« Conflits : 2 edge_missing »), `conflicts` et `stale` dans le corps, rien
+  d'écrit, ticket ouvert pour correction. C'est la règle de `validate`.
+  Jusqu'au 14 octobre 2026, le ticket se fermait sans rien écrire ;
+- **corps illisible → 400** (F2, plan backend-local) : un JSON mal formé, ou une
+  valeur qui n'est pas un objet, est refusé avant toute lecture en base
+  (`readOptionalJsonObject`, `lib/request-body.ts`). Il passait pour « pas de
+  corps », et la route écrivait le JSON de l'IA à la place des corrections.
+  `validate` suit la même règle.
 
 Le plan existe en **deux implémentations** — `lib/campus-attachment.ts`
 (`planAttachmentWrites`, pour la route) et `backend/pipeline/attachment_plan.py`
@@ -1502,7 +1526,7 @@ Utilisateur (non connecté)
 
 Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière suivante :
 1. **Mono ou multi-programme :** pour `Pricing`, `Ranking` ou `Capacity`, un ticket rattaché à un `programId` est extrait pour ce seul programme. **Sans `programId`, il passe en mode multi-programme** : Gemma extrait une entrée par programme trouvé sur la page, et chaque nom est apparié aux `Program` de l'école par `_match_program_name` — égalité littérale (`exact`), puis clauses fermées de `program_identity.match_program` (`fuzzy`). Un nom ambigu ou inconnu part en `unmatched_programs`, jamais sur un programme voisin. L'ancienne heuristique (inclusion de sous-chaîne, Jaccard ≥ 0,4) rattachait un doctorat à un bachelor : 6 faux appariements sur 34, corrigés en `fafcdae`. Les programmes non appariés peuvent être créés depuis l'inbox (`POST …/create-programs`).
-2. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Délai de 30 s (`TAVILY_EXTRACT_TIMEOUT_SECONDS`). Si le contenu extrait est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et **le ticket est supprimé** de la BDD (l'URL soumise est considérée définitivement invalide).
+2. **Extraction de Page (Tavily) :** Extraction du texte brut de la page web cible. Délai de 30 s (`TAVILY_EXTRACT_TIMEOUT_SECONDS`). Si l'extraction **réussit** mais que le contenu est vide ou inférieur à 50 caractères, une exception `TavilyExtractionError` est levée, et **le ticket est supprimé** de la BDD (l'URL soumise est considérée définitivement invalide). Une extraction **qui échoue** n'est pas un contenu vide : une clé refusée pour quota passe la main à la suivante (3 essais), puis `QuotaExhaustedError` ; toute autre panne lève `TavilyRequestError`, et le ticket passe en `Failed`, rejoué plus tard (`backend/tavily_service/client.py`). Jusqu'au 14 octobre 2026, `extract_from_urls` et `search_web` avalaient ces erreurs et rendaient `""` : une panne Tavily **supprimait** la contribution.
 3. **Vérification de Compatibilité (Gemma 26B) :** Un appel préliminaire de pertinence avec le prompt `CROWDSOURCING_COMPATIBILITY_SYSTEM` valide si la page contient des données liées à l'école cible pour la catégorie demandée. Le texte est tronqué à **25 000 caractères** : l'appel ne rend qu'un booléen et une raison, et tranche sur le début de la page. L'extraction, elle, reçoit 80 000 caractères en mono-programme et 25 000 en multi-programme — trois plafonds délibérés, qui fixent le coût de chaque ticket. Le champ `user_text` (note utilisateur) est **strictement exclu** pour prévenir toute injection de prompt. Si incompatible, le ticket est marqué **`Rejected`** avec la raison écrite dans `ai_extracted_json` — c'est le seul cas où un ticket reste en `Rejected` après le traitement IA.
 4. **Extraction Structurée (Gemma 31B) :** Si compatible, Gemma 31B extrait les données structurées selon la catégorie concernée. Le champ `user_text` est à nouveau exclu.
 5. **Validation Post-Extraction des Données Obligatoires :**
@@ -1514,7 +1538,7 @@ Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière su
    - **Succès :** Mise à jour du statut en `Pending_Admin` avec le JSON extrait (upsert temporaire), prêt pour la validation humaine.
    - **Erreurs API Temporaires (`GemmaAPIError`) :** Si le service API Google GenAI ou le réseau échoue (ex: 429, 500, timeout temporaire), le ticket reste en `Pending_AI` afin d'être re-tenté lors du prochain run du scheduler. Le nombre d'essais LLM par ticket est étendu à 4 tentatives.
    - **Erreurs Permanentes (`GemmaParsingError`, `TavilyExtractionError`) :** Le ticket est **supprimé directement** via `_delete_ticket()`. La page ne sera jamais exploitable et l'admin ne peut rien en faire ; cela protège au passage le quota de 500 MB Neon.
-   - **Erreurs Inattendues (`Exception` générique) :** **PAS de suppression.** Le ticket passe en `Failed` via `_mark_ticket_failed()`, avec un compteur de tentatives. Une coupure Neon au réveil ou un timeout ne prouve pas que la contribution est invalide — l'ancien code détruisait ici une extraction Tavily **déjà facturée**. Le ticket est rejoué après `CROWDSOURCING_RETRY_DELAY_MINUTES` (défaut 60), puis supprimé au-delà de `CROWDSOURCING_MAX_ATTEMPTS` (défaut 3). Chaque nouvelle tentative **relance une extraction facturée** : c'est le paramètre à surveiller côté coût.
+   - **Erreurs Inattendues (`Exception` générique, dont `TavilyRequestError`) :** **PAS de suppression.** Le ticket passe en `Failed` via `_mark_ticket_failed()`, avec un compteur de tentatives. Une coupure Neon au réveil ou un timeout ne prouve pas que la contribution est invalide — l'ancien code détruisait ici une extraction Tavily **déjà facturée**. Le ticket est rejoué après `CROWDSOURCING_RETRY_DELAY_MINUTES` (défaut 60), puis supprimé au-delà de `CROWDSOURCING_MAX_ATTEMPTS` (défaut 3). Chaque nouvelle tentative **relance une extraction facturée** : c'est le paramètre à surveiller côté coût.
    - **Quota Epuisé (`QuotaExhaustedError`) :** Le traitement de l'ensemble du batch est interrompu immédiatement (le ticket reste en `Pending_AI`, aucune suppression).
 7. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés/supprimés.
 
@@ -1534,7 +1558,13 @@ et détruirait une contribution valide.
 
 #### Validation vers la production
 
-La route `PUT /api/admin/inbox/[id]/validate` applique trois règles :
+La route `PUT /api/admin/inbox/[id]/validate` applique quatre règles :
+
+- **Un corps illisible est refusé (400), avant toute lecture en base** (F2, plan
+  backend-local) : un JSON mal formé, ou une valeur qui n'est pas un objet. Il
+  passait pour « pas de corrections », et la route écrivait le JSON brut de l'IA
+  avec un 200. Un corps absent ou `{}` écrit le ticket tel quel
+  (`lib/request-body.ts`).
 
 - **Upsert et clôture du ticket dans une seule transaction.** Séparés, un échec du
   second appel laissait la donnée écrite et le ticket ouvert : l'admin revalidait
@@ -1601,6 +1631,31 @@ entrée écartée**, avec motif.
 | Pipeline de recherche : passes dues (§5.5), recherche ciblée (case « collecte campus »), historique des jobs | `/admin/cron` | lecture : Admin ou Moderator · lancement : **Admin** |
 | Gestion Modérateurs | `/admin/users` | **Admin uniquement** |
 
+**Contrôles des routes CRUD** (`app/api/admin/**`, tenus par
+`test/api/admin-*.test.ts`). Un corps invalide donne 400 et un id inconnu 404,
+avant toute écriture. Quatre règles ont été ajoutées le 14 octobre 2026 (plan
+backend-local, étape 7, décisions 11 à 14) :
+
+- un nom ou un domaine fait d'espaces est refusé (écoles et campus, création et
+  modification) : le contrôle se faisait avant le `trim()`, et une chaîne vide
+  était écrite. À la modification, un champ fourni vide est donc refusé, alors
+  qu'il était ignoré ;
+- `PUT /api/admin/programs/[id]` vérifie que les `campusIds` appartiennent à
+  l'école du programme, comme la création. Sans cela, un programme pouvait être
+  rattaché au campus d'une autre école ;
+- un nombre facultatif illisible (tarifs, statistiques, durées d'un programme)
+  donne 400 en nommant le champ (`readOptionalNumbers`, `lib/request-body.ts`).
+  `parseInt("abc")` rend `NaN`, et **Prisma écrit `NaN` en `NULL`** (vérifié en
+  capturant le SQL) : une faute de frappe effaçait la valeur en base, avec un
+  200. Vide ou absent, le champ vaut toujours `null`. Pour les durées d'un
+  programme, un `0` numérique vaut désormais 0 (il valait `null`) ;
+- `GET /api/admin/schools/[id]/campuses` rend 404 pour une école inconnue (il
+  rendait une liste vide).
+
+Reste connu et accepté (décision 10) : un JSON mal formé ou `null` donne 500 au
+lieu de 400 sur ces routes et sur `create-programs`. Rien n'est écrit dans ce
+cas, et le back-office envoie toujours du JSON valide.
+
 **`/admin/cron` en ligne et en local** (plan backend-local, étape 5). La page
 serveur (`page.tsx`) lit le rôle et rend `CronMonitoringClient.tsx`. L'état du
 backend vient de `pipeline-status` toutes les 5 s, un appel à la fois ;
@@ -1655,7 +1710,7 @@ Cache Vercel Edge (ISR 1h). CORS : `Access-Control-Allow-Origin: *`.
 |---|---|---|
 | `GET /api/v1/schools` | Liste paginée des écoles actives | `?search=emlv&page=1&limit=20` |
 | `GET /api/v1/schools/[id]` | Détail d'une école (infos de base) | — |
-| `GET /api/v1/schools/[id]/stats` | Stats de l'école (étudiants, alumni…) | `?year=2025` (optionnel, dernier par défaut) |
+| `GET /api/v1/schools/[id]/stats` | Stats de l'école (étudiants, alumni…) : **un objet**, une année ; aucune → 404 « Statistiques introuvables » | `?year=2025` (optionnel, dernier par défaut) |
 | `GET /api/v1/schools/[id]/accreditations` | Accréditations (EQUIS, AACSB…) | — |
 
 ### 8.2. Campuses (2 endpoints)
@@ -1678,7 +1733,15 @@ Cache Vercel Edge (ISR 1h). CORS : `Access-Control-Allow-Origin: *`.
 | Endpoint | Description | Query Params |
 |---|---|---|
 | `GET /api/v1/programs/[id]/pricing` | Historique tarifaire d'un programme | `?year=2025` |
-| `GET /api/v1/schools/[id]/pricing` | Tous les tarifs de l'école (tous programmes) | `?year=2025` |
+| `GET /api/v1/schools/[id]/pricing` | Tous les tarifs de l'école (tous programmes), chacun avec `program.campuses` | `?year=2025` |
+
+> **`/schools/[id]/pricing` et `/rankings` répondaient toujours 500 jusqu'au
+> 14 octobre 2026.** Leur filtre passait par `program.campus`, relation disparue
+> quand un programme a cessé d'appartenir à un campus ; Prisma refusait la
+> requête (`Unknown argument campus`), et `tsc` ne le voyait pas (`where: any`).
+> Elles filtrent désormais par `program.schoolId` et `program.school`, et chaque
+> ligne porte `program.campuses` (et `program.school` pour `/rankings`). Les
+> tests relisent chaque requête contre le schéma (§10 bis).
 
 ### 8.5. Rankings (2 endpoints)
 
@@ -1704,7 +1767,7 @@ Cache Vercel Edge (ISR 1h). CORS : `Access-Control-Allow-Origin: *`.
 | Portée | Protection |
 |---|---|
 | `/api/v1/:path*` | **60 requêtes / minute / IP** (`proxy.ts`, seau `v1:`) — `OPTIONS` exclu |
-| `/v1/schools`, `/v1/programs`, `/v1/rankings` | paginées, `limit` plafonné à 100 |
+| `/v1/schools`, `/v1/programs`, `/v1/rankings` | paginées, `limit` plafonné à 100 ; une valeur hors bornes est ramenée dans les bornes, une valeur vide ou non numérique reprend le défaut (20, ou 50 pour `/rankings`). Jusqu'au 14 octobre 2026, `?page=abc` donnait `NaN`, refusé par Prisma : 500 |
 | les 7 sous-collections | plafond dur **`take: 500`** |
 | `/v1/compare/programs` | 5 identifiants, **dédupliqués** |
 
@@ -1775,6 +1838,11 @@ Format : `{ "error": "Description" }`
 | 32 | Crédits du mois repartis de zéro à chaque lancement : plafond qui croit le mois vierge (F8) | Synchro `/usage` bloquante avant toute passe réelle ; une clé non recalée → rien ne part (`USAGE_SYNC_FAILED`). Dernière synchro dans `rotation.usage_sync` (§5.5) | `tavily_service/key_manager.py`, `scheduler/jobs.py` |
 | 33 | Base injoignable : le crowdsourcing faisait `return` chaque minute, sans trace (F4) | `SubmissionQueueUnavailable` levée ; chaque passage inscrit au registre (`last_runs.crowdsourcing_processor`), `failed` aussi sur un quota épuisé ; `has_failure` dégrade `pipeline-status` | `crowdsourcing/processor.py`, `scheduler/jobs.py` |
 | 34 | Phase 2 dont toutes les cibles échouent (Gemini saturé, panne Tavily) qui se dit réussie : l'école attendait 182 jours (F1) | Un motif par cible ; `success: False` dès qu'une cible a échoué (D2), `failed_targets` et `outcomes` dans le résultat, cibles nommées dans le message ; job `failed`, reprise à 14 jours (§5.3, §5.5) | `pipeline/phase2_research.py` |
+| 35 | Panne Tavily lue comme « contenu vide » : contribution supprimée | Quota → clé suivante puis `QuotaExhaustedError` ; autre panne → `TavilyRequestError`, ticket `Failed` rejoué (§6.2) | `tavily_service/client.py`, `crowdsourcing/processor.py` |
+| 36 | Faute de frappe dans un nombre : `NaN`, que Prisma écrit en `NULL`, efface la valeur | `readOptionalNumbers` : 400 qui nomme le champ (§7.4) | `lib/request-body.ts`, routes admin |
+| 37 | Corrections illisibles prises pour « pas de corrections » : JSON de l'IA écrit (F2) | `readOptionalJsonObject` : 400 avant toute lecture en base (§5.4, §6.2) | `lib/request-body.ts`, `validate`, `attachments` |
+| 38 | `/v1/schools/[id]/pricing` et `/v1/rankings` toujours en 500 (`program.campus`) ; `?page=abc` → 500 | Filtre par l'école du programme ; pagination illisible → défaut ; requêtes des tests relues contre le schéma (§8.4, §8.8, §10 bis) | `app/api/v1/**`, `lib/utils.ts` |
+| 39 | `localhost.` et `[::ffff:127.0.0.1]` passaient la garde des hôtes internes | Point final retiré, IPv4 encapsulée ramenée à sa forme pointée (§10.2) | `lib/utils.ts` |
 
 ---
 
@@ -1800,7 +1868,10 @@ def wrap_source(text, limit=None)  # tronque, neutralise, encadre
 ```
 
 Sans neutralisation, une page contenant elle-même `</TEXTE_SOURCE>` **sort du
-bloc** : tout ce qui suit est lu comme une consigne. Tous les points d'injection
+bloc** : tout ce qui suit est lu comme une consigne. Le filtre tolère la casse et
+les espaces, y compris avant la barre : `<\s*/?\s*(TEXTE_SOURCE|REVENDICATION)\s*>`,
+sans casse. `< /TEXTE_SOURCE>` passait jusqu'au 14 octobre 2026 (plan
+backend-local, étape 7 ; `test/test_wrap_source.py`). Tous les points d'injection
 y passent : contrôle de compatibilité, extractions mono et multi-programme du
 crowdsourcing, et `extract_structured` de la cascade Gemini — donc les Phases 1
 et 2 et la collecte du rattachement campus. `is_content_relevant` et
@@ -1828,10 +1899,10 @@ avant la moindre écriture.
 | `categories` | tableau (vérifié par `Array.isArray`), dédupliqué, **liste blanche** des 5 catégories |
 | `urls` | 5 maximum, `https:` obligatoire, 2048 caractères |
 | Domaine | **domaine officiel de l'école** ou `CONTRIBUTION_ALLOWED_DOMAINS` |
-| Hôtes internes | rejetés : boucle locale, RFC1918, lien-local, CGNAT, `.local`, `.internal` |
+| Hôtes internes | rejetés : boucle locale, RFC1918, lien-local, CGNAT, `.local`, `.internal` ; aussi sous un point final (`localhost.`) ou en IPv4 encapsulée en IPv6 (`[::ffff:127.0.0.1]`, que le parseur d'URL réécrit `::ffff:7f00:1`), qui passaient jusqu'au 14 octobre 2026 |
 | `userText` | 2 000 caractères |
 | Identifiants | `campusId`, `programId`, `programCampusId` **vérifiés comme appartenant à `schoolId`** |
-| Écriture | un ticket par catégorie, **une seule transaction** |
+| Écriture | un ticket par catégorie, reliés par un même `submission_group_id` (absent jusqu'au 14 octobre 2026), **une seule transaction** |
 
 L'absence d'`Array.isArray` laissait une chaîne passer le contrôle de longueur
 puis faire échouer le `.map` en **500**. L'absence de borne permettait de saturer
@@ -2169,10 +2240,55 @@ Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
 (+25 sous-tests) et 36 tests TypeScript ; au 12 octobre, 291 et 43 ; le
 14 octobre, après l'étape 1 du plan backend-local, 291 et 50 ; après l'étape 2,
 319 et 68 ; après l'étape 3, 362 et 68 ; après l'étape 4, 379 et 68 ; après
-l'étape 5, 379 et 122. **Au 14 octobre 2026, après l'étape 6 : 379 tests
-Python (+25 sous-tests) et 128 tests TypeScript**, tous verts. Les deux suites
-lisent des fixtures communes quand une règle existe en deux langages
-(`test/fixtures/attachment_plan_cases.json`).
+l'étape 5, 379 et 122 ; après l'étape 6, 379 et 128. **Au 14 octobre 2026,
+après l'étape 7 : 570 tests Python (+25 sous-tests) et 482 tests TypeScript**,
+tous verts. Les deux suites lisent des fixtures communes quand une règle existe
+en deux langages (`test/fixtures/attachment_plan_cases.json`).
+
+**Les parties non couvertes** (étape 7 du plan backend-local). Chaque fichier
+est né d'un défaut possible. Les défauts trouvés ont donné lieu à quatorze
+décisions du propriétaire, soit treize corrections et un défaut consigné
+(journal du plan, §11) :
+
+- **P0**, les portes de la production et de la dépense :
+  - `test/api/inbox-validate.test.ts` et `inbox-attachments.test.ts` : corps
+    illisible → 400 (F2), corrections de l'admin, refus, 422 ;
+  - `test/api/contribute.test.ts` : plafonds, hôtes privés, domaines,
+    appartenance, `submission_group_id` ;
+  - `test/auth.test.ts`, `utils.test.ts`, `password.test.ts`,
+    `rate-limit.test.ts` (Upstash simulé, repli mémoire), `proxy.test.ts`
+    (JWT forgés avec un secret de test) ;
+  - `test/test_diff.py`, `test_wrap_source.py`, `test_pipeline_jobs.py`,
+    `test_crowdsourcing_queue.py`, `test_research_client.py` ;
+- **P1** :
+  - `test/test_extraction_contracts.py`, `test_academic_year.py`,
+    `test_catalog_client.py`, `test_tavily_client.py`, `test_phase2_writers.py`,
+    `test_internal_triggers.py` ;
+  - `test/api/inbox-actions.test.ts` (purge, rejet, création de programmes) et
+    `users.test.ts` ;
+  - `test/api/v1.test.ts` : les 15 routes de l'API v1. Pour chacune : forme,
+    CORS, `OPTIONS`, 404, erreur Prisma → 500 sans le message interne, bornes de
+    pagination, `?year=abc` → 400 ;
+- **P2** :
+  - `test/api/admin-schools.test.ts`, `admin-programs.test.ts`,
+    `admin-records.test.ts` : le CRUD admin, 400, 404, cas nominal et cascades
+    réservées à ADMIN ;
+  - `test/api/public-schools.test.ts` : `app/api/schools/**` ;
+- **pages** (F6, sans bibliothèque de test React) :
+  - `test/silent-pages.test.ts` relit l'accueil et l'inbox à la recherche d'un
+    `catch` muet ;
+  - la logique testable est sortie dans `lib/public-schools.ts` et
+    `lib/ticket-refresh.ts` ;
+- `test/request-body.test.ts`, `prisma-schema.test.ts`, `smoke-checks.test.ts` :
+  les aides du banc et du smoke.
+
+**Garde réseau** (fin d'étape 7). Les deux suites ont été rejouées avec
+connexions et résolutions DNS refusées hors de `127.0.0.1`. Pour pytest, un
+greffon remplace `socket.connect` et `getaddrinfo`. Pour `node --test`, un
+`--import` remplace `net.Socket.prototype.connect` et `dns.lookup` ; il est
+chargé dans les 34 processus fils. Un contrôle positif (`fetch` vers
+`192.0.2.1`, résolution d'un nom `.invalid`) est bien refusé. Résultat :
+**0 tentative**, 570 et 482 verts.
 
 **Le lanceur local** (étape 6, §10.6) : `test/local-launcher.test.ts` lit
 `package.json` et `scripts/start-local.ps1` sans rien lancer (le script ne
@@ -2279,11 +2395,18 @@ drapeau `--experimental-test-module-mocks` (encore requis sous Node 24.21) :
 |---|---|---|
 | `test/helpers/fake-prisma.ts` | `@/lib/prisma` | chaque test déclare les seules méthodes dont il a besoin (`db.use({...})`) ; tout appel est enregistré dans `db.calls`, une méthode non déclarée lève ; `$transaction` accepte une fonction (appelée avec le même faux, l'exception remonte) ou un tableau |
 | `test/helpers/session.ts` | `@/lib/auth` | trois profils (`none`, `MODERATOR`, `ADMIN`) ; `guardAuth` et `guardAdmin` rendent les mêmes 401 et 403 que `lib/auth.ts`, et `session.guards` liste les gardes appelées |
+| `test/helpers/prisma-schema.ts` | — | `schemaErrors(db.calls)` relit chaque requête reçue par le faux contre le modèle de données du client généré (`Prisma.dmmf`, sans base) : tout champ de `where`, `select`, `include`, `orderBy`, `_count`, `data` doit exister, relations comprises. Appelé en `afterEach` ou par test dans tous les fichiers de `test/api/` qui utilisent le faux. C'est lui qui a vu `program.campus` (§8.4) : `tsc` ne voit rien derrière un `where: any` |
+| `test/helpers/requests.ts` | — | `body()`, `get()`, `params()`, `quietly()` pour appeler un handler |
 | `test/helpers/fake-backend.ts` | `fetch` (global) | le backend FastAPI : chaque test choisit `reply` (JSON), `replyText`, `refuse` (connexion refusée) ou `hang` (aucune réponse avant l'abandon) ; un appel non prévu lève ; `backend.calls` garde URL, méthode, en-têtes et corps ; `env()` pose `FASTAPI_URL` et le jeton, `reset()` les retire |
 
 - **Ordre d'import.** Les aides s'importent en tête du fichier, et la route
   par un `import()` dans `before()`. Un import statique de la route serait
   évalué avant le remplacement.
+- **Transactions.** Le faux n'a pas de rollback réel, mais il retient ce
+  qu'une transaction en échec annule (`db.rolledBack`). `db.writes()` ne rend
+  que les écritures qu'une base aurait gardées. Attention : dans la forme
+  tableau, le faux exécute chaque requête dès sa construction, et une écriture
+  vue dans `db.calls` n'est donc pas forcément tenue.
 - **Garde-fou réseau.** `fake-prisma.ts` pose une `DATABASE_URL` locale morte
   (`127.0.0.1:9`). Un test qui chargerait par erreur le vrai `lib/prisma`
   échouerait sur place sans jamais joindre Neon, et dotenv ne laisserait pas
@@ -2311,6 +2434,31 @@ par analyse statique, avec le compilateur TypeScript et sans mock. Chaque
 
 > Le test le plus important vérifie que **`user_text` n'atteint jamais un modèle
 > d'IA**. C'est une garantie de confidentialité, pas un détail.
+
+### Smoke local
+
+`npm run smoke` (`scripts/smoke-local.ts`), **à la main**, contre `npm run dev`
+déjà lancé. Il appelle `/`, `/contribute`, `/api-docs`, la fiche d'une école et
+celle d'un de ses programmes, puis les 15 `GET /api/v1/*`. Il attend un 200, un
+JSON lisible pour l'API, et aucune marque de page d'erreur Next dans le HTML
+(`__next_error__`, `data-next-error-digest`, page 404, `data-dgst` hors
+renvoi au navigateur).
+
+- **L'école choisie** est la première, par nom, qui a un programme. Une école
+  sans statistiques rend 404 sur `/stats` : c'est noté « absent », pas compté
+  en échec. Sans campus, `/campuses/[id]` est sauté.
+- **Lecture seule** : des GET, ni écriture ni appel payant. Mais `npm run dev`
+  lit la base de `.env.local`, dont la branche `main` est aussi la production :
+  **à lancer avec l'accord du propriétaire**.
+- **Pas en CI**, faute de base. Ses règles le sont : `scripts/lib/smoke-checks.ts`,
+  module pur, est testé par `test/smoke-checks.test.ts`. Ce test vérifie entre
+  autres que sa liste suit les fichiers de `app/api/v1`.
+- **Adresses** : toute adresse non locale est refusée, avec le code 2. Code 1
+  en cas d'échec.
+- **Rodage** : vérifié contre un faux site sur `127.0.0.1` (école sans
+  programme écartée, `/stats` absent, une panne et une page d'erreur
+  détectées), puis contre un port fermé (« npm run dev est-il lancé ? »).
+  **Pas encore joué contre `npm run dev`.**
 
 ### Contrôles d'exécution non automatisés
 
@@ -2495,7 +2643,9 @@ suffit, toujours sans `--force`.
 > **`ts-tests` reçoit une `DATABASE_URL` factice.** `prisma.config.ts` appelle
 > `env()` de `prisma/config` dès son chargement, et `env()` lève si la variable
 > manque, même pour `prisma generate`, qui ne se connecte pas. Le vrai secret
-> n'a rien à faire dans un job de tests qui ne touche jamais la base.
+> n'a rien à faire dans un job de tests qui ne touche jamais la base. La
+> génération y est indispensable depuis l'étape 7 : `test/helpers/prisma-schema.ts`
+> lit le modèle de données du client généré (`Prisma.dmmf`).
 
 > **`prisma generate` doit précéder `tsc`, et c'est une correction, pas un
 > détail.** Le workflow lançait `npx tsc --noEmit` **avant** de générer le

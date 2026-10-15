@@ -24,18 +24,17 @@ export async function GET(request: Request) {
     const rankingName = searchParams.get("ranking_name") ?? "";
     const yearParam = searchParams.get("year");
 
-    // Force default limit to 50 if not specified in searchParams
-    if (!searchParams.has("limit")) {
-      searchParams.set("limit", "50");
-    }
-    const { page, limit, skip } = parsePagination(searchParams);
+    // Limite par défaut : 50 (absente, vide ou non numérique).
+    const { page, limit, skip } = parsePagination(searchParams, 50);
 
+    // Un programme appartient à une école, pas à un campus. Jusqu'au 14 octobre
+    // 2026, ce filtre passait par `program.campus`, relation disparue avec la
+    // refonte de Program : Prisma refusait la requête et la route répondait
+    // toujours 500.
     const where: any = {
       program: {
-        campus: {
-          school: {
-            status: "ACTIVE",
-          },
+        school: {
+          status: "ACTIVE",
         },
       },
     };
@@ -69,14 +68,20 @@ export async function GET(request: Request) {
             select: {
               id: true,
               name: true,
-              campus: {
+              school: {
                 select: {
                   id: true,
                   name: true,
-                  school: {
+                },
+              },
+              campuses: {
+                select: {
+                  id: true,
+                  campus: {
                     select: {
                       id: true,
                       name: true,
+                      city: true,
                     },
                   },
                 },

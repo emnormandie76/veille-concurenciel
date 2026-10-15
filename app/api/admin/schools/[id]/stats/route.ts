@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardAuth } from "@/lib/auth";
+import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function GET(
   request: Request,
@@ -72,18 +73,7 @@ export async function PUT(
 
   try {
     const body = await request.json();
-    const {
-      academic_year,
-      total_students,
-      total_alumni,
-      partner_companies,
-      annual_internship_offers,
-      abroad_campuses,
-      partner_universities,
-      permanent_professors,
-      international_professors_pct,
-      external_speakers_pct,
-    } = body;
+    const { academic_year } = body;
 
     const yearNum = parseInt(academic_year);
     const currentYear = new Date().getFullYear();
@@ -94,25 +84,28 @@ export async function PUT(
       );
     }
 
+    // Une valeur illisible est refusée : NaN partirait vers Prisma, qui l'écrit
+    // en NULL et efface la statistique existante (décision 13, plan
+    // backend-local).
+    const { values: data, invalid } = readOptionalNumbers(body, {
+      total_students: "int",
+      total_alumni: "int",
+      partner_companies: "int",
+      annual_internship_offers: "int",
+      abroad_campuses: "int",
+      partner_universities: "int",
+      permanent_professors: "int",
+      international_professors_pct: "float",
+      external_speakers_pct: "float",
+    });
+    if (invalid.length > 0) {
+      return NextResponse.json({ error: invalidNumbersMessage(invalid) }, { status: 400 });
+    }
+
     const school = await prisma.school.findUnique({ where: { id } });
     if (!school) {
       return NextResponse.json({ error: "École introuvable" }, { status: 404 });
     }
-
-    const parseOptInt = (val: any) => (val !== undefined && val !== null && val !== "" ? parseInt(val) : null);
-    const parseOptFloat = (val: any) => (val !== undefined && val !== null && val !== "" ? parseFloat(val) : null);
-
-    const data = {
-      total_students: parseOptInt(total_students),
-      total_alumni: parseOptInt(total_alumni),
-      partner_companies: parseOptInt(partner_companies),
-      annual_internship_offers: parseOptInt(annual_internship_offers),
-      abroad_campuses: parseOptInt(abroad_campuses),
-      partner_universities: parseOptInt(partner_universities),
-      permanent_professors: parseOptInt(permanent_professors),
-      international_professors_pct: parseOptFloat(international_professors_pct),
-      external_speakers_pct: parseOptFloat(external_speakers_pct),
-    };
 
     const record = await prisma.schoolStatsRecord.upsert({
       where: {

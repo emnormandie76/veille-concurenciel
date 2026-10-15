@@ -215,6 +215,9 @@ export async function POST(request: Request) {
     }
 
     // ── Écriture : un ticket par catégorie ──────
+    // Reliés par un même submission_group_id, comme les tickets d'un même
+    // rapport de Phase 2 : l'admin sait qu'ils viennent d'une seule soumission.
+    const submissionGroupId = crypto.randomUUID();
     const writes = await prisma.$transaction(
       categories.map((cat) =>
         prisma.contributionInbox.create({
@@ -228,6 +231,7 @@ export async function POST(request: Request) {
             urls,
             ai_category: cat as string,
             status: STATUS_PENDING_AI,
+            submission_group_id: submissionGroupId,
           },
         })
       )

@@ -37,11 +37,13 @@ export async function GET(
     }
 
     // 2. Query pricing records
+    // Un programme appartient à une école, pas à un campus. Jusqu'au 14 octobre
+    // 2026, ce filtre passait par `program.campus`, relation disparue avec la
+    // refonte de Program : Prisma refusait la requête et la route répondait
+    // toujours 500.
     const where: any = {
       program: {
-        campus: {
-          schoolId: id,
-        },
+        schoolId: id,
       },
     };
 
@@ -75,10 +77,16 @@ export async function GET(
           select: {
             id: true,
             name: true,
-            campus: {
+            campuses: {
               select: {
                 id: true,
-                name: true,
+                campus: {
+                  select: {
+                    id: true,
+                    name: true,
+                    city: true,
+                  },
+                },
               },
             },
           },

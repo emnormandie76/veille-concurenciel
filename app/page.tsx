@@ -4,6 +4,8 @@
  * - Liste des écoles ACTIVE avec recherche en temps réel
  * - ISR 1h (export revalidate)
  * - Données depuis /api/schools côté client (recherche dynamique)
+ * - Un échec de l'API s'affiche avec « Réessayer » : il ne passe plus pour
+ *   « aucune école » (défaut F6, lib/public-schools.ts)
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
@@ -11,30 +13,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-
-interface Campus {
-  id: string;
-  name: string;
-  city: string | null;
-  programs: { id: string }[];
-}
-
-interface School {
-  id: string;
-  name: string;
-  official_domain: string;
-  status: string;
-  campuses: Campus[];
-}
-
-interface SchoolsResponse {
-  data: School[];
-  pagination: {
-    total: number;
-    total_pages: number;
-    page: number;
-  };
-}
+import {
+  readSchoolsResponse,
+  summarizeSchools,
+  SCHOOLS_LOAD_ERROR,
+  type PublicSchool as School,
+} from "@/lib/public-schools";
 
 function formatNumber(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
@@ -55,6 +39,8 @@ export default function HomePage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Un échec de l'API n'est jamais une liste vide : il s'affiche à la place.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [stats, setStats] = useState({ schools: 0, campuses: 0, programs: 0 });
 
   const fetchSchools = useCallback(async (search: string) => {
@@ -63,12 +49,21 @@ export default function HomePage() {
       const params = new URLSearchParams({ limit: "50" });
       if (search) params.set("search", search);
       const res = await fetch(`/api/schools?${params}`);
-      if (!res.ok) throw new Error("Erreur réseau");
-      const data: SchoolsResponse = await res.json();
-      setSchools(data.data);
-      setTotal(data.pagination.total);
+      const result = readSchoolsResponse(res.status, await res.json().catch(() => null));
+      if (result.ok) {
+        setSchools(result.schools);
+        setTotal(result.total);
+        setLoadError(null);
+      } else {
+        setSchools([]);
+        setTotal(0);
+        setLoadError(result.error);
+      }
     } catch {
+      // Réseau coupé : même message qu'une réponse en erreur.
       setSchools([]);
+      setTotal(0);
+      setLoadError(SCHOOLS_LOAD_ERROR);
     } finally {
       setLoading(false);
     }
@@ -78,20 +73,16 @@ export default function HomePage() {
   useEffect(() => {
     fetchSchools("");
     fetch("/api/schools?limit=200")
-      .then((r) => r.json())
-      .then((d: SchoolsResponse) => {
-        const allSchools = d.data;
-        let totalCampuses = 0;
-        let totalPrograms = 0;
-        allSchools.forEach((s) => {
-          totalCampuses += s.campuses.length;
-          s.campuses.forEach((c) => {
-            totalPrograms += c.programs.length;
-          });
-        });
-        setStats({ schools: d.pagination.total, campuses: totalCampuses, programs: totalPrograms });
+      .then(async (r) => readSchoolsResponse(r.status, await r.json().catch(() => null)))
+      .then((result) => {
+        // Sans chiffres sûrs, le bandeau reste masqué plutôt que d'afficher des
+        // zéros ; l'échec de la liste, lui, s'affiche dans la page.
+        if (result.ok) setStats(summarizeSchools(result.schools, result.total));
+        else console.error(`[accueil] statistiques indisponibles : ${result.error}`);
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        console.error("[accueil] statistiques indisponibles :", error);
+      });
   }, [fetchSchools]);
 
   // Debounce search
@@ -145,7 +136,11 @@ export default function HomePage() {
             />
           </div>
           <p className="search-hint">
-            {loading ? "Chargement…" : `${total} école${total > 1 ? "s" : ""} disponible${total > 1 ? "s" : ""}`}
+            {loading
+              ? "Chargement…"
+              : loadError
+                ? "Liste indisponible pour le moment"
+                : `${total} école${total > 1 ? "s" : ""} disponible${total > 1 ? "s" : ""}`}
           </p>
         </div>
       </section>
@@ -174,7 +169,7 @@ export default function HomePage() {
           <span className="section-title">
             {query ? `Résultats pour « ${query} »` : "Toutes les écoles"}
           </span>
-          {!loading && (
+          {!loading && !loadError && (
             <span className="section-count" id="results-count">
               {schools.length} résultat{schools.length > 1 ? "s" : ""}
             </span>
@@ -190,6 +185,19 @@ export default function HomePage() {
                 <div className="skeleton" style={{ height: "14px", width: "40%" }} />
               </div>
             ))}
+          </div>
+        ) : loadError ? (
+          <div className="empty-state" id="schools-load-error" role="alert">
+            <div className="empty-state-icon">⚠️</div>
+            <div className="empty-state-title">Chargement impossible</div>
+            <p className="empty-state-text">{loadError}</p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => fetchSchools(query)}
+            >
+              Réessayer
+            </button>
           </div>
         ) : schools.length === 0 ? (
           <div className="empty-state">

@@ -130,9 +130,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Aujourd'hui, seul lib/prisma.ts charge @prisma/client, et les tests de
-      # routes le remplacent. Un futur test qui chargerait le client échouerait
-      # pourtant sans lui : on le génère, comme dans le job validate.
+      # Indispensable : test/helpers/prisma-schema.ts lit le modèle de données
+      # du client généré (`Prisma.dmmf`) pour relire chaque requête des tests
+      # de routes contre le vrai schéma. Il ne se connecte à rien.
       - name: Prisma — génération du client
         run: npx prisma generate
 

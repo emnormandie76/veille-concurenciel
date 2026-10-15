@@ -76,8 +76,21 @@ Chantier « backend local sur demande »
   suivi dans Chromium : prêt, « Simuler », refus d'un second lancement,
   « non lancé », relance sans second Next.js. Aucun ticket ni job en plus en
   base. Validée par le propriétaire ;
-- prochaine : étape 7 (tests des parties non couvertes : P0, P1, P2, F2 et
-  F6).
+- étape 7 (tests des parties non couvertes : P0, P1, P2, F2 et F6) codée les
+  14 et 15 octobre : F2 et F6 corrigés ; quatorze décisions du propriétaire
+  sur des défauts révélés par les tests (option recommandée à chaque fois) :
+  treize corrections, un défaut consigné (JSON mal formé → 500 sur le CRUD
+  admin).
+  Banc : chaque requête du faux Prisma relue contre le vrai schéma
+  (`test/helpers/prisma-schema.ts`) ; smoke `npm run smoke`
+  (`scripts/smoke-local.ts`), **pas encore joué contre `npm run dev`** (il lit
+  la base partagée : accord du propriétaire). 570 tests Python et 482
+  TypeScript, verts aussi sous garde réseau (0 tentative). Le 15 octobre, le
+  propriétaire demande le commit, le push et le prompt de l'étape 8 : étape 7
+  tenue pour validée. Restent ouverts : le smoke contre `npm run dev` (accord
+  à demander) et les exemples fictifs de `/api-docs` (question à lui poser) ;
+- prochaine : étape 8 (préparer Vercel : documentation et vérifications ; le
+  propriétaire déploie).
 
 L'étape en cours se lit dans le journal du plan (§11).
 
@@ -223,8 +236,9 @@ l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 | `npm run local` | backend FastAPI dans sa propre fenêtre, puis Next.js (`scripts/start-local.ps1`) ; refuse si le port 8000 est pris, ne relance pas Next.js s'il tourne. **Lance le backend : accord du propriétaire requis (règle 7)** |
 | `npm run backend` | backend seul, dans le terminal courant : `uvicorn` sur `127.0.0.1:8000`, sans `--reload` ; jamais `--host 0.0.0.0`. Même règle 7 |
 | `npm run dev` | Next.js sur http://localhost:3000 (back-office : `/admin`) |
+| `npm run smoke` | smoke local contre `npm run dev` : pages publiques et 15 `GET /api/v1/*`, lecture seule. Lit la base partagée (aussi la production) : **accord du propriétaire requis**. Pas en CI |
 | `npm test` | tests Python (pytest), avec le `python` du `PATH` comme la CI, et non `backend/.venv` (décision du 14/10/2026) |
-| `npm run test:ts` | tests TypeScript (`node --test`), dont les routes de `test/api/` (banc : `test/helpers/`) ; en CI, job `ts-tests` |
+| `npm run test:ts` | tests TypeScript (`node --test`), dont les routes de `test/api/` (banc : `test/helpers/`, requêtes relues contre le schéma Prisma) ; en CI, job `ts-tests` |
 | `npm run typecheck` / `npm run lint` | types / ESLint (les avertissements sont la dette connue) |
 | `npm run build` | `prisma generate` puis `next build` |
 | `npm run db:status` | état des migrations, en lecture seule : CLI Prisma sans `DB_DRIVER`, WebSocket avec `DB_DRIVER=neon-ws` |

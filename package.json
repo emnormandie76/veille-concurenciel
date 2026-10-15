@@ -15,7 +15,8 @@
     "test:ts": "node --import tsx --experimental-test-module-mocks --test \"test/**/*.test.ts\"",
     "db:status": "tsx scripts/db-migrate.ts status",
     "db:migrate": "tsx scripts/db-migrate.ts deploy",
-    "db:migrate:dry": "tsx scripts/db-migrate.ts deploy --dry-run"
+    "db:migrate:dry": "tsx scripts/db-migrate.ts deploy --dry-run",
+    "smoke": "tsx scripts/smoke-local.ts"
   },
   "prisma": {
     "seed": "tsx --env-file=.env.local prisma/seed.ts"

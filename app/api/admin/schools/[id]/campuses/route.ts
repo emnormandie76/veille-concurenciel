@@ -12,6 +12,14 @@ export async function GET(
   const { id: schoolId } = await params;
 
   try {
+    // Une école inconnue est un 404, comme sur les routes voisines ; jusqu'au
+    // 14 octobre 2026, elle rendait une liste vide (décision 14, plan
+    // backend-local).
+    const school = await prisma.school.findUnique({ where: { id: schoolId } });
+    if (!school) {
+      return NextResponse.json({ error: "École introuvable" }, { status: 404 });
+    }
+
     const campuses = await prisma.campus.findMany({
       where: { schoolId },
       orderBy: { name: "asc" },
@@ -36,11 +44,13 @@ export async function POST(
     const body = await request.json();
     const { name, city } = body;
 
-    if (!name) {
+    // Contrôle après nettoyage : jusqu'au 14 octobre 2026, un nom fait d'espaces
+    // passait et une chaîne vide était écrite (décision 12, plan backend-local).
+    const cleanName = typeof name === "string" ? name.trim() : "";
+    if (!cleanName) {
       return NextResponse.json({ error: "Le nom du campus est requis" }, { status: 400 });
     }
 
-    const cleanName = name.trim();
     const cleanCity = city?.trim() || null;
 
     // Vérifier que l'école existe

@@ -18,6 +18,7 @@ import { useState, useEffect, useCallback } from "react";
 import { CONTRIBUTION_CATEGORIES, CONTRIBUTION_STATUSES, STATUS_PENDING_AI } from "@/lib/contribution";
 import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
 import { describePendingAi } from "@/lib/pipeline-history";
+import { readRefreshedTicket, TICKET_REFRESH_ERROR } from "@/lib/ticket-refresh";
 
 // ──────────────────────────────────────────────
 // Types
@@ -572,14 +573,21 @@ export default function InboxPage() {
                   loading={actionLoading}
                   disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
                   onRefreshTicket={async () => {
-                    // Recharger le ticket depuis l'API pour avoir le JSON mis à jour
+                    // Recharger le ticket depuis l'API pour avoir le JSON mis à
+                    // jour. Un échec s'affiche : l'admin ne doit pas valider
+                    // sans le savoir sur des données anciennes (F6,
+                    // lib/ticket-refresh.ts).
                     try {
                       const res = await fetch(`/api/admin/inbox/${selectedTicket.id}`);
-                      if (res.ok) {
-                        const refreshed = await res.json();
-                        if (refreshed?.id) setSelectedTicket(refreshed);
-                      }
-                    } catch { /* silently ignore */ }
+                      const refreshed = readRefreshedTicket<Ticket>(
+                        res.status,
+                        await res.json().catch(() => null)
+                      );
+                      if (refreshed.ok) setSelectedTicket(refreshed.ticket);
+                      else setActionMsg({ type: "error", text: refreshed.error });
+                    } catch {
+                      setActionMsg({ type: "error", text: TICKET_REFRESH_ERROR });
+                    }
                     fetchTickets();
                   }}
                 />

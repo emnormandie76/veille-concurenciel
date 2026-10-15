@@ -103,6 +103,7 @@ La liste complète, commentée et classée par exécution, est dans
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | suite Python (`pytest`), avec le `python` du `PATH` |
 | `npm run test:ts` | suite TypeScript (`node --test`) : fonctions de `lib/` et routes Next.js |
+| `npm run smoke` | smoke local, **à la main** et avec l'accord du propriétaire : `npm run dev` lancé, il appelle les pages publiques et les 15 `GET /api/v1/*` (`scripts/smoke-local.ts`). Lecture seule, mais sur la base de `.env.local`, qui est aussi la production ; adresse locale seulement |
 | `npm run db:status` | état de l'historique face à la base, en lecture seule : `npx prisma migrate status` sans `DB_DRIVER`, WebSocket (443) avec `DB_DRIVER=neon-ws` |
 | `npm run db:migrate` | applique les migrations en attente, une transaction chacune ; refuse si une migration appliquée a changé ou si une autre est en échec |
 | `npm run db:migrate:dry` | avec `DB_DRIVER=neon-ws` seulement : applique tout dans une transaction puis `ROLLBACK`, rien n'est inscrit |
@@ -140,13 +141,18 @@ obligatoire (exigence de Prisma 7).
 ```bash
 npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
-npm test              # 379 tests Python (pytest)
-npm run test:ts       # 128 tests TypeScript (node --test), dont les routes de test/api/
+npm test              # 570 tests Python (pytest), +25 sous-tests
+npm run test:ts       # 482 tests TypeScript (node --test), dont les routes de test/api/
+npm run smoke         # à la main, npm run dev lancé : pages publiques et API v1
 ```
 
 Les routes Next.js se testent sans base ni serveur : `test/helpers/` remplace
 `@/lib/prisma` par un faux client, `@/lib/auth` par des sessions simulées et
-`fetch` par un faux backend FastAPI. Aucun test ne sort du processus.
+`fetch` par un faux backend FastAPI. Chaque requête reçue par le faux client
+est relue contre le vrai schéma Prisma (`test/helpers/prisma-schema.ts`) : un
+champ disparu fait échouer le test, même derrière un `where: any`. Aucun test
+ne sort du processus : les deux suites ont été rejouées sous garde réseau
+(connexions et DNS refusés hors de `127.0.0.1`), sans aucune tentative.
 `test/api/admin-guards.test.ts` vérifie que **chaque route admin attend sa
 garde**, et que la liste des routes ADMIN est celle d'`architecture.md` §3.6.
 La CI lance les deux suites (`.github/workflows/ci.yml`).

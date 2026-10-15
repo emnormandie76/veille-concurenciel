@@ -23,20 +23,33 @@ export function isValidHttpsUrl(url: string): boolean {
 
 /**
  * Extrait les paramètres de pagination depuis les searchParams.
- * Valeurs par défaut : page=1, limit=20
+ * Valeurs par défaut : page=1, limit=20 (ou `defaultLimit`) ; limit plafonné
+ * à 100.
+ *
+ * Une valeur hors bornes est ramenée dans les bornes ; une valeur absente, vide
+ * ou non numérique reprend la valeur par défaut. Jusqu'au 14 octobre 2026,
+ * `?page=abc` donnait NaN, que Prisma refuse : la route répondait 500.
  */
-export function parsePagination(searchParams: URLSearchParams): {
+export function parsePagination(
+  searchParams: URLSearchParams,
+  defaultLimit: number = 20
+): {
   page: number;
   limit: number;
   skip: number;
 } {
-  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+  const page = Math.max(1, readInteger(searchParams.get("page"), 1));
   const limit = Math.min(
     100,
-    Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10))
+    Math.max(1, readInteger(searchParams.get("limit"), defaultLimit))
   );
   const skip = (page - 1) * limit;
   return { page, limit, skip };
+}
+
+function readInteger(value: string | null, fallback: number): number {
+  const parsed = parseInt(value ?? "", 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
 }
 
 // ──────────────────────────────────────────────
@@ -150,9 +163,21 @@ export function normalizeDomain(value: string): string {
  *
  * Sans ce contrôle, une URL soumise peut faire interroger par le pipeline des
  * adresses du réseau interne de la plateforme.
+ *
+ * Un point final (« localhost. », nom pleinement qualifié) et une IPv4
+ * encapsulée dans une IPv6 (« ::ffff:127.0.0.1 », que le parseur d'URL réécrit
+ * en « ::ffff:7f00:1 ») sont ramenés à leur forme simple avant le contrôle :
+ * jusqu'au 14 octobre 2026, ils passaient pour publics.
  */
 export function isPrivateHost(hostname: string): boolean {
-  const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  const host = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.+$/, "");
+
+  const mapped = mappedIpv4(host);
+  if (mapped) return isPrivateHost(mapped);
 
   if (
     host === "localhost" ||
@@ -185,6 +210,24 @@ export function isPrivateHost(hostname: string): boolean {
   }
 
   return false;
+}
+
+/**
+ * L'IPv4 que porte une adresse IPv6 « mappée » (::ffff:0:0/96), en notation
+ * pointée, ou null. Accepte la forme pointée (::ffff:127.0.0.1), la forme
+ * hexadécimale que rend le parseur d'URL (::ffff:7f00:1) et la forme longue
+ * (0:0:0:0:0:ffff:…).
+ */
+function mappedIpv4(host: string): string | null {
+  const match = host.match(/^(?:::|(?:0{1,4}:){5})ffff:(.+)$/);
+  if (!match) return null;
+  const tail = match[1];
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(tail)) return tail;
+  const hex = tail.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (!hex) return null;
+  const high = parseInt(hex[1], 16);
+  const low = parseInt(hex[2], 16);
+  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join(".");
 }
 
 /**

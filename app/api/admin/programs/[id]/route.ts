@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardAuth, guardAdmin } from "@/lib/auth";
+import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function PUT(
   request: Request,
@@ -61,14 +62,48 @@ export async function PUT(
       );
     }
 
+    // Une durée illisible est refusée : NaN partirait vers Prisma, qui l'écrit
+    // en NULL (décision 13, plan backend-local).
+    const months = readOptionalNumbers(body, {
+      min_expatriation_months: "int",
+      max_internship_months: "int",
+    });
+    if (months.invalid.length > 0) {
+      return NextResponse.json(
+        { error: invalidNumbersMessage(months.invalid) },
+        { status: 400 }
+      );
+    }
+
+    // Les campus doivent appartenir à l'école du programme, comme à la
+    // création. Jusqu'au 14 octobre 2026, ce contrôle manquait : un programme
+    // pouvait être rattaché au campus d'une autre école (décision 11, plan
+    // backend-local).
+    if (Array.isArray(campusIds)) {
+      const validCampuses = await prisma.campus.findMany({
+        where: {
+          id: { in: campusIds },
+          schoolId: existingProgram.schoolId,
+        },
+        select: { id: true },
+      });
+
+      if (validCampuses.length !== campusIds.length) {
+        return NextResponse.json(
+          { error: "Un ou plusieurs campus sélectionnés sont invalides" },
+          { status: 400 }
+        );
+      }
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       const dataToUpdate: Record<string, any> = {};
       if (name !== undefined) dataToUpdate.name = name.trim();
       if (admission_exam !== undefined) dataToUpdate.admission_exam = admission_exam?.trim() || null;
       if (is_alternance_possible !== undefined) dataToUpdate.is_alternance_possible = Boolean(is_alternance_possible);
       if (is_expatriation_mandatory !== undefined) dataToUpdate.is_expatriation_mandatory = Boolean(is_expatriation_mandatory);
-      if (min_expatriation_months !== undefined) dataToUpdate.min_expatriation_months = min_expatriation_months ? parseInt(min_expatriation_months) : null;
-      if (max_internship_months !== undefined) dataToUpdate.max_internship_months = max_internship_months ? parseInt(max_internship_months) : null;
+      if (min_expatriation_months !== undefined) dataToUpdate.min_expatriation_months = months.values.min_expatriation_months;
+      if (max_internship_months !== undefined) dataToUpdate.max_internship_months = months.values.max_internship_months;
 
       const program = await tx.program.update({
         where: { id },

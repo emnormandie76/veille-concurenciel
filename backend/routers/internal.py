@@ -92,30 +92,58 @@ def verify_internal_token(credentials: HTTPAuthorizationCredentials = Depends(se
     return credentials.credentials
 
 
-# ── Garde de concurrence ──────────────────────────────────────────
+# ── Gardes des déclencheurs ───────────────────────────────────────
 
-def _already_running_response(school_id: str, message: str) -> dict | None:
+def _require_school(school_id: str) -> None:
     """
-    Retourne la réponse « déjà en cours » si un job actif existe sur l'école.
+    404 `SCHOOL_NOT_FOUND` si l'école n'existe pas, avant toute écriture.
+
+    Sans ce contrôle, l'INSERT du job violait la clé étrangère de PipelineJob
+    et la route répondait 500 sans explication (plan backend-local, étape 7).
+    Une école non ACTIVE passe : la phase la refuse elle-même, job à l'appui.
+    """
+    from backend.db import get_db_connection
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute('SELECT id FROM "School" WHERE id = %s', (school_id,))
+            found = cur.fetchone()
+    if found is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "SCHOOL_NOT_FOUND", "message": f"École introuvable : {school_id}"},
+        )
+
+
+def _refuse_if_running(school_id: str, message: str) -> None:
+    """
+    409 `ALREADY_RUNNING` si un job actif existe sur l'école.
 
     Les trois points d'entrée passent par ici : trigger-enrichment ne faisait
     aucun contrôle et réécrivait la clé existante, ce qui autorisait deux
     enrichissements concurrents sur la même école — crédits Tavily consommés en
     double et écritures rivales sur les mêmes lignes.
 
+    Jusqu'au 14 octobre 2026, le refus était un 200 portant
+    `already_running: true` ; c'est désormais le 409 de run-due-passes, une
+    seule convention pour « occupé » (plan backend-local, étape 7).
+
     Ce contrôle n'est sûr que parce que get_active_job() clôt d'abord les jobs
     morts : un verrou sans mécanisme d'expiration aggraverait le blocage.
     """
     active = pipeline_jobs.get_active_job(school_id)
     if active is None:
-        return None
-    return {
-        "message": message,
-        "job_id": active["job_id"],
-        "status": active["status"],
-        "phase": active["phase"],
-        "already_running": True,
-    }
+        return
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "ALREADY_RUNNING",
+            "message": f"{message} (job {active['job_id']}, {active['phase']})",
+            "job_id": active["job_id"],
+            "status": active["status"],
+            "phase": active["phase"],
+        },
+    )
 
 
 # ── Modèles de requête ────────────────────────────────────────────
@@ -173,11 +201,8 @@ async def trigger_scan(
 
     Référence : task.md §4.2, architecture.md §5.2 (Phase 1)
     """
-    already = _already_running_response(
-        school_id, "Un scan est déjà en cours pour cette école"
-    )
-    if already:
-        return already
+    _require_school(school_id)
+    _refuse_if_running(school_id, "Un scan est déjà en cours pour cette école")
 
     phase_label = pipeline_jobs.PHASE1_LABEL
     job_id = pipeline_jobs.create_job(
@@ -216,11 +241,8 @@ async def trigger_enrichment(
 
     Référence : task.md §4.2, architecture.md §5.3 (Phase 2)
     """
-    already = _already_running_response(
-        school_id, "Une tâche est déjà en cours pour cette école"
-    )
-    if already:
-        return already
+    _require_school(school_id)
+    _refuse_if_running(school_id, "Une tâche est déjà en cours pour cette école")
 
     phase_label = pipeline_jobs.PHASE2_LABEL
     job_id = pipeline_jobs.create_job(
@@ -282,11 +304,8 @@ async def trigger_targeted_research(
             detail="La collecte du rattachement campus ne concerne que la Phase 1"
         )
 
-    already = _already_running_response(
-        school_id, "Une tâche est déjà en cours pour cette école"
-    )
-    if already:
-        return already
+    _require_school(school_id)
+    _refuse_if_running(school_id, "Une tâche est déjà en cours pour cette école")
 
     phase_label = pipeline_jobs.PHASE1_LABEL if request.phase == "1" else pipeline_jobs.PHASE2_TARGETED_LABEL
 

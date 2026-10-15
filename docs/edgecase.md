@@ -204,7 +204,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 
 ## Session 11 — backend local sur demande (octobre 2026)
 
-Défauts F3, F4, F8 et F9 de [`backend-local.md`](features/backend-local.md) §5, corrigés à l'étape 3 ; F1, corrigé à l'étape 4.
+Défauts F3, F4, F8 et F9 de [`backend-local.md`](features/backend-local.md) §5, corrigés à l'étape 3 ; F1, corrigé à l'étape 4 ; cas 35 à 39, révélés par les tests de l'étape 7 et corrigés sur décision du propriétaire (journal du plan, §11).
 
 ### Edge Case 31 : Un démarrage raté qui se dit prêt
 - **Contexte :** Démarrage du backend (`lifespan` de `backend/main.py`).
@@ -225,3 +225,28 @@ Défauts F3, F4, F8 et F9 de [`backend-local.md`](features/backend-local.md) §5
 - **Contexte :** Phase 2, une cible par appel Research : SchoolStats, Accreditation et Ranking pour l'école, Pricing par programme, Capacity par arête programme-campus.
 - **Problème :** une recherche ou une extraction en échec rendait `None`, et la boucle passait à la cible suivante. En fin de passe, le résultat valait toujours `success: True`. Une Phase 2 dont toutes les cibles avaient échoué (Gemini saturé, panne Tavily hors quota) finissait `completed`, et l'école n'était pas reprise avant 182 jours. Les rapports Research payés étaient perdus.
 - **Solution actuelle :** chaque cible rend un motif (`ok`, `dry_run`, `research_failed`, `empty_report`, `extraction_unavailable`, `extraction_failed`, `bad_shape`). La passe est en échec dès qu'une cible a échoué (décision D2) : le résultat porte `outcomes` (les motifs par catégorie), `unchanged`, `failed_targets` (`[{category, label, reason}]`), et le message nomme les cibles en échec. Le job finit `failed`, avec son résultat, et l'école repasse 14 jours plus tard ; la garde de l'Edge Case 26 évite de repayer ce qui a été déposé. Le rapport d'une cible dont l'extraction a échoué reste perdu : le ranger est hors du plan (D3).
+
+### Edge Case 35 : Une panne Tavily qui supprime une contribution
+- **Contexte :** Traitement des contributions : extraction Tavily de l'URL soumise.
+- **Problème :** `extract_from_urls` et `search_web` avalaient toute erreur (quota, panne, délai) et rendaient `""`. Le traitement lisait « contenu vide », erreur permanente, et **supprimait** le ticket : une panne passagère détruisait une contribution valide.
+- **Solution actuelle :** une clé refusée pour quota passe la main à la suivante (3 essais), puis `QuotaExhaustedError` arrête le lot ; toute autre panne lève `TavilyRequestError`, et le ticket passe en `Failed`, rejoué plus tard. Seule une extraction réussie mais vide reste une erreur permanente. Le collecteur du rattachement campus lit une panne comme une page vide, comme avant.
+
+### Edge Case 36 : Une faute de frappe qui efface une valeur
+- **Contexte :** Formulaires admin des tarifs, des statistiques et des durées d'un programme.
+- **Problème :** `parseInt("abc")` rend `NaN`, que Prisma écrit en `NULL` (vérifié en capturant le SQL : `SET "total_fee" = $1` avec `null`). Une faute de frappe effaçait donc la valeur existante, avec un 200.
+- **Solution actuelle :** `readOptionalNumbers` (`lib/request-body.ts`) : une valeur fournie mais illisible donne 400 en nommant le champ, avant toute écriture ; vide ou absente, elle vaut `null`.
+
+### Edge Case 37 : Des corrections illisibles prises pour « pas de corrections »
+- **Contexte :** Validation d'un ticket (`validate`, `attachments`) : l'admin peut envoyer ses corrections dans le corps.
+- **Problème :** le corps était lu dans un `catch {}` muet : un JSON mal formé passait pour « pas de corps », et la route écrivait le JSON brut de l'IA à la place des corrections, avec un 200 (F2).
+- **Solution actuelle :** `readOptionalJsonObject` : corps absent ou `{}` → le ticket tel quel ; JSON mal formé, ou valeur qui n'est pas un objet → 400, rien d'écrit, avant toute lecture en base.
+
+### Edge Case 38 : Deux routes de l'API publique toujours en 500
+- **Contexte :** `GET /api/v1/schools/[id]/pricing` et `GET /api/v1/rankings`.
+- **Problème :** leur filtre passait par `program.campus`, relation disparue quand un programme a cessé d'appartenir à un campus. Prisma refusait la requête à chaque appel ; `tsc` ne le voyait pas, le filtre étant typé `any`. Par ailleurs, `?page=abc` donnait `NaN` dans la pagination, et un 500 sur les trois collections paginées.
+- **Solution actuelle :** filtre par l'école du programme, campus exposés en liste ; une pagination illisible reprend sa valeur par défaut. Les tests relisent chaque requête du faux Prisma contre le schéma réel (`test/helpers/prisma-schema.ts`).
+
+### Edge Case 39 : Un hôte interne déguisé dans une contribution
+- **Contexte :** `POST /api/contribute`, garde contre les URL vers le réseau interne (`isPrivateHost`).
+- **Problème :** `https://localhost./` (point final) et `https://[::ffff:127.0.0.1]/` (IPv4 encapsulée en IPv6, que le parseur d'URL réécrit `::ffff:7f00:1`) passaient pour publics.
+- **Solution actuelle :** points finaux retirés et IPv4 encapsulée ramenée à sa forme pointée (formes pointée, hexadécimale et longue) avant le contrôle.

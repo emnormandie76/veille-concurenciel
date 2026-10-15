@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardAuth } from "@/lib/auth";
+import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function GET(
   request: Request,
@@ -78,8 +79,6 @@ export async function POST(
       admission_exam,
       is_alternance_possible,
       is_expatriation_mandatory,
-      min_expatriation_months,
-      max_internship_months,
       campusIds,
     } = body;
 
@@ -94,6 +93,19 @@ export async function POST(
     if (!Array.isArray(campusIds) || campusIds.length === 0) {
       return NextResponse.json(
         { error: "Au moins un campus doit être sélectionné" },
+        { status: 400 }
+      );
+    }
+
+    // Une durée illisible est refusée : NaN partirait vers Prisma, qui l'écrit
+    // en NULL (décision 13, plan backend-local).
+    const months = readOptionalNumbers(body, {
+      min_expatriation_months: "int",
+      max_internship_months: "int",
+    });
+    if (months.invalid.length > 0) {
+      return NextResponse.json(
+        { error: invalidNumbersMessage(months.invalid) },
         { status: 400 }
       );
     }
@@ -142,8 +154,7 @@ export async function POST(
           admission_exam: admission_exam?.trim() || null,
           is_alternance_possible: Boolean(is_alternance_possible),
           is_expatriation_mandatory: Boolean(is_expatriation_mandatory),
-          min_expatriation_months: min_expatriation_months ? parseInt(min_expatriation_months) : null,
-          max_internship_months: max_internship_months ? parseInt(max_internship_months) : null,
+          ...months.values,
         },
       });
 

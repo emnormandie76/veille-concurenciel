@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardAuth } from "@/lib/auth";
+import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function PUT(
   request: Request,
@@ -16,14 +17,6 @@ export async function PUT(
     const {
       academic_year,
       currency,
-      year_1_fee,
-      year_2_fee,
-      year_3_fee,
-      year_4_fee,
-      year_5_fee,
-      total_fee,
-      intl_year_1_fee,
-      intl_total_fee,
       intl_currency,
       additional_fees_notes,
       source_url,
@@ -37,17 +30,26 @@ export async function PUT(
       );
     }
 
-    const parseOptInt = (val: any) => (val !== undefined && val !== null && val !== "" ? parseInt(val) : null);
+    // Un tarif illisible est refusé : NaN partirait vers Prisma, qui l'écrit
+    // en NULL et efface le tarif existant (décision 13, plan backend-local).
+    const fees = readOptionalNumbers(body, {
+      year_1_fee: "int",
+      year_2_fee: "int",
+      year_3_fee: "int",
+      year_4_fee: "int",
+      year_5_fee: "int",
+      total_fee: "int",
+      intl_year_1_fee: "int",
+      intl_total_fee: "int",
+    });
+    if (fees.invalid.length > 0) {
+      return NextResponse.json(
+        { error: invalidNumbersMessage(fees.invalid) },
+        { status: 400 }
+      );
+    }
 
-    const hasAnyFee =
-      parseOptInt(year_1_fee) !== null ||
-      parseOptInt(year_2_fee) !== null ||
-      parseOptInt(year_3_fee) !== null ||
-      parseOptInt(year_4_fee) !== null ||
-      parseOptInt(year_5_fee) !== null ||
-      parseOptInt(total_fee) !== null ||
-      parseOptInt(intl_year_1_fee) !== null ||
-      parseOptInt(intl_total_fee) !== null;
+    const hasAnyFee = Object.values(fees.values).some((fee) => fee !== null);
 
     if (!hasAnyFee) {
       return NextResponse.json(
@@ -63,14 +65,7 @@ export async function PUT(
 
     const data = {
       currency: currency?.trim() || "EUR",
-      year_1_fee: parseOptInt(year_1_fee),
-      year_2_fee: parseOptInt(year_2_fee),
-      year_3_fee: parseOptInt(year_3_fee),
-      year_4_fee: parseOptInt(year_4_fee),
-      year_5_fee: parseOptInt(year_5_fee),
-      total_fee: parseOptInt(total_fee),
-      intl_year_1_fee: parseOptInt(intl_year_1_fee),
-      intl_total_fee: parseOptInt(intl_total_fee),
+      ...fees.values,
       intl_currency: intl_currency?.trim() || null,
       additional_fees_notes: additional_fees_notes?.trim() || null,
       source_url: source_url?.trim() || null,

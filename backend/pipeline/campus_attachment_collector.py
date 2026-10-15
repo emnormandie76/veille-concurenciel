@@ -147,9 +147,16 @@ class LiveCollectorIO:
         return map_program_pages(root_url, self.key_manager, instructions=MAP_INSTRUCTIONS)
 
     def extract(self, urls: list[str]) -> str:
-        from backend.tavily_service.client import extract_from_urls
+        from backend.tavily_service.client import TavilyRequestError, extract_from_urls
 
-        return extract_from_urls(urls, self.key_manager)
+        # extract_from_urls leve sur une panne depuis le 14 octobre 2026 (elle
+        # rendait ""). La collecte garde sa tolerance : un lot en panne vaut un
+        # lot vide, la passe continue ; seul un quota epuise l'arrete.
+        try:
+            return extract_from_urls(urls, self.key_manager)
+        except TavilyRequestError as exc:
+            logger.warning("⚠️ Lot de fiches non lu (%d URL) : %s", len(urls), exc)
+            return ""
 
     def extract_statements(self, urls: list[str], source_text: str) -> dict:
         from backend.ai.extraction_prompts import get_extraction_prompt

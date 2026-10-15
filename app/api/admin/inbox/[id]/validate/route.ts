@@ -24,6 +24,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STATUS_REJECTED, STATUS_VALIDATED, isParkedResearchReport } from "@/lib/contribution";
 import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
+import { adminCorrections, readOptionalJsonObject } from "@/lib/request-body";
 
 // ──────────────────────────────────────────────
 // Types internes pour les données JSON des tickets
@@ -185,6 +186,14 @@ export async function PUT(
 
   const { id } = await params;
 
+  // Le body peut contenir des données modifiées par l'Admin (formulaire
+  // répéteur). Lu avant la base : un corps illisible est refusé, jamais
+  // remplacé en silence par ai_extracted_json (F2, lib/request-body.ts).
+  const body = await readOptionalJsonObject(request);
+  if (!body.ok) {
+    return NextResponse.json({ error: body.error }, { status: 400 });
+  }
+
   try {
     const ticket = await prisma.contributionInbox.findUnique({ where: { id } });
 
@@ -236,18 +245,9 @@ export async function PUT(
       );
     }
 
-    // Le body peut contenir des données modifiées par l'Admin (formulaire répéteur)
-    let bodyData: Record<string, unknown> = {};
-    try {
-      bodyData = await request.json();
-    } catch {
-      // Pas de body JSON = on utilise le ai_extracted_json du ticket directement
-    }
-
-    // Fusionner : bodyData prioritaire sur ai_extracted_json
-    const rawJson = (bodyData && Object.keys(bodyData).length > 0)
-      ? bodyData
-      : ticket.ai_extracted_json;
+    // Le corps de l'admin prime sur ai_extracted_json ; absent ou `{}`, le
+    // ticket est validé tel quel.
+    const rawJson = adminCorrections(body.body) ?? ticket.ai_extracted_json;
 
     if (!rawJson) {
       return NextResponse.json(

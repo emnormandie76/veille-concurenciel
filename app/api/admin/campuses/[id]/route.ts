@@ -22,6 +22,16 @@ export async function PUT(
       );
     }
 
+    // Un nom fourni ne peut pas être vide une fois nettoyé. Jusqu'au 14 octobre
+    // 2026, un nom fait d'espaces passait et une chaîne vide était écrite
+    // (décision 12, plan backend-local).
+    if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+      return NextResponse.json(
+        { error: "Le nom du campus ne peut pas être vide" },
+        { status: 400 }
+      );
+    }
+
     // Récupérer le campus existant
     const campus = await prisma.campus.findUnique({
       where: { id },

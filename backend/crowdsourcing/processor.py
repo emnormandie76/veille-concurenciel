@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 import psycopg2
 import psycopg2.extras
-from backend.tavily_service.client import extract_from_urls, split_extractable_urls
+from backend.tavily_service.client import TavilyRequestError, extract_from_urls, split_extractable_urls
 from backend.ai.gemma_client import (
     call_gemma,
     wrap_source,
@@ -455,7 +455,11 @@ def process_crowdsourcing_ticket(ticket_id: str, key_manager=None) -> None:
         
     Raises:
         TicketNotFoundError: Si le ticket n'existe pas en base
-        TavilyExtractionError: Si Tavily échoue sur toutes les URLs
+        TavilyExtractionError: Si l'extraction a abouti sans contenu exploitable
+            (ticket supprimé : erreur permanente)
+        TavilyRequestError: Si l'appel Tavily a échoué (ticket passé en Failed,
+            rejoué plus tard)
+        QuotaExhaustedError: Si aucune clé Tavily ne passe (ticket inchangé)
         GemmaError: Si Gemma retourne un JSON invalide après les retries
     """
     # Le gestionnaire DOIT venir de app.state.tavily_manager (main.py).
@@ -507,9 +511,14 @@ def process_crowdsourcing_ticket(ticket_id: str, key_manager=None) -> None:
         is_multi_program_category = category in ["Pricing", "Ranking", "Capacity"]
 
         # 2. EXTRACTION PAGE (Tavily)
+        # Un quota épuisé arrête le lot, ticket laissé en Pending_AI ; une
+        # panne de l'appel (TavilyRequestError) n'est PAS une erreur
+        # permanente : elle rejoint le `except Exception` final, qui passe le
+        # ticket en Failed pour le rejouer. Seul un contenu vide d'une
+        # extraction réussie supprime le ticket (plan backend-local, étape 7).
         try:
             raw_content = extract_from_urls(urls, key_manager)
-        except QuotaExhaustedError:
+        except (QuotaExhaustedError, TavilyRequestError):
             raise
         except Exception as e:
             raise TavilyExtractionError(f"Erreur lors de l'extraction Tavily: {e}")

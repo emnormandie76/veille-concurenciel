@@ -13,6 +13,14 @@
  * exception lancée dans `fn` remonte ; la forme tableau attend chaque requête
  * dans l'ordre.
  *
+ * Le faux n'a pas de base, donc pas de rollback réel. Il retient en revanche
+ * ce qu'une transaction en échec a annulé : les appels faits pendant un
+ * `$transaction(fn)` qui lève, et toutes les requêtes d'un `$transaction([…])`
+ * dont l'une échoue. Attention : dans la forme tableau, le faux exécute chaque
+ * requête dès sa construction (Prisma, lui, attend la transaction). Une
+ * écriture vue dans `calls` n'est donc pas forcément tenue : `writes()` rend
+ * les seules écritures qu'une base aurait gardées.
+ *
  * Le module doit être importé avant la route : la route est chargée par un
  * `import()` dynamique, après le remplacement (voir test/api/).
  */
@@ -39,13 +47,30 @@ export interface FakePrisma {
   prisma: Record<string, unknown>;
   /** Appels reçus depuis le dernier `use()`, dans l'ordre. */
   calls: FakePrismaCall[];
+  /** Appels annulés par une transaction en échec, depuis le dernier `use()`. */
+  rolledBack: Set<FakePrismaCall>;
+  /** Les écritures qu'une base aurait gardées : hors transaction annulée. */
+  writes(): FakePrismaCall[];
   /** Remplace les méthodes déclarées et vide le journal des appels. */
   use(models: FakeModels): void;
 }
 
+const WRITE_METHODS = new Set([
+  "create",
+  "createMany",
+  "update",
+  "updateMany",
+  "upsert",
+  "delete",
+  "deleteMany",
+]);
+
 export function createFakePrisma(initial: FakeModels = {}): FakePrisma {
   let models = initial;
   const calls: FakePrismaCall[] = [];
+  const rolledBack = new Set<FakePrismaCall>();
+  // Requête → appel, pour retrouver les membres d'un `$transaction([…])`.
+  const callOf = new WeakMap<Promise<unknown>, FakePrismaCall>();
 
   const modelProxy = (model: string) =>
     new Proxy(
@@ -53,15 +78,20 @@ export function createFakePrisma(initial: FakeModels = {}): FakePrisma {
       {
         get(_target, method) {
           if (typeof method !== "string" || method === "then") return undefined;
-          return async (...args: unknown[]) => {
-            calls.push({ model, method, args });
-            const impl = models[model]?.[method];
-            if (!impl) {
-              throw new Error(
-                `Faux Prisma : ${model}.${method} n'est pas déclaré par ce test.`
-              );
-            }
-            return impl(...args);
+          return (...args: unknown[]) => {
+            const call: FakePrismaCall = { model, method, args };
+            calls.push(call);
+            const query = (async () => {
+              const impl = models[model]?.[method];
+              if (!impl) {
+                throw new Error(
+                  `Faux Prisma : ${model}.${method} n'est pas déclaré par ce test.`
+                );
+              }
+              return impl(...args);
+            })();
+            callOf.set(query, call);
+            return query;
           };
         },
       }
@@ -70,13 +100,28 @@ export function createFakePrisma(initial: FakeModels = {}): FakePrisma {
   async function transaction(arg: unknown): Promise<unknown> {
     if (typeof arg === "function") {
       calls.push({ model: "$transaction", method: "callback", args: [] });
-      return arg(prisma);
+      const start = calls.length;
+      try {
+        return await arg(prisma);
+      } catch (error) {
+        for (const call of calls.slice(start)) rolledBack.add(call);
+        throw error;
+      }
     }
     if (Array.isArray(arg)) {
       calls.push({ model: "$transaction", method: "array", args: [] });
-      const results: unknown[] = [];
-      for (const query of arg) results.push(await query);
-      return results;
+      // Toutes les requêtes sont réglées avant de conclure : une seconde
+      // requête en échec ne doit pas finir en rejet non intercepté.
+      const settled = await Promise.allSettled(arg);
+      const failure = settled.find((s) => s.status === "rejected");
+      if (failure) {
+        for (const query of arg) {
+          const call = callOf.get(query);
+          if (call) rolledBack.add(call);
+        }
+        throw (failure as PromiseRejectedResult).reason;
+      }
+      return settled.map((s) => (s as PromiseFulfilledResult<unknown>).value);
     }
     throw new TypeError("Faux Prisma : $transaction attend une fonction ou un tableau.");
   }
@@ -96,9 +141,14 @@ export function createFakePrisma(initial: FakeModels = {}): FakePrisma {
   return {
     prisma,
     calls,
+    rolledBack,
+    writes() {
+      return calls.filter((c) => WRITE_METHODS.has(c.method) && !rolledBack.has(c));
+    },
     use(next) {
       models = next;
       calls.length = 0;
+      rolledBack.clear();
     },
   };
 }

@@ -1,8 +1,9 @@
 # API REST publique (v1) — spécification et état réel
 
-> **Mise à jour** : 28 septembre 2026 — revérifiée contre le code (15 routes
-> `app/api/v1`). Les sections marquées **« État réel »** décrivent ce que fait le
-> code aujourd'hui, là où il s'écarte de l'intention initiale.
+> **Mise à jour** : 14 octobre 2026 — revérifiée contre le code et couverte par
+> `test/api/v1.test.ts` (15 routes `app/api/v1`). Les sections marquées
+> **« État réel »** décrivent ce que fait le code aujourd'hui, là où il s'écarte
+> de l'intention initiale.
 
 ## Objectif
 
@@ -70,7 +71,7 @@ requête est lu.
 
 | Type de route | Protection |
 |---------------|------------|
-| Collections racine — `/v1/schools`, `/v1/programs`, `/v1/rankings` | **paginées** via `parsePagination` (`limit` plafonné à 100, défaut 20) |
+| Collections racine — `/v1/schools`, `/v1/programs`, `/v1/rankings` | **paginées** via `parsePagination` (`limit` plafonné à 100, défaut 20, 50 pour `/rankings`). Une valeur hors bornes est ramenée dans les bornes (`page=0` → 1, `limit=1000` → 100) ; vide ou non numérique, elle reprend le défaut. Jusqu'au 14 octobre 2026, `?page=abc` donnait `NaN`, que Prisma refusait : 500 |
 | Sous-collections — les 7 routes rattachées à une entité parente | **plafond dur `take: 500`** |
 | `/v1/compare/programs` | 5 identifiants maximum, **dédupliqués** |
 
@@ -92,7 +93,7 @@ Toutes sous `/api/v1/`. Seules les écoles `status == "ACTIVE"` sont exposées.
 |---|---|---|---|---|
 | `GET` | `/api/v1/schools` | Liste des écoles actives | `?search=&page=1&limit=20` | `{ data, pagination }` |
 | `GET` | `/api/v1/schools/[id]` | Détail d'une école | — | objet |
-| `GET` | `/api/v1/schools/[id]/stats` | Statistiques | `?year=2025` | tableau |
+| `GET` | `/api/v1/schools/[id]/stats` | Statistiques d'une année (la plus récente par défaut) ; aucune → 404 « Statistiques introuvables » | `?year=2025` | objet |
 | `GET` | `/api/v1/schools/[id]/accreditations` | Accréditations | — | tableau, `take: 500` |
 
 ### Campus
@@ -118,13 +119,20 @@ Toutes sous `/api/v1/`. Seules les écoles `status == "ACTIVE"` sont exposées.
 | Méthode | Endpoint | Description | Forme |
 |---|---|---|---|
 | `GET` | `/api/v1/programs/[id]/pricing` | Historique tarifaire | tableau, `take: 500` |
-| `GET` | `/api/v1/schools/[id]/pricing` | Tarifs de tous les programmes | tableau, `take: 500` |
+| `GET` | `/api/v1/schools/[id]/pricing` | Tarifs de tous les programmes ; chaque ligne porte `program` (`id`, `name`, `campuses`) | tableau, `take: 500` |
 | `GET` | `/api/v1/programs/[id]/rankings` | Classements d'un programme | tableau, `take: 500` |
-| `GET` | `/api/v1/rankings` | Tableau global | `?ranking_name=&year=&page=&limit=` | `{ data, pagination }` |
+| `GET` | `/api/v1/rankings` | Tableau global, écoles `ACTIVE` ; chaque ligne porte `program` (`id`, `name`, `school`, `campuses`) | `?ranking_name=&year=&page=&limit=` | `{ data, pagination }` |
 | `GET` | `/api/v1/programs/[id]/capacity` | Places disponibles | tableau, `take: 500` |
 
 > **Capacité** : elle est rattachée à un couple **(programme, campus)** via
 > `ProgramCampus`, jamais au programme seul. La réponse expose donc le campus.
+
+> **État réel — `/schools/[id]/pricing` et `/rankings` répondaient toujours 500
+> jusqu'au 14 octobre 2026.** Elles filtraient par `program.campus`, relation
+> disparue quand un programme a cessé d'appartenir à un campus ; Prisma refusait
+> la requête. Elles passent désormais par l'école du programme, et exposent ses
+> campus en liste (`program.campuses`), comme `/programs`. Aucun client n'a pu
+> recevoir l'ancienne forme.
 
 ### Comparaison
 

@@ -30,12 +30,14 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { name, official_domain } = body;
 
-    if (!name || !official_domain) {
+    // Contrôle après nettoyage : jusqu'au 14 octobre 2026, un nom fait d'espaces
+    // passait et une chaîne vide était écrite (décision 12, plan backend-local).
+    const cleanName = typeof name === "string" ? name.trim() : "";
+    const cleanDomain = typeof official_domain === "string" ? official_domain.trim().toLowerCase() : "";
+
+    if (!cleanName || !cleanDomain) {
       return NextResponse.json({ error: "Le nom et le domaine officiel sont requis" }, { status: 400 });
     }
-
-    const cleanDomain = official_domain.trim().toLowerCase();
-    const cleanName = name.trim();
 
     // Vérifier l'existence d'une école avec le même nom ou domaine
     const existing = await prisma.school.findFirst({

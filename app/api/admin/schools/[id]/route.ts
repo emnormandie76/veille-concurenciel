@@ -47,6 +47,17 @@ export async function PUT(
       );
     }
 
+    // Un nom ou un domaine fourni ne peut pas être vide une fois nettoyé.
+    // Jusqu'au 14 octobre 2026, un nom fait d'espaces passait et une chaîne
+    // vide était écrite (décision 12, plan backend-local).
+    const isBlank = (value: unknown) => typeof value !== "string" || value.trim() === "";
+    if ((name !== undefined && isBlank(name)) || (official_domain !== undefined && isBlank(official_domain))) {
+      return NextResponse.json(
+        { error: "Le nom et le domaine officiel ne peuvent pas être vides" },
+        { status: 400 }
+      );
+    }
+
     if (status && !["ACTIVE", "INACTIVE", "DRAFT"].includes(status)) {
       return NextResponse.json(
         { error: "Le statut doit être ACTIVE, INACTIVE ou DRAFT" },

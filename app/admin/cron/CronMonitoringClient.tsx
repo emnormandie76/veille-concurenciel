@@ -308,16 +308,13 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        // Réponse de Next.js (`error`) ou refus du backend relayé tel quel (`detail`).
+        // Réponse de Next.js (`error`) ou refus du backend relayé tel quel
+        // (`detail`) : une école occupée répond 409 ALREADY_RUNNING, et son
+        // message nomme le job en cours (plan backend-local, étape 7).
         throw new Error(describeBackendError(res.status, data));
       }
 
-      if (data.already_running) {
-        setLaunchMessage({
-          type: "error",
-          text: `Une tâche est déjà en cours pour cette école (job #${data.job_id})`,
-        });
-      } else if (selectedPhase === "1") {
+      if (selectedPhase === "1") {
         const confirmed = typeof data.collect_campus_attachments === "boolean";
         setLaunchMessage({
           type: confirmed ? "success" : "error",

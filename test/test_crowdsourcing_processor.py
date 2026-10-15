@@ -548,3 +548,80 @@ def test_match_program_name_refuse_une_clause_ambigue():
 
     result = _match_program_name("Programme Grande École en 5 ans", jumeaux)
     assert result["match_confidence"] == "none"
+
+
+# ── Extraction Tavily : une panne n'est pas une contribution invalide ──
+#
+# Jusqu'au 14 octobre 2026, extract_from_urls avalait un refus de quota ou une
+# panne réseau et rendait "" : le ticket était SUPPRIMÉ comme une erreur
+# permanente (« contenu vide »). Constat de l'étape 7 du plan backend-local,
+# corrigé avec l'accord du propriétaire : seul un contenu vide d'une
+# extraction RÉUSSIE reste permanent.
+
+_EXTRACT_TICKET = {
+    "id": "test-uuid-tavily",
+    "user_text": None,
+    "urls": ["https://www.emlv.fr/pricing/"],
+    "ai_category": "Pricing",
+    "school_id": "school-uuid-001",
+    "program_id": "program-uuid-001",
+    "school_name": "EMLV",
+}
+
+
+def _process_with_extract(**extract_behaviour):
+    """Traite le ticket, l'extraction Tavily se comportant comme demandé."""
+    with patch("backend.db.get_db_connection") as mock_get_db, \
+         patch("backend.crowdsourcing.processor.extract_from_urls", **extract_behaviour), \
+         patch("backend.crowdsourcing.processor.call_gemma") as mock_gemma, \
+         patch("backend.crowdsourcing.processor._update_ticket_status") as mock_update, \
+         patch("backend.crowdsourcing.processor._delete_ticket") as mock_delete, \
+         patch("backend.crowdsourcing.processor._mark_ticket_failed") as mock_failed:
+        mock_cur = mock_get_db.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        mock_cur.fetchone.return_value = _EXTRACT_TICKET
+        raised = None
+        try:
+            process_crowdsourcing_ticket("test-uuid-tavily", FAKE_KEY_MANAGER)
+        except Exception as error:  # noqa: BLE001 — l'exception est l'objet du test
+            raised = error
+    return raised, mock_gemma, mock_update, mock_delete, mock_failed
+
+
+def test_une_panne_tavily_garde_la_contribution_en_failed():
+    from backend.tavily_service.client import TavilyRequestError
+
+    raised, gemma, update, delete, failed = _process_with_extract(
+        side_effect=TavilyRequestError("Tavily extract en échec : Read timed out"),
+    )
+
+    assert isinstance(raised, TavilyRequestError)
+    delete.assert_not_called()
+    failed.assert_called_once()
+    assert failed.call_args.args[0] == "test-uuid-tavily"
+    gemma.assert_not_called()
+    update.assert_not_called()
+
+
+def test_un_quota_tavily_laisse_le_ticket_en_attente():
+    from backend.tavily_service.key_manager import QuotaExhaustedError
+
+    raised, gemma, update, delete, failed = _process_with_extract(
+        side_effect=QuotaExhaustedError("3 clé(s) refusée(s) pour quota"),
+    )
+
+    assert isinstance(raised, QuotaExhaustedError)
+    delete.assert_not_called()
+    failed.assert_not_called()
+    update.assert_not_called()
+    gemma.assert_not_called()
+
+
+def test_une_extraction_reussie_mais_vide_reste_permanente():
+    from backend.crowdsourcing.processor import TavilyExtractionError
+
+    raised, gemma, _update, delete, failed = _process_with_extract(return_value="")
+
+    assert isinstance(raised, TavilyExtractionError)
+    delete.assert_called_once_with("test-uuid-tavily")
+    failed.assert_not_called()
+    gemma.assert_not_called()

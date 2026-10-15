@@ -39,6 +39,35 @@ EXTRACT_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_EXTRACT_TIMEOUT_SECONDS",
 EXTRACT_MAX_URLS = 5
 
 
+class TavilyRequestError(Exception):
+    """
+    Un appel /search ou /extract a échoué : réseau, délai, réponse en erreur.
+
+    Rien ne dit que la page demandée est invalide. L'appelant ne doit pas le
+    confondre avec une extraction réussie mais vide.
+    """
+
+
+# Nombre de clés essayées par /search et /extract quand l'API refuse pour
+# quota, avant de lever QuotaExhaustedError. Même logique que MAP_KEY_ATTEMPTS :
+# le compteur local d'une clé peut annoncer des crédits que l'API refuse déjà.
+#
+# Jusqu'au 14 octobre 2026, ces deux fonctions avalaient le refus, comme toute
+# autre panne, et rendaient "" : le traitement des contributions y lisait un
+# contenu vide, donc une erreur permanente, et SUPPRIMAIT le ticket. Une panne
+# passagère détruisait une contribution valide (plan backend-local, étape 7).
+QUOTA_KEY_ATTEMPTS = 3
+
+
+def _quota_refused_everywhere(endpoint: str, last_error: Exception | None):
+    from backend.tavily_service.key_manager import QuotaExhaustedError
+
+    return QuotaExhaustedError(
+        f"Tavily {endpoint} : {QUOTA_KEY_ATTEMPTS} clé(s) refusée(s) pour quota. "
+        f"Dernière erreur : {last_error}"
+    )
+
+
 def split_extractable_urls(urls: list[str] | None) -> tuple[list[str], list[str]]:
     """
     Sépare les URLs qui partiront à Tavily de celles qui seront écartées.
@@ -73,32 +102,54 @@ def search_web(
         country: Pays pour la recherche
 
     Returns:
-        Contenu consolidé des résultats (Markdown).
+        Contenu consolidé des résultats (Markdown). "" si la recherche a
+        abouti sans résultat exploitable.
+
+    Raises:
+        QuotaExhaustedError: aucune clé disponible, ou QUOTA_KEY_ATTEMPTS clés
+            refusées pour quota par l'API.
+        TavilyRequestError: tout autre échec de l'appel.
 
     Référence : architecture.md §4.2 (Phase 2 strategies)
     """
     from tavily import TavilyClient
     from backend.tavily_service.key_manager import QuotaExhaustedError
 
-    api_key = key_manager.get_active_key(required_credits=5)
-    client = TavilyClient(api_key=api_key)
+    params = {
+        "query": query,
+        "search_depth": search_depth,
+        "max_results": max_results,
+        "include_raw_content": include_raw_content,
+        "timeout": SEARCH_TIMEOUT_SECONDS,
+    }
+    if include_domains:
+        params["include_domains"] = include_domains
+    if country:
+        params["country"] = country
 
-    logger.info(f"🔎 Tavily search: '{query[:80]}...' (depth={search_depth})")
+    last_error: Exception | None = None
+    for _attempt in range(QUOTA_KEY_ATTEMPTS):
+        api_key = key_manager.get_active_key(required_credits=5)
+        client = TavilyClient(api_key=api_key)
 
-    try:
-        params = {
-            "query": query,
-            "search_depth": search_depth,
-            "max_results": max_results,
-            "include_raw_content": include_raw_content,
-            "timeout": SEARCH_TIMEOUT_SECONDS,
-        }
-        if include_domains:
-            params["include_domains"] = include_domains
-        if country:
-            params["country"] = country
+        logger.info(f"🔎 Tavily search: '{query[:80]}...' (depth={search_depth})")
 
-        result = client.search(**params)
+        try:
+            result = client.search(**params)
+        except QuotaExhaustedError:
+            raise
+        except Exception as e:
+            if is_quota_error(e):
+                # Sans ce marquage, une cle refusee par l API (402/429) restait
+                # selectionnee et etait reinterrogee en boucle.
+                logger.warning(
+                    f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
+                )
+                key_manager.mark_exhausted(api_key)
+                last_error = e
+                continue
+            logger.error(f"❌ Erreur Tavily search '{query[:60]}': {e}")
+            raise TavilyRequestError(f"Tavily search en échec : {e}") from e
 
         # Enregistrer l'utilisation
         credits = 2 if search_depth == "advanced" else 1
@@ -121,19 +172,7 @@ def search_web(
         logger.info(f"✅ Search terminé: {len(results_list)} résultats, {len(consolidated)} chars")
         return consolidated
 
-    except QuotaExhaustedError:
-        raise
-    except Exception as e:
-        if is_quota_error(e):
-            # research_client.py etait le seul a marquer la cle. Sans cet
-            # appel, une cle refusee par l API (402/429) restait selectionnee
-            # et etait reinterrogee en boucle par les appels suivants.
-            logger.warning(
-                f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
-            )
-            key_manager.mark_exhausted(api_key)
-        logger.error(f"❌ Erreur Tavily search '{query[:60]}': {e}")
-        return ""
+    raise _quota_refused_everywhere("search", last_error) from last_error
 
 
 def extract_from_urls(
@@ -151,7 +190,15 @@ def extract_from_urls(
         extract_depth: "basic" ou "advanced"
 
     Returns:
-        Contenu consolidé des pages.
+        Contenu consolidé des pages. "" si l'extraction a abouti sans contenu
+        exploitable — la seule réponse vide.
+
+    Raises:
+        QuotaExhaustedError: aucune clé disponible, ou QUOTA_KEY_ATTEMPTS clés
+            refusées pour quota par l'API.
+        TavilyRequestError: tout autre échec de l'appel. Rien ne dit alors que
+            les pages sont invalides : l'appelant ne doit pas le lire comme un
+            contenu vide.
 
     Référence : architecture.md §4.1 (extract), task.md §7.3
     """
@@ -171,17 +218,33 @@ def extract_from_urls(
             f"(maximum {EXTRACT_MAX_URLS} par appel) — {ignored_urls}"
         )
 
-    api_key = key_manager.get_active_key(required_credits=5)
-    client = TavilyClient(api_key=api_key)
+    last_error: Exception | None = None
+    for _attempt in range(QUOTA_KEY_ATTEMPTS):
+        api_key = key_manager.get_active_key(required_credits=5)
+        client = TavilyClient(api_key=api_key)
 
-    logger.info(f"📥 Tavily extract: {len(kept_urls)} URL(s)")
+        logger.info(f"📥 Tavily extract: {len(kept_urls)} URL(s)")
 
-    try:
-        result = client.extract(
-            urls=kept_urls,
-            extract_depth=extract_depth,
-            timeout=EXTRACT_TIMEOUT_SECONDS,
-        )
+        try:
+            result = client.extract(
+                urls=kept_urls,
+                extract_depth=extract_depth,
+                timeout=EXTRACT_TIMEOUT_SECONDS,
+            )
+        except QuotaExhaustedError:
+            raise
+        except Exception as e:
+            if is_quota_error(e):
+                # Sans ce marquage, une cle refusee par l API (402/429) restait
+                # selectionnee et etait reinterrogee en boucle.
+                logger.warning(
+                    f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
+                )
+                key_manager.mark_exhausted(api_key)
+                last_error = e
+                continue
+            logger.error(f"❌ Erreur Tavily extract: {e}")
+            raise TavilyRequestError(f"Tavily extract en échec : {e}") from e
 
         # 1 crédit par 5 URLs
         key_manager.record_usage(api_key, credits=1)
@@ -198,19 +261,7 @@ def extract_from_urls(
         logger.info(f"✅ Extract terminé: {len(results_list)} résultats")
         return consolidated
 
-    except QuotaExhaustedError:
-        raise
-    except Exception as e:
-        if is_quota_error(e):
-            # research_client.py etait le seul a marquer la cle. Sans cet
-            # appel, une cle refusee par l API (402/429) restait selectionnee
-            # et etait reinterrogee en boucle par les appels suivants.
-            logger.warning(
-                f"⚠️ Quota Tavily atteint sur la cle ...{api_key[-6:]} — marquee epuisee"
-            )
-            key_manager.mark_exhausted(api_key)
-        logger.error(f"❌ Erreur Tavily extract: {e}")
-        return ""
+    raise _quota_refused_everywhere("extract", last_error) from last_error
 
 
 # ── /map — cartographie enracinee sur la page catalogue ──────────

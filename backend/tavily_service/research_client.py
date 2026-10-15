@@ -165,20 +165,25 @@ def create_research_task(
 
             logger.info(f"📋 Research task créée: {request_id}")
 
-            # ── 2. Polling ─────────────────────────────────────────────
+            # ── 2. Enregistrer l'utilisation ESTIMÉE ───────────────────
+            # Dès la création, quelle que soit l'issue du polling : une tâche
+            # perdue (échecs de polling, délai dépassé, échec côté Tavily)
+            # existe chez Tavily, qui l'a sans doute facturée. Comptée après le
+            # polling, elle échappait au plafond jusqu'à la synchro /usage
+            # suivante (constat de l'étape 7 du plan backend-local).
+            # Aucune lecture n'est tentée : la réponse /research ne porte pas
+            # le coût de l'appel, même avec include_usage. Voir le commentaire
+            # de ESTIMATED_CREDITS.
+            credits_consumed = ESTIMATED_CREDITS.get(model, 25)
+            key_manager.record_usage(api_key, credits=credits_consumed)
+
+            # ── 3. Polling ─────────────────────────────────────────────
             result = _poll_research_task(
                 client=client,
                 request_id=request_id,
                 max_wait_seconds=max_wait_seconds,
                 poll_interval=poll_interval,
             )
-
-            # ── 3. Enregistrer l'utilisation ESTIMÉE ───────────────────
-            # Aucune lecture n'est tentée : la réponse /research ne porte pas
-            # le coût de l'appel, même avec include_usage. Voir le commentaire
-            # de ESTIMATED_CREDITS.
-            credits_consumed = ESTIMATED_CREDITS.get(model, 25)
-            key_manager.record_usage(api_key, credits=credits_consumed)
 
             return {
                 "report": result.get("content", ""),

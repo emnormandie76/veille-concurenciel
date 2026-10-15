@@ -85,7 +85,10 @@ Chantier « backend local sur demande »
   (`test/helpers/prisma-schema.ts`) ; smoke `npm run smoke`
   (`scripts/smoke-local.ts`), **pas encore joué contre `npm run dev`** (il lit
   la base partagée : accord du propriétaire). 570 tests Python et 482
-  TypeScript, verts aussi sous garde réseau (0 tentative). Le 15 octobre, le
+  TypeScript, verts aussi sous garde réseau (0 tentative). Commit `dae8fd6` ;
+  sa CI a révélé un test qui dépendait de l'heure (quota journalier Gemini),
+  horloge figée sur décision du propriétaire (commit suivant) : 571 tests
+  Python. Le 15 octobre, le
   propriétaire demande le commit, le push et le prompt de l'étape 8 : étape 7
   tenue pour validée. Restent ouverts : le smoke contre `npm run dev` (accord
   à demander) et les exemples fictifs de `/api-docs` (question à lui poser) ;

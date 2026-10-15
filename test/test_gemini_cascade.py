@@ -16,6 +16,7 @@ Ce qui est vérifié, dans l'ordre du critère d'acceptation :
 import os
 import sys
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -120,6 +121,17 @@ class GeminiCascadeTestCase(unittest.TestCase):
 
 # ── Lecture des refus 429 ─────────────────────────────────────────
 
+def frozen_clock(iso: str):
+    """`gc.datetime` dont `now()` rend l'instant donné : le test ne lit plus l'horloge."""
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromisoformat(iso).astimezone(tz or timezone.utc)
+
+    return patch.object(gc, "datetime", FrozenDatetime)
+
+
 class TestParseQuotaError(unittest.TestCase):
     def test_limit_zero_is_permanent(self):
         """
@@ -154,9 +166,30 @@ class TestParseQuotaError(unittest.TestCase):
             "Quota exceeded for quota metric "
             "generate_requests_per_model_per_day, limit: 20. Please retry in 30s."
         )
-        verdict = parse_quota_error(message)
+        # Horloge figée à 10 h, heure du Pacifique. Le test lisait l'heure réelle
+        # et échouait chaque jour dans l'heure qui précède minuit Pacifique (CI de
+        # dae8fd6, 15 octobre 2026, à 23 h 59 PDT : 60 s, le plancher).
+        with frozen_clock("2026-10-15T10:00:00-07:00"):
+            verdict = parse_quota_error(message)
         self.assertFalse(verdict.permanent)
         self.assertGreater(verdict.cooldown_seconds, 3600)
+        self.assertEqual(verdict.cooldown_seconds, 14 * 3600)
+
+    def test_pacific_midnight_countdown_and_floor(self):
+        """Juste avant minuit Pacifique, l'attente se réduit, jamais sous 60 s."""
+        self.assertEqual(
+            gc._seconds_until_pacific_midnight(datetime.fromisoformat("2026-10-15T23:30:00-07:00")),
+            1800.0,
+        )
+        self.assertEqual(
+            gc._seconds_until_pacific_midnight(datetime.fromisoformat("2026-10-15T23:59:20-07:00")),
+            60.0,
+        )
+        # Heure d'hiver (UTC-8) : minuit Pacifique tombe à 08:00 UTC.
+        self.assertEqual(
+            gc._seconds_until_pacific_midnight(datetime.fromisoformat("2026-12-01T07:00:00+00:00")),
+            3600.0,
+        )
 
     def test_unreadable_message_falls_back_to_default(self):
         verdict = parse_quota_error("RESOURCE_EXHAUSTED")

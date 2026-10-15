@@ -2242,6 +2242,7 @@ Au 2 septembre 2026, **11 tests** passaient ; au 28 septembre, 216 tests Python
 319 et 68 ; après l'étape 3, 362 et 68 ; après l'étape 4, 379 et 68 ; après
 l'étape 5, 379 et 122 ; après l'étape 6, 379 et 128. **Au 14 octobre 2026,
 après l'étape 7 : 570 tests Python (+25 sous-tests) et 482 tests TypeScript**,
+puis 571 Python le 15 octobre (test d'horloge ci-dessous),
 tous verts. Les deux suites lisent des fixtures communes quand une règle existe
 en deux langages (`test/fixtures/attachment_plan_cases.json`).
 
@@ -2289,6 +2290,13 @@ greffon remplace `socket.connect` et `getaddrinfo`. Pour `node --test`, un
 chargé dans les 34 processus fils. Un contrôle positif (`fetch` vers
 `192.0.2.1`, résolution d'un nom `.invalid`) est bien refusé. Résultat :
 **0 tentative**, 570 et 482 verts.
+
+**Pas de test qui lit l'horloge.** `test_daily_quota_waits_for_pacific_midnight`
+lisait l'heure réelle et échouait chaque jour dans l'heure qui précède minuit
+Pacifique ; la CI de `dae8fd6` est tombée dessus le 15 octobre. Il fige
+désormais `gc.datetime` (`frozen_clock`), et le compte à rebours est testé à
+heure fixe (plancher de 60 s, heure d'hiver). Un test qui dépend de la date
+réelle passe des mois puis casse sur un push innocent.
 
 **Le lanceur local** (étape 6, §10.6) : `test/local-launcher.test.ts` lit
 `package.json` et `scripts/start-local.ps1` sans rien lancer (le script ne

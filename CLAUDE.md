@@ -107,8 +107,26 @@ Chantier « backend local sur demande »
   sur les réponses réelles (`test/api-docs.test.ts`) et titre des fiches sans
   « — EduData France » en double (`test/page-titles.test.ts`) ; 571 tests
   Python et 491 TypeScript ;
-- prochaine : étape 9 (vérification de bout en bout, sur la
-  branche Neon `dev` de D7).
+- étape 9 (vérification de bout en bout) jouée le 15 octobre avec le
+  propriétaire, sur la branche Neon `dev`, créée ce jour-là par l'agent (D7,
+  accord du propriétaire). Le poste vise désormais `dev` : bascule faite par
+  l'agent dans les `.env*`, sur autorisation explicite du propriétaire, sans
+  rien afficher (procédure : `docs/testing/manual_testing_cron.md` §1.3).
+  Points 1 à 4 verts (`db:status` 10/0, backend prêt sans erreur, « Simuler »
+  sans job ni crédit, « non lancé » puis « pilotage depuis le poste local » en
+  0,6 s). Passe due réelle ESSCA Phase 1 : `completed` en 7 min, un ticket
+  `Program_Discovery` en `Pending_Admin`, ~29 crédits. **La contribution de
+  test a échoué** (accréditations Em Lyon : Gemma rend la bonne liste de 3,
+  le code n'en attend qu'une et supprime le ticket) : trois défauts hors plan,
+  C1 à C3, à corriger après l'étape 9, puis contribution à rejouer. Case de
+  l'étape 9 non cochée. Smoke sur `dev` : 19 bons, 0 échec, 1 absent ;
+- étape 9 **validée par le propriétaire** le 15 octobre, en l'état. Il a
+  aussi modifié le cahier des charges (C4 : le crowdsourcing passe par la
+  cascade Gemini, Gemma en dernier recours) et retranché C1 (un seul ticket
+  `accreditations[]`, la forme de la Phase 2) ;
+- prochaine : **tâche hors plan C1 à C4** (crowdsourcing), tests d'abord, sur
+  `dev`, puis la contribution d'accréditation rejouée ; elle coche l'étape 9
+  (journal du plan, §11).
 
 L'étape en cours se lit dans le journal du plan (§11).
 
@@ -200,9 +218,15 @@ Autorisé, sur le **projet de l'application uniquement** :
 
 - projet `vc-bdd`, id `lucky-cell-29057691`, dans l'organisation
   `org-lively-cell-45152555` (gérée par Vercel) ;
-- branche `main`, id `br-bitter-cloud-ab3c0wop` : c'est aussi la **production
-  Vercel** ;
-- endpoint `ep-twilight-forest-ab9qjkm7`, en région `aws-eu-west-2`.
+- branche `main`, id `br-bitter-cloud-ab3c0wop`, endpoint
+  `ep-twilight-forest-ab9qjkm7` : c'est aussi la **production Vercel** ;
+- branche `dev`, id `br-rapid-bird-abck4fdr`, endpoint
+  `ep-falling-breeze-abibnpc4`, créée depuis `main` le 15 octobre 2026
+  (décision D7, étape 9 du plan) : essais et vérifications. **Cible par défaut
+  des lectures**. Le poste vise `dev` depuis le 15 octobre 2026 ; le travail
+  réel (passes dues, contributions publiques) se fera sur `main`, après
+  bascule (`docs/testing/manual_testing_cron.md` §1.3) ;
+- région `aws-eu-west-2`.
 
 Passer `project_id` **et** `branch_id` à chaque appel. Les autres projets que le
 MCP peut voir appartiennent à d'autres applications : n'y faire aucun appel.
@@ -215,8 +239,7 @@ C'est le cas de `neon-cyclamen-river` et de tout projet d'un autre compte.
 | **Jamais** | `get_connection_string`, `create_credential`, `rotate_credential`, `revoke_credential`, `reset_postgres_role_password` : ils rendent ou changent des secrets |
 
 Le MCP sert à l'agent : il ne remplace pas la connexion de l'application, et
-les migrations ne passent pas par lui. Si une branche `dev` est créée (décision
-D7 du plan), ajouter ici son id et en faire la cible par défaut des lectures.
+les migrations ne passent pas par lui.
 
 ## MCP Vercel
 

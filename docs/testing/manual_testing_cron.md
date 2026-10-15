@@ -10,9 +10,10 @@ Ce guide détaille les étapes nécessaires pour tester localement le tableau de
 
 > **Où faire ces tests.** Lancer le backend **écrit dans la base** au démarrage
 > (reprise des jobs orphelins, purge des jobs terminés) et **traite aussitôt les
-> contributions en attente**, ce qui coûte des crédits. La seule branche Neon,
-> `main`, est aussi la production Vercel : la vérification de bout en bout se
-> fait sur une branche `dev` (décision D7, étape 9 du plan).
+> contributions en attente**, ce qui coûte des crédits. La branche Neon `main`
+> est aussi la production Vercel : les essais se font sur la branche `dev`
+> (`br-rapid-bird-abck4fdr`, créée depuis `main` le 15 octobre 2026, décision
+> D7), le travail réel sur `main` (§1.3).
 
 ---
 
@@ -35,6 +36,42 @@ Le seed **n'a aucun mot de passe par défaut** : il lit `SEED_ADMIN_PASSWORD` et
 $env:SEED_ADMIN_PASSWORD = "<un mot de passe fort>"; npx prisma db seed
 ```
 L'identifiant créé est `admin`, ou la valeur de `SEED_ADMIN_USERNAME`. Changez ensuite le mot de passe depuis `/admin/users` si besoin, et retirez la variable de votre session.
+
+### 1.3 Basculer le poste entre `dev` et `main`
+
+Décision du propriétaire (étape 9 du plan backend-local, 15 octobre 2026) :
+**`dev` pour les essais et les vérifications, `main` pour le travail réel**
+(passes dues, traitement des contributions publiques, validations). Le site en
+ligne lira `main` : une contribution publique n'est traitée que par un backend
+local pointé sur `main`, et une passe faite sur `dev` ne produit rien que les
+visiteurs voient.
+
+| Branche | Endpoint (dans l'hôte des URL) |
+|---|---|
+| `main` (production Vercel) | `ep-twilight-forest-ab9qjkm7` |
+| `dev` | `ep-falling-breeze-abibnpc4` |
+
+`dev` a hérité du rôle `neondb_owner` de `main`, mot de passe compris : seul
+l'identifiant d'endpoint change dans l'hôte. Pour basculer :
+
+1. arrêter le backend et Next.js ;
+2. remplacer l'identifiant d'endpoint dans les lignes actives suivantes, en
+   gardant `-pooler` là où il figure :
+   - `.env.local` : `DATABASE_URL` (poolée) et `DIRECT_URL` (directe) ;
+   - `.env` à la racine, s'il porte encore le doublon : les deux mêmes. Sinon
+     la CLI Prisma (`prisma.config.ts`), qui lit `.env` en repli, viserait
+     encore l'autre branche ;
+   - `backend/.env` : `DATABASE_URL`.
+
+   `.env.development.local` ne porte que `DB_DRIVER=neon-ws` : rien à y changer.
+   Ne jamais poser une `DATABASE_URL` dans les variables Windows : elle
+   l'emporterait sur tous les fichiers ;
+3. vérifier : `npm run db:status` affiche l'hôte visé
+   (`Pilote neon-ws : WebSocket (443) vers ep-… (DIRECT_URL)`), puis
+   `/admin/cron` une fois relancé.
+
+Le 15 octobre 2026, la bascule vers `dev` a touché exactement 5 lignes
+(`.env.local` : 2, `.env` : 2, `backend/.env` : 1).
 
 ---
 
@@ -128,6 +165,14 @@ L'écran est décrit en entier dans
 > traitement des contributions passe `pipeline-status` en `degraded` (« prêt
 > (dégradé) »), sans dire lequel. Lisez `GET /internal/pipeline-status`
 > directement (étape 5.1).
+>
+> **Le sort d'une contribution ne se lit que dans la fenêtre du backend**
+> (défaut C2, constaté le 15 octobre 2026, correction décidée) :
+> `last_runs.crowdsourcing_processor` est écrasé une minute plus tard par
+> « aucune contribution en attente ». Remontez dans la fenêtre jusqu'à
+> `⚙️ Traitement du ticket <id>` et au `RAPPORT DE CROWDSOURCING` qui suit ;
+> une ligne `Erreur permanente … SUPPRIMÉ de l'Inbox` dit pourquoi un ticket
+> a disparu. Le rapport range ces suppressions sous « Rejetés ».
 
 ### 4.3 Tester le lancement d'une recherche manuelle
 **Chaque lancement dépense des crédits réels** (bouton réservé au rôle ADMIN) :

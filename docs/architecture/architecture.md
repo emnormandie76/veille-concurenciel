@@ -1553,6 +1553,30 @@ Pour chaque ticket créé, le traitement asynchrone s'exécute de la manière su
    - **Quota Epuisé (`QuotaExhaustedError`) :** Le traitement de l'ensemble du batch est interrompu immédiatement (le ticket reste en `Pending_AI`, aucune suppression).
 7. **Synthèse et Reporting :** À la fin de l'exécution, un rapport complet agrège et affiche dans la console le nombre de tickets validés, en attente (erreurs API), et rejetés/supprimés.
 
+> **Défauts connus, correction décidée** (étape 9 du plan backend-local,
+> 15 octobre 2026 ; à faire avant le déploiement Vercel) :
+> - **C1** : la consigne `Accreditation` décrit un objet unique. Sur une page
+>   qui en cite plusieurs, cas ordinaire, Gemma rend la bonne liste,
+>   `call_gemma` la refuse (plusieurs objets là où un seul est attendu), et
+>   la `GemmaParsingError` **supprime** la contribution (constaté : EQUIS,
+>   AACSB et AMBA d'Em Lyon). Décision : **un seul ticket qui porte
+>   `accreditations: [...]`**, la forme que produit déjà la Phase 2 et que
+>   l'inbox et `validateAccreditation` savent traiter ;
+> - **C2** : le rapport ci-dessus ne vit que dans la console. Dans
+>   `pipeline-status`, `last_runs.crowdsourcing_processor` est écrasé par le
+>   passage suivant (« aucune contribution en attente »), et le rapport range
+>   une suppression sous « Rejetés ». Décision : garder aussi le dernier
+>   passage qui a traité au moins un ticket ;
+> - **C3** : une `GemmaAPIError` laisse le ticket en `Pending_AI`, et chaque
+>   passage suivant **repaie l'extraction Tavily**, sans borne. Décision : la
+>   compter comme une tentative, avec le délai et le plafond des tickets
+>   `Failed`.
+> - **C4** (décision du propriétaire, qui modifie le cahier des charges) : le
+>   crowdsourcing passe par la **cascade Gemini** (§4.1 bis), compatibilité
+>   comprise, aux mêmes planchers par catégorie que le pipeline ; Gemma ne
+>   sert plus qu'en dernier recours, cascade épuisée. Motif : 4 erreurs 500
+>   sur 6 appels Gemma à l'étape 9, et pas de schéma JSON imposé.
+
 #### File d'attente
 
 `process_pending_submissions()` sélectionne les 20 plus anciens tickets
@@ -2571,8 +2595,28 @@ payant :
   navigateur : tableau, erreur tronquée à 300 caractères et entière au survol,
   « Voir » qui filtre sur `Pending_AI`. Aucune erreur de page.
 
-Reste à faire avec le propriétaire (étape 9) : les mêmes états contre le vrai
-backend et la vraie base.
+**Contre le vrai backend et la vraie base, le 15 octobre 2026** (étape 9, avec
+le propriétaire), sur la branche Neon `dev`, dans Chromium (Playwright, session
+ADMIN) :
+- `npm run local` : `/health` `ok`, `startup_errors` vide ; « prêt », 9 passes
+  dues, synchro `/usage` réussie (4 clés) ;
+- « Simuler » : « 1 passe partirait — ESSCA, Phase 1, ~30 crédits » ; même
+  nombre de `PipelineJob` avant et après (MCP Neon), aucun statut changé,
+  aucun crédit ;
+- backend arrêté : « Backend local non lancé », avec `npm run local` ;
+- `next build` puis `next start` avec une `FASTAPI_URL` **vide** dans
+  l'environnement du processus (`@next/env` ne remplace pas une variable déjà
+  présente, même vide ; `fastapiUrl()` la traite comme absente ; PowerShell
+  supprimerait une variable vide, d'où un lanceur Node) : « Pilotage depuis le
+  poste local » en 0,6 s, historique lu en base ; `pipeline-status` → 503
+  `BACKEND_LOCAL_ONLY` en 20 ms ;
+- « Lancer 1 passe due », confirmation acceptée sur l'aperçu « ESSCA, Phase 1,
+  ~30 crédits » : 202, job `Phase 1 — Cartographie (Auto)` (`source =
+  "rotation"`) suivi dans l'historique, `completed` en 7 min 5 s, un ticket
+  `Program_Discovery` en `Pending_Admin` (11 campus, 22 programmes), 29
+  crédits au compteur ; `rotation.last_run` en `success` ;
+- une contribution de test (Accréditation) a révélé trois défauts du
+  crowdsourcing (§6.2), à corriger.
 
 Le n°2 s'est fait avec les identifiants posés par le propriétaire en variables
 utilisateur Windows, sans qu'ils soient jamais affichés. Ils n'apparaissent pas

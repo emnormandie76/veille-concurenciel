@@ -39,8 +39,8 @@ nouveaux comptes depuis le 26 février 2026.
                   │ WebSocket 443                             │ WebSocket 443
                   ▼                                           ▼ (DB_DRIVER=neon-ws)
                   ┌───────────────────────────────────────────┐
-                  │ Neon PostgreSQL : projet vc-bdd, branche  │
-                  │ main (base de développement ET production)│
+                  │ Neon PostgreSQL, projet vc-bdd : branches │
+                  │ main (production) et dev (essais du poste)│
                   └───────────────────────────────────────────┘
 ```
 
@@ -56,10 +56,16 @@ que cela donne en ligne :
   que l'admin lance le backend, et le bandeau de l'inbox les compte. Lancer le
   backend coûte de l'argent : le traitement appelle Tavily et Gemma dès le
   démarrage.
-- **Une seule base** : une validation faite en local se voit en ligne tout de
-  suite, et inversement. La branche Neon `main` sert à la fois au
-  développement et à la production. La branche `dev` prévue par la décision
-  D7 du plan n'existe pas encore.
+- **Deux branches Neon** depuis le 15 octobre 2026 (étape 9 du plan,
+  décision D7) : `main` (`br-bitter-cloud-ab3c0wop`), que lira le site en
+  ligne, et `dev` (`br-rapid-bird-abck4fdr`), copie de `main` faite ce
+  jour-là, pour les essais du poste. Décision du propriétaire : **`dev` pour
+  les essais et les vérifications, `main` pour le travail réel**. Une
+  contribution publique arrive dans `main` : seul un backend local pointé sur
+  `main` la traite, et une validation faite sur `main` se voit en ligne tout
+  de suite. Une passe faite sur `dev` ne produit rien que les visiteurs
+  voient. Bascule du poste :
+  [`manual_testing_cron.md`](../testing/manual_testing_cron.md) §1.3.
 
 ---
 
@@ -319,9 +325,10 @@ production.
 
 - **(A, recommandée)** connecter la base Neon à l'environnement
   **Production seulement**, et régler Settings → Build and Deployment →
-  Ignored Build Step sur **« Only build production »**. Pas de préversion tant
-  que la branche Neon `dev` (D7) n'existe pas. Un build ainsi annulé compte
-  quand même dans le quota de déploiements.
+  Ignored Build Step sur **« Only build production »**. Un build ainsi annulé
+  compte quand même dans le quota de déploiements. La branche Neon `dev`
+  existe depuis le 15 octobre 2026, mais elle sert aux essais du poste : la
+  relier aux préversions serait une décision à part.
 - (B) connecter aussi Preview, avec *Preview Branching* : chaque préversion a
   sa branche Neon, copie isolée de la production. Il faut alors surveiller le
   nombre de branches permis par l'offre gratuite de Neon et leur nettoyage.

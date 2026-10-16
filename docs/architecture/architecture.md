@@ -1,5 +1,13 @@
 # Architecture Complète — School Data Pipeline (Partie 1 : Système)
 
+> **Depuis le 16 octobre 2026, ce document décrit surtout la partie IA, gelée.**
+> Le projet se réoriente vers la gestion de contenu : l'état du code du
+> gestionnaire de contenu (rôles, gardes, écrans, routes, tables) est dans
+> [`gestion-contenu.md`](gestion-contenu.md), le plan dans
+> [`../features/gestion-contenu.md`](../features/gestion-contenu.md). Les
+> sections transverses restent la référence : sécurité (§10), outillage, build
+> et qualité (§10 bis).
+>
 > **Version :** 2.1 — 12 octobre 2026
 > **Statut :** Aligné sur le code de la branche `newresearch` (commit `827db5e`).
 > **Mises à jour du plan [backend-local](../features/backend-local.md)**

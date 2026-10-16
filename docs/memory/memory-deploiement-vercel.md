@@ -16,6 +16,18 @@
 > Le détail technique vit dans [`architecture.md`](../architecture/architecture.md)
 > (§2.1 à §2.3 pour l'hébergement, §10.3 pour la limitation de débit, §10 bis
 > pour le build).
+>
+> **Mise à jour du 16 octobre 2026** (plan
+> [`gestion-contenu.md`](../features/gestion-contenu.md)). La branche de travail
+> est désormais `gestion` : lire `gestion` partout où ce mémo dit
+> `localpython`. **Décision 8.1 tranchée, option A** : `main` reste la
+> production, rattrapée sur `gestion` à chaque version validée (décision G3).
+> **La mise en ligne attend la connexion obligatoire** (étape 3 du plan, après
+> les étapes 1 et 2), sinon les données des écoles restent publiques dans
+> l'intervalle. L'usage devient un outil d'équipe : le point « usage non
+> commercial » du §6 est à revoir par le propriétaire (plan, D7). Le §8.2
+> (préversions) reste à trancher. Le reste du mémo est valable ; l'étape 3 du
+> plan le révisera.
 
 ---
 

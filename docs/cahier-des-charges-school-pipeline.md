@@ -1,5 +1,27 @@
 # Cahier des Charges : Plateforme de Données de l'Enseignement Supérieur (School Data Pipeline)
 
+> **Évolution du 16 octobre 2026, décision de l'équipe.** Les nouvelles
+> priorités sont dans le doc « Plan d'évolution – School Data Pipeline » du
+> propriétaire, et leur mise en œuvre dans
+> [`features/gestion-contenu.md`](features/gestion-contenu.md). Ce qui change
+> par rapport à ce cahier :
+>
+> - la plateforme devient d'abord un **gestionnaire de contenu**, utilisable en
+>   ligne ; la recherche IA (Workflow B) est **gelée**, gardée telle quelle et
+>   réservée à l'admin ;
+> - **les données ne sont plus publiques** : connexion obligatoire, sur une
+>   liste blanche d'e-mails gérée par l'admin, API v1 comprise ;
+> - **trois rôles** au lieu de deux : utilisateur (consulte et signale),
+>   gestionnaire (l'ancien modérateur : ajoute, modifie, supprime le contenu),
+>   admin (accès, rôles, IA) ;
+> - le **crowdsourcing** (Workflow A) est abandonné, remplacé par un
+>   formulaire de signalement sans IA ;
+> - chaque donnée affiche sa source et qui l'a modifiée ; deux nouvelles
+>   données (événements des écoles, année d'entrée d'un programme) ;
+> - refonte graphique complète, puis un guide utilisateur.
+>
+> Le reste du cahier décrit l'exigence d'origine ; il n'est pas réécrit.
+
 > **Mise à jour du 12 octobre 2026.** Les exigences (humain dans la boucle,
 > pipeline en deux phases, crowdsourcing borné aux écoles existantes) sont
 > inchangées. Les choix techniques ont été alignés sur le code : Tavily Research

@@ -14,6 +14,15 @@ Deux exécutions distinctes :
 Les deux partagent une base **PostgreSQL (Neon)** : Prisma côté TypeScript,
 psycopg2 côté Python.
 
+> **Réorientation du 16 octobre 2026.** Le projet devient d'abord un
+> **gestionnaire de contenu** en ligne, derrière une connexion obligatoire, avec
+> trois rôles (utilisateur, gestionnaire, admin). La partie FastAPI (recherche
+> IA) est **gelée** : conservée telle quelle, réservée à l'admin. La
+> contribution du public est abandonnée, remplacée à terme par un formulaire de
+> signalement. Plan : [`docs/features/gestion-contenu.md`](docs/features/gestion-contenu.md) ;
+> index de la documentation : [`docs/README.md`](docs/README.md). Ce README
+> décrit le code tel qu'il est ; chaque étape du plan le met à jour.
+
 ---
 
 ## Démarrage rapide

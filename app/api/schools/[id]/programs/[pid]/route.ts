@@ -1,7 +1,8 @@
 /**
  * app/api/schools/[id]/programs/[pid]/route.ts — GET /api/schools/[id]/programs/[pid] (Étape 8.2)
  *
- * Route publique : détail d'un programme (tarifs, classements, capacité).
+ * Lecture du site (session exigée par le proxy) : détail d'un programme
+ * (tarifs, classements, capacité).
  * Filtre école ACTIVE obligatoire.
  *
  * - Cache ISR 1h (Étape 8.3)

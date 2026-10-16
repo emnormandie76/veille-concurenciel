@@ -77,12 +77,14 @@ const PLANNED_REPORT = {
   usage_sync: { ok: true, at: "2026-10-14T08:00:00+00:00", failed_keys: [] },
 };
 
-test("garde ADMIN : sans session 401, MODERATOR 403, et aucun appel au backend", async () => {
+test("garde ADMIN : sans session 401, USER et GESTIONNAIRE 403, et aucun appel au backend", async () => {
   backend.env(LOCAL);
 
   session.as("none");
   assert.equal((await call({ max_passes: 1, dry_run: true })).status, 401);
-  session.as("MODERATOR");
+  session.as("USER");
+  assert.equal((await call({ max_passes: 1, dry_run: true })).status, 403);
+  session.as("GESTIONNAIRE");
   assert.equal((await call({ max_passes: 1, dry_run: true })).status, 403);
 
   assert.deepEqual(session.guards, ["guardAdmin"]);

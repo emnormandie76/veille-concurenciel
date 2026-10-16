@@ -8,7 +8,7 @@ Deux exécutions distinctes :
 
 | | Rôle |
 |---|---|
-| **Next.js 16** (`app/`, `lib/`) | back-office d'administration, API publique `/api/v1`, formulaire public de contribution |
+| **Next.js 16** (`app/`, `lib/`) | site et back-office du contenu, derrière une connexion obligatoire (rôles `USER`, `GESTIONNAIRE`, `ADMIN`) ; API `/api/v1` réservée aux personnes connectées |
 | **FastAPI** (`backend/`) | pipeline IA — recherche Tavily, extraction par la cascade Gemini (Gemma en dernier recours pour les contributions), traitement des contributions ; lancé à la main sur le poste, les recherches partent sur demande |
 
 Les deux partagent une base **PostgreSQL (Neon)** : Prisma côté TypeScript,
@@ -117,7 +117,7 @@ Neon, Upstash, ordre des opérations et vérifications :
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | suite Python (`pytest`), avec le `python` du `PATH` |
 | `npm run test:ts` | suite TypeScript (`node --test`) : fonctions de `lib/` et routes Next.js |
-| `npm run smoke` | smoke local, **à la main** et avec l'accord du propriétaire : `npm run dev` lancé, il appelle les pages publiques et les 15 `GET /api/v1/*` (`scripts/smoke-local.ts`). Lecture seule, mais sur la base de `.env.local`, qui est aussi la production ; adresse locale seulement |
+| `npm run smoke` | smoke local, **à la main** et avec l'accord du propriétaire : `npm run dev` lancé, il vérifie d'abord le mur sans session (pages renvoyées vers la connexion, API en 401), puis, si `APPVC_ADMIN_USERNAME` et `APPVC_ADMIN_PASSWORD` sont posées, les pages et les 15 `GET /api/v1/*` connecté (`scripts/smoke-local.ts`). Lecture seule, mais sur la base visée par le poste ; adresse locale seulement |
 | `npm run db:status` | état de l'historique face à la base, en lecture seule : `npx prisma migrate status` sans `DB_DRIVER`, WebSocket (443) avec `DB_DRIVER=neon-ws` |
 | `npm run db:migrate` | applique les migrations en attente, une transaction chacune ; refuse si une migration appliquée a changé ou si une autre est en échec |
 | `npm run db:migrate:dry` | avec `DB_DRIVER=neon-ws` seulement : applique tout dans une transaction puis `ROLLBACK`, rien n'est inscrit |
@@ -157,7 +157,7 @@ npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
 npm test              # 722 tests Python (pytest), +25 sous-tests
 npm run test:ts       # 542 tests TypeScript (node --test), dont les routes de test/api/
-npm run smoke         # à la main, npm run dev lancé : pages publiques et API v1
+npm run smoke         # à la main, npm run dev lancé : le mur, puis pages et API v1 connecté
 ```
 
 Les routes Next.js se testent sans base ni serveur : `test/helpers/` remplace
@@ -167,8 +167,10 @@ est relue contre le vrai schéma Prisma (`test/helpers/prisma-schema.ts`) : un
 champ disparu fait échouer le test, même derrière un `where: any`. Aucun test
 ne sort du processus : les deux suites ont été rejouées sous garde réseau
 (connexions et DNS refusés hors de `127.0.0.1`), sans aucune tentative.
-`test/api/admin-guards.test.ts` vérifie que **chaque route admin attend sa
-garde**, et que la liste des routes ADMIN est celle d'`architecture.md` §3.6.
+`test/api/admin-guards.test.ts` vérifie que **chaque route admin attend une
+seule garde, celle de son niveau** (`test/helpers/access-policy.ts`), et
+`test/api/access-matrix.test.ts` appelle chaque route admin sans session, en
+`USER`, en `GESTIONNAIRE` et en `ADMIN`, avec la vraie `lib/auth.ts`.
 La CI lance les deux suites (`.github/workflows/ci.yml`).
 
 Le test le plus important vérifie une garantie de confidentialité : **le texte
@@ -183,17 +185,25 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
 
 ## Sécurité — points à connaître avant de contribuer
 
-1. **Toute route admin choisit explicitement son garde** : `guardAuth` (toute
-   session) ou `guardAdmin` (rôle ADMIN). `getServerSession` nu ne doit pas
-   réapparaître. Les suppressions en cascade, la purge, la gestion des comptes
-   et les actions à coût réel sont réservées aux ADMIN.
-2. **Tout contenu externe injecté dans un prompt passe par `wrap_source()`**
+1. **Connexion obligatoire sur tout le site** : `proxy.ts` exige une session
+   partout, pages, `/api-docs`, `/api/schools/*` et `/api/v1/*` compris ; seules
+   la page de connexion et `/api/auth/*` restent libres. Le proxy ne regarde
+   que l'existence de la session ; le rôle se contrôle côté serveur.
+2. **Toute route admin choisit une garde de `lib/auth.ts`, et une seule** :
+   `guardSignedIn` (toute session : son propre mot de passe), `guardManager`
+   (gestionnaire ou admin : tout le contenu) ou `guardAdmin` (les comptes et
+   toute l'IA, inbox comprise). L'ancienne garde « toute session » du
+   back-office n'existe plus. Le rôle est **relu en base** à chaque requête,
+   pas pris dans le jeton. Les écrans du back-office passent par
+   `requirePage` : un `USER` ne voit pas `/admin`. `getServerSession` nu ne
+   doit pas réapparaître. Détail : [`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §2 et §4.
+3. **Tout contenu externe injecté dans un prompt passe par `wrap_source()`**
    (`backend/ai/gemma_client.py`), qui neutralise les balises de délimitation.
    Les règles vont dans le `system_prompt`, jamais dans le message utilisateur.
-3. **Les entrées publiques sont bornées** : `/api/contribute` plafonne le texte,
-   les URLs et les catégories, et n'accepte que des liens vers le domaine de
-   l'école ciblée ou une liste blanche.
-4. **`lib/rate-limit.ts` est l'implémentation unique** de la limitation de débit.
+4. **Next.js ne crée aucun ticket dans l'inbox** : la contribution du public
+   (`/api/contribute`) est retirée, et un test garde la porte fermée. Un ticket
+   `Pending_AI` serait payé au prochain lancement du backend.
+5. **`lib/rate-limit.ts` est l'implémentation unique** de la limitation de débit.
 
 ---
 

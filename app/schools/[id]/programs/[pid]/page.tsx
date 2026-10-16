@@ -9,6 +9,7 @@
 
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import SignOutButton from "../../../../SignOutButton";
 
 export const revalidate = 3600; // ISR 1h — Étape 8.3
 
@@ -90,7 +91,7 @@ export default async function ProgramDetailPage({ params }: Props) {
         <div className="public-nav-links">
           <Link href="/" className="public-nav-link">Écoles</Link>
           <Link href="/api-docs" className="public-nav-link">API</Link>
-          <Link href="/contribute" className="public-nav-cta">Contribuer</Link>
+          <SignOutButton className="public-nav-cta" />
         </div>
       </nav>
 
@@ -146,8 +147,7 @@ export default async function ProgramDetailPage({ params }: Props) {
 
           {program.pricingRecords.length === 0 ? (
             <div className="no-data" id="no-pricing-data">
-              Aucune donnée tarifaire disponible.{" "}
-              <Link href="/contribute" style={{ color: "var(--accent)" }}>Contribuer des données</Link>
+              Aucune donnée tarifaire disponible.
             </div>
           ) : (
             <div className="pricing-table-wrapper">
@@ -201,8 +201,7 @@ export default async function ProgramDetailPage({ params }: Props) {
 
           {program.rankingRecords.length === 0 ? (
             <div className="no-data" id="no-rankings-data">
-              Aucune donnée de classement disponible.{" "}
-              <Link href="/contribute" style={{ color: "var(--accent)" }}>Contribuer des données</Link>
+              Aucune donnée de classement disponible.
             </div>
           ) : (
             <div className="rankings-list" id="rankings-list">
@@ -237,8 +236,7 @@ export default async function ProgramDetailPage({ params }: Props) {
 
           {campusesWithCapacity.length === 0 ? (
             <div className="no-data" id="no-capacity-data">
-              Aucune donnée de capacité disponible.{" "}
-              <Link href="/contribute" style={{ color: "var(--accent)" }}>Contribuer des données</Link>
+              Aucune donnée de capacité disponible.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -262,31 +260,6 @@ export default async function ProgramDetailPage({ params }: Props) {
             </div>
           )}
         </section>
-
-        {/* Contribuer */}
-        <div
-          style={{
-            padding: "24px",
-            background: "var(--bg-secondary)",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border-color)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>Une donnée est incorrecte ou manquante ?</div>
-            <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-              Contribuez en soumettant une URL source — notre équipe vérifiera et intégrera l&apos;information.
-            </div>
-          </div>
-          <Link href="/contribute" className="btn btn-primary" id="contribute-cta">
-            ✏️ Contribuer
-          </Link>
-        </div>
       </div>
     </>
   );

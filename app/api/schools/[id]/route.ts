@@ -1,7 +1,8 @@
 /**
  * app/api/schools/[id]/route.ts — GET /api/schools/[id] (Étape 8.2)
  *
- * Route publique : détail d'une école avec campus, programmes, stats, accréditations.
+ * Lecture du site (session exigée par le proxy) : détail d'une école avec
+ * campus, programmes, stats, accréditations.
  * Filtre status = ACTIVE obligatoire.
  *
  * - Cache ISR 1h (Étape 8.3)

@@ -4,7 +4,11 @@
 > l'équipe (réunion du 16 octobre) et des réponses du propriétaire le même
 > jour. Étape 0 (recentrage : branche, documentation) faite le 16 octobre ;
 > le propriétaire demande le commit, le push et le prompt de l'étape 1 :
-> étape 0 tenue pour validée. **Prochaine : étape 1.**
+> étape 0 tenue pour validée. Étape 1 (trois rôles, gardes, connexion
+> obligatoire) faite le 16 octobre, décisions D1, D2, D18 et D19 prises,
+> migration appliquée sur la branche Neon `dev` ; le propriétaire demande le
+> commit, le push et le prompt de l'étape 2 : étape 1 tenue pour validée.
+> **Prochaine : étape 2.**
 > **Branche de travail :** `gestion`, créée le 16 octobre 2026 depuis
 > `localpython` (`423631e`) à la demande du propriétaire.
 > **Source :** le doc « Plan d'évolution – School Data Pipeline » du
@@ -139,8 +143,10 @@ Chaque ligne donne la recommandation de l'agent ; le propriétaire tranche.
 
 | # | Étape | Question | Recommandation |
 |---|---|---|---|
-| D1 | 1 | Le rôle est figé dans le jeton JWT pour 8 h : un changement de rôle ne prend effet qu'à la reconnexion | Les gardes et le layout admin **relisent le rôle en base** à chaque requête ; le proxy ne vérifie que l'existence d'une session |
-| D2 | 1 | Sort de `/contribute` et `/api/contribute` (contribution abandonnée) | **Retirer** la page, la route et le lien dans la navigation dès l'étape 1 (l'historique Git les garde) ; `lib/contribution.ts` reste, l'inbox l'utilise |
+| D1 | 1 | Le rôle est figé dans le jeton JWT pour 8 h : un changement de rôle ne prend effet qu'à la reconnexion | **Tranché le 16 octobre (recommandation retenue)** : les gardes et le layout admin **relisent le rôle en base** à chaque requête (un compte supprimé n'y passe plus) ; le proxy ne vérifie que l'existence d'une session. Reste accepté : un compte supprimé garde la lecture du site et de l'API jusqu'à l'expiration de son jeton (8 h au plus) |
+| D2 | 1 | Sort de `/contribute` et `/api/contribute` (contribution abandonnée) | **Tranché le 16 octobre (recommandation retenue)** : **retirer** la page, la route et les liens dès l'étape 1 (l'historique Git les garde) ; `lib/contribution.ts` reste, l'inbox l'utilise |
+| D18 | 1 | L'écran actuel des comptes crée tout compte en `MODERATOR`, que la nouvelle contrainte refuse | **Tranché le 16 octobre (recommandation retenue)** : il crée des `GESTIONNAIRE`, écrit explicitement dans la route (pas le défaut `USER` de la base), jusqu'à ce que l'étape 2 le remplace ; aucun compte `USER` ne se crée avant l'étape 2 |
+| D19 | 1 | Créer une école, supprimer une école, un campus ou un programme étaient réservés à `ADMIN` ; G4 confie au gestionnaire « ajoute, modifie et supprime le contenu » | **Tranché le 16 octobre (recommandation retenue)** : ces quatre écritures passent en `guardManager`, comme toutes les écritures de contenu ; la suppression d'une école garde sa confirmation par saisie du nom |
 | D3 | 2 | Les comptes existants n'ont qu'un identifiant, pas d'e-mail | L'admin renseigne l'e-mail des comptes existants depuis le nouvel écran ; pendant la transition la connexion accepte l'e-mail ou l'ancien identifiant ; l'identifiant cesse de servir à la connexion à la fin de l'étape |
 | D4 | 2 | Mot de passe oublié, sans envoi d'e-mail | L'admin **remet le compte en « première connexion »** (mot de passe effacé) ; la personne en choisit un nouveau, sur le même modèle de confiance que G5 |
 | D5 | 2 | Domaine `@em-normandie.fr` : imposé par le code ou liste libre | **Imposé** par une constante du code, testée ; l'élargir est une décision du propriétaire |
@@ -250,32 +256,38 @@ Détail : [`architecture/gestion-contenu.md`](../architecture/gestion-contenu.md
 
 Aucun code modifié : pas de suite de tests à rejouer.
 
-### Étape 1 — Trois rôles, des gardes qui disent vrai, la connexion obligatoire
+### Étape 1 — Trois rôles, des gardes qui disent vrai, la connexion obligatoire ✅ (16 octobre)
 
-**À trancher d'abord :** D1, D2.
+**Tranchées :** D1, D2, et deux questions nées du code, D18 et D19 (§2.2).
 
-- [ ] Tests d'abord : pour chaque route du back-office, un test par rôle
+- [x] Tests d'abord : pour chaque route du back-office, un test par rôle
   (`USER`, `GESTIONNAIRE`, `ADMIN`, sans session) qui fixe l'accès attendu ; les
-  voir échouer.
-- [ ] `lib/auth.ts` : rôles `USER`, `GESTIONNAIRE`, `ADMIN` ; trois gardes
-  (`guardSignedIn` : toute session, `guardManager` : gestionnaire ou admin,
-  `guardAdmin`), chaque route en choisit une ; `guardAuth` disparaît ou change
-  de nom, pour qu'aucune route ne garde l'ancien sens par oubli.
-- [ ] Migration : contrainte `CHECK` de `User.role` sur les trois rôles,
-  `MODERATOR` → `GESTIONNAIRE`, défaut `USER`.
-- [ ] Écritures de contenu : `guardManager`. IA (`trigger-research`,
-  `run-due-passes`, `pipeline-status`, `pipeline-jobs`, tickets IA de l'inbox,
-  `/admin/cron`) : `guardAdmin`. Gestion des comptes : `guardAdmin`.
-- [ ] Layout `/admin` : un `USER` est renvoyé vers le site ; le menu ne montre
-  que ce que le rôle permet.
-- [ ] Proxy : session obligatoire sur tout le site sauf la page de connexion et
+  voir échouer. `test/api/access-matrix.test.ts` (48 méthodes × 4 profils, la
+  vraie `lib/auth.ts`) : **78 cas en échec** avant correction.
+- [x] `lib/auth.ts` : rôles `USER`, `GESTIONNAIRE`, `ADMIN` (`lib/roles.ts`) ;
+  trois gardes (`guardSignedIn` : toute session, `guardManager` : gestionnaire
+  ou admin, `guardAdmin`), chaque route en attend une seule ; `guardAuth` et
+  `requireAuth` ont disparu, un test vérifie qu'ils n'existent plus nulle part.
+- [x] Migration `20261016120000_three_roles` : contrainte `CHECK` de
+  `User.role` sur les trois rôles, `MODERATOR` → `GESTIONNAIRE`, défaut `USER`.
+  À blanc puis appliquée sur la branche Neon `dev`, avec l'accord du
+  propriétaire ; `main` à l'étape 3.
+- [x] Écritures de contenu : `guardManager`, créations et suppressions
+  comprises (D19). IA (`trigger-research`, `run-due-passes`, `pipeline-status`,
+  `pipeline-jobs`, toute l'inbox, `/admin/cron`) : `guardAdmin`. Gestion des
+  comptes : `guardAdmin`.
+- [x] Layout `/admin` : un `USER` est renvoyé vers le site (`requirePage`) ;
+  l'inbox, le cron et les comptes exigent `ADMIN` côté serveur ; le menu ne
+  montre que ce que le rôle permet (`app/admin/nav.ts`).
+- [x] Proxy : session obligatoire sur tout le site sauf la page de connexion et
   `/api/auth/*` ; l'API v1, `/api/schools/*` et `/api-docs` compris (G6). Le
   plafond de débit de l'API v1 reste.
-- [ ] `/contribute` selon D2.
-- [ ] Rôle relu selon D1.
-- [ ] Tests, typecheck, lint verts ; `npm run smoke` adapté (il lit sans
-  session : il doit maintenant se connecter ou vérifier le renvoi vers la
-  connexion), joué avec l'accord du propriétaire.
+- [x] `/contribute` selon D2 : page, route et liens retirés.
+- [x] Rôle relu selon D1.
+- [x] Tests, typecheck, lint verts ; `npm run smoke` adapté (le mur sans
+  session, puis le contenu connecté), joué avec l'accord du propriétaire.
+- [x] Validation du propriétaire (16 octobre : commit, push et prompt de
+  l'étape 2 demandés).
 
 **Docs :** `architecture/gestion-contenu.md` (rôles, gardes, proxy),
 `API-rest.md` (authentification), README (sécurité : la règle « chaque route
@@ -475,3 +487,6 @@ le code qu'elle décrit change.
 |---|---|---|---|
 | 2026-10-16 | 0 | **Réorientation du projet** (réunion de l'équipe du 16 octobre, doc « Plan d'évolution – School Data Pipeline »). Décisions G1 à G9 du propriétaire (§2.1). Branche `gestion` créée depuis `localpython` (`423631e`). Relevé du code : 38 méthodes du back-office en `guardAuth` (toute session), 10 en `guardAdmin`, 4 routes publiques sans garde (`/api/contribute`, `/api/schools/*`) ; le proxy n'exige une session que sur `/admin/*` ; rôle figé 8 h dans le JWT ; contrainte `CHECK` sur `User.role` ; le backend Python n'écrit que `PipelineJob` et `ContributionInbox` ; seules 3 routes appellent le backend. Docs écrites : ce plan, `architecture/gestion-contenu.md`, `docs/README.md` ; `CLAUDE.md` réécrit ; en-têtes de `backend-local.md` (gelé), du cahier des charges, d'`architecture.md`, du README et du mémo Vercel. Aucun code modifié, aucune base touchée, aucun appel payant. | Validation du propriétaire ; commit à sa demande. Puis étape 1 : trancher D1 et D2. `docs/tutoriel-demo.md` (non suivi, centré sur la démo IA) laissé tel quel. |
 | 2026-10-16 | 0 | **Le propriétaire demande le commit, le push et le prompt de l'étape 1** : étape 0 tenue pour validée. Ajout avant le commit : une case de l'étape 3 pour changer le mot de passe du rôle Neon `neondb_owner` avant la mise en ligne. Un seul commit sur `gestion`, poussé ; `docs/tutoriel-demo.md` reste hors du commit. | **Prochaine** : étape 1, en commençant par D1 et D2. |
+| 2026-10-16 | 1 | **Point de départ vérifié** : `gestion` = `origin/gestion` (`52df900`), CI verte sur cette tête ; 722 tests Python (+25 sous-tests), 542 TypeScript, typecheck propre, lint 0 erreur et 109 avertissements. **Décisions du propriétaire** (recommandations retenues) : **D1** le rôle se relit en base dans les gardes et le layout admin, le proxy ne regarde que la session ; **D2** `/contribute` et `/api/contribute` retirés ; **D18** (question née du code) l'écran actuel des comptes crée des `GESTIONNAIRE` jusqu'à l'étape 2. §2.2 mis à jour. | Le travail de l'étape 1. |
+| 2026-10-16 | 1 | **D19** (question née du code, règle 4) : créer une école, supprimer une école, un campus ou un programme passent du rôle `ADMIN` à `guardManager`, comme toute écriture de contenu (G4) ; recommandation retenue. **Fait, tests d'abord** : table d'accès unique `test/helpers/access-policy.ts` (48 méthodes : 33 `guardManager`, 14 `guardAdmin`, 1 `guardSignedIn`) ; `test/api/access-matrix.test.ts` (chaque handler × aucune session, `USER`, `GESTIONNAIRE`, `ADMIN`, avec la vraie `lib/auth.ts`) vu en échec sur **78 cas** (un `USER` passait partout où `guardAuth` gardait, un gestionnaire entrait dans l'IA et l'inbox, D19) ; `admin-guards` (3), `auth` (17), `proxy` (8), `admin-pages`, `roles-migration` (5), `no-public-tickets` (3), `smoke-checks` (8) vus en échec aussi. Code : `lib/roles.ts` (rôles, niveaux, libellés, sans dépendance) ; `lib/auth.ts` (`getSession` relit le compte en base, compte supprimé → pas de session, rôle inconnu → droits d'un `USER`, cookie illisible → pas de session, panne de base → 500 ; `guardSignedIn`, `guardManager`, `guardAdmin` ; `requirePage`) ; 30 routes admin sur leur garde ; `proxy.ts` réécrit (session partout sauf `/admin/login` et `/api/auth/*`, 401 JSON sur `/api/*`, renvoi avec `callbackUrl` sinon ; plafond v1 gardé) ; layout `/admin` en `manager`, `inbox/layout.tsx`, `cron` et `users` en `admin` ; menu `app/admin/nav.ts` ; D2 : page, route, liens et entrée du proxy retirés ; D18 dans `POST /api/admin/users` ; types NextAuth. **Migration** `20261016120000_three_roles` écrite à la main : relevé préalable en lecture (MCP) sur `dev` et `main` : 1 `ADMIN`, 1 `MODERATOR`, défaut `MODERATOR`, ancienne contrainte `NOT VALID` ; `db:status` sur `ep-falling-breeze` (dev), puis `db:migrate:dry` et `db:migrate` **avec l'accord du propriétaire à chaque fois** ; vérifié : 1 `ADMIN`, 1 `GESTIONNAIRE`, défaut `USER`, 11/11 ; `main` intacte. **Smoke** adapté (le mur sans session ; puis connecté si `APPVC_ADMIN_*`) et joué avec l'accord du propriétaire contre le `next dev` déjà lancé sur le port 3000 : mur 22/22, connecté 18 bons et 1 absent (statistiques d'EM Strasbourg) ; mot de passe compté à 0 occurrence dans les journaux. **Fin** : 722 tests Python (+25), **798 TypeScript**, typecheck propre, lint 0 erreur et 109 avertissements. **Tests supprimés** (fonction retirée, D2) : `test/api/contribute.test.ts` (21 tests), « /api/contribute : 5 par 20 s » (`proxy.test.ts`), « les contributions du public ne passent jamais par la coupe » (`ticket-sources.test.ts`) ; la porte est gardée par `test/no-public-tickets.test.ts`. **Attendus changés avec la règle** (§0) : `auth.test.ts` (trois rôles, D1), `admin-guards` (trois gardes, la liste ADMIN d'`architecture.md` §3.6 devient `access-policy.ts`), `proxy.test.ts` (session partout), `pipeline-status`, `pipeline-jobs`, `inbox-*` (`MODERATOR` → `ADMIN` : l'IA et l'inbox sont à l'admin), `run-due-passes`, `trigger-research` (`USER` et `GESTIONNAIRE` refusés), `admin-schools`, `admin-programs`, `admin-records` (cas nominaux en `GESTIONNAIRE`, « `MODERATOR` 403 sur créer et supprimer » devient « `USER` 403 partout », D19), `users` (création en `GESTIONNAIRE`, D18 ; un `USER` change son mot de passe), `smoke-checks` (`/contribute` hors des pages). **Docs** : `architecture/gestion-contenu.md` (§2 réécrit, §3, §4, §7), `API-rest.md` (authentification), README (sécurité), `CLAUDE.md` (règle 9, phase, smoke, 11 migrations), et, parce qu'elles décrivaient l'ancien état : `bdd.md`, un encadré dans `architecture.md` §3.6 et dans le mémo Vercel, `edgecase.md` (cas 1), `.env.example` (`CONTRIBUTION_ALLOWED_DOMAINS` n'est plus lue), `/api-docs` (fiche « Authentification »). | **Validation du propriétaire** ; commit et push à sa demande. Puis étape 2 (D3 à D6). **Écarts au plan, et pourquoi** : le formulaire de connexion revient au `callbackUrl` posé par le proxy, chemin du site seulement (`lib/callback-url.ts`, testé) : sans cela, le mur sur tout le site perd la page demandée ; un bouton « Se déconnecter » remplace « Contribuer » dans la barre du site : tout le site est derrière la connexion, il faut pouvoir en sortir ailleurs que dans le back-office ; le proxy répond 401 en JSON sur `/api/*` au lieu d'une redirection, et le plafond v1 ne compte plus que les requêtes connectées (un refus ne consomme pas le quota d'une IP partagée par l'équipe) ; un pré-vol `OPTIONS` sans session est refusé. **Surprises** : `pipeline-status.test.ts` ne tombait pas en échec mais restait **suspendu** (le faux de session prenait le profil disparu `MODERATOR` pour « aucune session », et un test attendait un appel au backend qui ne venait plus) : le faux lève désormais sur un profil inconnu ; `.next/types/validator.ts` (généré par un ancien `next dev`) citait les fichiers retirés et cassait le typecheck local, régénéré par `next typegen` (qui a aussi réécrit `next-env.d.ts`, remis tel quel ; la CI n'a pas de `.next`) ; un `next dev` tournait déjà sur le port 3000 hors de la session. **Restes connus** : D1 accepté, un compte supprimé garde la lecture du site jusqu'à 8 h ; `isValidHttpsUrl`, `isPrivateHost`, `urlBelongsToDomain` (`lib/utils.ts`) n'ont plus d'appelant hors de leurs tests, gardés pour le lien du signalement (étape 6) ; la migration part sur `main` à l'étape 3, avant la fusion (le compte `MODERATOR` de la production devient alors `GESTIONNAIRE` ; d'ici là, si ce code tournait sur `main`, ce compte n'aurait que les droits d'un `USER`) ; les variables `APPVC_ADMIN_USERNAME` et `APPVC_ADMIN_PASSWORD` sont toujours posées dans Windows (depuis le 15 septembre). |
+| 2026-10-16 | 1 | **Le propriétaire demande le commit, le push et le prompt de l'étape 2** : étape 1 tenue pour validée. Un seul commit sur `gestion`, poussé ; `docs/tutoriel-demo.md` reste hors du commit. La migration `20261016120000_three_roles` est sur `dev` seulement : `main` la recevra à l'étape 3, avant la fusion. | **Prochaine** : étape 2, en commençant par D3, D4, D5 et D6. |

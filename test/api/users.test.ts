@@ -3,9 +3,11 @@
  *
  *     npm run test:ts
  *
- * Plan backend-local, étape 7 (P1) : un MODERATOR ne crée pas de compte ;
- * changer son propre mot de passe exige l'actuel ; celui d'un tiers exige
- * ADMIN ; la politique de lib/password.ts est appliquée (architecture.md §3.6).
+ * Plan backend-local, étape 7 (P1) : seul un ADMIN gère les comptes ; changer
+ * son propre mot de passe exige l'actuel ; celui d'un tiers exige ADMIN ; la
+ * politique de lib/password.ts est appliquée (architecture.md §3.6).
+ * Plan gestion-contenu, étape 1 : trois rôles ; l'écran crée des GESTIONNAIRE
+ * (D18) ; changer son mot de passe est ouvert à toute session (USER compris).
  *
  * bcryptjs est le vrai : les empreintes de test sont calculées avec un coût
  * faible, la route hache les nouveaux mots de passe avec le sien (12).
@@ -46,7 +48,8 @@ beforeEach(() => {
 
 // Identifiants des profils de test/helpers/session.ts.
 const ADMIN_ID = "test-admin";
-const MODERATOR_ID = "test-moderator";
+const GESTIONNAIRE_ID = "test-gestionnaire";
+const USER_ID = "test-user";
 const CURRENT = "mot-de-passe-actuel-1";
 const CURRENT_HASH = bcrypt.hashSync(CURRENT, 4);
 const NEW = "nouveau-mot-de-passe-2";
@@ -59,11 +62,11 @@ const json = (body: unknown, method = "POST") =>
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
-function withUser(id = MODERATOR_ID) {
+function withUser(id = GESTIONNAIRE_ID) {
   db.use({
     user: {
       findUnique: ({ where }: { where: { id?: string; username?: string } }) =>
-        where.id === id ? { id, username: "u", password_hash: CURRENT_HASH, role: "MODERATOR" } : null,
+        where.id === id ? { id, username: "u", password_hash: CURRENT_HASH, role: "GESTIONNAIRE" } : null,
       update: () => ({ id }),
     },
   });
@@ -86,14 +89,16 @@ const quietAudit = async <T>(fn: () => Promise<T>) => {
 
 // ── Liste, création, suppression : ADMIN seulement ───────────────────
 
-test("un MODERATOR ne liste ni ne crée ni ne supprime de compte", async () => {
-  session.as("MODERATOR");
-  db.use({});
+test("un USER ou un GESTIONNAIRE ne liste ni ne crée ni ne supprime de compte", async () => {
+  for (const profile of ["USER", "GESTIONNAIRE"] as const) {
+    session.as(profile);
+    db.use({});
 
-  assert.equal((await listUsers()).status, 403);
-  assert.equal((await createUser(json({ username: "nouveau", password: "x".repeat(12) }))).status, 403);
-  assert.equal((await deleteUser(json({}, "DELETE"), ctx("u-1"))).status, 403);
-  assert.deepEqual(db.calls, []);
+    assert.equal((await listUsers()).status, 403, profile);
+    assert.equal((await createUser(json({ username: "nouveau", password: "x".repeat(12) }))).status, 403, profile);
+    assert.equal((await deleteUser(json({}, "DELETE"), ctx("u-1"))).status, 403, profile);
+    assert.deepEqual(db.calls, []);
+  }
 });
 
 test("sans session : 401 partout", async () => {
@@ -116,7 +121,7 @@ test("création : la politique de mot de passe est appliquée", async () => {
   }
 });
 
-test("création : un MODERATOR, mot de passe haché, jamais renvoyé", async () => {
+test("création : un GESTIONNAIRE (D18), écrit explicitement, mot de passe haché, jamais renvoyé", async () => {
   db.use({
     user: {
       findUnique: () => null,
@@ -131,10 +136,12 @@ test("création : un MODERATOR, mot de passe haché, jamais renvoyé", async () 
 
   assert.equal(res.status, 201);
   const body = await res.json();
-  assert.equal(body.role, "MODERATOR");
+  assert.equal(body.role, "GESTIONNAIRE");
   assert.equal(body.password_hash, undefined);
-  const data = (db.writes()[0].args[0] as { data: { username: string; password_hash: string } }).data;
+  const data = (db.writes()[0].args[0] as { data: { username: string; password_hash: string; role: string } }).data;
   assert.equal(data.username, "nouveau");
+  // Le rôle est écrit par la route : le défaut de la base (USER) ne décide pas.
+  assert.equal(data.role, "GESTIONNAIRE");
   assert.ok(await bcrypt.compare("un-mot-de-passe-sur", data.password_hash));
 });
 
@@ -162,10 +169,10 @@ test("suppression : pas son propre compte ; inconnu → 404 ; sinon supprimé", 
 // ── Mot de passe ─────────────────────────────────────────────────────
 
 test("son propre mot de passe : l'actuel est exigé", async () => {
-  session.as("MODERATOR");
-  withUser(MODERATOR_ID);
+  session.as("GESTIONNAIRE");
+  withUser(GESTIONNAIRE_ID);
 
-  const res = await changePassword(json({ newPassword: NEW }, "PATCH"), ctx(MODERATOR_ID));
+  const res = await changePassword(json({ newPassword: NEW }, "PATCH"), ctx(GESTIONNAIRE_ID));
 
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /actuel est requis/);
@@ -173,12 +180,12 @@ test("son propre mot de passe : l'actuel est exigé", async () => {
 });
 
 test("son propre mot de passe : un actuel faux → 403, rien d'écrit", async () => {
-  session.as("MODERATOR");
-  withUser(MODERATOR_ID);
+  session.as("GESTIONNAIRE");
+  withUser(GESTIONNAIRE_ID);
 
   const res = await changePassword(
     json({ currentPassword: "pas-le-bon-mot-de-passe", newPassword: NEW }, "PATCH"),
-    ctx(MODERATOR_ID)
+    ctx(GESTIONNAIRE_ID)
   );
 
   assert.equal(res.status, 403);
@@ -186,11 +193,11 @@ test("son propre mot de passe : un actuel faux → 403, rien d'écrit", async ()
 });
 
 test("son propre mot de passe : avec l'actuel, le nouveau est haché et écrit", async () => {
-  session.as("MODERATOR");
-  withUser(MODERATOR_ID);
+  session.as("GESTIONNAIRE");
+  withUser(GESTIONNAIRE_ID);
 
   const res = await quietAudit(() =>
-    changePassword(json({ currentPassword: CURRENT, newPassword: NEW }, "PATCH"), ctx(MODERATOR_ID))
+    changePassword(json({ currentPassword: CURRENT, newPassword: NEW }, "PATCH"), ctx(GESTIONNAIRE_ID))
   );
 
   assert.equal(res.status, 200);
@@ -198,14 +205,28 @@ test("son propre mot de passe : avec l'actuel, le nouveau est haché et écrit",
   assert.ok(hash && (await bcrypt.compare(NEW, hash)));
 });
 
-test("le mot de passe d'un tiers : un MODERATOR est refusé avant toute lecture", async () => {
-  session.as("MODERATOR");
-  db.use({});
+test("son propre mot de passe : un USER aussi (guardSignedIn), avec l'actuel", async () => {
+  session.as("USER");
+  withUser(USER_ID);
 
-  const res = await changePassword(json({ newPassword: NEW }, "PATCH"), ctx("u-autre"));
+  const res = await quietAudit(() =>
+    changePassword(json({ currentPassword: CURRENT, newPassword: NEW }, "PATCH"), ctx(USER_ID))
+  );
 
-  assert.equal(res.status, 403);
-  assert.deepEqual(db.calls, []);
+  assert.equal(res.status, 200);
+  assert.ok(await bcrypt.compare(NEW, writtenHash() ?? ""));
+});
+
+test("le mot de passe d'un tiers : un USER ou un GESTIONNAIRE est refusé avant toute lecture", async () => {
+  for (const profile of ["USER", "GESTIONNAIRE"] as const) {
+    session.as(profile);
+    db.use({});
+
+    const res = await changePassword(json({ newPassword: NEW }, "PATCH"), ctx("u-autre"));
+
+    assert.equal(res.status, 403, profile);
+    assert.deepEqual(db.calls, []);
+  }
 });
 
 test("le mot de passe d'un tiers : un ADMIN le réinitialise sans l'actuel", async () => {

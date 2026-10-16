@@ -5,7 +5,8 @@
  *
  * Plan backend-local, étape 7 (P2) : par route, 400 sur un corps invalide, 404
  * sur un id inconnu, le cas nominal. Chaque requête reçue est relue contre le
- * vrai schéma Prisma.
+ * vrai schéma Prisma. Plan gestion-contenu, étape 1 : tout se fait en
+ * GESTIONNAIRE ; un USER est refusé partout.
  *
  * Routes : /api/admin/programs/[id]/pricing, /pricing/[id],
  * /schools/[id]/pricing ; /programs/[id]/rankings, /rankings/[id],
@@ -58,7 +59,7 @@ before(async () => {
 });
 
 beforeEach(() => {
-  session.as("ADMIN");
+  session.as("GESTIONNAIRE");
 });
 
 const SCHOOL_ID = "school-normandie";
@@ -97,6 +98,15 @@ test("sans session : 401 sur chaque handler, aucune requête", async () => {
   for (const [name, handler] of Object.entries(h)) {
     db.use({});
     assert.equal((await handler(body({}), params({ id: SCHOOL_ID, recordId: "st-1" }))).status, 401, name);
+    assert.deepEqual(db.calls, [], name);
+  }
+});
+
+test("un USER reçoit 403 sur chaque handler, aucune requête", async () => {
+  session.as("USER");
+  for (const [name, handler] of Object.entries(h)) {
+    db.use({});
+    assert.equal((await handler(body({}), params({ id: SCHOOL_ID, recordId: "st-1" }))).status, 403, name);
     assert.deepEqual(db.calls, [], name);
   }
 });

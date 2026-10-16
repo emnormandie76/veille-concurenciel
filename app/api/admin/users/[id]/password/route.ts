@@ -5,22 +5,22 @@
  *  - Sur son propre compte : le mot de passe courant est exigé et vérifié.
  *  - Sur le compte d'un tiers : réservé au rôle ADMIN (réinitialisation).
  *
- * Un MODERATOR ne peut agir que sur lui-même. Aucun appelant ne peut modifier
- * un compte sans prouver soit la possession du mot de passe courant, soit le
- * rôle ADMIN.
+ * Garde : toute session (`guardSignedIn`). Un USER ou un GESTIONNAIRE ne peut
+ * agir que sur lui-même. Aucun appelant ne peut modifier un compte sans prouver
+ * soit la possession du mot de passe courant, soit le rôle ADMIN.
  */
 
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { guardAuth } from "@/lib/auth";
+import { guardSignedIn } from "@/lib/auth";
 import { validatePassword } from "@/lib/password";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await guardAuth();
+  const guard = await guardSignedIn();
   if (guard.error) return guard.error;
   const session = guard.session;
 

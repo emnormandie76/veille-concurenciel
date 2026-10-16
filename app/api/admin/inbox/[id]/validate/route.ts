@@ -19,7 +19,7 @@
  * Référence : task.md §3.2-3.3, bdd.md §4 (upserting), architecture.md §5.2
  */
 
-import { guardAuth } from "@/lib/auth";
+import { guardAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { STATUS_REJECTED, STATUS_VALIDATED, isParkedResearchReport } from "@/lib/contribution";
@@ -181,7 +181,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardAdmin();
   if (error) return error;
 
   const { id } = await params;

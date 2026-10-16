@@ -3,7 +3,8 @@
  *
  * L'historique de /admin/cron, lu en base par Prisma seul : il s'affiche aussi
  * en ligne, où le backend n'existe pas (plan backend-local, étape 5). Lecture :
- * toute session (`guardAuth`).
+ * ADMIN seulement (`guardAdmin`, plan gestion-contenu, étape 1 : l'IA est
+ * réservée à l'admin).
  *
  * - `jobs` : les 30 derniers `PipelineJob`, du plus récent au plus ancien,
  *   avec le nom de l'école. `error` (borné à 2 000 caractères, comme à
@@ -14,7 +15,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { guardAuth } from "@/lib/auth";
+import { guardAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_PENDING_AI } from "@/lib/contribution";
 
@@ -24,7 +25,7 @@ const ERROR_MAX_LENGTH = 2000;
 const iso = (date: Date | null) => (date ? date.toISOString() : null);
 
 export async function GET() {
-  const { error } = await guardAuth();
+  const { error } = await guardAdmin();
   if (error) return error;
 
   try {

@@ -1,19 +1,23 @@
-# API REST publique (v1) — spécification et état réel
+# API REST (v1) — spécification et état réel
 
 > **Mise à jour** : 14 octobre 2026 — revérifiée contre le code et couverte par
 > `test/api/v1.test.ts` (15 routes `app/api/v1`). Les sections marquées
 > **« État réel »** décrivent ce que fait le code aujourd'hui, là où il s'écarte
 > de l'intention initiale.
-> **15 octobre 2026** : la page publique `/api-docs` (`app/api-docs/endpoints.ts`)
+> **15 octobre 2026** : la page `/api-docs` (`app/api-docs/endpoints.ts`)
 > décrit enfin cette API, paramètres et exemples de réponse compris ;
 > `test/api-docs.test.ts` la confronte aux routes (`architecture.md` §7.3).
+> **16 octobre 2026** (plan gestion-contenu, étape 1, décision G6) : l'API
+> **exige une session**, comme tout le site. Voir *Authentification*.
 
 ## Objectif
 
-Exposer une API REST publique permettant à des partenaires de consommer les
-données validées (écoles, campus, programmes, tarifs, capacités, classements,
-statistiques, accréditations). L'API doit rester performante et **protéger la
-base Neon**, qui est sur un palier gratuit.
+Exposer en lecture les données validées (écoles, campus, programmes, tarifs,
+capacités, classements, statistiques, accréditations) **aux personnes
+connectées** ; l'API doit rester performante et **protéger la base Neon**, qui
+est sur un palier gratuit. L'objectif d'origine, une API publique pour des
+partenaires, est suspendu par G6 : des clés d'API pourront s'ajouter si un
+usage externe apparaît.
 
 ## Pile technique
 
@@ -31,17 +35,40 @@ base Neon**, qui est sur un palier gratuit.
 
 ---
 
+## Authentification *(plan gestion-contenu, étape 1)*
+
+- **Session obligatoire** : `proxy.ts` exige un jeton de session NextAuth
+  valide sur tout le site, l'API v1 comprise (seules `/admin/login` et
+  `/api/auth/*` restent libres). C'est la session du site : un cookie posé par
+  la connexion, pas une clé d'API.
+- **Sans session : 401** en JSON, `{ "error": "Non authentifié. Veuillez vous
+  connecter." }`, sans redirection. Un pré-vol `OPTIONS` sans session est
+  refusé de même.
+- **Tous les rôles** (`USER`, `GESTIONNAIRE`, `ADMIN`) lisent l'API : le proxy
+  ne regarde que l'existence de la session, pas le rôle.
+- Les routes elles-mêmes ne lisent pas la session : le contrôle est entier dans
+  le proxy (`test/proxy.test.ts` énumère chaque route de `app/` et vérifie
+  qu'elle est refusée sans session).
+- Conséquence : l'API s'appelle depuis le navigateur d'une personne connectée
+  (même origine). Un script (`curl`, Python) ou un autre site n'a pas de
+  session ; `/api-docs` le dit dans sa fiche « Authentification ».
+
 ## Protection de la base — ce qui protège réellement
 
 ### Limitation de débit *(ajoutée à l'étape 4 de la remédiation)*
 
 L'API était **entièrement hors du périmètre du middleware** : ni authentifiée,
 ni limitée. Un seul client pouvait aspirer la base et saturer le palier Neon.
+Elle est depuis plafonnée, et depuis l'étape 1 du plan gestion-contenu
+authentifiée.
 
 | Portée | Plafond | Implémentation |
 |--------|---------|----------------|
 | `/api/v1/:path*` | **60 requêtes / minute / IP** | `proxy.ts` → `lib/rate-limit.ts`, seau `v1:` |
 
+- Le plafond ne compte que les requêtes **connectées** : un appel refusé (401)
+  ne consomme pas le quota de l'IP, que des collègues derrière le même réseau
+  partagent.
 - Les pré-vols CORS (`OPTIONS`) ne consomment pas de quota.
 - Dépassement → **429** avec un en-tête `Retry-After`.
 - L'IP est déterminée par `clientIp()`, qui interroge `x-vercel-forwarded-for`
@@ -149,12 +176,14 @@ comparant la longueur de la liste au nombre de résultats.
 
 ---
 
-## Endpoint public de contribution
+## Endpoint public de contribution — retiré
 
-Hors `/api/v1`, mais public et non authentifié — donc soumis aux mêmes
-préoccupations.
+**Retiré le 16 octobre 2026** (plan gestion-contenu, étape 1, décision D2) :
+la page `/contribute` et `POST /api/contribute` n'existent plus. Ce qui suit
+décrit l'endpoint tel qu'il était, pour l'historique ; le signalement de
+l'étape 6 du plan le remplacera, sans IA.
 
-`POST /api/contribute`
+`POST /api/contribute` (retiré)
 
 | Contrainte | Valeur |
 |------------|--------|
@@ -176,12 +205,15 @@ des crédits sur des cibles arbitraires.
 
 ## CORS et erreurs
 
-- **CORS** : `Access-Control-Allow-Origin: *` sur `/api/v1` (`lib/utils.ts`).
-  Assumé : l'API est en lecture seule et publique.
+- **CORS** : `Access-Control-Allow-Origin: *` sur `/api/v1` (`lib/utils.ts`),
+  inchangé. Il n'ouvre plus rien : un appel d'un autre site part sans le cookie
+  de session (ou, s'il l'emporte, le navigateur refuse une réponse avec
+  identifiants sous `*`), et reçoit 401.
 - **Format d'erreur** : `{ "error": "description" }`.
 
 | Code | Cas |
 |------|-----|
+| `401` | pas de session (proxy) |
 | `400` | paramètre invalide, corps de requête non conforme |
 | `404` | identifiant inexistant ou école non `ACTIVE` |
 | `429` | plafond de débit dépassé (en-tête `Retry-After`) |
@@ -208,6 +240,7 @@ des crédits sur des cibles arbitraires.
 ## Critères de validation
 
 - Les réponses correspondent au schéma Prisma.
+- Sans session, chaque route répond 401 (`test/proxy.test.ts`, `npm run smoke`).
 - Seules les écoles `ACTIVE` sont exposées.
 - Les en-têtes CORS sont appliqués.
 - Recherche et filtres fonctionnent sur les routes paginées.

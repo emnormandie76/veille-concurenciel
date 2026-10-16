@@ -29,7 +29,7 @@ parties : gestion de contenu, IA gelée.
 | [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan en cours** : décisions (§2), pièges (§4), étapes (§5), journal (§9) |
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** du gestionnaire de contenu : rôles, gardes, écrans, routes, tables, styles, tests |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
-| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (10 migrations) · API v1 (15 routes) |
+| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (11 migrations) · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | mise en ligne sur Vercel |
 | [docs/cahier-des-charges-school-pipeline.md](docs/cahier-des-charges-school-pipeline.md) | exigences d'origine (l'en-tête renvoie au plan d'évolution) |
 | [docs/architecture/architecture.md](docs/architecture/architecture.md) | référence technique v2.1, centrée sur le pipeline IA : pour les questions sur l'IA, la sécurité (§10) et l'outillage (§10 bis) |
@@ -51,8 +51,16 @@ branche `gestion` :
 - étape 0 (recentrage : branche, documentation) faite le 16 octobre et
   validée (le propriétaire demande le commit, le push et le prompt de
   l'étape 1) ;
-- prochaine : étape 1 (trois rôles, gardes, connexion obligatoire), après
-  décision du propriétaire sur D1 et D2.
+- étape 1 (trois rôles, gardes, connexion obligatoire) faite le 16 octobre et
+  validée (le propriétaire demande le commit, le push et le prompt de
+  l'étape 2) : décisions D1 (rôle relu en base), D2
+  (`/contribute` retirée), D18 (l'écran des comptes crée des `GESTIONNAIRE`),
+  D19 (créations et suppressions du contenu au gestionnaire) ; migration
+  `20261016120000_three_roles` appliquée sur la branche Neon `dev`, **pas sur
+  `main`** (étape 3) ; `npm run smoke` adapté et joué (vert) avec l'accord
+  du propriétaire ;
+- prochaine : étape 2 (liste blanche, première connexion, écran des rôles),
+  après décision du propriétaire sur D3 à D6.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -120,9 +128,17 @@ L'étape en cours se lit dans le journal du plan (§9).
    blanc, puis sur la branche Neon `dev`, avec l'accord du propriétaire à
    chaque fois (plan §0).
 9. **Sécurité** (README) :
-   - chaque route admin choisit sa garde dans `lib/auth.ts` : aujourd'hui
-     `guardAuth` (toute session) ou `guardAdmin` ; à l'étape 1 du plan, trois
-     gardes selon le rôle, et aucune route ne garde l'ancien sens ;
+   - connexion obligatoire sur tout le site (`proxy.ts`), sauf la page de
+     connexion et `/api/auth/*` ; le proxy ne regarde que la session, jamais
+     le rôle ;
+   - chaque route admin attend une seule garde de `lib/auth.ts` :
+     `guardSignedIn` (toute session), `guardManager` (gestionnaire ou admin)
+     ou `guardAdmin` ; le niveau de chaque route est dans
+     `test/helpers/access-policy.ts` et
+     `docs/architecture/gestion-contenu.md` §4 ; l'IA (inbox comprise) et les
+     comptes sont en `guardAdmin` ; les écrans `/admin` passent par
+     `requirePage` ; le rôle est relu en base à chaque requête (D1), jamais
+     pris dans le jeton ;
    - tout contenu externe injecté dans un prompt passe par `wrap_source()` ;
    - `user_text` n'atteint jamais un modèle d'IA ;
    - `lib/rate-limit.ts` est la seule limitation de débit.
@@ -238,7 +254,7 @@ l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 | `npm run test:ts` | tests TypeScript (`node --test`), dont les routes de `test/api/` (banc : `test/helpers/`, requêtes relues contre le schéma Prisma) ; en CI, job `ts-tests` |
 | `npm run typecheck` / `npm run lint` | types / ESLint (les avertissements sont la dette connue) |
 | `npm run build` | `prisma generate` puis `next build` |
-| `npm run smoke` | smoke local contre `npm run dev` : pages publiques et 15 `GET /api/v1/*`, lecture seule, sans session (à adapter à l'étape 1). Lit la base visée : **accord du propriétaire requis**. Pas en CI |
+| `npm run smoke` | smoke local contre `npm run dev` : le mur sans session (pages renvoyées vers la connexion, `/api/schools` et 15 `GET /api/v1/*` en 401), puis, si `APPVC_ADMIN_USERNAME` et `APPVC_ADMIN_PASSWORD` sont posées, les pages et l'API connecté. Lecture seule. Lit la base visée : **accord du propriétaire requis**. Pas en CI |
 | `npm run db:status` | état des migrations, en lecture seule : CLI Prisma sans `DB_DRIVER`, WebSocket avec `DB_DRIVER=neon-ws` |
 | `npm run db:migrate` / `db:migrate:dry` | applique les migrations en attente / passe à blanc terminée par `ROLLBACK` (`neon-ws` seulement). Jamais sans l'accord du propriétaire |
 | `npx prisma migrate status` / `deploy` | la CLI Prisma directe : exige le port 5432, fermé sur le réseau de l'établissement |

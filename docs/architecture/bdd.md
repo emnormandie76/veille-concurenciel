@@ -6,6 +6,10 @@
 > `Program.campus_policy_note`, `ContributionInbox.raw_report`, clés étrangères
 > et contraintes `CHECK` sur l'inbox, `AccreditationRecord.year_obtained`
 > facultatif.
+> **16 octobre 2026** (plan gestion-contenu, étape 1) : 11e migration,
+> `20261016120000_three_roles` : `User.role` passe aux trois rôles `USER`,
+> `GESTIONNAIRE`, `ADMIN` (défaut `USER`). Appliquée sur la branche Neon `dev`
+> seulement ; `main` à l'étape 3.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -64,7 +68,7 @@ model User {
   id            String   @id @default(uuid())
   username      String   @unique
   password_hash String                        // bcrypt, 12 tours
-  role          String   @default("MODERATOR") // CHECK : "ADMIN" | "MODERATOR"
+  role          String   @default("USER")    // CHECK : "USER" | "GESTIONNAIRE" | "ADMIN"
   createdAt     DateTime @default(now())
 }
 
@@ -327,8 +331,11 @@ ContributionInbox ──→ School? · Campus? · Program? · ProgramCampus?   (
 
 ## 4. Migrations
 
-Dix migrations, à appliquer par `prisma migrate deploy`. **Toutes sont
-appliquées** sur la base Neon au 28 septembre 2026.
+Onze migrations, à appliquer par `prisma migrate deploy` (ou
+`npm run db:migrate` par WebSocket). Les dix premières sont appliquées sur les
+branches Neon `main` et `dev` ; la onzième, `20261016120000_three_roles`, sur
+`dev` seulement au 16 octobre 2026 (elle part sur `main` à l'étape 3 du plan
+gestion-contenu, avant la fusion).
 
 | Migration | Contenu |
 |-----------|---------|
@@ -342,6 +349,7 @@ appliquées** sur la base Neon au 28 septembre 2026.
 | `20260902120000_inbox_relations_and_enum_guards` | clés étrangères `SET NULL` sur l'inbox, contraintes `CHECK` (statut, catégorie, `source_type`, `User.role`, `PipelineJob.status`) |
 | `20260903120000_inbox_raw_report` | `ContributionInbox.raw_report` |
 | `20260904120000_program_campus_attachment` | `ProgramCampusAttachment`, `ProgramPlacement`, `Program.campus_policy_note` — **strictement additive** |
+| `20261016120000_three_roles` | **écrite à la main** : remplace `User_role_check` par les trois rôles (`USER`, `GESTIONNAIRE`, `ADMIN`, `NOT VALID`), convertit `MODERATOR` en `GESTIONNAIRE`, défaut `USER`. Ne touche que `User`, que le backend Python ne lit pas |
 
 ### Ce qu'il faut savoir sur la migration de rattrapage
 
@@ -491,8 +499,9 @@ une extraction réussie le supprime.
 - **Les clés de `ContributionInbox` sont de vraies clés étrangères en
   `ON DELETE SET NULL`** : supprimer une école détache ses tickets sans les
   détruire. Une clé étrangère ne prouve pas l'**appartenance** : que `campusId`
-  appartienne bien à `schoolId` reste à vérifier applicativement, comme le fait
-  `POST /api/contribute`.
+  appartienne bien à `schoolId` reste à vérifier applicativement, comme le
+  faisait `POST /api/contribute` (retirée le 16 octobre 2026, plan
+  gestion-contenu, D2).
 - **Upsert obligatoire** lors du transfert vers la production : les contraintes
   `@@unique` sont là pour ça.
 - **Upsert et changement de statut dans une même transaction.** Séparés, un échec
@@ -503,8 +512,11 @@ une extraction réussie le supprime.
   par `test_contribution_enums.py`), plus une contrainte `CHECK` en base. Ajouter
   une valeur impose de modifier les deux listes **et** d'écrire une migration qui
   remplace la contrainte.
-- **`User.role` est un `String` gardé par `CHECK (role IN ('ADMIN', 'MODERATOR'))`** ;
-  les contrôles d'accès reposent sur une comparaison exacte à `"ADMIN"`.
+- **`User.role` est un `String` gardé par `CHECK (role IN ('USER', 'GESTIONNAIRE', 'ADMIN'))`**
+  (migration `20261016120000_three_roles`) ; la liste de référence est
+  `USER_ROLES` dans `lib/roles.ts` (`test/roles-migration.test.ts`). Les
+  contrôles d'accès relisent le rôle en base et le comparent exactement
+  (`lib/auth.ts`) ; un rôle inconnu ne vaut que `USER`.
 - **Ne jamais créer une arête `ProgramCampus` depuis le rattachement campus.**
   Une arête ouvre une option dans les menus de capacité et une tâche `Capacity`
   facturée à chaque passe de Phase 2 ; elle passe par la validation d'une

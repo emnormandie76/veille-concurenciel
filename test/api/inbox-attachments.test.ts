@@ -44,7 +44,7 @@ before(async () => {
 });
 
 beforeEach(() => {
-  session.as("MODERATOR");
+  session.as("ADMIN");
 });
 
 const TICKET_ID = "22222222-3333-4444-5555-666666666666";

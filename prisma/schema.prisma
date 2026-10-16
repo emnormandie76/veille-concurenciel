@@ -10,7 +10,9 @@ model User {
   id            String   @id @default(uuid())
   username      String   @unique
   password_hash String
-  role          String   @default("MODERATOR")
+  // USER | GESTIONNAIRE | ADMIN : contrainte CHECK en base (migration
+  // 20261016120000_three_roles), liste de reference dans lib/roles.ts.
+  role          String   @default("USER")
   createdAt     DateTime @default(now())
 }
 

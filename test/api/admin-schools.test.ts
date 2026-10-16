@@ -4,8 +4,10 @@
  *     npm run test:ts
  *
  * Plan backend-local, étape 7 (P2) : par route, 400 sur un corps invalide, 404
- * sur un id inconnu, le cas nominal ; suppressions en cascade réservées à
- * ADMIN. Chaque requête reçue est relue contre le vrai schéma Prisma.
+ * sur un id inconnu, le cas nominal. Chaque requête reçue est relue contre le
+ * vrai schéma Prisma. Plan gestion-contenu, étape 1 (G4, D19) : tout se fait en
+ * GESTIONNAIRE, création d'école et suppressions en cascade comprises ; un USER
+ * est refusé partout.
  *
  * Routes : /api/admin/schools, /schools/[id], /schools/[id]/campuses,
  * /schools/[id]/manage, /schools-with-programs, /campuses/[id].
@@ -49,7 +51,7 @@ before(async () => {
 });
 
 beforeEach(() => {
-  session.as("ADMIN");
+  session.as("GESTIONNAIRE");
 });
 
 const SCHOOL_ID = "school-normandie";
@@ -73,11 +75,11 @@ test("sans session : 401 sur chaque handler, aucune requête", async () => {
   }
 });
 
-test("création d'école et suppressions en cascade : un MODERATOR reçoit 403, rien de lu", async () => {
-  session.as("MODERATOR");
-  for (const name of ["createSchool", "deleteSchool", "deleteCampus"]) {
+test("un USER reçoit 403 sur chaque handler, rien de lu", async () => {
+  session.as("USER");
+  for (const [name, handler] of Object.entries(h)) {
     db.use({});
-    const res = await h[name](body({ name: "x", official_domain: "x.fr" }, "DELETE"), id(SCHOOL_ID));
+    const res = await handler(body({ name: "x", official_domain: "x.fr" }), id(SCHOOL_ID));
     assert.equal(res.status, 403, name);
     assert.deepEqual(db.calls, [], name);
   }

@@ -9,7 +9,7 @@ export async function GET() {
   if (guard.error) return guard.error;
   const session = guard.session;
 
-  // Seul le rôle ADMIN a le droit de gérer les modérateurs
+  // Seul le rôle ADMIN gère les comptes
   if (session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Accès interdit : Rôle ADMIN requis" }, { status: 403 });
   }
@@ -67,11 +67,14 @@ export async function POST(request: Request) {
     // Hasher avec bcryptjs (12 rounds)
     const password_hash = await bcrypt.hash(cleanPassword, 12);
 
+    // D18 (plan gestion-contenu) : jusqu'à l'écran des rôles de l'étape 2, cet
+    // écran crée des gestionnaires, comme il créait des modérateurs. Le rôle est
+    // écrit ici : le défaut de la base (USER) ne doit pas décider à sa place.
     const newUser = await prisma.user.create({
       data: {
         username: cleanUsername,
         password_hash,
-        role: "MODERATOR",
+        role: "GESTIONNAIRE",
       },
       select: {
         id: true,

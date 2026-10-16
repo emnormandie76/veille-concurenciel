@@ -54,11 +54,19 @@ test("sans session : 401, et la base n'est jamais lue", async () => {
 
   assert.equal(res.status, 401);
   assert.deepEqual(db.calls, []);
-  assert.deepEqual(session.guards, ["guardAuth"]);
+  assert.deepEqual(session.guards, ["guardAdmin"]);
 });
 
-test("un MODERATOR lit le ticket que rend la base", async () => {
-  session.as("MODERATOR");
+test("un GESTIONNAIRE ne lit pas les tickets : 403, rien de lu", async () => {
+  session.as("GESTIONNAIRE");
+  db.use({});
+
+  assert.equal((await call(TICKET_ID)).status, 403);
+  assert.deepEqual(db.calls, []);
+});
+
+test("un ADMIN lit le ticket que rend la base", async () => {
+  session.as("ADMIN");
   db.use({
     contributionInbox: {
       findUnique: ({ where }: { where: { id: string } }) => ({

@@ -5,16 +5,19 @@
  *
  * Analyse statique, sans mock : chaque `app/api/admin/**\/route.ts` est lu par
  * le compilateur TypeScript. Le test vérifie que :
- * - chaque handler exporté (GET, POST, PUT, PATCH, DELETE) attend
- *   `guardAuth()` ou `guardAdmin()`, importés de `@/lib/auth`. Une garde
- *   appelée sans `await` rend une promesse dont `error` vaut `undefined` :
- *   la route s'ouvrirait à tous ;
+ * - chaque handler exporté (GET, POST, PUT, PATCH, DELETE) attend une seule
+ *   garde, `guardSignedIn()`, `guardManager()` ou `guardAdmin()`, importée de
+ *   `@/lib/auth`. Une garde appelée sans `await` rend une promesse dont
+ *   `error` vaut `undefined` : la route s'ouvrirait à tous ;
+ * - la garde de chaque handler est celle de son niveau dans
+ *   test/helpers/access-policy.ts (plan gestion-contenu, étape 1) ;
  * - aucun fichier ne touche `getServerSession` ;
- * - les handlers sous `guardAdmin` sont exactement la liste ADMIN
- *   d'architecture.md §3.6.
+ * - l'ancienne garde `guardAuth` (« toute session ») n'existe plus nulle part
+ *   (piège 1) : aucune route ne peut la garder par oubli.
  *
- * Les fichiers sont énumérés : une nouvelle route est couverte d'office.
- * Règle : README, *Sécurité* ; architecture.md §3.6.
+ * Les fichiers sont énumérés : une nouvelle route est couverte d'office, et
+ * tombe en `guardManager` tant que la table ne dit pas autre chose.
+ * Règle : README, *Sécurité* ; docs/architecture/gestion-contenu.md §4.
  */
 
 import { test } from "node:test";
@@ -23,27 +26,16 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
-const ADMIN_ROOT = path.join(process.cwd(), "app", "api", "admin");
-const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
-const GUARDS = new Set(["guardAuth", "guardAdmin"]);
+import {
+  ADMIN_ROOT,
+  GUARD_OF,
+  adminRouteFiles,
+  expectedLevel,
+  routeKey,
+} from "../helpers/access-policy";
 
-/**
- * Handlers réservés à ADMIN (architecture.md §3.6), sous la forme
- * « MÉTHODE chemin sous app/api/admin ». Toute modification se reporte aussi
- * dans le tableau de §3.6.
- */
-const ADMIN_ONLY = [
-  "DELETE schools/[id]",
-  "DELETE campuses/[id]",
-  "DELETE programs/[id]",
-  "POST schools",
-  "DELETE inbox/purge",
-  "POST trigger-research",
-  "POST run-due-passes",
-  "GET users",
-  "POST users",
-  "DELETE users/[id]",
-];
+const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+const GUARDS = new Set(Object.values(GUARD_OF));
 
 interface HandlerInfo {
   method: string;
@@ -151,7 +143,9 @@ function routeDefects(fileName: string, text: string): string[] {
   }
   for (const handler of analysis.handlers) {
     if (handler.guards.length === 0) {
-      defects.push(`${handler.method} n'attend ni guardAuth() ni guardAdmin()`);
+      defects.push(`${handler.method} n'attend aucune garde`);
+    } else if (handler.guards.length > 1) {
+      defects.push(`${handler.method} attend plusieurs gardes : ${handler.guards.join(", ")}`);
     }
     for (const guard of handler.guards) {
       if (!analysis.authImports.includes(guard)) {
@@ -160,43 +154,51 @@ function routeDefects(fileName: string, text: string): string[] {
     }
   }
   if (text.includes("getServerSession")) {
-    defects.push("touche getServerSession : passer par guardAuth ou guardAdmin");
+    defects.push("touche getServerSession : passer par une garde de @/lib/auth");
   }
   return defects;
 }
 
-/** Chemins des route.ts sous app/api/admin, en `/`, relatifs et triés. */
-function adminRouteFiles(): string[] {
-  return fs
-    .readdirSync(ADMIN_ROOT, { recursive: true, encoding: "utf-8" })
-    .filter((rel) => path.basename(rel) === "route.ts")
-    .map((rel) => rel.split(path.sep).join("/"))
-    .sort();
-}
-
-const routeKey = (rel: string) => path.posix.dirname(rel);
 const readRoute = (rel: string) => fs.readFileSync(path.join(ADMIN_ROOT, rel), "utf-8");
 
 test("l'analyse repère les handlers mal gardés", () => {
   const source = `
-    import { guardAuth } from "@/lib/auth";
+    import { guardManager } from "@/lib/auth";
     import { getServerSession } from "next-auth";
     async function guardAdmin() { return { error: null }; }
-    export async function GET() { const { error } = await guardAuth(); if (error) return error; }
-    export async function POST() { const { error } = guardAuth(); if (error) return error; }
-    export async function PUT() { return [1].map(async () => await guardAuth()); }
+    export async function GET() { const { error } = await guardManager(); if (error) return error; }
+    export async function POST() { const { error } = guardManager(); if (error) return error; }
+    export async function PUT() { return [1].map(async () => await guardManager()); }
     export async function PATCH() { await guardAdmin(); }
-    async function remove() { await guardAuth(); }
+    async function remove() { await guardManager(); }
     export { remove as DELETE };
   `;
 
   assert.deepEqual(routeDefects("synthetique.ts", source), [
     "DELETE exporté par `export { … }` : forme non analysée, écrire `export async function DELETE`",
-    "POST n'attend ni guardAuth() ni guardAdmin()",
-    "PUT n'attend ni guardAuth() ni guardAdmin()",
+    "POST n'attend aucune garde",
+    "PUT n'attend aucune garde",
     "PATCH : guardAdmin ne vient pas de @/lib/auth",
-    "touche getServerSession : passer par guardAuth ou guardAdmin",
+    "touche getServerSession : passer par une garde de @/lib/auth",
   ]);
+});
+
+test("l'analyse refuse deux gardes dans un même handler", () => {
+  const source = `
+    import { guardManager, guardSignedIn } from "@/lib/auth";
+    export async function GET() { await guardSignedIn(); await guardManager(); }
+  `;
+  assert.deepEqual(routeDefects("synthetique.ts", source), [
+    "GET attend plusieurs gardes : guardSignedIn, guardManager",
+  ]);
+});
+
+test("l'ancienne garde guardAuth n'est plus une garde reconnue", () => {
+  const source = `
+    import { guardAuth } from "@/lib/auth";
+    export async function GET() { const { error } = await guardAuth(); if (error) return error; }
+  `;
+  assert.deepEqual(routeDefects("synthetique.ts", source), ["GET n'attend aucune garde"]);
 });
 
 test("l'énumération descend dans tous les sous-dossiers", () => {
@@ -205,23 +207,43 @@ test("l'énumération descend dans tous les sous-dossiers", () => {
   assert.ok(files.includes("schools/[id]/stats/[recordId]/route.ts"));
 });
 
-test("chaque handler admin attend guardAuth() ou guardAdmin(), sans getServerSession", () => {
+test("chaque handler admin attend une seule garde de @/lib/auth, sans getServerSession", () => {
   const defects = adminRouteFiles().flatMap((rel) =>
     routeDefects(rel, readRoute(rel)).map((d) => `${rel} : ${d}`)
   );
   assert.deepEqual(defects, []);
 });
 
-test("les handlers sous guardAdmin sont exactement la liste ADMIN d'architecture.md §3.6", () => {
-  const underAdmin = adminRouteFiles().flatMap((rel) =>
-    analyzeRoute(rel, readRoute(rel))
-      .handlers.filter((h) => h.guards.includes("guardAdmin"))
-      .map((h) => `${h.method} ${routeKey(rel)}`)
+test("chaque handler attend la garde de son niveau (test/helpers/access-policy.ts)", () => {
+  const mismatches = adminRouteFiles().flatMap((rel) =>
+    analyzeRoute(rel, readRoute(rel)).handlers.flatMap((h) => {
+      const key = `${h.method} ${routeKey(rel)}`;
+      const expected = GUARD_OF[expectedLevel(key)];
+      return h.guards.length === 1 && h.guards[0] === expected
+        ? []
+        : [`${key} : attendu ${expected}, trouvé ${h.guards.join(", ") || "aucune"}`];
+    })
   );
   assert.deepEqual(
-    underAdmin.sort(),
-    [...ADMIN_ONLY].sort(),
-    "Écart entre le code et architecture.md §3.6 : mettre à jour la route, " +
-      "le tableau de §3.6 et ADMIN_ONLY ensemble."
+    mismatches,
+    [],
+    "Écart entre le code et la table d'accès : mettre à jour la route, " +
+      "test/helpers/access-policy.ts et docs/architecture/gestion-contenu.md §4 ensemble."
   );
+});
+
+/** Fichiers .ts et .tsx sous `dir`, hors node_modules. */
+function sourceFiles(dir: string): string[] {
+  return fs
+    .readdirSync(dir, { recursive: true, encoding: "utf-8" })
+    .filter((rel) => /\.tsx?$/.test(rel) && !rel.split(path.sep).includes("node_modules"))
+    .map((rel) => path.join(dir, rel));
+}
+
+test("piège 1 : guardAuth et requireAuth (« toute session ») n'existent plus nulle part", () => {
+  const root = process.cwd();
+  const offenders = [...sourceFiles(path.join(root, "app")), ...sourceFiles(path.join(root, "lib")), path.join(root, "proxy.ts")]
+    .filter((file) => /\b(guardAuth|requireAuth)\b/.test(fs.readFileSync(file, "utf-8")))
+    .map((file) => path.relative(root, file).split(path.sep).join("/"));
+  assert.deepEqual(offenders, []);
 });

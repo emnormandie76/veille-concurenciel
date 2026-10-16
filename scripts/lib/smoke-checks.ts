@@ -6,7 +6,10 @@
  * est testé en CI (test/smoke-checks.test.ts), le smoke lui-même ne l'est pas :
  * il lui faut `npm run dev` et la base.
  *
- * Voir docs/features/backend-local.md, étape 7.
+ * Voir docs/features/backend-local.md, étape 7. Depuis l'étape 1 du plan
+ * gestion-contenu, le site exige une session : le smoke joue d'abord le mur
+ * (`buildWallChecks`, `judgeWall`), puis les pages et l'API avec la session
+ * (`buildChecks`, `judge`).
  */
 
 /** Les 15 routes GET de l'API v1 (API-rest.md), dans l'ordre de la doc. */
@@ -28,8 +31,8 @@ export const V1_ROUTES = [
   "/api/v1/compare/programs",
 ] as const;
 
-/** Les pages publiques appelées (plan backend-local, étape 7). */
-export const PAGES = ["/", "/contribute", "/api-docs", "/schools/[id]", "/schools/[id]/programs/[pid]"] as const;
+/** Les pages du site appelées (plan backend-local, étape 7 ; /contribute retirée, D2). */
+export const PAGES = ["/", "/api-docs", "/schools/[id]", "/schools/[id]/programs/[pid]"] as const;
 
 export interface SmokeIds {
   schoolId: string;
@@ -123,6 +126,8 @@ export interface SmokeResponse {
   status: number;
   contentType: string;
   text: string;
+  /** En-tête Location d'une redirection, s'il y en a une. */
+  location?: string | null;
 }
 
 export type SmokeVerdict = { outcome: "ok" | "absent" | "fail"; detail?: string };
@@ -150,4 +155,80 @@ export function judge(check: SmokeCheck, response: SmokeResponse): SmokeVerdict 
   if (!contentType.includes("text/html")) return { outcome: "fail", detail: `type ${contentType || "absent"}, HTML attendu` };
   const marker = nextErrorMarker(text);
   return marker ? { outcome: "fail", detail: marker } : { outcome: "ok" };
+}
+
+// ── Le mur : sans session (plan gestion-contenu, étape 1) ─────────────
+
+export interface WallCheck {
+  /** Le chemin appelé, sans session. */
+  path: string;
+  /**
+   * `open` : la page de connexion, 200 attendu ; `redirect` : une page, renvoi
+   * vers la connexion avec son chemin en `callbackUrl` ; `unauthorized` : une
+   * API, 401 en JSON.
+   */
+  expect: "open" | "redirect" | "unauthorized";
+}
+
+export const LOGIN_PAGE = "/admin/login";
+
+// Identifiants factices : le proxy refuse avant toute lecture en base.
+const WALL_IDS: SmokeIds = { schoolId: "mur", programId: "mur", campusId: "mur" };
+
+/** Les contrôles du mur : la connexion, chaque page, le back-office, puis les API. */
+export function buildWallChecks(): WallCheck[] {
+  const pages = PAGES.map((route) => fill(route, WALL_IDS)!);
+  return [
+    { path: LOGIN_PAGE, expect: "open" },
+    ...[...pages, "/admin/schools"].map((path): WallCheck => ({ path, expect: "redirect" })),
+    ...["/api/schools", ...V1_ROUTES.map((route) => fill(route, WALL_IDS)!)].map(
+      (path): WallCheck => ({ path, expect: "unauthorized" })
+    ),
+  ];
+}
+
+/** Juge une réponse sans session : seule la connexion est ouverte. */
+export function judgeWall(check: WallCheck, response: SmokeResponse): SmokeVerdict {
+  const { status, contentType, text, location } = response;
+
+  if (check.expect === "open") {
+    if (status !== 200) return { outcome: "fail", detail: `HTTP ${status}, la connexion doit rester ouverte` };
+    if (!contentType.includes("text/html")) return { outcome: "fail", detail: `type ${contentType || "absent"}, HTML attendu` };
+    const marker = nextErrorMarker(text);
+    return marker ? { outcome: "fail", detail: marker } : { outcome: "ok" };
+  }
+
+  if (check.expect === "redirect") {
+    if (![302, 303, 307, 308].includes(status) || !location) {
+      return { outcome: "fail", detail: `HTTP ${status} : ouvert sans session` };
+    }
+    const target = new URL(location, "http://smoke.invalid");
+    if (target.pathname !== LOGIN_PAGE) return { outcome: "fail", detail: `renvoi vers ${target.pathname}` };
+    if (target.searchParams.get("callbackUrl") !== check.path) {
+      return { outcome: "fail", detail: `callbackUrl « ${target.searchParams.get("callbackUrl")} »` };
+    }
+    return { outcome: "ok" };
+  }
+
+  if (status !== 401) return { outcome: "fail", detail: `HTTP ${status} : ouvert sans session` };
+  try {
+    const body = JSON.parse(text) as { error?: unknown };
+    if (typeof body.error === "string") return { outcome: "ok" };
+  } catch {
+    // Un 401 qui n'est pas du JSON : jugé ci-dessous.
+  }
+  return { outcome: "fail", detail: "401 sans corps JSON { error }" };
+}
+
+// ── La session : les cookies de NextAuth ─────────────────────────────
+
+/**
+ * L'en-tête Cookie à renvoyer, tiré des Set-Cookie reçus : les paires
+ * nom=valeur, sans attributs ; un cookie effacé (valeur vide) n'est pas repris.
+ */
+export function cookieHeader(setCookies: string[]): string {
+  return setCookies
+    .map((line) => line.split(";")[0].trim())
+    .filter((pair) => /^[^=]+=.+$/.test(pair))
+    .join("; ");
 }

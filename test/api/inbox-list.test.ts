@@ -34,7 +34,7 @@ before(async () => {
 });
 
 beforeEach(() => {
-  session.as("MODERATOR");
+  session.as("ADMIN");
 });
 
 const call = (query = "") => GET(new Request(`http://localhost/api/admin/inbox${query}`));
@@ -59,7 +59,16 @@ test("sans session : 401, et la base n'est jamais lue", async () => {
 
   assert.equal(res.status, 401);
   assert.deepEqual(db.calls, []);
-  assert.deepEqual(session.guards, ["guardAuth"]);
+  assert.deepEqual(session.guards, ["guardAdmin"]);
+});
+
+test("l'inbox est réservée à l'admin : un USER ou un GESTIONNAIRE reçoit 403, rien de lu", async () => {
+  for (const profile of ["USER", "GESTIONNAIRE"] as const) {
+    session.as(profile);
+    db.use({});
+    assert.equal((await call()).status, 403, profile);
+    assert.deepEqual(db.calls, []);
+  }
 });
 
 test("chaque ticket porte le nom et le domaine officiel de son école", async () => {

@@ -1,23 +1,14 @@
-import { getSession } from "@/lib/auth";
+import { requirePage } from "@/lib/auth";
 import CronMonitoringClient from "./CronMonitoringClient";
 
 /**
  * /admin/cron — passes dues, recherche ciblée et historique du pipeline.
  *
- * Lecture : toute session (le layout admin redirige sans session). Les
- * lancements (passes dues, recherche ciblée) sont réservés à ADMIN : les
- * routes le vérifient (`guardAdmin`), et l'écran ne les propose qu'à un ADMIN
- * (architecture.md §7.4). Le rôle est lu ici, côté serveur, comme sur
- * /admin/users.
+ * Réservé à ADMIN (plan gestion-contenu, étape 1 : l'IA est réservée à
+ * l'admin). Le contrôle se fait ici, côté serveur, et dans chaque route que
+ * l'écran appelle (`guardAdmin`). Un gestionnaire est renvoyé vers les écoles.
  */
 export default async function CronPage() {
-  let isAdmin = false;
-  try {
-    const session = await getSession();
-    isAdmin = session?.user.role === "ADMIN";
-  } catch {
-    // Cookie illisible : le layout admin redirige vers la connexion. Faute de
-    // rôle, l'écran ne propose aucun lancement.
-  }
-  return <CronMonitoringClient isAdmin={isAdmin} />;
+  const session = await requirePage("admin");
+  return <CronMonitoringClient isAdmin={session.user.role === "ADMIN"} />;
 }

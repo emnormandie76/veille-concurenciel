@@ -1,7 +1,8 @@
 /**
- * app/api-docs/page.tsx — Page de documentation de l'API publique (Étape 10)
+ * app/api-docs/page.tsx — Page de documentation de l'API v1 (Étape 10)
  *
- * - Affiche la documentation interactive des 15 endpoints de l'API publique.
+ * - Affiche la documentation interactive des 15 endpoints de l'API v1, réservée
+ *   aux personnes connectées comme tout le site (plan gestion-contenu, étape 1).
  * - Mise en page en 3 colonnes de style Stripe (navigation, détails, exemples de code).
  * - Entièrement statique et sans requêtes à la base de données Neon.
  * - Contenu dans endpoints.ts, aligné sur les réponses réelles le 15 octobre
@@ -14,6 +15,7 @@
 
 import { useState, useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
+import SignOutButton from "../SignOutButton";
 import { buildSampleUrl, endpoints, Endpoint } from "./endpoints";
 
 // L'adresse du site ne change pas pendant la vie de la page.
@@ -154,9 +156,7 @@ export default function ApiDocsPage() {
           <Link href="/api-docs" className="public-nav-link active">
             API
           </Link>
-          <Link href="/contribute" className="public-nav-cta">
-            Contribuer
-          </Link>
+          <SignOutButton className="public-nav-cta" />
         </div>
       </nav>
 

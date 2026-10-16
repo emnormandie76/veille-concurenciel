@@ -9,13 +9,13 @@
  * Référence : task.md §3.1, architecture.md §3.4
  */
 
-import { guardAuth } from "@/lib/auth";
+import { guardAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isContributionCategory, isContributionStatus } from "@/lib/contribution";
 
 export async function GET(request: Request) {
-  const { error } = await guardAuth();
+  const { error } = await guardAdmin();
   if (error) return error;
 
   const { searchParams } = new URL(request.url);

@@ -31,7 +31,7 @@
  * reste.
  *
  * Le précédent est dans le dépôt : `create-programs/route.ts` est déjà une
- * route sœur qui agit sur le même ticket, avec le même `guardAuth` et la même
+ * route sœur qui agit sur le même ticket, avec la même garde et la même
  * `prisma.$transaction`. Et `validate/route.ts` refuse désormais un ticket qui
  * porte `campus_attachments`, en nommant cette route.
  *
@@ -56,7 +56,7 @@
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { guardAuth } from "@/lib/auth";
+import { guardAdmin } from "@/lib/auth";
 import { STATUS_REJECTED, STATUS_VALIDATED } from "@/lib/contribution";
 import { adminCorrections, readOptionalJsonObject } from "@/lib/request-body";
 import {
@@ -77,7 +77,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardAdmin();
   if (error) return error;
 
   const { id } = await params;

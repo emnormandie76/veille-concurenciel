@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ROLE_LABELS, isUserRole } from "@/lib/roles";
 
 interface User {
   id: string;
@@ -46,7 +47,7 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
       const res = await fetch("/api/admin/users");
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Impossible de charger les modérateurs");
+        throw new Error(data.error || "Impossible de charger les comptes");
       }
       const data = await res.json();
       setUsers(data);
@@ -191,11 +192,11 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
     <div>
       <div className="page-header">
         <div>
-          <h1>Gestion des Modérateurs</h1>
-          <p className="page-title-desc">Créez et supprimez les comptes des modérateurs de la plateforme.</p>
+          <h1>Comptes</h1>
+          <p className="page-title-desc">Créez et supprimez les comptes des gestionnaires de la plateforme.</p>
         </div>
         <button className="btn btn-primary" onClick={openAddModal}>
-          <span>➕</span> Créer un modérateur
+          <span>➕</span> Créer un gestionnaire
         </button>
       </div>
 
@@ -228,8 +229,8 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
                     {user.username} {user.id === currentUserId && <span style={{ color: "var(--accent)", fontSize: "0.8rem", marginLeft: "6px" }}>(vous)</span>}
                   </td>
                   <td>
-                    <span className={`badge ${user.role === "ADMIN" ? "badge-admin" : "badge-moderator"}`}>
-                      {user.role}
+                    <span className={`badge ${user.role === "GESTIONNAIRE" ? "badge-moderator" : "badge-admin"}`}>
+                      {isUserRole(user.role) ? ROLE_LABELS[user.role] : user.role}
                     </span>
                   </td>
                   <td style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
@@ -267,7 +268,7 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
         <div className="modal-overlay">
           <div className="modal">
             <div className="modal-header">
-              <h3 className="modal-title">Créer un modérateur</h3>
+              <h3 className="modal-title">Créer un gestionnaire</h3>
               <button className="modal-close" onClick={() => setIsAddModalOpen(false)}>
                 ✕
               </button>
@@ -415,7 +416,7 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
               </div>
             )}
             <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", marginBottom: "20px", lineHeight: "1.5" }}>
-              Êtes-vous sûr de vouloir supprimer définitivement le modérateur <strong>{selectedUser.username}</strong> ? Son accès à la plateforme sera immédiatement révoqué.
+              Êtes-vous sûr de vouloir supprimer définitivement le compte <strong>{selectedUser.username}</strong> ? Son accès à la plateforme sera immédiatement révoqué.
             </p>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => {

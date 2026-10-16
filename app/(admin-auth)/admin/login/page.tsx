@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
+import { safeCallbackPath } from "@/lib/callback-url";
 
 function LoginForm() {
   const router = useRouter();
@@ -38,8 +39,9 @@ function LoginForm() {
         setError("Nom d'utilisateur ou mot de passe incorrect.");
         setLoading(false);
       } else {
-        // Connexion réussie -> redirection vers l'inbox ou le CRUD écoles
-        router.push("/admin/schools");
+        // Connexion réussie : retour à la page demandée (posée par le proxy),
+        // si c'est un chemin du site ; sinon les écoles du back-office.
+        router.push(safeCallbackPath(searchParams.get("callbackUrl")));
         router.refresh();
       }
     } catch (err) {
@@ -53,7 +55,7 @@ function LoginForm() {
       <div className="login-card">
         <div className="login-header">
           <h1 className="login-title">School Data Pipeline</h1>
-          <p className="login-subtitle">Portail d'administration</p>
+          <p className="login-subtitle">Connectez-vous pour accéder au site</p>
         </div>
 
         {error && (

@@ -4,8 +4,10 @@
  *     npm run test:ts
  *
  * Plan backend-local, étape 7 (P2) : par route, 400 sur un corps invalide, 404
- * sur un id inconnu, le cas nominal ; suppression en cascade d'un programme
- * réservée à ADMIN. Chaque requête reçue est relue contre le vrai schéma.
+ * sur un id inconnu, le cas nominal. Chaque requête reçue est relue contre le
+ * vrai schéma. Plan gestion-contenu, étape 1 (G4, D19) : tout se fait en
+ * GESTIONNAIRE, suppression en cascade d'un programme comprise ; un USER est
+ * refusé partout.
  *
  * Routes : /api/admin/schools/[id]/programs, /programs/[id],
  * /program-campuses/[id]/capacity, /capacities/[id], /schools/[id]/capacities.
@@ -45,7 +47,7 @@ before(async () => {
 });
 
 beforeEach(() => {
-  session.as("ADMIN");
+  session.as("GESTIONNAIRE");
 });
 
 const SCHOOL_ID = "school-normandie";
@@ -76,12 +78,13 @@ test("sans session : 401 sur chaque handler, aucune requête", async () => {
   }
 });
 
-test("suppression d'un programme (cascade) : un MODERATOR reçoit 403, rien de lu", async () => {
-  session.as("MODERATOR");
-  db.use({});
-
-  assert.equal((await h.deleteProgram(get(), id(PROGRAM.id))).status, 403);
-  assert.deepEqual(db.calls, []);
+test("un USER reçoit 403 sur chaque handler, rien de lu", async () => {
+  session.as("USER");
+  for (const [name, handler] of Object.entries(h)) {
+    db.use({});
+    assert.equal((await handler(body({}), id("x"))).status, 403, name);
+    assert.deepEqual(db.calls, [], name);
+  }
 });
 
 // ── /api/admin/schools/[id]/programs ─────────────────────────────────

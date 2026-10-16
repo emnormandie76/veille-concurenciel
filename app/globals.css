@@ -473,6 +473,9 @@ select.form-control optgroup {
 }
 
 .public-nav-cta {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
   padding: 8px 18px;
   background: linear-gradient(135deg, #3b82f6, #8b5cf6);
   color: #fff;

@@ -1,23 +1,40 @@
 /**
- * lib/auth.ts — Helpers de session NextAuth (Étape 1.3)
+ * lib/auth.ts — Session et gardes d'accès
  *
- * Fournit des utilitaires réutilisables pour :
- * - Récupérer la session courante (Server Components & API Routes)
- * - Vérifier les rôles (ADMIN uniquement)
- * - Protéger les API Routes avec une réponse 401/403 standardisée
+ * Plan gestion-contenu, étape 1 :
+ * - trois rôles, `USER`, `GESTIONNAIRE`, `ADMIN` (lib/roles.ts) ;
+ * - trois gardes pour les routes, une par niveau : `guardSignedIn` (toute
+ *   session), `guardManager` (gestionnaire ou admin), `guardAdmin`. Chaque
+ *   route du back-office en attend une, et une seule
+ *   (test/api/admin-guards.test.ts) ; l'ancienne garde unique, qui laissait
+ *   passer toute session, n'existe plus (piège 1) ;
+ * - `requirePage` pour les écrans serveur : connexion sans session, renvoi
+ *   vers le site ou les écoles sans le rôle (piège 2) ;
+ * - D1 : le rôle est **relu en base** à chaque appel. Celui du jeton JWT,
+ *   copié à la connexion, peut dater de 8 h : il ne sert jamais à juger. Un
+ *   compte supprimé n'a plus de session, même avec un jeton valide.
  *
- * Référence : task.md §1.3, architecture.md §3.6, §7.4
+ * Le proxy (proxy.ts) ne vérifie que l'existence d'une session : le rôle se
+ * contrôle ici, côté serveur.
  */
 
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { prisma } from "@/lib/prisma";
+import {
+  LOGIN_PATH,
+  REFUSAL_MESSAGES,
+  UNAUTHENTICATED_MESSAGE,
+  hasAccess,
+  homeFor,
+  isUserRole,
+  type AccessLevel,
+  type UserRole,
+} from "@/lib/roles";
 
-// ──────────────────────────────────────────────
-// Types augmentés
-// ──────────────────────────────────────────────
-
-export type UserRole = "ADMIN" | "MODERATOR";
+export type { AccessLevel, UserRole } from "@/lib/roles";
 
 export interface AuthSession {
   user: {
@@ -29,99 +46,111 @@ export interface AuthSession {
 }
 
 // ──────────────────────────────────────────────
-// Récupération de session
+// Session
 // ──────────────────────────────────────────────
 
 /**
- * Récupère la session NextAuth courante.
- * À utiliser dans les Server Components et API Routes.
+ * La session courante, avec le nom et le rôle **lus en base** (D1).
+ *
+ * Rend `null` sans session, sur un cookie illisible, ou quand le compte du
+ * jeton n'existe plus. Un rôle que le code ne connaît pas (une base où la
+ * migration des trois rôles n'est pas passée) ne donne que les droits d'un
+ * USER. Une panne de la base, elle, remonte.
  */
 export async function getSession(): Promise<AuthSession | null> {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) return null;
-  return session as AuthSession;
+  let session;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    // Cookie corrompu (JWEDecryptionFailed…) : pas de session.
+    return null;
+  }
+  const id = (session?.user as { id?: unknown } | undefined)?.id;
+  if (!session?.user || typeof id !== "string" || id === "") return null;
+
+  const account = await prisma.user.findUnique({
+    where: { id },
+    select: { username: true, role: true },
+  });
+  if (!account) return null;
+
+  let role: UserRole = "USER";
+  if (isUserRole(account.role)) {
+    role = account.role;
+  } else {
+    console.warn(`[auth] rôle inconnu en base pour le compte ${id} : droits d'un USER`);
+  }
+
+  return {
+    user: { id, name: account.username, email: session.user.email ?? null, role },
+  };
 }
 
 // ──────────────────────────────────────────────
-// Vérifications de rôle
+// Gardes des API Routes (rendent une NextResponse)
 // ──────────────────────────────────────────────
 
-/**
- * Vérifie qu'une session est valide (ADMIN ou MODERATOR).
- * Retourne la session ou null.
- */
-export async function requireAuth(): Promise<AuthSession | null> {
-  return getSession();
-}
+type GuardResult =
+  | { session: AuthSession; error: null }
+  | { session: null; error: NextResponse };
 
-/**
- * Vérifie qu'une session est valide ET que le rôle est ADMIN.
- * Retourne la session ou null.
- */
-export async function requireAdmin(): Promise<AuthSession | null> {
+async function guard(level: AccessLevel): Promise<GuardResult> {
   const session = await getSession();
-  if (!session) return null;
-  if (session.user.role !== "ADMIN") return null;
+  if (!session) {
+    return {
+      session: null,
+      error: NextResponse.json({ error: UNAUTHENTICATED_MESSAGE }, { status: 401 }),
+    };
+  }
+  if (level !== "signedIn" && !hasAccess(session.user.role, level)) {
+    return {
+      session: null,
+      error: NextResponse.json({ error: REFUSAL_MESSAGES[level] }, { status: 403 }),
+    };
+  }
+  return { session, error: null };
+}
+
+/**
+ * Toute session : 401 sans session. À réserver à ce que chacun fait pour
+ * lui-même (changer son mot de passe).
+ *
+ * @example
+ * const { session, error } = await guardSignedIn();
+ * if (error) return error;
+ */
+export async function guardSignedIn(): Promise<GuardResult> {
+  return guard("signedIn");
+}
+
+/**
+ * Gestionnaire ou admin : 401 sans session, 403 pour un USER. La garde de la
+ * lecture et de l'écriture du contenu dans le back-office.
+ */
+export async function guardManager(): Promise<GuardResult> {
+  return guard("manager");
+}
+
+/**
+ * Admin seulement : 401 sans session, 403 sinon. L'IA (backend, historique,
+ * inbox) et les comptes.
+ */
+export async function guardAdmin(): Promise<GuardResult> {
+  return guard("admin");
+}
+
+// ──────────────────────────────────────────────
+// Écrans serveur (layouts et pages)
+// ──────────────────────────────────────────────
+
+/**
+ * Rend la session si son rôle atteint `level` ; sinon redirige : vers la
+ * connexion sans session, vers le site pour un USER, vers les écoles pour un
+ * gestionnaire hors de l'IA.
+ */
+export async function requirePage(level: AccessLevel): Promise<AuthSession> {
+  const session = await getSession();
+  if (!session) redirect(LOGIN_PATH);
+  if (!hasAccess(session.user.role, level)) redirect(homeFor(session.user.role));
   return session;
-}
-
-// ──────────────────────────────────────────────
-// Guards pour les API Routes (retournent NextResponse)
-// ──────────────────────────────────────────────
-
-/**
- * Guard API : retourne 401 si pas de session, sinon la session.
- * Utiliser dans les API Routes protégées.
- *
- * @example
- * const { session, error } = await guardAuth();
- * if (error) return error;
- */
-export async function guardAuth(): Promise<
-  { session: AuthSession; error: null } | { session: null; error: NextResponse }
-> {
-  const session = await getSession();
-  if (!session) {
-    return {
-      session: null,
-      error: NextResponse.json(
-        { error: "Non authentifié. Veuillez vous connecter." },
-        { status: 401 }
-      ),
-    };
-  }
-  return { session, error: null };
-}
-
-/**
- * Guard API : retourne 401 si pas de session, 403 si pas ADMIN.
- * Utiliser dans les API Routes réservées aux admins.
- *
- * @example
- * const { session, error } = await guardAdmin();
- * if (error) return error;
- */
-export async function guardAdmin(): Promise<
-  { session: AuthSession; error: null } | { session: null; error: NextResponse }
-> {
-  const session = await getSession();
-  if (!session) {
-    return {
-      session: null,
-      error: NextResponse.json(
-        { error: "Non authentifié. Veuillez vous connecter." },
-        { status: 401 }
-      ),
-    };
-  }
-  if (session.user.role !== "ADMIN") {
-    return {
-      session: null,
-      error: NextResponse.json(
-        { error: "Accès refusé. Droits ADMIN requis." },
-        { status: 403 }
-      ),
-    };
-  }
-  return { session, error: null };
 }

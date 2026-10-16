@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { guardAuth } from "@/lib/auth";
+import { guardManager } from "@/lib/auth";
 
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;

@@ -238,7 +238,3 @@ test("le bloc « Sources » de l'inbox passe par displayedTicketSources", () => 
   assert.match(page, /displayedTicketSources\(selectedTicket, selectedTicket\.schoolOfficialDomain/);
   assert.doesNotMatch(page, /selectedTicket\.urls\.map/);
 });
-
-test("les contributions du public ne passent jamais par la coupe", () => {
-  assert.doesNotMatch(read("app", "api", "contribute", "route.ts"), /ticket-sources/);
-});

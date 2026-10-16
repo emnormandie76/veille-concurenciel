@@ -2,7 +2,8 @@
  * lib/rate-limit.ts — Limitation de débit : implémentation unique du projet
  *
  * Remplace les trois copies divergentes qui coexistaient (ce fichier, `proxy.ts`
- * et une logique en ligne dans `app/api/contribute/route.ts`).
+ * et une logique en ligne dans la route de contribution, retirée depuis : plan
+ * gestion-contenu, D2).
  *
  * Deux magasins :
  *  - **Partagé** (Upstash Redis REST) dès que `UPSTASH_REDIS_REST_URL` et

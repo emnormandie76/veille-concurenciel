@@ -772,6 +772,14 @@ mémoire de `routers/internal.py`, perdu à chaque redémarrage.
 
 ### 3.6. Authentification — User
 
+> **Dépassé le 16 octobre 2026** (plan gestion-contenu, étape 1) : trois rôles
+> `USER`, `GESTIONNAIRE` (les anciens `MODERATOR`), `ADMIN` ; trois gardes
+> (`guardSignedIn`, `guardManager`, `guardAdmin`) ; rôle relu en base ;
+> connexion obligatoire sur tout le site ; IA et inbox réservées à l'admin.
+> L'état réel et le tableau des gardes route par route sont dans
+> [`gestion-contenu.md`](gestion-contenu.md) §2 et §4. Ce paragraphe décrit
+> l'état d'avant.
+
 ```prisma
 model User {
   id            String   @id @default(uuid())

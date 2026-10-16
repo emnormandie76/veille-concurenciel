@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { guardAuth } from "@/lib/auth";
+import { guardAdmin } from "@/lib/auth";
 
 /**
  * POST /api/admin/inbox/[id]/create-programs
@@ -14,7 +14,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardAdmin();
   if (error) return error;
 
   const { id } = await params;

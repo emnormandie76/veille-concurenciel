@@ -2,7 +2,10 @@
  * app/api/auth/[...nextauth]/route.ts — NextAuth v4 Credentials Provider (Étape 1.3)
  *
  * - Credentials Provider : vérifie username/password contre la table User (bcrypt)
- * - Role inclus dans le JWT token et la session (ADMIN | MODERATOR)
+ * - Rôle copié dans le jeton JWT et la session (USER | GESTIONNAIRE | ADMIN), à
+ *   titre indicatif : il peut dater de 8 h, les gardes et les écrans relisent
+ *   le rôle en base à chaque requête (lib/auth.ts, décision D1 du plan
+ *   gestion-contenu)
  * - Pas d'auto-inscription : l'Admin crée les comptes (architecture.md §3.6)
  */
 
@@ -10,6 +13,7 @@ import NextAuth, { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { isUserRole, type UserRole } from "@/lib/roles";
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -48,7 +52,7 @@ export const authOptions: AuthOptions = {
           id: user.id,
           name: user.username,
           email: null,
-          role: user.role as "ADMIN" | "MODERATOR",
+          role: isUserRole(user.role) ? user.role : "USER",
         };
       },
     }),
@@ -58,7 +62,7 @@ export const authOptions: AuthOptions = {
     // Inclure le rôle dans le JWT token
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as unknown as { role: "ADMIN" | "MODERATOR" }).role;
+        token.role = (user as unknown as { role: UserRole }).role;
         token.id = user.id;
       }
       return token;
@@ -66,8 +70,8 @@ export const authOptions: AuthOptions = {
     // Inclure le rôle dans la session (accessible côté client)
     async session({ session, token }) {
       if (session.user) {
-        (session.user as { role?: "ADMIN" | "MODERATOR"; id?: string }).role = token.role as "ADMIN" | "MODERATOR";
-        (session.user as { role?: "ADMIN" | "MODERATOR"; id?: string }).id = token.id as string;
+        (session.user as { role?: UserRole; id?: string }).role = token.role as UserRole;
+        (session.user as { role?: UserRole; id?: string }).id = token.id as string;
       }
       return session;
     },

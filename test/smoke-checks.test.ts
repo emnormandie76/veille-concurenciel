@@ -5,6 +5,10 @@
  *
  * Le smoke lui-même (`npm run smoke`) a besoin de `npm run dev` et de la base :
  * il ne tourne pas en CI. Ses règles, si : quoi appeler, et comment juger.
+ *
+ * Plan gestion-contenu, étape 1 : le site exige une session. Le smoke joue
+ * d'abord le mur (sans session : renvoi vers la connexion, 401 sur les API),
+ * puis, s'il peut se connecter, les pages et l'API avec la session.
  */
 
 import { test } from "node:test";
@@ -12,7 +16,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import { buildChecks, judge, localBaseUrl, nextErrorMarker, PAGES, V1_ROUTES } from "../scripts/lib/smoke-checks";
+import {
+  buildChecks,
+  buildWallChecks,
+  cookieHeader,
+  judge,
+  judgeWall,
+  localBaseUrl,
+  nextErrorMarker,
+  PAGES,
+  V1_ROUTES,
+} from "../scripts/lib/smoke-checks";
 
 const IDS = { schoolId: "school-1", programId: "program-1", campusId: "campus-1" };
 
@@ -136,4 +150,72 @@ test("judge : page — 200, HTML, sans marque d'erreur", () => {
   assert.deepEqual(judge(page, html(500, "<html>")), { outcome: "fail", detail: "HTTP 500" });
   assert.equal(judge(page, html(200, '<html id="__next_error__">')).outcome, "fail");
   assert.equal(judge(page, html(200, "{}", "application/json")).outcome, "fail");
+});
+
+// ── Le mur : sans session ────────────────────────────────────────────
+
+test("PAGES : la contribution n'en fait plus partie (D2)", () => {
+  assert.equal((PAGES as readonly string[]).includes("/contribute"), false);
+});
+
+test("buildWallChecks : la connexion, chaque page, le back-office, /api/schools et les 15 routes v1", () => {
+  const checks = buildWallChecks();
+  const byPath = new Map(checks.map((c) => [c.path, c.expect]));
+
+  assert.equal(byPath.get("/admin/login"), "open");
+  for (const page of ["/", "/api-docs", "/admin/schools"]) assert.equal(byPath.get(page), "redirect", page);
+  assert.ok(checks.some((c) => c.expect === "redirect" && c.path.startsWith("/schools/")));
+  assert.equal(byPath.get("/api/schools"), "unauthorized");
+  assert.equal(checks.filter((c) => c.path.startsWith("/api/v1/")).length, V1_ROUTES.length);
+  assert.ok(checks.filter((c) => c.path.startsWith("/api/")).every((c) => c.expect === "unauthorized"));
+  assert.ok(checks.every((c) => !c.path.includes("[")), "aucun gabarit laissé tel quel");
+});
+
+test("judgeWall : une page doit renvoyer vers la connexion, avec son chemin en callbackUrl", () => {
+  const page = buildWallChecks().find((c) => c.path === "/api-docs")!;
+  const redirect = (status: number, location: string | null) => ({ status, contentType: "", text: "", location });
+
+  assert.deepEqual(judgeWall(page, redirect(307, "/admin/login?callbackUrl=%2Fapi-docs")), { outcome: "ok" });
+  assert.deepEqual(judgeWall(page, redirect(307, "http://localhost:3000/admin/login?callbackUrl=%2Fapi-docs")), { outcome: "ok" });
+  assert.equal(judgeWall(page, redirect(200, null)).outcome, "fail");
+  assert.equal(judgeWall(page, redirect(307, "/autre?callbackUrl=%2Fapi-docs")).outcome, "fail");
+  assert.equal(judgeWall(page, redirect(307, "/admin/login?callbackUrl=%2F")).outcome, "fail");
+});
+
+test("judgeWall : une API doit répondre 401 en JSON, sans données", () => {
+  const api = buildWallChecks().find((c) => c.path === "/api/v1/schools")!;
+  const json = (status: number, body: unknown) => ({ status, contentType: "application/json", text: JSON.stringify(body), location: null });
+
+  assert.deepEqual(judgeWall(api, json(401, { error: "Non authentifié. Veuillez vous connecter." })), { outcome: "ok" });
+  assert.deepEqual(judgeWall(api, json(200, { data: [] })), { outcome: "fail", detail: "HTTP 200 : ouvert sans session" });
+  assert.equal(judgeWall(api, { status: 307, contentType: "", text: "", location: "/admin/login" }).outcome, "fail");
+});
+
+test("judgeWall : la page de connexion reste ouverte et saine", () => {
+  const login = buildWallChecks().find((c) => c.path === "/admin/login")!;
+  const html = (status: number, text: string) => ({ status, contentType: "text/html; charset=utf-8", text, location: null });
+
+  assert.deepEqual(judgeWall(login, html(200, "<html><body>Se connecter</body></html>")), { outcome: "ok" });
+  assert.equal(judgeWall(login, html(307, "")).outcome, "fail");
+  assert.equal(judgeWall(login, html(200, '<html id="__next_error__">')).outcome, "fail");
+});
+
+// ── La session : les cookies de NextAuth ─────────────────────────────
+
+test("cookieHeader : les paires nom=valeur des Set-Cookie, sans leurs attributs", () => {
+  assert.equal(
+    cookieHeader([
+      "next-auth.csrf-token=abc%7Cdef; Path=/; HttpOnly; SameSite=Lax",
+      "next-auth.callback-url=http%3A%2F%2Flocalhost%3A3000; Path=/; SameSite=Lax",
+    ]),
+    "next-auth.csrf-token=abc%7Cdef; next-auth.callback-url=http%3A%2F%2Flocalhost%3A3000"
+  );
+  assert.equal(cookieHeader([]), "");
+});
+
+test("cookieHeader : un cookie effacé (valeur vide) n'est pas repris", () => {
+  assert.equal(
+    cookieHeader(["next-auth.session-token=; Path=/; Max-Age=0", "a=b; Path=/"]),
+    "a=b"
+  );
 });

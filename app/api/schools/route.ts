@@ -1,8 +1,9 @@
 /**
  * app/api/schools/route.ts — GET /api/schools (Étape 8.2)
  *
- * Route publique : liste des écoles ACTIVE avec recherche et pagination.
- * Utilisée par la page d'accueil et le formulaire /contribute.
+ * Liste des écoles ACTIVE avec recherche et pagination, pour la page d'accueil.
+ * Session exigée par le proxy, comme tout le site (plan gestion-contenu,
+ * étape 1).
  *
  * - Filtre status = ACTIVE obligatoire (architecture.md §7.1)
  * - Inclut campuses + programs pour la navigation

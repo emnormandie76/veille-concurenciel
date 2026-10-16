@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import SignOutButton from "./SignOutButton";
 import {
   readSchoolsResponse,
   summarizeSchools,
@@ -107,7 +108,7 @@ export default function HomePage() {
         <div className="public-nav-links">
           <Link href="/" className="public-nav-link">Écoles</Link>
           <Link href="/api-docs" className="public-nav-link">API</Link>
-          <Link href="/contribute" className="public-nav-cta">Contribuer</Link>
+          <SignOutButton className="public-nav-cta" />
         </div>
       </nav>
 
@@ -204,8 +205,7 @@ export default function HomePage() {
             <div className="empty-state-icon">🔭</div>
             <div className="empty-state-title">Aucune école trouvée</div>
             <p className="empty-state-text">
-              Essayez un autre terme de recherche ou{" "}
-              <Link href="/contribute" style={{ color: "var(--accent)" }}>contribuez</Link> en ajoutant des données.
+              Essayez un autre terme de recherche.
             </p>
           </div>
         ) : (

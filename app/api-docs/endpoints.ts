@@ -169,12 +169,13 @@ export const endpoints: Endpoint[] = [
     path: "",
     title: "Authentification, limites et erreurs",
     description:
-      "L'API publique v1 d'EduData France est en lecture seule et ne demande aucune clé. " +
-      "CORS est ouvert sur tous les endpoints (`Access-Control-Allow-Origin: *`) : vous pouvez l'appeler depuis un navigateur. " +
+      "L'API v1 d'EduData France est en lecture seule et réservée aux personnes connectées : elle lit la session du site. " +
+      "Depuis ce navigateur, une fois connecté, les appels passent ; sans session, la réponse est 401. " +
+      "Les exemples curl et Python ne passent donc pas tels quels, et un autre site ne peut pas l'appeler : des clés d'API pourront s'ajouter si un usage externe apparaît. " +
       "Seules les écoles actives sont exposées ; les identifiants sont des UUID. " +
       "Limite : 60 requêtes par minute et par adresse IP, au-delà la réponse est 429 avec un en-tête `Retry-After`. " +
       "Les listes paginées rendent `{ data, pagination }` ; les autres listes, un tableau. " +
-      "Une erreur rend `{ \"error\": \"…\" }` : 400 pour un paramètre invalide, 404 pour une ressource introuvable ou inactive, 500 pour une erreur interne. " +
+      "Une erreur rend `{ \"error\": \"…\" }` : 401 sans session, 400 pour un paramètre invalide, 404 pour une ressource introuvable ou inactive, 500 pour une erreur interne. " +
       "Exemple ci-contre : une école introuvable.",
     category: "introduction",
     params: [],

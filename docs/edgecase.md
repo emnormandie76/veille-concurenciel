@@ -15,6 +15,7 @@ Ce document trace les scénarios extrêmes (Edge Cases) identifiés pour la plat
 - **Impact :** Épuisement immédiat du quota gratuit Tavily (1000 req/mois), bloquant complètement la plateforme pour le reste du mois (y compris le Workflow B automatisé).
 - **Solution confirmée :** **Middleware Vercel (Rate Limiting par IP) + Validation basique de l'URL (vérification d'un format `https://` valide uniquement pour l'instant).**
 - **Mise en œuvre :** plus stricte que prévu. `proxy.ts` limite `/api/contribute` à 5 requêtes / 20 s / IP (Upstash si configuré). `POST /api/contribute` n'accepte que 5 URL `https:`, **du domaine officiel de l'école** ou de `CONTRIBUTION_ALLOWED_DOMAINS`, et rejette les hôtes internes (boucle locale, RFC1918, `.local`…).
+- **Depuis le 16 octobre 2026 :** l'entrée n'existe plus. `/contribute` et `/api/contribute` sont retirées (plan gestion-contenu, étape 1, décision D2), le site entier exige une session, et aucun fichier de Next.js ne crée plus de ticket `Pending_AI` (`test/no-public-tickets.test.ts`). Le risque se reposera avec le formulaire de signalement (étape 6), sans IA.
 
 ### Edge Case 2 : Données temporelles ambiguës ou archivées
 - **Contexte :** Extraction des prix ou des places disponibles.

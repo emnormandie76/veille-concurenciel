@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { guardAuth } from "@/lib/auth";
+import { guardManager } from "@/lib/auth";
 
 /**
  * GET /api/admin/schools-with-programs
@@ -9,7 +9,7 @@ import { guardAuth } from "@/lib/auth";
  * Utilisé par le sélecteur en cascade du formulaire de recherche manuelle (admin/cron).
  */
 export async function GET() {
-  const { error } = await guardAuth();
+  const { error } = await guardManager();
   if (error) return error;
 
   try {

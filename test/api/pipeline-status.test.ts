@@ -31,7 +31,7 @@ before(async () => {
 
 beforeEach(() => {
   backend.reset();
-  session.as("MODERATOR");
+  session.as("ADMIN");
 });
 
 afterEach(() => {
@@ -50,7 +50,16 @@ test("sans session : 401, et le backend n'est pas appelé", async () => {
 
   assert.equal(res.status, 401);
   assert.equal(backend.calls.length, 0);
-  assert.deepEqual(session.guards, ["guardAuth"]);
+  assert.deepEqual(session.guards, ["guardAdmin"]);
+});
+
+test("l'IA est réservée à l'admin : un USER ou un GESTIONNAIRE reçoit 403, le backend n'est pas appelé", async () => {
+  backend.env(LOCAL);
+  for (const profile of ["USER", "GESTIONNAIRE"] as const) {
+    session.as(profile);
+    assert.equal((await call()).status, 403, profile);
+  }
+  assert.equal(backend.calls.length, 0);
 });
 
 test("sans FASTAPI_URL (en ligne) : 503 BACKEND_LOCAL_ONLY immédiat, fetch jamais appelé", async () => {

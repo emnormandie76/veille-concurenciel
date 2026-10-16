@@ -1,4 +1,4 @@
-import { guardAuth, guardAdmin } from "@/lib/auth";
+import { guardManager } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -6,7 +6,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
@@ -31,7 +31,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
@@ -115,7 +115,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAdmin();
+  const { error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;

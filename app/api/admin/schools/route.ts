@@ -1,9 +1,9 @@
-import { guardAuth, guardAdmin } from "@/lib/auth";
+import { guardManager } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const { error } = await guardAuth();
+  const { error } = await guardManager();
   if (error) return error;
 
   try {
@@ -23,7 +23,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { error } = await guardAdmin();
+  const { error } = await guardManager();
   if (error) return error;
 
   try {

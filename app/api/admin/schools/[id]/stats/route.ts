@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { guardAuth } from "@/lib/auth";
+import { guardManager } from "@/lib/auth";
 import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
@@ -66,7 +66,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAuth();
+  const { error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;

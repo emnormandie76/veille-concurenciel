@@ -28,6 +28,16 @@
 > commercial » du §6 est à revoir par le propriétaire (plan, D7). Le §8.2
 > (préversions) reste à trancher. Le reste du mémo est valable ; l'étape 3 du
 > plan le révisera.
+>
+> **Ce que l'étape 1 du plan a rendu faux ici** (16 octobre 2026), à réviser à
+> l'étape 3 : `/contribute` et `/api/contribute` n'existent plus (D2), donc
+> les vérifications qui les citent (§10, lignes 3, 10 et 12) tombent, et
+> `CONTRIBUTION_ALLOWED_DOMAINS` n'est plus lue (§1 et §9) ; le site entier exige
+> une session (sans session : renvoi vers `/admin/login`, 401 sur les API) ;
+> les gardes sont `guardSignedIn`, `guardManager`, `guardAdmin` (plus de
+> `guardAuth`) ; la migration `20261016120000_three_roles` (rôles `USER`,
+> `GESTIONNAIRE`, `ADMIN`) doit passer sur `main` avant la fusion, et le
+> compte `MODERATOR` de la production deviendra `GESTIONNAIRE`.
 
 ---
 

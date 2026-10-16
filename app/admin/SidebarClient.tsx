@@ -3,11 +3,13 @@
 import { signOut } from "next-auth/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ROLE_LABELS, type UserRole } from "@/lib/roles";
+import { navFor } from "./nav";
 
 interface SidebarClientProps {
   user: {
     name?: string | null;
-    role: "ADMIN" | "MODERATOR";
+    role: UserRole;
   };
 }
 
@@ -26,42 +28,24 @@ export default function SidebarClient({ user }: SidebarClientProps) {
         </div>
         <div className="user-info">
           <div className="user-name">{user.name}</div>
-          <span className={`badge ${user.role === "ADMIN" ? "badge-admin" : "badge-moderator"}`}>
-            {user.role}
+          <span className={`badge ${user.role === "GESTIONNAIRE" ? "badge-moderator" : "badge-admin"}`}>
+            {ROLE_LABELS[user.role]}
           </span>
         </div>
       </div>
 
+      {/* Le menu ne montre que ce que le rôle permet ; le contrôle réel est
+          côté serveur (requirePage) et dans les API (app/admin/nav.ts). */}
       <nav className="sidebar-nav">
-        <Link
-          href="/admin/inbox"
-          className={`nav-link ${pathname.startsWith("/admin/inbox") ? "active" : ""}`}
-        >
-          <span>📬</span> Validation Inbox
-        </Link>
-
-        <Link
-          href="/admin/schools"
-          className={`nav-link ${pathname.startsWith("/admin/schools") ? "active" : ""}`}
-        >
-          <span>🏫</span> Écoles & Campus
-        </Link>
-
-        <Link
-          href="/admin/cron"
-          className={`nav-link ${pathname.startsWith("/admin/cron") ? "active" : ""}`}
-        >
-          <span>⚙️</span> Monitoring & Cron
-        </Link>
-
-        {user.role === "ADMIN" && (
+        {navFor(user.role).map((item) => (
           <Link
-            href="/admin/users"
-            className={`nav-link ${pathname === "/admin/users" ? "active" : ""}`}
+            key={item.href}
+            href={item.href}
+            className={`nav-link ${pathname.startsWith(item.href) ? "active" : ""}`}
           >
-            <span>👥</span> Modérateurs
+            <span>{item.icon}</span> {item.label}
           </Link>
-        )}
+        ))}
       </nav>
 
       <div className="sidebar-footer">

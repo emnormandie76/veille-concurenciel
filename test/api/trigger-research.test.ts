@@ -52,12 +52,14 @@ function call(body: unknown) {
   );
 }
 
-test("garde ADMIN : sans session 401, MODERATOR 403, et aucun appel au backend", async () => {
+test("garde ADMIN : sans session 401, USER et GESTIONNAIRE 403, et aucun appel au backend", async () => {
   backend.env(LOCAL);
 
   session.as("none");
   assert.equal((await call(PHASE1)).status, 401);
-  session.as("MODERATOR");
+  session.as("USER");
+  assert.equal((await call(PHASE1)).status, 403);
+  session.as("GESTIONNAIRE");
   assert.equal((await call(PHASE1)).status, 403);
 
   assert.deepEqual(session.guards, ["guardAdmin"]);

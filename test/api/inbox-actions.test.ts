@@ -63,13 +63,24 @@ async function quietly<T>(fn: () => Promise<T>): Promise<T> {
 
 // ── Purge ────────────────────────────────────────────────────────────
 
-test("purge : ADMIN seulement — sans session 401, MODERATOR 403, rien de supprimé", async () => {
+test("purge : ADMIN seulement — sans session 401, USER et GESTIONNAIRE 403, rien de supprimé", async () => {
   db.use({});
 
   session.as("none");
   assert.equal((await purge(json({ statuses: ["Validated"] }, "DELETE"))).status, 401);
-  session.as("MODERATOR");
-  assert.equal((await purge(json({ statuses: ["Validated"] }, "DELETE"))).status, 403);
+  for (const profile of ["USER", "GESTIONNAIRE"] as const) {
+    session.as(profile);
+    assert.equal((await purge(json({ statuses: ["Validated"] }, "DELETE"))).status, 403, profile);
+  }
+  assert.deepEqual(db.calls, []);
+});
+
+test("rejet et création de programmes : l'inbox est réservée à l'admin, un GESTIONNAIRE reçoit 403, rien de lu", async () => {
+  session.as("GESTIONNAIRE");
+  db.use({});
+
+  assert.equal((await reject(json({}, "PUT"), ctx())).status, 403);
+  assert.equal((await createPrograms(json({ programNames: ["MBA"] }), ctx())).status, 403);
   assert.deepEqual(db.calls, []);
 });
 
@@ -113,8 +124,8 @@ test("rejet : ticket absent → 404, rien d'écrit", async () => {
   assert.deepEqual(db.writes(), []);
 });
 
-test("rejet : un MODERATOR rejette un ticket en attente", async () => {
-  session.as("MODERATOR");
+test("rejet : un ADMIN rejette un ticket en attente", async () => {
+  session.as("ADMIN");
   db.use({
     contributionInbox: {
       findUnique: () => ({ id: TICKET_ID, status: "Pending_Admin" }),
@@ -178,7 +189,7 @@ test("création de programmes : ticket absent → 404, rien d'écrit", async () 
 });
 
 test("création de programmes : pour la seule école du ticket, et rattachés dans le ticket", async () => {
-  session.as("MODERATOR");
+  session.as("ADMIN");
   withMultiTicket();
 
   const res = await createPrograms(json({ programNames: [" MSc Data ", "", "MBA"] }), ctx());

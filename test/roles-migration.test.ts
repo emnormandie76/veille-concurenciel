@@ -38,9 +38,12 @@ function statements(name: string): string {
   return read(MIGRATIONS, name, "migration.sql").replace(/--.*$/gm, "");
 }
 
-test("la migration des trois rôles existe et passe après toutes les autres", () => {
+test("la migration des trois rôles existe et passe après celle qui avait posé l'ancienne contrainte", () => {
+  // Une migration ajoutée ensuite (étape 2…) ne la remet pas en cause : seul
+  // compte l'ordre par rapport à 20260902120000, qui posait ADMIN | MODERATOR.
   const all = migrations();
-  assert.equal(all.at(-1), MIGRATION);
+  assert.ok(all.includes(MIGRATION));
+  assert.ok(all.indexOf(MIGRATION) > all.indexOf("20260902120000_inbox_relations_and_enum_guards"));
 });
 
 test("la dernière contrainte posée sur User.role est celle de lib/roles.ts", () => {

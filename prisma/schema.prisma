@@ -7,13 +7,27 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(uuid())
-  username      String   @unique
-  password_hash String
+  id              String    @id @default(uuid())
+  // Ancien identifiant de connexion : seuls les comptes d'avant la liste
+  // blanche en ont un, et il ne sert que tant qu'ils n'ont pas d'adresse (D3).
+  username        String?   @unique
+  // Adresse de travail, en minuscules (D5 : domaine impose par lib/accounts.ts).
+  email           String?   @unique
+  // Nom affiche, choisi a la premiere connexion (D6).
+  display_name    String?
+  // Vide tant que la personne n'a pas fait sa premiere connexion (G5, D4).
+  password_hash   String?
   // USER | GESTIONNAIRE | ADMIN : contrainte CHECK en base (migration
   // 20261016120000_three_roles), liste de reference dans lib/roles.ts.
-  role          String   @default("USER")
-  createdAt     DateTime @default(now())
+  role            String    @default("USER")
+  // INVITED | ACTIVE | DISABLED : contraintes CHECK en base (migration
+  // 20261016150000_whitelist_accounts), liste de reference dans lib/accounts.ts.
+  status          String    @default("INVITED")
+  first_login_at  DateTime?
+  // Recopiee dans le jeton a la connexion ; augmentee a chaque remise a zero
+  // ou desactivation, elle coupe les sessions ouvertes (D20, lib/auth.ts).
+  session_version Int       @default(0)
+  createdAt       DateTime  @default(now())
 }
 
 model School {

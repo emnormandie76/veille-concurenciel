@@ -156,6 +156,7 @@ export default function ApiDocsPage() {
           <Link href="/api-docs" className="public-nav-link active">
             API
           </Link>
+          <Link href="/account" className="public-nav-link">Mon compte</Link>
           <SignOutButton className="public-nav-cta" />
         </div>
       </nav>

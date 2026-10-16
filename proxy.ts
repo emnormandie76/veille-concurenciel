@@ -1,14 +1,15 @@
 import { getToken } from "next-auth/jwt";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit, clientIp } from "@/lib/rate-limit";
-import { LOGIN_PATH, UNAUTHENTICATED_MESSAGE } from "@/lib/roles";
+import { FIRST_LOGIN_API, FIRST_LOGIN_PATH, LOGIN_PATH, UNAUTHENTICATED_MESSAGE } from "@/lib/roles";
 
 // ──────────────────────────────────────────────────────────────
 // Connexion obligatoire (plan gestion-contenu, étape 1 ; décision G6)
 //
 // Tout le site exige une session : pages, /api-docs, /api/schools/*, l'API v1
-// et le back-office. Seules la page de connexion et /api/auth/* (NextAuth)
-// restent libres. Sans session, une page renvoie vers la connexion avec
+// et le back-office. Seules restent libres la page de connexion, /api/auth/*
+// (NextAuth) et, depuis l'étape 2 (G5), la première connexion : sa page et sa
+// route (lib/roles.ts). Sans session, une page renvoie vers la connexion avec
 // `callbackUrl`, une route /api/* répond 401 en JSON.
 //
 // Le proxy ne regarde que l'existence d'une session valide (jeton signé avec
@@ -43,6 +44,11 @@ function tooManyRequests(message: string, retryAfterSeconds: number): NextRespon
 // Chemin sur lequel NextAuth vérifie les identifiants.
 const CREDENTIALS_CALLBACK = "/api/auth/callback/credentials";
 
+// Les deux portes d'entrée par mot de passe : la connexion et la première
+// connexion. Elles partagent un seul plafond, pour qu'alterner de l'une à
+// l'autre ne double pas les essais.
+const PASSWORD_ENTRIES = new Set([CREDENTIALS_CALLBACK, FIRST_LOGIN_API]);
+
 // ~5 tentatives de connexion par IP et par tranche de 15 minutes.
 const LOGIN_LIMIT = 5;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -55,11 +61,14 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const V1_LIMIT = 60;
 const V1_WINDOW_MS = 60 * 1000;
 
-/** Les seuls chemins ouverts sans session. */
+/** Les seuls chemins ouverts sans session (test/proxy.test.ts, FREE). */
 function isPublicPath(pathname: string): boolean {
   return (
     pathname === LOGIN_PATH ||
     pathname === `${LOGIN_PATH}/` ||
+    pathname === FIRST_LOGIN_PATH ||
+    pathname === `${FIRST_LOGIN_PATH}/` ||
+    pathname === FIRST_LOGIN_API ||
     pathname === "/api/auth" ||
     pathname.startsWith("/api/auth/")
   );
@@ -89,14 +98,15 @@ function refuse(req: NextRequest): NextResponse {
 
 /**
  * IMPORTANT — la limitation de débit de la connexion passe avant tout : le
- * POST des identifiants arrive sans session, et NextAuth le traite ensuite.
+ * POST des identifiants arrive sans session, et NextAuth (ou la route de
+ * première connexion) le traite ensuite.
  */
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1. Vérification des identifiants : plafonner la force brute.
-  //    Seul le POST est compté, c'est lui qui porte la soumission.
-  if (pathname === CREDENTIALS_CALLBACK) {
+  // 1. Connexion et première connexion : plafonner la force brute, sur un seul
+  //    compteur. Seul le POST est compté, c'est lui qui porte la soumission.
+  if (PASSWORD_ENTRIES.has(pathname)) {
     if (req.method === "POST") {
       const ip = clientIp(req.headers);
       if (!(await checkRateLimit(`login:${ip}`, LOGIN_LIMIT, LOGIN_WINDOW_MS))) {
@@ -110,7 +120,7 @@ export default async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. La connexion et NextAuth : libres.
+  // 2. La connexion, la première connexion et NextAuth : libres.
   if (isPublicPath(pathname)) return NextResponse.next();
 
   // 3. Tout le reste : session obligatoire.

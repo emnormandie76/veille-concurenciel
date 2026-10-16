@@ -8,7 +8,7 @@
  * ouverte (test/callback-url.test.ts).
  */
 
-import { LOGIN_PATH } from "@/lib/roles";
+import { FIRST_LOGIN_PATH, LOGIN_PATH } from "@/lib/roles";
 
 /** Sans destination demandée : les écoles du back-office (un USER est ensuite renvoyé vers le site). */
 export const AFTER_LOGIN_DEFAULT = "/admin/schools";
@@ -28,6 +28,9 @@ export function safeCallbackPath(value: string | null | undefined): string {
     return AFTER_LOGIN_DEFAULT;
   }
   if (url.origin !== "http://site.invalid") return AFTER_LOGIN_DEFAULT;
-  if (url.pathname === LOGIN_PATH || url.pathname.startsWith(`${LOGIN_PATH}/`)) return AFTER_LOGIN_DEFAULT;
+  // Ni la connexion ni la première connexion : une fois connecté, on n'y revient pas.
+  for (const page of [LOGIN_PATH, FIRST_LOGIN_PATH]) {
+    if (url.pathname === page || url.pathname.startsWith(`${page}/`)) return AFTER_LOGIN_DEFAULT;
+  }
   return `${url.pathname}${url.search}${url.hash}`;
 }

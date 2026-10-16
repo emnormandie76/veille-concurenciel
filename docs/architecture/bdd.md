@@ -10,6 +10,11 @@
 > `20261016120000_three_roles` : `User.role` passe aux trois rôles `USER`,
 > `GESTIONNAIRE`, `ADMIN` (défaut `USER`). Appliquée sur la branche Neon `dev`
 > seulement ; `main` à l'étape 3.
+> **16 octobre 2026** (étape 2) : 12e migration,
+> `20261016150000_whitelist_accounts` : la liste blanche. `User` reçoit
+> l'adresse, le nom affiché, l'état, la date de première connexion et la
+> version de session ; `username` et `password_hash` deviennent facultatifs.
+> Appliquée sur `dev` seulement ; `main` à l'étape 3.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -65,11 +70,16 @@ datasource db {
 // ── AUTHENTIFICATION ──────────────────────────────────────────────
 
 model User {
-  id            String   @id @default(uuid())
-  username      String   @unique
-  password_hash String                        // bcrypt, 12 tours
-  role          String   @default("USER")    // CHECK : "USER" | "GESTIONNAIRE" | "ADMIN"
-  createdAt     DateTime @default(now())
+  id              String    @id @default(uuid())
+  username        String?   @unique             // ancien identifiant : comptes d'avant la liste blanche (D3)
+  email           String?   @unique             // adresse de travail, en minuscules ; domaine imposé par lib/accounts.ts (D5)
+  display_name    String?                       // nom affiché (D6)
+  password_hash   String?                       // bcrypt, 12 tours ; vide tant que la personne n'a pas fait sa première connexion
+  role            String    @default("USER")    // CHECK : "USER" | "GESTIONNAIRE" | "ADMIN"
+  status          String    @default("INVITED") // CHECK : "INVITED" | "ACTIVE" | "DISABLED"
+  first_login_at  DateTime?
+  session_version Int       @default(0)         // recopiée dans le jeton ; augmentée par une remise à zéro (D20)
+  createdAt       DateTime  @default(now())
 }
 
 // ── ENTITÉS PRINCIPALES ───────────────────────────────────────────
@@ -331,11 +341,12 @@ ContributionInbox ──→ School? · Campus? · Program? · ProgramCampus?   (
 
 ## 4. Migrations
 
-Onze migrations, à appliquer par `prisma migrate deploy` (ou
+Douze migrations, à appliquer par `prisma migrate deploy` (ou
 `npm run db:migrate` par WebSocket). Les dix premières sont appliquées sur les
-branches Neon `main` et `dev` ; la onzième, `20261016120000_three_roles`, sur
-`dev` seulement au 16 octobre 2026 (elle part sur `main` à l'étape 3 du plan
-gestion-contenu, avant la fusion).
+branches Neon `main` et `dev` ; la onzième, `20261016120000_three_roles`, et la
+douzième, `20261016150000_whitelist_accounts`, sur `dev` seulement au
+16 octobre 2026 (elles partent sur `main` à l'étape 3 du plan gestion-contenu,
+avant la fusion).
 
 | Migration | Contenu |
 |-----------|---------|
@@ -350,6 +361,7 @@ gestion-contenu, avant la fusion).
 | `20260903120000_inbox_raw_report` | `ContributionInbox.raw_report` |
 | `20260904120000_program_campus_attachment` | `ProgramCampusAttachment`, `ProgramPlacement`, `Program.campus_policy_note` — **strictement additive** |
 | `20261016120000_three_roles` | **écrite à la main** : remplace `User_role_check` par les trois rôles (`USER`, `GESTIONNAIRE`, `ADMIN`, `NOT VALID`), convertit `MODERATOR` en `GESTIONNAIRE`, défaut `USER`. Ne touche que `User`, que le backend Python ne lit pas |
+| `20261016150000_whitelist_accounts` | **écrite à la main, additive** : `username` et `password_hash` facultatifs ; `email` (index unique `User_email_key`), `display_name`, `status` (les comptes existants `ACTIVE`, puis défaut `INVITED`), `first_login_at`, `session_version` (défaut 0) ; cinq contraintes `CHECK`, posées validées (les lignes existantes les tiennent) : `User_status_check`, `User_password_status_check` (actif ⇔ mot de passe), `User_invited_email_check`, `User_identity_check` (adresse ou identifiant), `User_email_lower_check`. Ne touche que `User` |
 
 ### Ce qu'il faut savoir sur la migration de rattrapage
 
@@ -517,6 +529,11 @@ une extraction réussie le supprime.
   `USER_ROLES` dans `lib/roles.ts` (`test/roles-migration.test.ts`). Les
   contrôles d'accès relisent le rôle en base et le comparent exactement
   (`lib/auth.ts`) ; un rôle inconnu ne vaut que `USER`.
+- **`User.status` est un `String` gardé par `CHECK (status IN ('INVITED', 'ACTIVE', 'DISABLED'))`**
+  (migration `20261016150000_whitelist_accounts`) ; la liste de référence est
+  `ACCOUNT_STATUSES` dans `lib/accounts.ts` (`test/accounts-migration.test.ts`).
+  Seul un compte `ACTIVE` se connecte et a une session (`lib/sign-in.ts`,
+  `lib/auth.ts`) ; la base garantit qu'il est le seul à avoir un mot de passe.
 - **Ne jamais créer une arête `ProgramCampus` depuis le rattachement campus.**
   Une arête ouvre une option dans les menus de capacité et une tâche `Capacity`
   facturée à chaque passe de Phase 2 ; elle passe par la validation d'une

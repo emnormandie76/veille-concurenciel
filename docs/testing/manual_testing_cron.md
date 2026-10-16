@@ -35,7 +35,7 @@ Le seed **n'a aucun mot de passe par défaut** : il lit `SEED_ADMIN_PASSWORD` et
 ```powershell
 $env:SEED_ADMIN_PASSWORD = "<un mot de passe fort>"; npx prisma db seed
 ```
-L'identifiant créé est `admin`, ou la valeur de `SEED_ADMIN_USERNAME`. Changez ensuite le mot de passe depuis `/admin/users` si besoin, et retirez la variable de votre session.
+Depuis l'étape 2 du plan gestion-contenu (16 octobre 2026), le seed exige aussi `SEED_ADMIN_EMAIL` (une adresse `@em-normandie.fr`) : le compte créé se connecte par cette adresse, `SEED_ADMIN_USERNAME` n'est plus lue. Changez ensuite le mot de passe depuis « Mon compte » (`/account`) si besoin, et retirez la variable de votre session.
 
 ### 1.3 Basculer le poste entre `dev` et `main`
 

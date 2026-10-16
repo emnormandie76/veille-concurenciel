@@ -48,3 +48,9 @@ test("la page de connexion elle-même n'est pas une destination", () => {
     assert.equal(safeCallbackPath(value), AFTER_LOGIN_DEFAULT, value);
   }
 });
+
+test("la première connexion non plus (étape 2) : une fois connecté, on n'y revient pas", () => {
+  for (const value of ["/admin/first-login", "/admin/first-login?callbackUrl=/", "/admin/first-login/"]) {
+    assert.equal(safeCallbackPath(value), AFTER_LOGIN_DEFAULT, value);
+  }
+});

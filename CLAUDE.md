@@ -29,7 +29,7 @@ parties : gestion de contenu, IA gelée.
 | [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan en cours** : décisions (§2), pièges (§4), étapes (§5), journal (§9) |
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** du gestionnaire de contenu : rôles, gardes, écrans, routes, tables, styles, tests |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
-| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (11 migrations) · API v1 (15 routes, session exigée) |
+| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (12 migrations) · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | mise en ligne sur Vercel |
 | [docs/cahier-des-charges-school-pipeline.md](docs/cahier-des-charges-school-pipeline.md) | exigences d'origine (l'en-tête renvoie au plan d'évolution) |
 | [docs/architecture/architecture.md](docs/architecture/architecture.md) | référence technique v2.1, centrée sur le pipeline IA : pour les questions sur l'IA, la sécurité (§10) et l'outillage (§10 bis) |
@@ -59,8 +59,20 @@ branche `gestion` :
   `20261016120000_three_roles` appliquée sur la branche Neon `dev`, **pas sur
   `main`** (étape 3) ; `npm run smoke` adapté et joué (vert) avec l'accord
   du propriétaire ;
-- prochaine : étape 2 (liste blanche, première connexion, écran des rôles),
-  après décision du propriétaire sur D3 à D6.
+- étape 2 (liste blanche, première connexion, écran des rôles) faite le
+  16 octobre et validée (le propriétaire demande le commit, le push et le
+  prompt de l'étape 3) : décisions D3
+  (l'ancien identifiant ne vaut que pour un compte sans adresse), D4 (remise
+  en première connexion, plus de mot de passe fixé pour un tiers), D5
+  (domaine `@em-normandie.fr` imposé), D6 (nom affiché à la première
+  connexion), D20 (un compte qui n'est plus actif perd sa session ; la lecture
+  reste possible jusqu'à 8 h), D21 (un compte actif se désactive au lieu
+  d'être supprimé) ; migration `20261016150000_whitelist_accounts` appliquée
+  sur la branche Neon `dev`, **pas sur `main`** (étape 3) ; smoke adapté :
+  le mur est vert, la phase connectée reste à rejouer après un redémarrage du
+  `next dev` du propriétaire (client Prisma périmé) ;
+- prochaine : étape 3 (mise en ligne), en commençant par le smoke connecté,
+  puis décision du propriétaire sur D7 et sur le §8.2 du mémo Vercel.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -129,8 +141,11 @@ L'étape en cours se lit dans le journal du plan (§9).
    chaque fois (plan §0).
 9. **Sécurité** (README) :
    - connexion obligatoire sur tout le site (`proxy.ts`), sauf la page de
-     connexion et `/api/auth/*` ; le proxy ne regarde que la session, jamais
-     le rôle ;
+     connexion, la première connexion (`/admin/first-login`,
+     `POST /api/first-login`) et `/api/auth/*` ; toute route posée sous
+     `/api/auth/` devient publique d'office ; le proxy ne regarde que la
+     session, jamais le rôle ; connexion et première connexion partagent un
+     seul plafond ;
    - chaque route admin attend une seule garde de `lib/auth.ts` :
      `guardSignedIn` (toute session), `guardManager` (gestionnaire ou admin)
      ou `guardAdmin` ; le niveau de chaque route est dans
@@ -138,7 +153,11 @@ L'étape en cours se lit dans le journal du plan (§9).
      `docs/architecture/gestion-contenu.md` §4 ; l'IA (inbox comprise) et les
      comptes sont en `guardAdmin` ; les écrans `/admin` passent par
      `requirePage` ; le rôle est relu en base à chaque requête (D1), jamais
-     pris dans le jeton ;
+     pris dans le jeton ; un compte qui n'est pas actif, ou dont la version
+     de session a changé, n'a plus de session (D20) ; ce que chacun fait pour
+     soi (« Mon compte ») est en `guardSignedIn`, sans identifiant dans la
+     route ; aucune opération ne laisse zéro admin actif
+     (`lib/account-admin.ts`) ;
    - tout contenu externe injecté dans un prompt passe par `wrap_source()` ;
    - `user_text` n'atteint jamais un modèle d'IA ;
    - `lib/rate-limit.ts` est la seule limitation de débit.
@@ -254,7 +273,7 @@ l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 | `npm run test:ts` | tests TypeScript (`node --test`), dont les routes de `test/api/` (banc : `test/helpers/`, requêtes relues contre le schéma Prisma) ; en CI, job `ts-tests` |
 | `npm run typecheck` / `npm run lint` | types / ESLint (les avertissements sont la dette connue) |
 | `npm run build` | `prisma generate` puis `next build` |
-| `npm run smoke` | smoke local contre `npm run dev` : le mur sans session (pages renvoyées vers la connexion, `/api/schools` et 15 `GET /api/v1/*` en 401), puis, si `APPVC_ADMIN_USERNAME` et `APPVC_ADMIN_PASSWORD` sont posées, les pages et l'API connecté. Lecture seule. Lit la base visée : **accord du propriétaire requis**. Pas en CI |
+| `npm run smoke` | smoke local contre `npm run dev` : le mur sans session (pages renvoyées vers la connexion, `/api/schools` et 15 `GET /api/v1/*` en 401), puis, si `APPVC_ADMIN_PASSWORD` et `APPVC_ADMIN_EMAIL` (ou, tant que le compte n'a pas d'adresse, `APPVC_ADMIN_USERNAME`) sont posées, les pages et l'API connecté. Lecture seule. Lit la base visée : **accord du propriétaire requis**. Pas en CI |
 | `npm run db:status` | état des migrations, en lecture seule : CLI Prisma sans `DB_DRIVER`, WebSocket avec `DB_DRIVER=neon-ws` |
 | `npm run db:migrate` / `db:migrate:dry` | applique les migrations en attente / passe à blanc terminée par `ROLLBACK` (`neon-ws` seulement). Jamais sans l'accord du propriétaire |
 | `npx prisma migrate status` / `deploy` | la CLI Prisma directe : exige le port 5432, fermé sur le réseau de l'établissement |

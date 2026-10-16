@@ -1,92 +1,71 @@
-import { guardAdmin } from "@/lib/auth";
+/**
+ * /api/admin/users — La liste blanche (plan gestion-contenu, étape 2)
+ *
+ * - GET : tous les comptes, invités compris (adresse, nom affiché, rôle, état,
+ *   date de première connexion) ; jamais l'empreinte du mot de passe ;
+ * - POST : ajoute une adresse de travail à la liste (G5). Le compte naît
+ *   invité, `USER`, sans mot de passe : la personne le choisira à sa première
+ *   connexion (app/api/first-login). **Aucun e-mail n'est envoyé** ; l'admin
+ *   prévient le collègue lui-même. Seul le domaine imposé est accepté (D5).
+ *
+ * Garde : `guardAdmin` (test/helpers/access-policy.ts).
+ */
+
 import { NextResponse } from "next/server";
+import { guardAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
-import { validatePassword } from "@/lib/password";
+import { validateWorkEmail } from "@/lib/accounts";
+import { ACCOUNT_SELECT, invalidBody, prismaCode } from "@/lib/account-admin";
+import { readJsonObject } from "@/lib/request-body";
+
+const ALREADY_LISTED = "Cette adresse est déjà sur la liste.";
 
 export async function GET() {
-  const guard = await guardAdmin();
-  if (guard.error) return guard.error;
-  const session = guard.session;
-
-  // Seul le rôle ADMIN gère les comptes
-  if (session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Accès interdit : Rôle ADMIN requis" }, { status: 403 });
-  }
-
-  try {
-    const users = await prisma.user.findMany({
-      orderBy: { username: "asc" },
-      select: {
-        id: true,
-        username: true,
-        role: true,
-        createdAt: true,
-      },
-    });
-    return NextResponse.json(users);
-  } catch (error) {
-    console.error("GET /api/admin/users error:", error);
-    return NextResponse.json({ error: "Erreur serveur lors de la récupération des utilisateurs" }, { status: 500 });
-  }
-}
-
-export async function POST(request: Request) {
   const { error } = await guardAdmin();
   if (error) return error;
 
   try {
-    const body = await request.json();
-    const { username, password } = body;
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: "asc" },
+      select: ACCOUNT_SELECT,
+    });
+    return NextResponse.json(users);
+  } catch (err) {
+    console.error("GET /api/admin/users error:", err);
+    return NextResponse.json({ error: "Erreur serveur lors de la récupération des comptes." }, { status: 500 });
+  }
+}
 
-    if (!username || !password) {
-      return NextResponse.json({ error: "Nom d'utilisateur et mot de passe requis" }, { status: 400 });
-    }
+export async function POST(request: Request) {
+  const { session, error } = await guardAdmin();
+  if (error) return error;
 
-    const cleanUsername = username.trim();
-    const cleanPassword = password.trim();
+  const body = await readJsonObject(request);
+  if (!body) return invalidBody();
 
-    if (cleanUsername.length < 3) {
-      return NextResponse.json({ error: "Le nom d'utilisateur doit faire au moins 3 caractères" }, { status: 400 });
-    }
+  const checked = validateWorkEmail(body.email);
+  if (checked.error !== null) {
+    return NextResponse.json({ error: checked.error }, { status: 400 });
+  }
+  const email = checked.email;
 
-    const policyError = validatePassword(cleanPassword);
-    if (policyError) {
-      return NextResponse.json({ error: policyError }, { status: 400 });
-    }
+  try {
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) return NextResponse.json({ error: ALREADY_LISTED }, { status: 409 });
 
-    // Vérifier l'existence
-    const existing = await prisma.user.findUnique({
-      where: { username: cleanUsername },
+    // G5 : un invité USER. Rôle et état écrits ici : les défauts de la base
+    // (USER, INVITED) ne décident pas à la place de la route.
+    const account = await prisma.user.create({
+      data: { email, role: "USER", status: "INVITED" },
+      select: ACCOUNT_SELECT,
     });
 
-    if (existing) {
-      return NextResponse.json({ error: "Ce nom d'utilisateur est déjà utilisé" }, { status: 400 });
-    }
-
-    // Hasher avec bcryptjs (12 rounds)
-    const password_hash = await bcrypt.hash(cleanPassword, 12);
-
-    // D18 (plan gestion-contenu) : jusqu'à l'écran des rôles de l'étape 2, cet
-    // écran crée des gestionnaires, comme il créait des modérateurs. Le rôle est
-    // écrit ici : le défaut de la base (USER) ne doit pas décider à sa place.
-    const newUser = await prisma.user.create({
-      data: {
-        username: cleanUsername,
-        password_hash,
-        role: "GESTIONNAIRE",
-      },
-      select: {
-        id: true,
-        username: true,
-        role: true,
-        createdAt: true,
-      },
-    });
-
-    return NextResponse.json(newUser, { status: 201 });
-  } catch (error) {
-    console.error("POST /api/admin/users error:", error);
-    return NextResponse.json({ error: "Erreur serveur lors de la création de l'utilisateur" }, { status: 500 });
+    console.log(`[audit] adresse ajoutée à la liste : user=${account.id} par=${session.user.id}`);
+    return NextResponse.json(account, { status: 201 });
+  } catch (err) {
+    // Deux ajouts de la même adresse au même moment : l'index unique tranche.
+    if (prismaCode(err) === "P2002") return NextResponse.json({ error: ALREADY_LISTED }, { status: 409 });
+    console.error("POST /api/admin/users error:", err);
+    return NextResponse.json({ error: "Erreur serveur lors de l'ajout de l'adresse." }, { status: 500 });
   }
 }

@@ -13,6 +13,11 @@
  * trois gardes (`guardSignedIn`, `guardManager`, `guardAdmin`), et D1 : le rôle
  * est relu en base à chaque appel, celui du jeton ne compte pas ; un compte
  * supprimé n'a plus de session.
+ *
+ * Étape 2, D20 : un compte qui n'est pas actif (invité après une remise en
+ * première connexion, désactivé) n'a plus de session, et un jeton émis avant la
+ * dernière remise à zéro non plus : sa version ne correspond plus à celle du
+ * compte. Le nom et l'adresse viennent de la base.
  */
 
 import { afterEach, before, test, mock } from "node:test";
@@ -21,7 +26,9 @@ import assert from "node:assert/strict";
 import { installFakePrisma } from "./helpers/fake-prisma";
 import { schemaErrors } from "./helpers/prisma-schema";
 
-type Session = { user?: { id: string; name: string; email: string | null; role: string } } | null;
+type Session = {
+  user?: { id: string; name: string; email: string | null; role: string; sessionVersion?: number };
+} | null;
 
 let current: Session = null;
 /** Vrai : getServerSession lève, comme sur un cookie corrompu (JWEDecryptionFailed). */
@@ -72,19 +79,37 @@ before(async () => {
   roles = await import("../lib/roles");
 });
 
-/** Une session NextAuth dont le jeton porte `tokenRole`. */
-const sessionOf = (id: string, tokenRole: string): Session => ({
-  user: { id, name: `compte-${id}`, email: null, role: tokenRole },
+/** Une session NextAuth dont le jeton porte `tokenRole` et la version `sessionVersion` (D20). */
+const sessionOf = (id: string, tokenRole: string, sessionVersion = 0): Session => ({
+  user: { id, name: `compte-${id}`, email: null, role: tokenRole, sessionVersion },
 });
 
-/** La base ne connaît que ces comptes. */
-function accounts(rows: Record<string, string>) {
+interface AccountRow {
+  role: string;
+  status?: string;
+  session_version?: number;
+  email?: string | null;
+  display_name?: string | null;
+  username?: string | null;
+}
+
+/** La base ne connaît que ces comptes : un rôle seul vaut un compte actif, en version 0. */
+function accounts(rows: Record<string, string | AccountRow>) {
   db.use({
     user: {
-      findUnique: ({ where }: { where: { id: string } }) =>
-        where.id in rows
-          ? { id: where.id, username: `compte-${where.id}`, role: rows[where.id] }
-          : null,
+      findUnique: ({ where }: { where: { id: string } }) => {
+        if (!(where.id in rows)) return null;
+        const row = rows[where.id];
+        return {
+          id: where.id,
+          username: `compte-${where.id}`,
+          email: null,
+          display_name: null,
+          status: "ACTIVE",
+          session_version: 0,
+          ...(typeof row === "string" ? { role: row } : row),
+        };
+      },
     },
   });
 }
@@ -125,6 +150,17 @@ test("hasAccess : chaque niveau et les rôles qui l'atteignent", () => {
     );
   }
 });
+
+/** Où `requirePage` redirige, ou null s'il rend la session. */
+async function destination(fn: () => Promise<unknown>): Promise<string | null> {
+  try {
+    await fn();
+    return null;
+  } catch (error) {
+    if (error instanceof Redirected) return error.url;
+    throw error;
+  }
+}
 
 // ── getSession : le rôle relu en base (D1) ────────────────────────────
 
@@ -208,6 +244,63 @@ test("D1 : un compte supprimé n'a plus de session, même avec un jeton valide",
   }
 });
 
+// ── D20 : un compte qui n'est plus actif, un jeton d'avant la remise à zéro ──
+
+/** Les trois gardes refusent par 401, et l'écran renvoie vers la connexion. */
+async function locksOut(label: string) {
+  assert.equal(await auth.getSession(), null, label);
+  for (const guard of [auth.guardSignedIn, auth.guardManager, auth.guardAdmin]) {
+    assert.equal((await guard()).error?.status, 401, label);
+  }
+  assert.equal(await destination(() => auth.requirePage("signedIn")), "/admin/login", label);
+}
+
+test("D20 : un compte remis en première connexion n'a plus de session, même avec un jeton valide", async () => {
+  current = sessionOf("u-remis", "ADMIN", 0);
+  accounts({ "u-remis": { role: "ADMIN", status: "INVITED", session_version: 1 } });
+  await locksOut("invité, version passée");
+
+  // Même si la remise à zéro n'avait pas changé la version : l'état suffit.
+  accounts({ "u-remis": { role: "ADMIN", status: "INVITED", session_version: 0 } });
+  await locksOut("invité, même version");
+});
+
+test("D20 : un compte désactivé n'a plus de session, même avec un jeton valide", async () => {
+  current = sessionOf("u-parti", "GESTIONNAIRE", 2);
+  accounts({ "u-parti": { role: "GESTIONNAIRE", status: "DISABLED", session_version: 2 } });
+  await locksOut("désactivé");
+});
+
+test("D20 : un jeton d'avant la remise à zéro ne revit pas quand la personne refait sa première connexion", async () => {
+  // Jeton émis en version 0 ; le compte a été remis à zéro (version 1), puis réactivé.
+  current = sessionOf("u-repris", "ADMIN", 0);
+  accounts({ "u-repris": { role: "ADMIN", status: "ACTIVE", session_version: 1 } });
+  await locksOut("ancienne version");
+
+  // Le jeton de la nouvelle connexion, lui, vaut.
+  current = sessionOf("u-repris", "ADMIN", 1);
+  assert.equal((await auth.guardAdmin()).error, null);
+});
+
+test("D20 : un jeton sans version, émis avant ce code, ne vaut plus", async () => {
+  for (const sessionVersion of [undefined, "0", null]) {
+    current = { user: { id: "u-ancien", name: "ancien", email: null, role: "ADMIN", sessionVersion: sessionVersion as never } };
+    accounts({ "u-ancien": "ADMIN" });
+    await locksOut(`version ${String(sessionVersion)}`);
+  }
+});
+
+test("le nom et l'adresse viennent de la base : le nom affiché, sinon l'ancien identifiant", async () => {
+  current = sessionOf("u-nom", "USER");
+  accounts({ "u-nom": { role: "USER", display_name: "Jean Dupont", email: "jean.dupont@em-normandie.fr" } });
+  assert.deepEqual(await auth.getSession(), {
+    user: { id: "u-nom", name: "Jean Dupont", email: "jean.dupont@em-normandie.fr", role: "USER" },
+  });
+
+  accounts({ "u-nom": { role: "USER", display_name: null, username: "jdupont", email: null } });
+  assert.equal((await auth.getSession())?.user.name, "jdupont");
+});
+
 test("un rôle inconnu en base ne donne que les droits d'un USER", async () => {
   const warn = mock.method(console, "warn", () => {});
   try {
@@ -283,16 +376,6 @@ test("piège 1 : l'ancienne garde « toute session » n'est plus exportée", () 
 });
 
 // ── Les pages : requirePage ───────────────────────────────────────────
-
-async function destination(fn: () => Promise<unknown>): Promise<string | null> {
-  try {
-    await fn();
-    return null;
-  } catch (error) {
-    if (error instanceof Redirected) return error.url;
-    throw error;
-  }
-}
 
 test("requirePage : sans session, vers la connexion", async () => {
   current = null;

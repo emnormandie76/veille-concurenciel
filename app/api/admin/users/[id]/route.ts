@@ -1,41 +1,61 @@
-import { guardAdmin } from "@/lib/auth";
+/**
+ * DELETE /api/admin/users/[id] — Retirer un invité de la liste (G5)
+ *
+ * Plan gestion-contenu, étape 2 : tant que la personne ne s'est pas connectée,
+ * l'admin peut retirer son adresse ; elle ne peut plus alors ni faire sa
+ * première connexion ni se connecter. Un compte actif ou désactivé ne se
+ * supprime plus : il se désactive (D21), pour que son nom reste dans
+ * l'historique des modifications (étape 5).
+ *
+ * On ne se retire pas soi-même. Garde : `guardAdmin`.
+ */
+
 import { NextResponse } from "next/server";
+import { guardAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await guardAdmin();
-  if (guard.error) return guard.error;
-  const session = guard.session;
+  const { session, error } = await guardAdmin();
+  if (error) return error;
 
   const { id } = await params;
 
+  if (session.user.id === id) {
+    return NextResponse.json(
+      { error: "Vous ne pouvez pas retirer votre propre compte." },
+      { status: 400 }
+    );
+  }
+
   try {
-    // Empêcher l'admin de se supprimer lui-même
-    if (session.user.id === id) {
+    const target = await prisma.user.findUnique({ where: { id }, select: { status: true } });
+    if (!target) {
+      return NextResponse.json({ error: "Compte introuvable." }, { status: 404 });
+    }
+    if (target.status !== "INVITED") {
       return NextResponse.json(
-        { error: "Sécurité : Vous ne pouvez pas supprimer votre propre compte connecté." },
-        { status: 400 }
+        { error: "Ce compte a déjà servi : désactivez-le au lieu de le retirer, son nom reste ainsi dans l'historique." },
+        { status: 409 }
       );
     }
 
-    const userToFind = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!userToFind) {
-      return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
+    // L'état est revérifié par l'écriture : un invité qui fait sa première
+    // connexion à cet instant n'est pas supprimé.
+    const { count } = await prisma.user.deleteMany({ where: { id, status: "INVITED" } });
+    if (count === 0) {
+      return NextResponse.json(
+        { error: "Ce compte vient de changer d'état. Rechargez la liste." },
+        { status: 409 }
+      );
     }
 
-    await prisma.user.delete({
-      where: { id },
-    });
-
-    return NextResponse.json({ message: "Utilisateur supprimé avec succès" });
-  } catch (error) {
-    console.error(`DELETE /api/admin/users/${id} error:`, error);
-    return NextResponse.json({ error: "Erreur serveur lors de la suppression de l'utilisateur" }, { status: 500 });
+    console.log(`[audit] invité retiré de la liste : user=${id} par=${session.user.id}`);
+    return NextResponse.json({ message: "Adresse retirée de la liste." });
+  } catch (err) {
+    console.error(`DELETE /api/admin/users/${id} error:`, err);
+    return NextResponse.json({ error: "Erreur serveur lors du retrait de l'adresse." }, { status: 500 });
   }
 }

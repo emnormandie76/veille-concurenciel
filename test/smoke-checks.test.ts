@@ -25,6 +25,7 @@ import {
   localBaseUrl,
   nextErrorMarker,
   PAGES,
+  smokeCredentials,
   V1_ROUTES,
 } from "../scripts/lib/smoke-checks";
 
@@ -154,8 +155,9 @@ test("judge : page — 200, HTML, sans marque d'erreur", () => {
 
 // ── Le mur : sans session ────────────────────────────────────────────
 
-test("PAGES : la contribution n'en fait plus partie (D2)", () => {
+test("PAGES : la contribution n'en fait plus partie (D2) ; « Mon compte » y entre (étape 2)", () => {
   assert.equal((PAGES as readonly string[]).includes("/contribute"), false);
+  assert.equal((PAGES as readonly string[]).includes("/account"), true);
 });
 
 test("buildWallChecks : la connexion, chaque page, le back-office, /api/schools et les 15 routes v1", () => {
@@ -163,7 +165,10 @@ test("buildWallChecks : la connexion, chaque page, le back-office, /api/schools 
   const byPath = new Map(checks.map((c) => [c.path, c.expect]));
 
   assert.equal(byPath.get("/admin/login"), "open");
-  for (const page of ["/", "/api-docs", "/admin/schools"]) assert.equal(byPath.get(page), "redirect", page);
+  // Étape 2 : la première connexion est ouverte, « Mon compte » ne l'est pas.
+  assert.equal(byPath.get("/admin/first-login"), "open");
+  assert.equal(checks.filter((c) => c.expect === "open").length, 2);
+  for (const page of ["/", "/api-docs", "/admin/schools", "/account"]) assert.equal(byPath.get(page), "redirect", page);
   assert.ok(checks.some((c) => c.expect === "redirect" && c.path.startsWith("/schools/")));
   assert.equal(byPath.get("/api/schools"), "unauthorized");
   assert.equal(checks.filter((c) => c.path.startsWith("/api/v1/")).length, V1_ROUTES.length);
@@ -218,4 +223,32 @@ test("cookieHeader : un cookie effacé (valeur vide) n'est pas repris", () => {
     cookieHeader(["next-auth.session-token=; Path=/; Max-Age=0", "a=b; Path=/"]),
     "a=b"
   );
+});
+
+// ── Les identifiants du smoke (étape 2, D3) ──────────────────────────
+
+test("smokeCredentials : l'adresse d'abord, l'ancien identifiant tant qu'il n'y a pas d'adresse", () => {
+  const password = "valeur-de-test-jamais-affichee";
+  assert.deepEqual(
+    smokeCredentials({ APPVC_ADMIN_EMAIL: "admin@em-normandie.fr", APPVC_ADMIN_USERNAME: "admin", APPVC_ADMIN_PASSWORD: password }),
+    { login: "admin@em-normandie.fr", password, from: "APPVC_ADMIN_EMAIL" }
+  );
+  assert.deepEqual(smokeCredentials({ APPVC_ADMIN_USERNAME: "admin", APPVC_ADMIN_PASSWORD: password }), {
+    login: "admin",
+    password,
+    from: "APPVC_ADMIN_USERNAME",
+  });
+  assert.deepEqual(smokeCredentials({ APPVC_ADMIN_EMAIL: "", APPVC_ADMIN_USERNAME: "admin", APPVC_ADMIN_PASSWORD: password })?.from, "APPVC_ADMIN_USERNAME");
+});
+
+test("smokeCredentials : sans mot de passe ou sans identifiant, la phase connectée est sautée", () => {
+  for (const env of [
+    {},
+    { APPVC_ADMIN_EMAIL: "admin@em-normandie.fr" },
+    { APPVC_ADMIN_PASSWORD: "x" },
+    { APPVC_ADMIN_EMAIL: "", APPVC_ADMIN_USERNAME: "", APPVC_ADMIN_PASSWORD: "x" },
+    { APPVC_ADMIN_USERNAME: "admin", APPVC_ADMIN_PASSWORD: "" },
+  ]) {
+    assert.equal(smokeCredentials(env), null, JSON.stringify(Object.keys(env)));
+  }
 });

@@ -49,6 +49,10 @@ export default function SidebarClient({ user }: SidebarClientProps) {
       </nav>
 
       <div className="sidebar-footer">
+        {/* Hors du menu par rôle : « Mon compte » est une page du site, ouverte à toute session. */}
+        <Link href="/account" className={`nav-link ${pathname.startsWith("/account") ? "active" : ""}`}>
+          <span>👤</span> Mon compte
+        </Link>
         <button onClick={() => signOut({ callbackUrl: "/admin/login" })} className="btn btn-secondary logout-btn">
           <span>🚪</span> Déconnexion
         </button>

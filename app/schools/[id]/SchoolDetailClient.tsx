@@ -147,6 +147,7 @@ export default function SchoolDetailClient({ school }: { school: School }) {
         <div className="public-nav-links">
           <Link href="/" className="public-nav-link">Écoles</Link>
           <Link href="/api-docs" className="public-nav-link">API</Link>
+          <Link href="/account" className="public-nav-link">Mon compte</Link>
           <SignOutButton className="public-nav-cta" />
         </div>
       </nav>

@@ -11,8 +11,13 @@
  * que l'existence d'une session valide : le rôle se contrôle côté serveur, dans
  * les gardes et les layouts (D1 ; test/auth.test.ts, test/api/access-matrix).
  *
- * Il plafonne aussi la connexion (5 tentatives / 15 min / IP) et l'API v1
- * (60 / min / IP, pour les requêtes connectées).
+ * Étape 2 (G5) : la première connexion (`/admin/first-login` et
+ * `POST /api/first-login`) s'ajoute délibérément aux entrées libres. Sa route
+ * n'est pas sous `/api/auth/*`, où tout devient public d'office.
+ *
+ * Il plafonne aussi la connexion et la première connexion, tentatives
+ * confondues (5 / 15 min / IP), et l'API v1 (60 / min / IP, pour les requêtes
+ * connectées).
  *
  * Le matcher se teste avec `unstable_doesMiddlewareMatch` de
  * `next/experimental/testing/server`. La documentation de Next 16 cite
@@ -97,12 +102,16 @@ function appUrls(): string[] {
     .sort();
 }
 
-/** Les seules entrées libres : la connexion et NextAuth. */
-const FREE = (url: string) => url === "/admin/login" || url.startsWith("/api/auth/");
+/** Les seules entrées libres : la connexion, la première connexion (étape 2) et NextAuth. */
+const FREE = (url: string) =>
+  url === "/admin/login" ||
+  url === "/admin/first-login" ||
+  url === "/api/first-login" ||
+  url.startsWith("/api/auth/");
 
 test("l'énumération voit les pages, les API et la connexion", () => {
   const urls = appUrls();
-  for (const url of ["/", "/admin/login", "/api-docs", "/schools/x-1", "/api/v1/schools", "/api/schools", "/api/auth/a/b", "/api/admin/inbox"]) {
+  for (const url of ["/", "/admin/login", "/admin/first-login", "/api/first-login", "/account", "/api-docs", "/schools/x-1", "/api/v1/schools", "/api/schools", "/api/auth/a/b", "/api/admin/inbox", "/api/admin/account"]) {
     assert.ok(urls.includes(url), url);
   }
 });
@@ -170,9 +179,26 @@ test("un jeton forgé avec un autre secret ne vaut pas session", async () => {
   assert.equal((await proxy(request("/api/v1/schools", { cookie, ip: "192.0.2.203" }), EVENT))?.status, 401);
 });
 
-test("la connexion et NextAuth restent libres", async () => {
-  for (const url of ["/admin/login", "/admin/login/", "/api/auth/session", "/api/auth/csrf", "/api/auth/providers", "/api/auth/signout"]) {
-    assert.ok(passes(await proxy(request(url), EVENT)), url);
+test("la connexion, la première connexion et NextAuth restent libres", async () => {
+  for (const url of [
+    "/admin/login",
+    "/admin/login/",
+    "/admin/first-login",
+    "/admin/first-login/",
+    "/api/first-login",
+    "/api/auth/session",
+    "/api/auth/csrf",
+    "/api/auth/providers",
+    "/api/auth/signout",
+  ]) {
+    assert.ok(passes(await proxy(request(url, { ip: "192.0.2.220" }), EVENT)), url);
+  }
+});
+
+test("seules ces entrées sont libres : un voisin de la première connexion ne l'est pas", async () => {
+  for (const url of ["/admin/first-login/x", "/api/first-login/x", "/api/first-loginx", "/admin/first-loginx", "/account", "/api/admin/account"]) {
+    const res = await proxy(request(url, { ip: "192.0.2.221" }), EVENT);
+    assert.equal(passes(res), false, url);
   }
 });
 
@@ -221,6 +247,44 @@ test("varier x-forwarded-for ne contourne pas le plafond quand la plateforme don
     statuses.push(passes(res) ? 200 : (res as Response).status);
   }
   assert.equal(statuses[5], 429);
+});
+
+test("la première connexion est plafonnée comme la connexion : la 6ᵉ tentative en 15 minutes → 429", async () => {
+  const results: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const res = await proxy(request("/api/first-login", { method: "POST", ip: "203.0.113.20" }), EVENT);
+    results.push(passes(res) ? 200 : (res as Response).status);
+  }
+  assert.deepEqual(results, [200, 200, 200, 200, 200, 429]);
+  const blocked = await proxy(request("/api/first-login", { method: "POST", ip: "203.0.113.20" }), EVENT);
+  assert.equal(blocked?.headers.get("Retry-After"), "900");
+  assert.match((await blocked!.json()).error, /Trop de tentatives/);
+});
+
+test("connexion et première connexion partagent leur plafond : alterner ne double pas les essais", async () => {
+  const ip = "203.0.113.21";
+  const statuses: number[] = [];
+  for (const path of [
+    "/api/auth/callback/credentials",
+    "/api/first-login",
+    "/api/auth/callback/credentials",
+    "/api/first-login",
+    "/api/auth/callback/credentials",
+    "/api/first-login",
+    "/api/auth/callback/credentials",
+  ]) {
+    const res = await proxy(request(path, { method: "POST", ip }), EVENT);
+    statuses.push(passes(res) ? 200 : (res as Response).status);
+  }
+  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 429, 429]);
+});
+
+test("seul le POST de la première connexion est compté", async () => {
+  for (let i = 0; i < 10; i++) {
+    assert.ok(passes(await proxy(request("/api/first-login", { ip: "203.0.113.22" }), EVENT)));
+    assert.ok(passes(await proxy(request("/admin/first-login", { ip: "203.0.113.22" }), EVENT)));
+  }
+  assert.ok(passes(await proxy(request("/api/first-login", { method: "POST", ip: "203.0.113.22" }), EVENT)));
 });
 
 test("seul le POST de connexion est compté ; une autre IP a son propre seau", async () => {

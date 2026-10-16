@@ -48,8 +48,16 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: "Administrateur",
 };
 
-/** La page de connexion, seule page du site ouverte sans session. */
+/** La page de connexion, ouverte sans session. */
 export const LOGIN_PATH = "/admin/login";
+
+/**
+ * La première connexion (étape 2, G5) : la page et sa route, ouvertes sans
+ * session (proxy.ts). La route n'est pas sous /api/auth/*, où tout chemin
+ * devient public d'office.
+ */
+export const FIRST_LOGIN_PATH = "/admin/first-login";
+export const FIRST_LOGIN_API = "/api/first-login";
 
 /**
  * Où renvoyer une personne connectée qui n'a pas le rôle d'une page : le site

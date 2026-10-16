@@ -10,8 +10,9 @@
  * déclare que les méthodes dont il a besoin ; tout appel est enregistré dans
  * `calls`, y compris celui d'une méthode non déclarée, qui lève une erreur
  * explicite. `$transaction(fn)` appelle `fn` avec le même faux, et une
- * exception lancée dans `fn` remonte ; la forme tableau attend chaque requête
- * dans l'ordre.
+ * exception lancée dans `fn` remonte ; ses options (`isolationLevel`…) sont
+ * gardées dans les `args` de l'appel `$transaction`. La forme tableau attend
+ * chaque requête dans l'ordre.
  *
  * Le faux n'a pas de base, donc pas de rollback réel. Il retient en revanche
  * ce qu'une transaction en échec a annulé : les appels faits pendant un
@@ -97,9 +98,9 @@ export function createFakePrisma(initial: FakeModels = {}): FakePrisma {
       }
     );
 
-  async function transaction(arg: unknown): Promise<unknown> {
+  async function transaction(arg: unknown, options?: unknown): Promise<unknown> {
     if (typeof arg === "function") {
-      calls.push({ model: "$transaction", method: "callback", args: [] });
+      calls.push({ model: "$transaction", method: "callback", args: options === undefined ? [] : [options] });
       const start = calls.length;
       try {
         return await arg(prisma);

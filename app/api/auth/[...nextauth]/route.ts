@@ -1,84 +1,42 @@
 /**
- * app/api/auth/[...nextauth]/route.ts — NextAuth v4 Credentials Provider (Étape 1.3)
+ * app/api/auth/[...nextauth]/route.ts — NextAuth v4, identifiants de la liste blanche
  *
- * - Credentials Provider : vérifie username/password contre la table User (bcrypt)
+ * - Credentials Provider : l'adresse de travail (ou l'ancien identifiant d'un
+ *   compte qui n'a pas encore d'adresse, D3) et le mot de passe, vérifiés par
+ *   lib/sign-in.ts (bcrypt) ; seul un compte actif se connecte
  * - Rôle copié dans le jeton JWT et la session (USER | GESTIONNAIRE | ADMIN), à
  *   titre indicatif : il peut dater de 8 h, les gardes et les écrans relisent
  *   le rôle en base à chaque requête (lib/auth.ts, décision D1 du plan
  *   gestion-contenu)
- * - Pas d'auto-inscription : l'Admin crée les comptes (architecture.md §3.6)
+ * - Version de session copiée dans le jeton : lib/auth.ts la compare à celle
+ *   du compte, ce qui coupe les sessions d'un compte remis à zéro (D20)
+ * - Pas d'auto-inscription : l'admin ajoute les adresses à la liste blanche, et
+ *   la personne choisit son mot de passe à sa première connexion
+ *   (app/api/first-login, décision G5)
  */
 
 import NextAuth, { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
-import { isUserRole, type UserRole } from "@/lib/roles";
+import { authCallbacks, verifyCredentials } from "@/lib/sign-in";
+import { LOGIN_PATH } from "@/lib/roles";
 
 export const authOptions: AuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        username: { label: "Nom d'utilisateur", type: "text" },
+        login: { label: "Adresse e-mail", type: "text" },
         password: { label: "Mot de passe", type: "password" },
       },
-      async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) {
-          return null;
-        }
-
-        // Recherche de l'utilisateur en BDD
-        const user = await prisma.user.findUnique({
-          where: { username: credentials.username },
-        });
-
-        if (!user) {
-          return null; // Utilisateur inconnu → refus silencieux
-        }
-
-        // Vérification du mot de passe avec bcrypt
-        const isValid = await bcrypt.compare(
-          credentials.password,
-          user.password_hash
-        );
-
-        if (!isValid) {
-          return null; // Mauvais mot de passe → refus silencieux
-        }
-
-        // Retourner l'objet user (inclus dans le JWT)
-        return {
-          id: user.id,
-          name: user.username,
-          email: null,
-          role: isUserRole(user.role) ? user.role : "USER",
-        };
-      },
+      // Refus silencieux (null) : ni le compte ni la raison ne sont dits.
+      authorize: (credentials) => verifyCredentials(credentials?.login, credentials?.password),
     }),
   ],
 
-  callbacks: {
-    // Inclure le rôle dans le JWT token
-    async jwt({ token, user }) {
-      if (user) {
-        token.role = (user as unknown as { role: UserRole }).role;
-        token.id = user.id;
-      }
-      return token;
-    },
-    // Inclure le rôle dans la session (accessible côté client)
-    async session({ session, token }) {
-      if (session.user) {
-        (session.user as { role?: UserRole; id?: string }).role = token.role as UserRole;
-        (session.user as { role?: UserRole; id?: string }).id = token.id as string;
-      }
-      return session;
-    },
-  },
+  callbacks: authCallbacks,
 
   pages: {
-    signIn: "/admin/login", // Page de login personnalisée (Étape 2)
+    signIn: LOGIN_PATH,
   },
 
   session: {

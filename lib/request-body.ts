@@ -59,6 +59,16 @@ export async function readOptionalJsonObject(request: Request): Promise<Optional
   return { ok: true, body: parsed as Record<string, unknown> };
 }
 
+/**
+ * Lit un corps JSON **obligatoire**, qui doit être un objet (routes des
+ * comptes, plan gestion-contenu, étape 2) ; `null` s'il est absent,
+ * illisible, ou n'est pas un objet.
+ */
+export async function readJsonObject(request: Request): Promise<Record<string, unknown> | null> {
+  const read = await readOptionalJsonObject(request);
+  return read.ok ? read.body : null;
+}
+
 /** Le corps de l'admin s'il porte au moins une clé, sinon `null` (« tel quel »). */
 export function adminCorrections(body: Record<string, unknown> | null): Record<string, unknown> | null {
   return body && Object.keys(body).length > 0 ? body : null;

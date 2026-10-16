@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import {
   adminCorrections,
   invalidNumbersMessage,
+  readJsonObject,
   readOptionalJsonObject,
   readOptionalNumbers,
 } from "../lib/request-body";
@@ -47,6 +48,14 @@ test("une valeur JSON qui n'est pas un objet est refusée", async () => {
   for (const body of ["null", "[]", "[{}]", "42", "true", '"texte"']) {
     const result = await readOptionalJsonObject(request(body));
     assert.equal(result.ok, false, body);
+  }
+});
+
+test("readJsonObject (routes des comptes) : un objet JSON, sinon null, corps absent compris", async () => {
+  assert.deepEqual(await readJsonObject(request('{"email":"a@b"}')), { email: "a@b" });
+  assert.deepEqual(await readJsonObject(request("{}")), {});
+  for (const body of [undefined, "", "   ", "{pas du json", "null", "[]", "42", '"texte"']) {
+    assert.equal(await readJsonObject(request(body)), null, String(body));
   }
 });
 

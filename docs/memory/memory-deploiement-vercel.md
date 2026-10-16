@@ -38,6 +38,15 @@
 > `guardAuth`) ; la migration `20261016120000_three_roles` (rôles `USER`,
 > `GESTIONNAIRE`, `ADMIN`) doit passer sur `main` avant la fusion, et le
 > compte `MODERATOR` de la production deviendra `GESTIONNAIRE`.
+>
+> **Ce que l'étape 2 a changé** (16 octobre 2026) : les comptes entrent par la
+> liste blanche (§3.3, réécrit) ; la migration `20261016150000_whitelist_accounts`
+> doit passer sur `main` avant la fusion, après celle des trois rôles ; la
+> première connexion (`/admin/first-login`, `POST /api/first-login`) est
+> ouverte sans session et plafonnée avec la connexion (5 tentatives par
+> 15 minutes et par IP, tentatives confondues : Upstash compte aussi pour
+> elle, §5) ; les jetons émis avant ce code ne valent plus (version de
+> session), chacun se reconnecte une fois.
 
 ---
 
@@ -121,7 +130,7 @@ le code n'échappe aux quatre listes ci-dessous.**
 | `INTERNAL_API_TOKEN` (anciens noms : `FASTAPI_INTERNAL_TOKEN`, `INTERNAL_TOKEN`) | Secret du poste. Sans `FASTAPI_URL`, il ne sert à rien, et il ne doit pas quitter le poste. |
 | `DB_DRIVER`, `NEON_WS_BRIDGE_PORT` | Réglages du réseau de l'établissement. Next.js ne les lit pas ; seuls les scripts de migration et le backend les lisent. **`DB_DRIVER` ne se pose jamais sur Vercel.** |
 | `GEMINI_API_KEY`, `TAVILY_API_KEY*` | Backend seulement : aucune route Next ne les lit. |
-| `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_USERNAME` | Le seed ne se joue pas sur la base partagée (§3.3). |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Le seed ne se joue pas sur la base partagée (§3.3). `SEED_ADMIN_USERNAME` n'est plus lue depuis l'étape 2 du plan gestion-contenu. |
 | `DIRECT_URL`, `SHADOW_DATABASE_URL` | Elles ne servent qu'aux migrations, qui partent du poste (§3). Le build ne se connecte pas (vérifié, §4), et `prisma.config.ts` se replie sur `DATABASE_URL`. **Changement** : la version du 1er septembre exigeait `DIRECT_URL` sur Vercel « pour le build » ; c'était faux. |
 | `CRON_*`, `PIPELINE_JOB_ROTATION_RETENTION_DAYS`, `CROWDSOURCING_*`, `PHASE2_MAX_PROGRAMS` | `backend/.env` seulement. |
 
@@ -195,14 +204,33 @@ doit rester compatible avec lui (ajouter d'abord, retirer dans une version
 suivante). Jamais `prisma db push`, `migrate dev` ni `migrate reset`, et jamais
 de modification d'un `migration.sql` déjà appliqué (son empreinte change).
 
-### 3.3. Les comptes : pas de seed
+### 3.3. Les comptes : pas de seed, la liste blanche
 
-La base partagée a déjà ses comptes : 1 ADMIN et 1 MODERATOR (relevé par le
-MCP Neon le 15 octobre 2026, `SELECT` seulement). **Les comptes du site en
-ligne sont ceux du développement.** Ne jamais lancer `prisma db seed` contre
-cette base (règle 8). Si ces mots de passe ont servi pendant le développement,
-les changer dès la mise en ligne : `/admin/users`, « Changer mon mot de
-passe » ou « Réinitialiser ».
+La base partagée a déjà ses comptes : 1 ADMIN et 1 MODERATOR sur `main`
+(relevé par le MCP Neon le 16 octobre 2026, `SELECT` seulement ; le MODERATOR
+deviendra GESTIONNAIRE avec la migration des trois rôles). **Les comptes du
+site en ligne sont ceux du développement.** Ne jamais lancer `prisma db seed`
+contre cette base (règle 8) : il ne sert qu'à une base vierge.
+
+Depuis l'étape 2 du plan gestion-contenu, **personne n'entre autrement que par
+la liste blanche**, et aucun e-mail n'est envoyé :
+
+1. après la mise en ligne, l'admin se connecte encore par son **ancien
+   identifiant** : ces deux comptes n'ont pas d'adresse (D3) ;
+2. dans `/admin/users`, il renseigne l'adresse `@em-normandie.fr` de chacun
+   (« Renseigner l'adresse ») ; dès lors, l'identifiant ne sert plus, la
+   connexion se fait par l'adresse ;
+3. si ces mots de passe ont servi pendant le développement, chacun change le
+   sien sur « Mon compte » (`/account`) ; ou l'admin remet le compte en
+   première connexion (le mot de passe est effacé, la personne en choisit un
+   nouveau). Personne ne fixe plus le mot de passe d'un autre ;
+4. il ajoute ensuite les adresses de l'équipe (« Ajouter une adresse ») et
+   prévient chaque collègue, qui choisit son mot de passe sur
+   `/admin/first-login`.
+
+**Risque accepté (G5)** : tant qu'un invité n'a pas fait sa première
+connexion, quelqu'un qui connaît son adresse peut choisir le mot de passe à sa
+place. Prévenir les collègues juste après l'ajout réduit la fenêtre.
 
 ---
 

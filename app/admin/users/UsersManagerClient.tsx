@@ -1,260 +1,268 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ROLE_LABELS, isUserRole } from "@/lib/roles";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { ROLE_LABELS, USER_ROLES, isUserRole, type UserRole } from "@/lib/roles";
+import { STATUS_LABELS, WORK_EMAIL_DOMAIN, isAccountStatus } from "@/lib/accounts";
 
-interface User {
+/**
+ * L'écran des comptes (plan gestion-contenu, étape 2), réservé à ADMIN.
+ *
+ * - G5 : ajouter l'adresse de travail d'un collègue à la liste, sans envoi
+ *   d'e-mail ; retirer un invité ;
+ * - changer un rôle (un admin peut en nommer un autre) ;
+ * - D4 : remettre un compte en première connexion (aussi la réactivation d'un
+ *   compte désactivé) ; D21 : désactiver un compte actif ;
+ * - D3 : renseigner l'adresse d'un compte d'avant la liste blanche.
+ *
+ * Les règles (dernier admin, domaine, états) sont tenues par les routes
+ * /api/admin/users/** ; cet écran n'en montre que les boutons utiles.
+ */
+
+interface Account {
   id: string;
-  username: string;
+  email: string | null;
+  username: string | null;
+  display_name: string | null;
   role: string;
+  status: string;
+  first_login_at: string | null;
   createdAt: string;
 }
+
+type DialogKind = "add" | "role" | "reset" | "disable" | "remove" | "email";
+type Dialog = { kind: DialogKind; account: Account | null } | null;
 
 interface UsersManagerClientProps {
   currentUserId: string;
 }
 
-/** Doit rester aligné sur MIN_PASSWORD_LENGTH de lib/password.ts. */
-const MIN_PASSWORD_LENGTH = 12;
+const ROLE_BADGES: Record<UserRole, string> = {
+  USER: "badge-user",
+  GESTIONNAIRE: "badge-moderator",
+  ADMIN: "badge-admin",
+};
+
+const STATUS_BADGES: Record<string, string> = {
+  INVITED: "badge-invited",
+  ACTIVE: "badge-active",
+  DISABLED: "badge-inactive",
+};
+
+const formatDate = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })
+    : "—";
+
+/** Le nom d'un compte à l'écran : son nom affiché, sinon son adresse, sinon son ancien identifiant. */
+const nameOf = (account: Account) => account.display_name || account.email || account.username || "Compte sans nom";
+
+/** Lit le message d'erreur d'une réponse ; un corps illisible donne le message par défaut. */
+async function errorOf(res: Response, fallback: string): Promise<string> {
+  const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
+  return typeof body?.error === "string" ? body.error : fallback;
+}
 
 export default function UsersManagerClient({ currentUserId }: UsersManagerClientProps) {
-  const [users, setUsers] = useState<User[]>([]);
+  const router = useRouter();
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  // États des formulaires/modals
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
-  const [modalSuccess, setModalSuccess] = useState<string | null>(null);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [roleInput, setRoleInput] = useState<UserRole>("USER");
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchAccounts = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/users");
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Impossible de charger les comptes");
-      }
-      const data = await res.json();
-      setUsers(data);
-    } catch (err: any) {
-      setError(err.message || "Une erreur est survenue");
+      if (!res.ok) throw new Error(await errorOf(res, "Impossible de charger les comptes."));
+      setAccounts((await res.json()) as Account[]);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Une erreur est survenue.");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    void fetchAccounts();
+  }, [fetchAccounts]);
+
+  const open = (kind: DialogKind, account: Account | null = null) => {
+    setDialog({ kind, account });
+    setDialogError(null);
+    setEmailInput("");
+    setRoleInput(account && isUserRole(account.role) ? account.role : "USER");
+  };
+  const close = () => {
+    if (!busy) setDialog(null);
   };
 
-  const handleAddUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setActionLoading(true);
-    setModalError(null);
-
-    try {
-      const res = await fetch("/api/admin/users", {
+  /** Envoie l'action du dialogue ouvert, puis recharge la liste. */
+  const submit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!dialog) return;
+    const { kind, account } = dialog;
+    const target = account ? `/api/admin/users/${account.id}` : "/api/admin/users";
+    const requests: Record<DialogKind, { url: string; method: string; body?: unknown; done: string }> = {
+      add: {
+        url: "/api/admin/users",
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
+        body: { email: emailInput },
+        done: "Adresse ajoutée à la liste. Aucun e-mail n'est envoyé : prévenez la personne, qui choisira son mot de passe sur la page de première connexion.",
+      },
+      role: { url: `${target}/role`, method: "PATCH", body: { role: roleInput }, done: "Rôle mis à jour." },
+      reset: {
+        url: `${target}/reset`,
+        method: "POST",
+        done: "Compte remis en première connexion. Prévenez la personne : elle choisira un nouveau mot de passe avec son adresse.",
+      },
+      disable: { url: `${target}/disable`, method: "POST", done: "Compte désactivé." },
+      remove: { url: target, method: "DELETE", done: "Adresse retirée de la liste." },
+      email: { url: `${target}/email`, method: "PATCH", body: { email: emailInput }, done: "Adresse enregistrée : l'ancien identifiant ne sert plus à se connecter." },
+    };
+    const request = requests[kind];
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Erreur lors de la création");
-      }
-
-      setUsername("");
-      setPassword("");
-      setIsAddModalOpen(false);
-      fetchUsers();
-    } catch (err: any) {
-      setModalError(err.message);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!selectedUser) return;
-
-    if (selectedUser.id === currentUserId) {
-      setModalError("Erreur : vous ne pouvez pas supprimer votre propre compte.");
-      return;
-    }
-
-    setActionLoading(true);
-    setModalError(null);
-
+    setBusy(true);
+    setDialogError(null);
     try {
-      const res = await fetch(`/api/admin/users/${selectedUser.id}`, {
-        method: "DELETE",
+      const res = await fetch(request.url, {
+        method: request.method,
+        headers: request.body === undefined ? undefined : { "Content-Type": "application/json" },
+        body: request.body === undefined ? undefined : JSON.stringify(request.body),
       });
-
-      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Erreur lors de la suppression");
+        setDialogError(await errorOf(res, "L'opération a échoué."));
+        return;
       }
-
-      setSelectedUser(null);
-      setIsDeleteModalOpen(false);
-      fetchUsers();
-    } catch (err: any) {
-      setModalError(err.message);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUser) return;
-
-    setModalError(null);
-    setModalSuccess(null);
-
-    if (newPassword !== confirmPassword) {
-      setModalError("Les deux saisies du nouveau mot de passe ne correspondent pas.");
-      return;
-    }
-
-    setActionLoading(true);
-    const isSelf = selectedUser.id === currentUserId;
-
-    try {
-      const res = await fetch(`/api/admin/users/${selectedUser.id}/password`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          isSelf ? { currentPassword, newPassword } : { newPassword }
-        ),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Erreur lors du changement de mot de passe");
+      setDialog(null);
+      setNotice(request.done);
+      // Un admin qui se rétrograde perd cet écran : le serveur le renvoie ailleurs.
+      if (kind === "role" && account?.id === currentUserId && roleInput !== "ADMIN") {
+        router.refresh();
+        return;
       }
-
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setModalSuccess(data.message || "Mot de passe mis à jour.");
-    } catch (err: any) {
-      setModalError(err.message);
+      fetchAccounts();
+    } catch {
+      setDialogError("Une erreur réseau est survenue. Veuillez réessayer.");
     } finally {
-      setActionLoading(false);
+      setBusy(false);
     }
   };
 
-  const openAddModal = () => {
-    setUsername("");
-    setPassword("");
-    setModalError(null);
-    setIsAddModalOpen(true);
-  };
-
-  const openDeleteModal = (user: User) => {
-    setSelectedUser(user);
-    setModalError(null);
-    setIsDeleteModalOpen(true);
-  };
-
-  const openPasswordModal = (user: User) => {
-    setSelectedUser(user);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setModalError(null);
-    setModalSuccess(null);
-    setIsPasswordModalOpen(true);
-  };
-
-  const closePasswordModal = () => {
-    setSelectedUser(null);
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setIsPasswordModalOpen(false);
-  };
+  const account = dialog?.account ?? null;
+  const isSelf = (a: Account) => a.id === currentUserId;
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1>Comptes</h1>
-          <p className="page-title-desc">Créez et supprimez les comptes des gestionnaires de la plateforme.</p>
+          <p className="page-title-desc">
+            Ajoutez l&apos;adresse de travail d&apos;un collègue : à sa première connexion, il choisit son mot de
+            passe. Aucun e-mail n&apos;est envoyé.
+          </p>
         </div>
-        <button className="btn btn-primary" onClick={openAddModal}>
-          <span>➕</span> Créer un gestionnaire
+        <button className="btn btn-primary" onClick={() => open("add")}>
+          <span>➕</span> Ajouter une adresse
         </button>
       </div>
 
       {error && (
-        <div className="alert alert-danger">
+        <div className="alert alert-danger" role="alert">
           <span>⚠️</span>
           <span>{error}</span>
+        </div>
+      )}
+      {notice && (
+        <div className="alert alert-success" role="status">
+          <span>✅</span>
+          <span>{notice}</span>
         </div>
       )}
 
       {loading ? (
         <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des utilisateurs...
+          Chargement des comptes...
         </div>
       ) : (
         <div className="table-container">
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Nom d'utilisateur</th>
+                <th>Compte</th>
                 <th>Rôle</th>
-                <th>Date de création</th>
+                <th>État</th>
+                <th>Première connexion</th>
                 <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id} style={user.id === currentUserId ? { background: "rgba(59, 130, 246, 0.03)" } : {}}>
+              {accounts.map((a) => (
+                <tr key={a.id} style={isSelf(a) ? { background: "rgba(59, 130, 246, 0.03)" } : {}}>
                   <td style={{ fontWeight: 600 }}>
-                    {user.username} {user.id === currentUserId && <span style={{ color: "var(--accent)", fontSize: "0.8rem", marginLeft: "6px" }}>(vous)</span>}
+                    {nameOf(a)}
+                    {isSelf(a) && (
+                      <span style={{ color: "var(--accent)", fontSize: "0.8rem", marginLeft: "6px" }}>(vous)</span>
+                    )}
+                    {a.display_name && a.email && <span className="user-secondary">{a.email}</span>}
+                    {!a.email && (
+                      <span className="user-secondary">
+                        Identifiant « {a.username} » : aucune adresse renseignée
+                      </span>
+                    )}
                   </td>
                   <td>
-                    <span className={`badge ${user.role === "GESTIONNAIRE" ? "badge-moderator" : "badge-admin"}`}>
-                      {isUserRole(user.role) ? ROLE_LABELS[user.role] : user.role}
+                    <span className={`badge ${isUserRole(a.role) ? ROLE_BADGES[a.role] : "badge-user"}`}>
+                      {isUserRole(a.role) ? ROLE_LABELS[a.role] : a.role}
                     </span>
                   </td>
-                  <td style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                    {new Date(user.createdAt).toLocaleDateString("fr-FR", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    })}
+                  <td>
+                    <span className={`badge ${STATUS_BADGES[a.status] ?? "badge-inactive"}`}>
+                      {isAccountStatus(a.status) ? STATUS_LABELS[a.status] : a.status}
+                    </span>
                   </td>
+                  <td style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>{formatDate(a.first_login_at)}</td>
                   <td style={{ textAlign: "right" }}>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => openPasswordModal(user)}
-                      style={{ padding: "6px 12px", marginRight: "8px" }}
-                    >
-                      {user.id === currentUserId ? "Changer mon mot de passe" : "Réinitialiser"}
-                    </button>
-                    {user.id !== currentUserId && (
-                      <button className="btn btn-danger btn-sm" onClick={() => openDeleteModal(user)} style={{ padding: "6px 12px" }}>
-                        Supprimer
+                    <div className="users-actions" style={{ display: "inline-flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => open("role", a)}>
+                        Changer le rôle
                       </button>
-                    )}
+                      {!a.email && (
+                        <button className="btn btn-secondary btn-sm" onClick={() => open("email", a)}>
+                          Renseigner l&apos;adresse
+                        </button>
+                      )}
+                      {isSelf(a) ? (
+                        <Link className="btn btn-secondary btn-sm" href="/account">
+                          Mon compte
+                        </Link>
+                      ) : (
+                        <>
+                          {a.status === "INVITED" && (
+                            <button className="btn btn-danger btn-sm" onClick={() => open("remove", a)}>
+                              Retirer
+                            </button>
+                          )}
+                          {a.status !== "INVITED" && a.email && (
+                            <button className="btn btn-secondary btn-sm" onClick={() => open("reset", a)}>
+                              {a.status === "DISABLED" ? "Réactiver" : "Remettre en première connexion"}
+                            </button>
+                          )}
+                          {a.status === "ACTIVE" && (
+                            <button className="btn btn-danger btn-sm" onClick={() => open("disable", a)}>
+                              Désactiver
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -263,172 +271,127 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
         </div>
       )}
 
-      {/* Modal Ajout */}
-      {isAddModalOpen && (
+      {dialog && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="users-dialog-title">
             <div className="modal-header">
-              <h3 className="modal-title">Créer un gestionnaire</h3>
-              <button className="modal-close" onClick={() => setIsAddModalOpen(false)}>
-                ✕
-              </button>
-            </div>
-            {modalError && (
-              <div className="alert alert-danger" style={{ marginBottom: "16px" }}>
-                <span>⚠️ </span>
-                <span>{modalError}</span>
-              </div>
-            )}
-            <form onSubmit={handleAddUser}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="new-username">Nom d'utilisateur</label>
-                <input
-                  id="new-username"
-                  type="text"
-                  className="form-control"
-                  placeholder="ex: mod_france"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="new-password">Mot de passe provisoire</label>
-                <input
-                  id="new-password"
-                  type="password"
-                  className="form-control"
-                  placeholder={`Minimum ${MIN_PASSWORD_LENGTH} caractères`}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  minLength={MIN_PASSWORD_LENGTH}
-                  required
-                />
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setIsAddModalOpen(false)}>
-                  Annuler
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
-                  {actionLoading ? "Création..." : "Créer le compte"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Changement de mot de passe */}
-      {isPasswordModalOpen && selectedUser && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">
-                {selectedUser.id === currentUserId
-                  ? "Changer mon mot de passe"
-                  : `Réinitialiser le mot de passe de ${selectedUser.username}`}
+              <h3 className="modal-title" id="users-dialog-title">
+                {dialog.kind === "add" && "Ajouter une adresse à la liste"}
+                {dialog.kind === "role" && account && `Rôle de ${nameOf(account)}`}
+                {dialog.kind === "reset" && account &&
+                  (account.status === "DISABLED" ? `Réactiver ${nameOf(account)} ?` : `Remettre ${nameOf(account)} en première connexion ?`)}
+                {dialog.kind === "disable" && account && `Désactiver ${nameOf(account)} ?`}
+                {dialog.kind === "remove" && account && `Retirer ${account.email} de la liste ?`}
+                {dialog.kind === "email" && account && `Adresse de ${nameOf(account)}`}
               </h3>
-              <button className="modal-close" onClick={closePasswordModal}>
+              <button className="modal-close" onClick={close} aria-label="Fermer">
                 ✕
               </button>
             </div>
-            {modalError && (
-              <div className="alert alert-danger" style={{ marginBottom: "16px" }}>
+
+            {dialogError && (
+              <div className="alert alert-danger" role="alert" style={{ marginBottom: "16px" }}>
                 <span>⚠️ </span>
-                <span>{modalError}</span>
+                <span>{dialogError}</span>
               </div>
             )}
-            {modalSuccess && (
-              <div className="alert alert-success" style={{ marginBottom: "16px" }}>
-                <span>✅ </span>
-                <span>{modalSuccess}</span>
-              </div>
-            )}
-            <form onSubmit={handleChangePassword}>
-              {selectedUser.id === currentUserId && (
+
+            <form onSubmit={submit}>
+              {(dialog.kind === "add" || dialog.kind === "email") && (
                 <div className="form-group">
-                  <label className="form-label" htmlFor="current-password">Mot de passe actuel</label>
+                  <label className="form-label" htmlFor="users-email">
+                    Adresse e-mail de travail
+                  </label>
                   <input
-                    id="current-password"
-                    type="password"
+                    id="users-email"
+                    type="email"
                     className="form-control"
-                    autoComplete="current-password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder={`prenom.nom@${WORK_EMAIL_DOMAIN}`}
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
                     required
+                    autoFocus
                   />
+                  <p className="form-hint">
+                    {dialog.kind === "add"
+                      ? `Seules les adresses @${WORK_EMAIL_DOMAIN} sont acceptées. La personne devient « ${ROLE_LABELS.USER} » ; vous pourrez changer son rôle ensuite. Aucun e-mail n'est envoyé : prévenez-la vous-même.`
+                      : `Dès que l'adresse est enregistrée, l'identifiant « ${account?.username} » ne permet plus de se connecter : la personne utilise son adresse, avec son mot de passe actuel.`}
+                  </p>
                 </div>
               )}
-              <div className="form-group">
-                <label className="form-label" htmlFor="change-new-password">Nouveau mot de passe</label>
-                <input
-                  id="change-new-password"
-                  type="password"
-                  className="form-control"
-                  placeholder={`Minimum ${MIN_PASSWORD_LENGTH} caractères`}
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  minLength={MIN_PASSWORD_LENGTH}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="confirm-new-password">Confirmer le nouveau mot de passe</label>
-                <input
-                  id="confirm-new-password"
-                  type="password"
-                  className="form-control"
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  minLength={MIN_PASSWORD_LENGTH}
-                  required
-                />
-              </div>
+
+              {dialog.kind === "role" && account && (
+                <div className="form-group">
+                  <label className="form-label" htmlFor="users-role">
+                    Rôle
+                  </label>
+                  <select
+                    id="users-role"
+                    className="form-control"
+                    value={roleInput}
+                    onChange={(e) => setRoleInput(e.target.value as UserRole)}
+                  >
+                    {USER_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {ROLE_LABELS[role]}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="form-hint">
+                    {ROLE_LABELS.USER} : consulte. {ROLE_LABELS.GESTIONNAIRE} : ajoute, modifie et supprime le contenu.{" "}
+                    {ROLE_LABELS.ADMIN} : gère aussi les comptes et l&apos;IA. Il reste toujours au moins un administrateur
+                    actif.
+                    {isSelf(account) && " Si vous quittez le rôle administrateur, vous perdez l'accès à cet écran."}
+                  </p>
+                </div>
+              )}
+
+              {dialog.kind === "reset" && account && (
+                <p className="modal-text">
+                  Le mot de passe de <strong>{nameOf(account)}</strong> est effacé et ses sessions ouvertes sont coupées.
+                  Son rôle et son nom sont gardés. La personne choisira un nouveau mot de passe sur la page de première
+                  connexion, avec son adresse <strong>{account.email}</strong>. Aucun e-mail n&apos;est envoyé : prévenez-la
+                  vous-même.
+                </p>
+              )}
+
+              {dialog.kind === "disable" && account && (
+                <p className="modal-text">
+                  <strong>{nameOf(account)}</strong> ne pourra plus se connecter, et ses sessions ouvertes sont coupées. Son
+                  nom reste dans l&apos;historique des modifications. Vous pourrez réactiver le compte en le remettant en
+                  première connexion.
+                </p>
+              )}
+
+              {dialog.kind === "remove" && account && (
+                <p className="modal-text">
+                  La personne ne s&apos;est pas encore connectée. Une fois l&apos;adresse retirée, elle ne pourra plus faire
+                  sa première connexion.
+                </p>
+              )}
+
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={closePasswordModal} disabled={actionLoading}>
-                  Fermer
+                <button type="button" className="btn btn-secondary" onClick={close} disabled={busy}>
+                  Annuler
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
-                  {actionLoading ? "Mise à jour..." : "Mettre à jour"}
+                <button
+                  type="submit"
+                  className={`btn ${dialog.kind === "disable" || dialog.kind === "remove" ? "btn-danger" : "btn-primary"}`}
+                  disabled={busy}
+                >
+                  {busy
+                    ? "En cours…"
+                    : {
+                        add: "Ajouter à la liste",
+                        role: "Enregistrer le rôle",
+                        reset: account?.status === "DISABLED" ? "Réactiver" : "Remettre en première connexion",
+                        disable: "Désactiver le compte",
+                        remove: "Retirer de la liste",
+                        email: "Enregistrer l'adresse",
+                      }[dialog.kind]}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Suppression */}
-      {isDeleteModalOpen && selectedUser && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ color: "var(--danger)" }}>Supprimer le compte ?</h3>
-              <button className="modal-close" onClick={() => setIsDeleteModalOpen(false)}>
-                ✕
-              </button>
-            </div>
-            {modalError && (
-              <div className="alert alert-danger" style={{ marginBottom: "16px" }}>
-                <span>⚠️ </span>
-                <span>{modalError}</span>
-              </div>
-            )}
-            <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", marginBottom: "20px", lineHeight: "1.5" }}>
-              Êtes-vous sûr de vouloir supprimer définitivement le compte <strong>{selectedUser.username}</strong> ? Son accès à la plateforme sera immédiatement révoqué.
-            </p>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => {
-                setSelectedUser(null);
-                setIsDeleteModalOpen(false);
-              }} disabled={actionLoading}>
-                Annuler
-              </button>
-              <button className="btn btn-danger" onClick={handleDeleteUser} disabled={actionLoading}>
-                {actionLoading ? "Révocation..." : "Confirmer la suppression"}
-              </button>
-            </div>
           </div>
         </div>
       )}

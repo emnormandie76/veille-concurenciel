@@ -46,13 +46,35 @@ cp .env.example backend/.env              # idem, section FastAPI
 npx prisma generate
 npm run db:status                         # état des migrations (lecture seule)
 npm run db:migrate                        # applique l'historique complet
-npx prisma db seed                        # exige SEED_ADMIN_PASSWORD
+npx prisma db seed                        # base vierge seulement : exige SEED_ADMIN_EMAIL et SEED_ADMIN_PASSWORD
 
 # 4. Lancement (Windows)
 npm run local                             # backend (fenêtre à part) puis Next.js
 ```
 
 Le back-office est sur `/admin`, la connexion sur `/admin/login`.
+
+### Comptes
+
+Plan gestion-contenu, étape 2 ([`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §2) :
+
+- **Pas d'inscription libre, pas d'envoi d'e-mail.** Un admin ajoute l'adresse
+  de travail d'un collègue à la liste blanche (`/admin/users`, « Ajouter une
+  adresse »), puis le prévient lui-même. Seules les adresses
+  `@em-normandie.fr` sont acceptées (constante `WORK_EMAIL_DOMAIN` de
+  `lib/accounts.ts`).
+- **Première connexion** sur `/admin/first-login` : la personne saisit cette
+  adresse, son nom affiché et son mot de passe ; son compte devient actif, en
+  `USER` sauf si l'admin a déjà changé son rôle.
+- **Connexion** sur `/admin/login`, par l'adresse et le mot de passe. Un compte
+  créé avant la liste blanche se connecte encore par son ancien identifiant,
+  tant que l'admin n'a pas renseigné son adresse (« Renseigner l'adresse »).
+- **Mot de passe oublié** : l'admin remet le compte en première connexion ; il
+  ne fixe jamais le mot de passe d'un autre. Chacun change le sien, et son nom
+  affiché, sur « Mon compte » (`/account`).
+- **Un collègue qui part** : l'admin désactive son compte (sessions coupées,
+  nom gardé pour l'historique) ; un invité qui ne s'est jamais connecté se
+  retire de la liste. Il reste toujours au moins un administrateur actif.
 
 `npm run local` (`scripts/start-local.ps1`) :
 
@@ -72,7 +94,9 @@ site seul : `npm run dev`.
 > Regardez l'inbox avant.
 
 > **Aucun mot de passe par défaut n'existe.** `prisma db seed` échoue tant que
-> `SEED_ADMIN_PASSWORD` n'est pas renseignée (12 caractères minimum).
+> `SEED_ADMIN_EMAIL` (une adresse `@em-normandie.fr`) et `SEED_ADMIN_PASSWORD`
+> (12 caractères minimum) ne sont pas renseignées. Il ne sert qu'à une base
+> vierge : jamais sur la base partagée, qui a déjà ses comptes.
 
 > **Port 5432 fermé ?** Avec `DB_DRIVER=neon-ws`, tout passe par le proxy
 > WebSocket de Neon (443) : `npm run db:status` et `npm run db:migrate` par
@@ -117,12 +141,12 @@ Neon, Upstash, ordre des opérations et vérifications :
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | suite Python (`pytest`), avec le `python` du `PATH` |
 | `npm run test:ts` | suite TypeScript (`node --test`) : fonctions de `lib/` et routes Next.js |
-| `npm run smoke` | smoke local, **à la main** et avec l'accord du propriétaire : `npm run dev` lancé, il vérifie d'abord le mur sans session (pages renvoyées vers la connexion, API en 401), puis, si `APPVC_ADMIN_USERNAME` et `APPVC_ADMIN_PASSWORD` sont posées, les pages et les 15 `GET /api/v1/*` connecté (`scripts/smoke-local.ts`). Lecture seule, mais sur la base visée par le poste ; adresse locale seulement |
+| `npm run smoke` | smoke local, **à la main** et avec l'accord du propriétaire : `npm run dev` lancé, il vérifie d'abord le mur sans session (pages renvoyées vers la connexion, API en 401), puis, si `APPVC_ADMIN_PASSWORD` et `APPVC_ADMIN_EMAIL` (ou, tant que le compte n'a pas d'adresse, `APPVC_ADMIN_USERNAME`) sont posées, les pages et les 15 `GET /api/v1/*` connecté (`scripts/smoke-local.ts`). Lecture seule, mais sur la base visée par le poste ; adresse locale seulement |
 | `npm run db:status` | état de l'historique face à la base, en lecture seule : `npx prisma migrate status` sans `DB_DRIVER`, WebSocket (443) avec `DB_DRIVER=neon-ws` |
 | `npm run db:migrate` | applique les migrations en attente, une transaction chacune ; refuse si une migration appliquée a changé ou si une autre est en échec |
 | `npm run db:migrate:dry` | avec `DB_DRIVER=neon-ws` seulement : applique tout dans une transaction puis `ROLLBACK`, rien n'est inscrit |
 | `npx prisma migrate deploy` / `status` | la CLI Prisma directe, en 5432 |
-| `npx prisma db seed` | crée le compte administrateur initial |
+| `npx prisma db seed` | crée le compte administrateur initial d'une **base vierge** (`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`) ; jamais sur la base partagée |
 
 > **`prisma db push` est proscrit hors développement local.** C'est son usage
 > qui a désynchronisé le schéma de ses migrations au point de rendre toute
@@ -187,10 +211,13 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
 
 1. **Connexion obligatoire sur tout le site** : `proxy.ts` exige une session
    partout, pages, `/api-docs`, `/api/schools/*` et `/api/v1/*` compris ; seules
-   la page de connexion et `/api/auth/*` restent libres. Le proxy ne regarde
-   que l'existence de la session ; le rôle se contrôle côté serveur.
+   la connexion, la première connexion (`/admin/first-login`,
+   `POST /api/first-login`) et `/api/auth/*` restent libres. Toute route posée
+   sous `/api/auth/` devient publique d'office. Le proxy ne regarde que
+   l'existence de la session ; le rôle et l'état du compte se contrôlent côté
+   serveur, et un compte qui n'est plus actif perd sa session.
 2. **Toute route admin choisit une garde de `lib/auth.ts`, et une seule** :
-   `guardSignedIn` (toute session : son propre mot de passe), `guardManager`
+   `guardSignedIn` (toute session : son nom affiché et son mot de passe), `guardManager`
    (gestionnaire ou admin : tout le contenu) ou `guardAdmin` (les comptes et
    toute l'IA, inbox comprise). L'ancienne garde « toute session » du
    back-office n'existe plus. Le rôle est **relu en base** à chaque requête,

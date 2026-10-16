@@ -776,9 +776,14 @@ mémoire de `routers/internal.py`, perdu à chaque redémarrage.
 > `USER`, `GESTIONNAIRE` (les anciens `MODERATOR`), `ADMIN` ; trois gardes
 > (`guardSignedIn`, `guardManager`, `guardAdmin`) ; rôle relu en base ;
 > connexion obligatoire sur tout le site ; IA et inbox réservées à l'admin.
-> L'état réel et le tableau des gardes route par route sont dans
-> [`gestion-contenu.md`](gestion-contenu.md) §2 et §4. Ce paragraphe décrit
-> l'état d'avant.
+> **Étape 2, même jour** : les comptes entrent par une liste blanche
+> d'adresses `@em-normandie.fr`, sans envoi d'e-mail ; la personne choisit son
+> mot de passe à sa première connexion ; la connexion se fait par l'adresse ;
+> l'admin ne fixe plus le mot de passe d'un tiers (remise en première
+> connexion), et la route `users/[id]/password` a disparu au profit de « Mon
+> compte » (`/account`). L'état réel et le tableau des gardes route par route
+> sont dans [`gestion-contenu.md`](gestion-contenu.md) §2 et §4. Ce paragraphe
+> décrit l'état d'avant.
 
 ```prisma
 model User {

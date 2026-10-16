@@ -1,17 +1,33 @@
 "use client";
 
+import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { safeCallbackPath } from "@/lib/callback-url";
+import { FIRST_LOGIN_PATH } from "@/lib/roles";
 
+/**
+ * /admin/login — la connexion (plan gestion-contenu, étapes 1 et 2)
+ *
+ * Par l'adresse de travail et le mot de passe. Un compte d'avant la liste
+ * blanche se connecte encore par son ancien identifiant tant qu'aucune
+ * adresse ne lui est renseignée (D3, lib/sign-in.ts). Une personne dont
+ * l'adresse vient d'être ajoutée choisit d'abord son mot de passe sur la
+ * première connexion.
+ */
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [username, setUsername] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const callbackUrl = searchParams.get("callbackUrl");
+  const firstLoginHref = callbackUrl
+    ? `${FIRST_LOGIN_PATH}?callbackUrl=${encodeURIComponent(callbackUrl)}`
+    : FIRST_LOGIN_PATH;
 
   useEffect(() => {
     // Gérer l'erreur passée par l'URL si NextAuth redirige directement
@@ -30,21 +46,21 @@ function LoginForm() {
 
     try {
       const result = await signIn("credentials", {
-        username,
+        login,
         password,
         redirect: false, // On gère la redirection nous-mêmes pour un meilleur UX
       });
 
       if (result?.error) {
-        setError("Nom d'utilisateur ou mot de passe incorrect.");
+        setError("Adresse e-mail ou mot de passe incorrect.");
         setLoading(false);
       } else {
         // Connexion réussie : retour à la page demandée (posée par le proxy),
         // si c'est un chemin du site ; sinon les écoles du back-office.
-        router.push(safeCallbackPath(searchParams.get("callbackUrl")));
+        router.push(safeCallbackPath(callbackUrl));
         router.refresh();
       }
-    } catch (err) {
+    } catch {
       setError("Une erreur réseau est survenue. Veuillez réessayer.");
       setLoading(false);
     }
@@ -67,20 +83,26 @@ function LoginForm() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label className="form-label" htmlFor="username">
-              Nom d'utilisateur
+            <label className="form-label" htmlFor="login">
+              Adresse e-mail
             </label>
             <input
-              id="username"
+              id="login"
               type="text"
+              inputMode="email"
               className="form-control"
-              placeholder="admin"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              placeholder="prenom.nom@em-normandie.fr"
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
               required
               disabled={loading}
               autoComplete="username"
+              aria-describedby="login-hint"
             />
+            <p className="form-hint" id="login-hint">
+              Compte créé avant la liste blanche : votre ancien identifiant reste accepté tant
+              qu&apos;aucune adresse ne lui est associée.
+            </p>
           </div>
 
           <div className="form-group">
@@ -100,65 +122,16 @@ function LoginForm() {
             />
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary login-btn"
-            disabled={loading}
-            style={{ width: "100%", marginTop: "12px" }}
-          >
+          <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
             {loading ? "Connexion en cours..." : "Se connecter"}
           </button>
         </form>
+
+        <p className="login-footer">
+          Première connexion, ou mot de passe remis à zéro par un administrateur ?{" "}
+          <Link href={firstLoginHref}>Choisissez votre mot de passe</Link>
+        </p>
       </div>
-
-      <style jsx>{`
-        .login-container {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: radial-gradient(circle at center, #111827 0%, #030712 100%);
-          padding: 20px;
-        }
-
-        .login-card {
-          background-color: var(--bg-secondary);
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-lg);
-          width: 100%;
-          max-width: 420px;
-          padding: 40px;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        }
-
-        .login-header {
-          text-align: center;
-          margin-bottom: 32px;
-        }
-
-        .login-title {
-          font-size: 1.6rem;
-          color: #ffffff;
-          margin-bottom: 8px;
-          letter-spacing: -0.5px;
-        }
-
-        .login-subtitle {
-          font-size: 0.9rem;
-          color: var(--text-secondary);
-        }
-
-        .login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        .login-btn {
-          font-size: 0.95rem;
-          padding: 12px;
-        }
-      `}</style>
     </div>
   );
 }

@@ -12,7 +12,11 @@
  *   vers le site ou les écoles sans le rôle (piège 2) ;
  * - D1 : le rôle est **relu en base** à chaque appel. Celui du jeton JWT,
  *   copié à la connexion, peut dater de 8 h : il ne sert jamais à juger. Un
- *   compte supprimé n'a plus de session, même avec un jeton valide.
+ *   compte supprimé n'a plus de session, même avec un jeton valide ;
+ * - D20 (étape 2) : un compte qui n'est pas actif (invité après une remise en
+ *   première connexion, désactivé) n'a plus de session non plus, et un jeton
+ *   émis avant la dernière remise à zéro ne vaut plus : la version de session
+ *   du jeton doit être celle du compte.
  *
  * Le proxy (proxy.ts) ne vérifie que l'existence d'une session : le rôle se
  * contrôle ici, côté serveur.
@@ -23,6 +27,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { displayNameOf } from "@/lib/accounts";
 import {
   LOGIN_PATH,
   REFUSAL_MESSAGES,
@@ -50,12 +55,13 @@ export interface AuthSession {
 // ──────────────────────────────────────────────
 
 /**
- * La session courante, avec le nom et le rôle **lus en base** (D1).
+ * La session courante, avec le nom, l'adresse et le rôle **lus en base** (D1).
  *
- * Rend `null` sans session, sur un cookie illisible, ou quand le compte du
- * jeton n'existe plus. Un rôle que le code ne connaît pas (une base où la
- * migration des trois rôles n'est pas passée) ne donne que les droits d'un
- * USER. Une panne de la base, elle, remonte.
+ * Rend `null` sans session, sur un cookie illisible, quand le compte du jeton
+ * n'existe plus, n'est pas actif, ou a été remis à zéro depuis l'émission du
+ * jeton (D20). Un rôle que le code ne connaît pas (une base où la migration
+ * des trois rôles n'est pas passée) ne donne que les droits d'un USER. Une
+ * panne de la base, elle, remonte.
  */
 export async function getSession(): Promise<AuthSession | null> {
   let session;
@@ -65,14 +71,28 @@ export async function getSession(): Promise<AuthSession | null> {
     // Cookie corrompu (JWEDecryptionFailed…) : pas de session.
     return null;
   }
-  const id = (session?.user as { id?: unknown } | undefined)?.id;
+  const user = session?.user as { id?: unknown; sessionVersion?: unknown } | undefined;
+  const id = user?.id;
   if (!session?.user || typeof id !== "string" || id === "") return null;
 
   const account = await prisma.user.findUnique({
     where: { id },
-    select: { username: true, role: true },
+    select: {
+      username: true,
+      email: true,
+      display_name: true,
+      role: true,
+      status: true,
+      session_version: true,
+    },
   });
   if (!account) return null;
+
+  // D20 : un invité (remis en première connexion) ou un compte désactivé n'a
+  // plus de session ; un jeton d'avant la dernière remise à zéro, ou sans
+  // version (émis avant l'étape 2), non plus.
+  if (account.status !== "ACTIVE") return null;
+  if (user?.sessionVersion !== account.session_version) return null;
 
   let role: UserRole = "USER";
   if (isUserRole(account.role)) {
@@ -82,7 +102,7 @@ export async function getSession(): Promise<AuthSession | null> {
   }
 
   return {
-    user: { id, name: account.username, email: session.user.email ?? null, role },
+    user: { id, name: displayNameOf(account), email: account.email, role },
   };
 }
 

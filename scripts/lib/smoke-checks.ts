@@ -9,7 +9,10 @@
  * Voir docs/features/backend-local.md, étape 7. Depuis l'étape 1 du plan
  * gestion-contenu, le site exige une session : le smoke joue d'abord le mur
  * (`buildWallChecks`, `judgeWall`), puis les pages et l'API avec la session
- * (`buildChecks`, `judge`).
+ * (`buildChecks`, `judge`). Étape 2 : la première connexion est ouverte comme
+ * la connexion, « Mon compte » est une page du site, et le smoke se connecte
+ * par l'adresse, ou l'ancien identifiant tant que le compte n'en a pas (D3,
+ * `smokeCredentials`).
  */
 
 /** Les 15 routes GET de l'API v1 (API-rest.md), dans l'ordre de la doc. */
@@ -31,8 +34,8 @@ export const V1_ROUTES = [
   "/api/v1/compare/programs",
 ] as const;
 
-/** Les pages du site appelées (plan backend-local, étape 7 ; /contribute retirée, D2). */
-export const PAGES = ["/", "/api-docs", "/schools/[id]", "/schools/[id]/programs/[pid]"] as const;
+/** Les pages du site appelées (plan backend-local, étape 7 ; /contribute retirée, D2 ; /account, étape 2). */
+export const PAGES = ["/", "/api-docs", "/schools/[id]", "/schools/[id]/programs/[pid]", "/account"] as const;
 
 export interface SmokeIds {
   schoolId: string;
@@ -171,15 +174,18 @@ export interface WallCheck {
 }
 
 export const LOGIN_PAGE = "/admin/login";
+/** La première connexion (étape 2) : ouverte sans session, comme la connexion. */
+export const FIRST_LOGIN_PAGE = "/admin/first-login";
 
 // Identifiants factices : le proxy refuse avant toute lecture en base.
 const WALL_IDS: SmokeIds = { schoolId: "mur", programId: "mur", campusId: "mur" };
 
-/** Les contrôles du mur : la connexion, chaque page, le back-office, puis les API. */
+/** Les contrôles du mur : la connexion et la première connexion, chaque page, le back-office, puis les API. */
 export function buildWallChecks(): WallCheck[] {
   const pages = PAGES.map((route) => fill(route, WALL_IDS)!);
   return [
     { path: LOGIN_PAGE, expect: "open" },
+    { path: FIRST_LOGIN_PAGE, expect: "open" },
     ...[...pages, "/admin/schools"].map((path): WallCheck => ({ path, expect: "redirect" })),
     ...["/api/schools", ...V1_ROUTES.map((route) => fill(route, WALL_IDS)!)].map(
       (path): WallCheck => ({ path, expect: "unauthorized" })
@@ -218,6 +224,30 @@ export function judgeWall(check: WallCheck, response: SmokeResponse): SmokeVerdi
     // Un 401 qui n'est pas du JSON : jugé ci-dessous.
   }
   return { outcome: "fail", detail: "401 sans corps JSON { error }" };
+}
+
+// ── Les identifiants : variables utilisateur Windows du propriétaire ──
+
+export interface SmokeCredentials {
+  /** L'adresse, ou l'ancien identifiant d'un compte sans adresse (D3). */
+  login: string;
+  password: string;
+  /** La variable d'où vient `login`, seule chose que le smoke affiche. */
+  from: "APPVC_ADMIN_EMAIL" | "APPVC_ADMIN_USERNAME";
+}
+
+/**
+ * Les identifiants de la phase connectée : `APPVC_ADMIN_EMAIL` d'abord, sinon
+ * `APPVC_ADMIN_USERNAME` (l'ancien identifiant ne vaut que tant que le compte
+ * n'a pas d'adresse, D3), et `APPVC_ADMIN_PASSWORD`. `null` s'il manque l'un
+ * ou l'autre : la phase est alors sautée. Rien n'est affiché ici.
+ */
+export function smokeCredentials(env: Record<string, string | undefined>): SmokeCredentials | null {
+  const password = env.APPVC_ADMIN_PASSWORD;
+  if (!password) return null;
+  if (env.APPVC_ADMIN_EMAIL) return { login: env.APPVC_ADMIN_EMAIL, password, from: "APPVC_ADMIN_EMAIL" };
+  if (env.APPVC_ADMIN_USERNAME) return { login: env.APPVC_ADMIN_USERNAME, password, from: "APPVC_ADMIN_USERNAME" };
+  return null;
 }
 
 // ── La session : les cookies de NextAuth ─────────────────────────────

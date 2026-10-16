@@ -35,12 +35,15 @@ usage externe apparaît.
 
 ---
 
-## Authentification *(plan gestion-contenu, étape 1)*
+## Authentification *(plan gestion-contenu, étapes 1 et 2)*
 
 - **Session obligatoire** : `proxy.ts` exige un jeton de session NextAuth
-  valide sur tout le site, l'API v1 comprise (seules `/admin/login` et
-  `/api/auth/*` restent libres). C'est la session du site : un cookie posé par
-  la connexion, pas une clé d'API.
+  valide sur tout le site, l'API v1 comprise (seules la connexion, la première
+  connexion et `/api/auth/*` restent libres). C'est la session du site : un
+  cookie posé par la connexion (adresse de travail et mot de passe), pas une
+  clé d'API. Le proxy ne regarde que le jeton : un compte désactivé ou remis
+  en première connexion garde la lecture de l'API jusqu'à l'expiration du sien
+  (8 h au plus, décision D20).
 - **Sans session : 401** en JSON, `{ "error": "Non authentifié. Veuillez vous
   connecter." }`, sans redirection. Un pré-vol `OPTIONS` sans session est
   refusé de même.

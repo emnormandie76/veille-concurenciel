@@ -9,11 +9,15 @@
  * - test/api/access-matrix.test.ts appelle chaque handler sous chaque rôle
  *   (aucune session, USER, GESTIONNAIRE, ADMIN), avec la vraie lib/auth.ts.
  *
- * Règles (plan gestion-contenu, étape 1 ; décisions G4, D18, D19) :
+ * Règles (plan gestion-contenu, étapes 1 et 2 ; décisions G4, G5, D4, D18,
+ * D19, D21) :
  * - `admin` : l'IA (backend, historique des jobs, tous les tickets de
- *   l'inbox : ils viennent du pipeline ou passent par lui) et les comptes ;
- * - `signedIn` : changer son propre mot de passe (un tiers : ADMIN, contrôlé
- *   dans la route) ;
+ *   l'inbox : ils viennent du pipeline ou passent par lui) et les comptes
+ *   (liste blanche, rôles, remise en première connexion, désactivation,
+ *   adresse d'un compte ancien) ;
+ * - `signedIn` : ce que chacun fait pour soi, sur « Mon compte » : son nom
+ *   affiché et son mot de passe. Ces routes ne prennent pas d'identifiant ;
+ *   personne ne fixe plus le mot de passe d'un tiers (D4) ;
  * - `manager` : tout le reste, c'est-à-dire la lecture et l'écriture du
  *   contenu, création et suppressions d'école, de campus et de programme
  *   comprises (D19).
@@ -50,14 +54,18 @@ export const ADMIN_ONLY = [
   "POST inbox/[id]/create-programs",
   "PUT inbox/[id]/attachments",
   "DELETE inbox/purge",
-  // Comptes
+  // Comptes (étape 2)
   "GET users",
   "POST users",
   "DELETE users/[id]",
+  "PATCH users/[id]/role",
+  "POST users/[id]/reset",
+  "POST users/[id]/disable",
+  "PATCH users/[id]/email",
 ];
 
-/** « MÉTHODE chemin » ouverts à toute session. */
-export const SIGNED_IN = ["PATCH users/[id]/password"];
+/** « MÉTHODE chemin » ouverts à toute session : ce que chacun fait pour soi. */
+export const SIGNED_IN = ["PATCH account", "PATCH account/password"];
 
 export function expectedLevel(key: string): AccessLevel {
   if (ADMIN_ONLY.includes(key)) return "admin";

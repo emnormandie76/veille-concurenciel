@@ -5,16 +5,18 @@
  *     npm run smoke                       # http://localhost:3000 par défaut
  *     npm run smoke -- http://127.0.0.1:3001
  *
- * Plan backend-local, étape 7 ; adapté à l'étape 1 du plan gestion-contenu
- * (connexion obligatoire). Deux phases :
+ * Plan backend-local, étape 7 ; adapté aux étapes 1 (connexion obligatoire)
+ * et 2 (liste blanche) du plan gestion-contenu. Deux phases :
  *
- * 1. **Le mur**, sans session : la page de connexion répond 200 ; chaque page
- *    (`/`, `/api-docs`, les deux fiches, `/admin/schools`) renvoie vers la
- *    connexion avec son chemin en `callbackUrl` ; `/api/schools` et chaque GET
- *    de l'API v1 répondent 401. Le proxy refuse avant toute lecture en base.
- * 2. **Le contenu, connecté**, si `APPVC_ADMIN_USERNAME` et
- *    `APPVC_ADMIN_PASSWORD` sont posées (variables utilisateur Windows, posées
- *    par le propriétaire ; jamais affichées) : connexion par NextAuth, puis les
+ * 1. **Le mur**, sans session : la connexion et la première connexion
+ *    répondent 200 ; chaque page (`/`, `/api-docs`, les deux fiches,
+ *    `/account`, `/admin/schools`) renvoie vers la connexion avec son chemin en
+ *    `callbackUrl` ; `/api/schools` et chaque GET de l'API v1 répondent 401.
+ *    Le proxy refuse avant toute lecture en base.
+ * 2. **Le contenu, connecté**, si `APPVC_ADMIN_PASSWORD` et un identifiant
+ *    sont posés (variables utilisateur Windows, posées par le propriétaire ;
+ *    jamais affichées) : `APPVC_ADMIN_EMAIL`, ou `APPVC_ADMIN_USERNAME` tant
+ *    que le compte n'a pas d'adresse (D3). Connexion par NextAuth, puis les
  *    pages et les 15 GET de l'API v1 avec la session. Attend un 200, un JSON
  *    lisible pour l'API, et l'absence de page d'erreur Next dans le HTML. Sans
  *    ces variables, la phase est sautée et le dit.
@@ -41,6 +43,7 @@ import {
   judge,
   judgeWall,
   localBaseUrl,
+  smokeCredentials,
   type SmokeCheck,
   type SmokeIds,
   type SmokeVerdict,
@@ -104,21 +107,21 @@ function report(check: SmokeCheck, verdict: SmokeVerdict | "skipped", ms?: numbe
  * Ouvre une session par NextAuth (jeton CSRF, puis identifiants) et rend
  * l'en-tête Cookie qui la porte. Les identifiants ne sont jamais affichés.
  */
-async function signIn(base: URL, username: string, password: string): Promise<string> {
+async function signIn(base: URL, login: string, password: string): Promise<string> {
   const csrf = await call(base, "/api/auth/csrf");
   if (csrf.status !== 200) throw new Error(`/api/auth/csrf : HTTP ${csrf.status}.`);
   const { csrfToken } = JSON.parse(csrf.text) as { csrfToken: string };
 
-  const login = await call(base, "/api/auth/callback/credentials", {
+  const answer = await call(base, "/api/auth/callback/credentials", {
     method: "POST",
     cookie: cookieHeader(csrf.setCookies),
     contentType: "application/x-www-form-urlencoded",
-    body: new URLSearchParams({ csrfToken, username, password, json: "true" }).toString(),
+    body: new URLSearchParams({ csrfToken, login, password, json: "true" }).toString(),
   });
-  const cookie = cookieHeader([...csrf.setCookies, ...login.setCookies]);
+  const cookie = cookieHeader([...csrf.setCookies, ...answer.setCookies]);
   if (!/session-token=/.test(cookie)) {
     throw new Error(
-      login.status === 429
+      answer.status === 429
         ? "connexion refusée : plafond de tentatives atteint, réessayer dans 15 minutes."
         : "connexion refusée : identifiants APPVC_ADMIN_* incorrects ?"
     );
@@ -180,19 +183,21 @@ async function main(): Promise<number> {
   }
 
   // 2. Le contenu, connecté : seulement si le propriétaire a posé les identifiants.
-  const username = process.env.APPVC_ADMIN_USERNAME;
-  const password = process.env.APPVC_ADMIN_PASSWORD;
-  if (!username || !password) {
-    console.log("\nConnecté : sauté, APPVC_ADMIN_USERNAME et APPVC_ADMIN_PASSWORD absentes.");
+  const credentials = smokeCredentials(process.env);
+  if (!credentials) {
+    console.log(
+      "\nConnecté : sauté, APPVC_ADMIN_PASSWORD et APPVC_ADMIN_EMAIL (ou APPVC_ADMIN_USERNAME) absentes."
+    );
     console.log(`\n${counts.ok} bons, ${counts.fail} en échec.`);
     return counts.fail === 0 ? 0 : 1;
   }
 
-  console.log("\nConnecté : les pages et l'API\n");
+  // Seul le nom de la variable est affiché, jamais sa valeur.
+  console.log(`\nConnecté (identifiant tiré de ${credentials.from}) : les pages et l'API\n`);
   let ids: SmokeIds;
   let cookie: string;
   try {
-    cookie = await signIn(base, username, password);
+    cookie = await signIn(base, credentials.login, credentials.password);
     ids = await chooseIds(base, cookie);
   } catch (error) {
     console.error(`✗ ${(error as Error).message}`);

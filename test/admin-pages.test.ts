@@ -110,3 +110,11 @@ test("le menu passe par navFor, pas par une condition sur le rôle", () => {
   assert.match(sidebar, /navFor\(/);
   assert.equal(/role\s*===\s*"ADMIN"/.test(sidebar), false);
 });
+
+test("« Mon compte » (app/account, étape 2) : toute session, par requirePage, et rien d'autre", () => {
+  // Hors du back-office : un USER doit pouvoir y changer son mot de passe et son nom.
+  const text = fs.readFileSync(path.join(process.cwd(), "app", "account", "page.tsx"), "utf-8");
+  assert.match(text, /import \{[^}]*\brequirePage\b[^}]*\} from "@\/lib\/auth";/);
+  assert.deepEqual([...text.matchAll(/await requirePage\("(\w+)"\)/g)].map((m) => m[1]), ["signedIn"]);
+  assert.equal(/getServerSession|\bgetSession\b|useSession/.test(text), false);
+});

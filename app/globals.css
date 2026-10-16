@@ -1834,3 +1834,137 @@ select.form-control optgroup {
   color: var(--accent);
 }
 
+
+/* Liste blanche, première connexion et « Mon compte » (plan gestion-contenu, étape 2) */
+.public-nav-link.active {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.05);
+}
+
+.account-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 24px;
+  margin-bottom: 32px;
+  font-size: 0.95rem;
+}
+
+.account-facts dt {
+  color: var(--text-secondary);
+}
+
+.account-facts dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.account-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.account-card h2 {
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+}
+
+.form-hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.badge-user {
+  background-color: rgba(156, 163, 175, 0.15);
+  color: #d1d5db;
+}
+
+.badge-invited {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+
+.user-secondary {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+/* Connexion et première connexion : la même carte (app/(admin-auth)/admin/) */
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, #111827 0%, #030712 100%);
+  padding: 20px;
+}
+
+.login-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 420px;
+  padding: 40px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-title {
+  font-size: 1.6rem;
+  color: #ffffff;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.login-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-btn {
+  width: 100%;
+  margin-top: 12px;
+  font-size: 0.95rem;
+  padding: 12px;
+}
+
+.login-footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.login-footer a {
+  color: var(--accent);
+}
+
+.modal-text {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+/* Boutons d'action de l'écran des comptes (pas de .btn-sm global : l'inbox gelée s'en sert) */
+.users-actions .btn {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}

@@ -45,6 +45,7 @@ globalThis.fetch = (async (input: unknown) => {
 type Profile = "none" | "USER" | "GESTIONNAIRE" | "ADMIN";
 const PROFILES: Profile[] = ["none", "USER", "GESTIONNAIRE", "ADMIN"];
 
+// Comptes actifs, en version de session 0 comme leur jeton (D20).
 const ACCOUNTS: Record<Exclude<Profile, "none">, { id: string; username: string; role: string }> = {
   USER: { id: "u-user", username: "utilisateur", role: "USER" },
   GESTIONNAIRE: { id: "u-gest", username: "gestionnaire", role: "GESTIONNAIRE" },
@@ -59,7 +60,7 @@ mock.module("next-auth", {
       if (profile === "none") return null;
       const account = ACCOUNTS[profile];
       return {
-        user: { id: account.id, name: account.username, email: null, role: account.role },
+        user: { id: account.id, name: account.username, email: null, role: account.role, sessionVersion: 0 },
         expires: "2099-01-01T00:00:00.000Z",
       };
     },
@@ -80,7 +81,17 @@ afterEach(() => {
 /** Le compte que relit lib/auth.ts (D1) ; un autre identifiant n'existe pas. */
 function accountRow({ where }: { where: { id?: string } }) {
   const account = Object.values(ACCOUNTS).find((a) => a.id === where.id);
-  return account ? { ...account, password_hash: "x", createdAt: new Date(0) } : null;
+  return account
+    ? {
+        ...account,
+        email: null,
+        display_name: null,
+        status: "ACTIVE",
+        session_version: 0,
+        password_hash: "x",
+        createdAt: new Date(0),
+      }
+    : null;
 }
 
 const ALLOWED: Record<AccessLevel, Profile[]> = {
@@ -189,6 +200,8 @@ for (const rel of files) {
 }
 
 test("toutes les méthodes du back-office ont été appelées", () => {
-  // 48 au relevé du 16 octobre 2026 (plan gestion-contenu, §3).
-  assert.ok(handlerCount >= 48, `seulement ${handlerCount} handlers appelés`);
+  // 48 à la fin de l'étape 1 (16 octobre 2026) ; 53 à l'étape 2 : quatre
+  // routes des comptes (rôle, remise à zéro, désactivation, adresse) et deux
+  // de « Mon compte » ; la route du mot de passe d'un tiers a disparu (D4).
+  assert.ok(handlerCount >= 53, `seulement ${handlerCount} handlers appelés`);
 });

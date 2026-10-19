@@ -30,6 +30,7 @@ parties : gestion de contenu, IA gelée.
 |---|---|
 | [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan en cours** : décisions (§2), pièges (§4), étapes (§5), journal (§9) |
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** du gestionnaire de contenu : rôles, gardes, écrans, routes, tables, styles, tests |
+| [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** (étape 4) : jetons, contrastes, polices, composants, gabarits, accessibilité, cohabitation avec l'ancien style |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
 | [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (12 migrations) · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | mise en ligne sur Vercel |
@@ -72,7 +73,9 @@ branche `gestion` :
   d'être supprimé) ; migration `20261016150000_whitelist_accounts` appliquée
   sur la branche Neon `dev`, puis sur `main` le 19 octobre (étape 3) ; smoke
   adapté et vert (la phase connectée, rejouée au début de l'étape 3) ;
-- étape 3 (mise en ligne), **le site est en ligne depuis le 19 octobre** :
+- étape 3 (mise en ligne) faite et validée le 19 octobre (le propriétaire
+  demande le commit et le push, `522d68e`, CI verte) ; **le site est en
+  ligne** :
   smoke connecté vert ; décisions D7 (Hobby gardé, en connaissance de cause),
   D22 (préversions : base reliée à Production seulement), D23 (`preload` de
   HSTS gardé) ; `main` rattrapée sur `gestion` par avance rapide, sans PR
@@ -81,8 +84,18 @@ branche `gestion` :
   copiées à l'identique) ; Upstash, projet `app-vc`, vérifications sans
   session et connectées, 429 de la connexion, adresses des deux comptes
   posées, mot de passe admin changé, un premier collègue, secrets Actions du
-  nouveau dépôt créés. Toutes les cases cochées : **validation du
-  propriétaire attendue**. Détail : journal du plan.
+  nouveau dépôt créés. Détail : journal du plan ;
+- étape 4 (charte graphique et composants de base) faite et validée le
+  19 octobre (le propriétaire demande le commit, le push et le prompt de
+  l'étape 5) : maquette A « Registre » choisie
+  parmi trois, D8 (composants maison), D9 (clair, jetons prêts pour un
+  sombre), périmètre avec « Mon compte » et le menu latéral actuel gardé ;
+  Tailwind CSS v4 sans preflight, l'ancien CSS rangé dans la couche `legacy` ;
+  charte dans `docs/architecture/charte-graphique.md` ; connexion, première
+  connexion, « Comptes » et « Mon compte » repris ; contrôle CSP et visuel
+  sur un build de production. Détail : journal du plan ;
+- prochaine : étape 5 (sources et auteur de chaque modification), en
+  commençant par D10, D11 et D12.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -203,8 +216,15 @@ propriétaire (plan, D17).
   état de la partie IA).
 - Next.js 16 : lire `node_modules/next/dist/docs/` avant de toucher au front
   (voir le bloc en fin de fichier). `proxy.ts` tient lieu de middleware.
-- Styles : `app/globals.css` aujourd'hui ; Tailwind CSS v4 à partir de
-  l'étape 4 du plan, sans preflight jusqu'à l'étape 9 (plan, piège 10).
+- Styles : la charte graphique
+  ([`docs/architecture/charte-graphique.md`](docs/architecture/charte-graphique.md)),
+  en Tailwind CSS v4 **sans preflight** jusqu'à l'étape 9 (plan, piège 10) :
+  jetons dans `app/charte.css`, composants dans `components/ui/`, gabarits
+  dans `components/layout/`. Tout écran nouveau ou repris s'y construit, et
+  son dossier rejoint les `@source` de `app/globals.css` (test). L'ancien
+  `app/globals.css` reste, inchangé, dans la couche `legacy` ; ne pas y
+  ajouter de règle. Pas de couleur littérale ni de `style` en ligne dans un
+  écran de la charte.
 
 ## Réseau du poste
 
@@ -293,6 +313,18 @@ l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 | **Permis sans demander** (lectures, sur le projet de l'application) | `list_projects`, `get_project`, `list_deployments`, `get_deployment`, `list_deployment_events`, `get_runtime_logs`, `get_runtime_errors`, `list_project_domains`, `filter_project_envs` **sans** `decrypt` (noms des variables seulement), `search_vercel_documentation` |
 | **Avec l'accord du propriétaire, à chaque fois** | tout ce qui crée, modifie ou supprime : `create_project`, `update_project`, `create_deployment`, `cancel_deployment`, `request_promote`, `request_rollback`, `pause_project`, domaines, pare-feu, routes, redirections |
 | **Jamais** | écrire une variable (`create_project_env`, `edit_project_env`) : les variables reviennent au propriétaire (règle 3), et `DB_DRIVER` ne se pose jamais sur Vercel ; lire une valeur (`get_project_env`, `get_shared_env_var`, `decrypt=true`) ; créer un jeton ou une clé (`create_edge_config_token`, `create_sdk_key`, `create_kms_*`) ; tout achat ou changement d'offre (`buy_domain`, `create_or_transfer_domain`) |
+
+## MCP GitHub
+
+Serveur `github` de `.mcp.json` (`https://api.githubcopilot.com/mcp/`,
+outils `actions` et `repos`), authentifié par la variable Windows
+`GITHUB_MCP_PAT` du propriétaire. Depuis le 19 octobre 2026, c'est un jeton
+*fine-grained* du compte **`emnormandie76`**, limité au dépôt
+`emnormandie76/veille-concurenciel` : Actions en lecture et écriture
+(lire la CI, relancer un run), Contents en lecture seule. Il ne voit plus les
+dépôts d'`Anton1P`. Permis sans demander : lire les runs, les jobs et leurs
+journaux. Relancer ou annuler un run : avec l'accord du propriétaire. Le
+code ne passe jamais par le MCP : commits et push par `git`.
 
 ## Commandes
 

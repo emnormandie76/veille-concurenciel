@@ -577,9 +577,10 @@ production.
 7. **« Dynamic server usage » sur `/api/schools`** au build : bruit connu
    (§4), la route reste dynamique ; le faire taire est un petit changement de
    code, à décider.
-8. **CI du nouveau dépôt** : secrets créés le 19 octobre 2026 ; le premier
-   run qui s'en sert est à lire par le propriétaire (le MCP GitHub n'a pas
-   accès au dépôt).
+8. **CI du nouveau dépôt** : secrets créés le 19 octobre 2026 ; run 2
+   (`gestion`, `522d68e`) vert, migrations relues sur la nouvelle base. Le
+   run 1 (`main`, `ecad4a9`, poussé avant les secrets) reste rouge tant qu'il
+   n'est pas relancé ou qu'un nouveau push n'arrive pas sur `main`.
 
 ---
 

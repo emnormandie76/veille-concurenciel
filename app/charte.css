@@ -1,0 +1,171 @@
+/*
+ * app/charte.css — la charte graphique (plan gestion-contenu, étape 4)
+ *
+ * Maquette A « Registre », retenue par le propriétaire le 19 octobre 2026 :
+ * clair (D9), dense, composants maison (D8). Importé par app/globals.css.
+ * Référence et règles d'emploi : docs/architecture/charte-graphique.md ;
+ * test/charte.test.ts vérifie que la référence et ce fichier disent la même
+ * chose, et que chaque couple texte / fond tient son contraste.
+ */
+
+/* ─── Jetons de couleur ─────────────────────────────────────────────────────
+ * Des variables CSS, lues par `@theme inline` : un thème sombre se posera en
+ * redéfinissant ces variables (sous `[data-theme="dark"]`, par exemple), sans
+ * toucher aux composants. Les noms décrivent un rôle, jamais une teinte. */
+@layer base {
+  :root {
+    --charte-page: #f3f5f8;
+    --charte-surface: #ffffff;
+    --charte-surface-2: #edf0f5;
+    --charte-line: #d3d9e3;
+    --charte-line-strong: #7d8aa0;
+    --charte-ink: #0e1a2b;
+    --charte-ink-2: #44526a;
+    --charte-ink-3: #5f6b82;
+    --charte-accent: #1d4ea3;
+    --charte-accent-ink: #ffffff;
+    --charte-accent-soft: #e5ecf8;
+    --charte-accent-strong: #173f86;
+    --charte-danger: #b42318;
+    --charte-danger-ink: #ffffff;
+    --charte-danger-soft: #fdecea;
+    --charte-success: #11724a;
+    --charte-success-soft: #e1f3e9;
+    --charte-warning: #8a5a00;
+    --charte-warning-soft: #fbf0d6;
+    --charte-focus: #1d4ea3;
+    --charte-side: #12213a;
+    --charte-side-ink: #e8edf5;
+    --charte-side-ink-2: #a3b2c9;
+    --charte-side-active: #22375a;
+    --charte-side-line: #22324d;
+  }
+}
+
+/* ─── Thème Tailwind ────────────────────────────────────────────────────────
+ * Les palettes, polices et arrondis par défaut de Tailwind sont retirés
+ * (`initial`) : seules les valeurs de la charte existent comme utilitaires
+ * (`bg-surface`, `text-ink-2`, `rounded-control`…). Cela évite aussi les
+ * variables homonymes de l'ancien CSS (`--radius-sm`, `--radius-md`…). */
+@theme inline {
+  --color-*: initial;
+  --color-page: var(--charte-page);
+  --color-surface: var(--charte-surface);
+  --color-surface-2: var(--charte-surface-2);
+  --color-line: var(--charte-line);
+  --color-line-strong: var(--charte-line-strong);
+  --color-ink: var(--charte-ink);
+  --color-ink-2: var(--charte-ink-2);
+  --color-ink-3: var(--charte-ink-3);
+  --color-accent: var(--charte-accent);
+  --color-accent-ink: var(--charte-accent-ink);
+  --color-accent-soft: var(--charte-accent-soft);
+  --color-accent-strong: var(--charte-accent-strong);
+  --color-danger: var(--charte-danger);
+  --color-danger-ink: var(--charte-danger-ink);
+  --color-danger-soft: var(--charte-danger-soft);
+  --color-success: var(--charte-success);
+  --color-success-soft: var(--charte-success-soft);
+  --color-warning: var(--charte-warning);
+  --color-warning-soft: var(--charte-warning-soft);
+  --color-focus: var(--charte-focus);
+  --color-side: var(--charte-side);
+  --color-side-ink: var(--charte-side-ink);
+  --color-side-ink-2: var(--charte-side-ink-2);
+  --color-side-active: var(--charte-side-active);
+  --color-side-line: var(--charte-side-line);
+
+  /* Polices : les variables viennent de next/font (app/layout.tsx). */
+  --font-*: initial;
+  --font-sans: var(--font-plex-sans), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-plex-condensed), var(--font-plex-sans), "Arial Narrow", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* Taille des tableaux et des boutons denses (13 px), entre text-xs et text-sm. */
+  --text-compact: 0.8125rem;
+  --text-compact--line-height: 1.125rem;
+
+  --radius-*: initial;
+  --radius-control: 4px;
+  --radius-card: 6px;
+}
+
+/* ─── Base des écrans de la charte ──────────────────────────────────────────
+ * Pas de preflight global avant l'étape 9 (piège 10). La racine de chaque
+ * gabarit porte la classe `charte` : ces règles n'agissent que dans ce
+ * sous-arbre, et l'emportent sur l'ancien CSS, rangé dans une couche plus
+ * basse (`legacy`). Elles défont ce que l'ancien CSS impose à tous les
+ * éléments (titres blancs, polices des champs, bordures natives). */
+@layer base {
+  .charte {
+    background-color: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    color-scheme: light;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Pas de :where() ici : un pseudo-élément n'y est pas admis, et la règle
+   * entière serait ignorée. */
+  .charte *,
+  .charte ::before,
+  .charte ::after {
+    border-width: 0;
+    border-style: solid;
+    border-color: var(--color-line);
+  }
+
+  .charte :where(h1, h2, h3, h4, h5, h6) {
+    font-size: inherit;
+    font-weight: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+
+  .charte :where(button, input, select, textarea) {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background-color: transparent;
+  }
+
+  .charte :where(button, [role="button"]) {
+    cursor: pointer;
+  }
+
+  .charte :where(button:disabled) {
+    cursor: not-allowed;
+  }
+
+  .charte :where(ol, ul) {
+    list-style: none;
+  }
+
+  .charte :where(table) {
+    border-collapse: collapse;
+  }
+
+  .charte :where(svg) {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  /* Focus visible partout, même sur un élément qu'un composant aurait oublié. */
+  .charte :where(:focus-visible) {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  .charte :where(dialog)::backdrop {
+    background-color: rgb(14 26 43 / 0.45);
+  }
+
+  /* Transition, jusqu'à l'étape 9 : le menu latéral du back-office reste
+   * l'ancien (décision du 19 octobre) ; un écran de la charte posé dans ce
+   * cadre peint toute la zone de contenu, pas seulement sa colonne. */
+  .admin-content-area:has(.charte) {
+    background-color: var(--color-page);
+  }
+}

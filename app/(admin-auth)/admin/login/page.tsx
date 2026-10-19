@@ -4,6 +4,11 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
+import { AuthShell, AuthShellLoading } from "@/components/layout/AuthShell";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Field, Input } from "@/components/ui/Field";
+import { TEXT_LINK } from "@/components/ui/text-link";
 import { safeCallbackPath } from "@/lib/callback-url";
 import { FIRST_LOGIN_PATH } from "@/lib/roles";
 
@@ -67,52 +72,46 @@ function LoginForm() {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <div className="login-header">
-          <h1 className="login-title">School Data Pipeline</h1>
-          <p className="login-subtitle">Connectez-vous pour accéder au site</p>
-        </div>
+    <AuthShell
+      title="School Data Pipeline"
+      subtitle="Connectez-vous pour accéder au site"
+      footer={
+        <>
+          Première connexion, ou mot de passe remis à zéro par un administrateur ?{" "}
+          <Link href={firstLoginHref} className={TEXT_LINK}>
+            Choisissez votre mot de passe
+          </Link>
+        </>
+      }
+    >
+      {error && <Alert tone="danger">{error}</Alert>}
 
-        {error && (
-          <div className="alert alert-danger" role="alert">
-            <span>⚠️</span>
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="form-group">
-            <label className="form-label" htmlFor="login">
-              Adresse e-mail
-            </label>
-            <input
-              id="login"
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field
+          id="login"
+          label="Adresse e-mail"
+          hint="Compte créé avant la liste blanche : votre ancien identifiant reste accepté tant qu'aucune adresse ne lui est associée."
+        >
+          {(control) => (
+            <Input
+              {...control}
               type="text"
               inputMode="email"
-              className="form-control"
               placeholder="prenom.nom@em-normandie.fr"
               value={login}
               onChange={(e) => setLogin(e.target.value)}
               required
               disabled={loading}
               autoComplete="username"
-              aria-describedby="login-hint"
             />
-            <p className="form-hint" id="login-hint">
-              Compte créé avant la liste blanche : votre ancien identifiant reste accepté tant
-              qu&apos;aucune adresse ne lui est associée.
-            </p>
-          </div>
+          )}
+        </Field>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="password">
-              Mot de passe
-            </label>
-            <input
-              id="password"
+        <Field id="password" label="Mot de passe">
+          {(control) => (
+            <Input
+              {...control}
               type="password"
-              className="form-control"
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -120,36 +119,20 @@ function LoginForm() {
               disabled={loading}
               autoComplete="current-password"
             />
-          </div>
+          )}
+        </Field>
 
-          <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
-            {loading ? "Connexion en cours..." : "Se connecter"}
-          </button>
-        </form>
-
-        <p className="login-footer">
-          Première connexion, ou mot de passe remis à zéro par un administrateur ?{" "}
-          <Link href={firstLoginHref}>Choisissez votre mot de passe</Link>
-        </p>
-      </div>
-    </div>
+        <Button type="submit" variant="primary" className="mt-1 w-full" disabled={loading}>
+          {loading ? "Connexion en cours..." : "Se connecter"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#0b0f19",
-        color: "#ffffff"
-      }}>
-        Chargement...
-      </div>
-    }>
+    <Suspense fallback={<AuthShellLoading />}>
       <LoginForm />
     </Suspense>
   );

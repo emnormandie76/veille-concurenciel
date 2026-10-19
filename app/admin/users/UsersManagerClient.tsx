@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { Alert } from "@/components/ui/Alert";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Button, buttonClasses } from "@/components/ui/Button";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/Table";
 import { ROLE_LABELS, USER_ROLES, isUserRole, type UserRole } from "@/lib/roles";
 import { STATUS_LABELS, WORK_EMAIL_DOMAIN, isAccountStatus } from "@/lib/accounts";
 
@@ -38,16 +45,18 @@ interface UsersManagerClientProps {
   currentUserId: string;
 }
 
-const ROLE_BADGES: Record<UserRole, string> = {
-  USER: "badge-user",
-  GESTIONNAIRE: "badge-moderator",
-  ADMIN: "badge-admin",
+// Charte (docs/architecture/charte-graphique.md, « Badges ») : les rôles sont
+// des catégories, les états des états.
+const ROLE_TONES: Record<UserRole, BadgeTone> = {
+  USER: "neutral",
+  GESTIONNAIRE: "accent",
+  ADMIN: "solid",
 };
 
-const STATUS_BADGES: Record<string, string> = {
-  INVITED: "badge-invited",
-  ACTIVE: "badge-active",
-  DISABLED: "badge-inactive",
+const STATUS_TONES: Record<string, BadgeTone> = {
+  INVITED: "warning",
+  ACTIVE: "success",
+  DISABLED: "danger",
 };
 
 const formatDate = (value: string | null) =>
@@ -160,241 +169,212 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
   const isSelf = (a: Account) => a.id === currentUserId;
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h1>Comptes</h1>
-          <p className="page-title-desc">
-            Ajoutez l&apos;adresse de travail d&apos;un collègue : à sa première connexion, il choisit son mot de
-            passe. Aucun e-mail n&apos;est envoyé.
-          </p>
-        </div>
-        <button className="btn btn-primary" onClick={() => open("add")}>
-          <span>➕</span> Ajouter une adresse
-        </button>
-      </div>
-
-      {error && (
-        <div className="alert alert-danger" role="alert">
-          <span>⚠️</span>
-          <span>{error}</span>
-        </div>
-      )}
-      {notice && (
-        <div className="alert alert-success" role="status">
-          <span>✅</span>
-          <span>{notice}</span>
-        </div>
-      )}
+    <AdminPage
+      title="Comptes"
+      description="Ajoutez l'adresse de travail d'un collègue : à sa première connexion, il choisit son mot de passe. Aucun e-mail n'est envoyé."
+      actions={
+        <Button variant="primary" onClick={() => open("add")}>
+          Ajouter une adresse
+        </Button>
+      }
+    >
+      {error && <Alert tone="danger">{error}</Alert>}
+      {notice && <Alert tone="success">{notice}</Alert>}
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des comptes...
-        </div>
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des comptes...</p>
       ) : (
-        <div className="table-container">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Compte</th>
-                <th>Rôle</th>
-                <th>État</th>
-                <th>Première connexion</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((a) => (
-                <tr key={a.id} style={isSelf(a) ? { background: "rgba(59, 130, 246, 0.03)" } : {}}>
-                  <td style={{ fontWeight: 600 }}>
+        <Table caption="Les comptes et les adresses de la liste blanche">
+          <THead>
+            <Tr>
+              <Th>Compte</Th>
+              <Th>Rôle</Th>
+              <Th>État</Th>
+              <Th>Première connexion</Th>
+              <Th align="right">Actions</Th>
+            </Tr>
+          </THead>
+          <TBody>
+            {accounts.map((a) => (
+              <Tr key={a.id} className={isSelf(a) ? "bg-accent-soft/40" : undefined}>
+                <Td>
+                  <div className="font-medium text-ink">
                     {nameOf(a)}
-                    {isSelf(a) && (
-                      <span style={{ color: "var(--accent)", fontSize: "0.8rem", marginLeft: "6px" }}>(vous)</span>
-                    )}
-                    {a.display_name && a.email && <span className="user-secondary">{a.email}</span>}
+                    {isSelf(a) && <span className="ml-1.5 text-xs font-normal text-accent-strong">(vous)</span>}
+                  </div>
+                  {a.display_name && a.email && <div className="text-xs text-ink-2">{a.email}</div>}
+                  {!a.email && (
+                    <div className="text-xs text-ink-2">Identifiant « {a.username} » : aucune adresse renseignée</div>
+                  )}
+                </Td>
+                <Td>
+                  <Badge tone={isUserRole(a.role) ? ROLE_TONES[a.role] : "neutral"}>
+                    {isUserRole(a.role) ? ROLE_LABELS[a.role] : a.role}
+                  </Badge>
+                </Td>
+                <Td>
+                  <Badge tone={STATUS_TONES[a.status] ?? "neutral"}>
+                    {isAccountStatus(a.status) ? STATUS_LABELS[a.status] : a.status}
+                  </Badge>
+                </Td>
+                <Td numeric align="left" className="text-ink-2">
+                  {formatDate(a.first_login_at)}
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap justify-end gap-1.5">
+                    <Button size="sm" onClick={() => open("role", a)}>
+                      Changer le rôle
+                    </Button>
                     {!a.email && (
-                      <span className="user-secondary">
-                        Identifiant « {a.username} » : aucune adresse renseignée
-                      </span>
+                      <Button size="sm" onClick={() => open("email", a)}>
+                        Renseigner l&apos;adresse
+                      </Button>
                     )}
-                  </td>
-                  <td>
-                    <span className={`badge ${isUserRole(a.role) ? ROLE_BADGES[a.role] : "badge-user"}`}>
-                      {isUserRole(a.role) ? ROLE_LABELS[a.role] : a.role}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`badge ${STATUS_BADGES[a.status] ?? "badge-inactive"}`}>
-                      {isAccountStatus(a.status) ? STATUS_LABELS[a.status] : a.status}
-                    </span>
-                  </td>
-                  <td style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>{formatDate(a.first_login_at)}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <div className="users-actions" style={{ display: "inline-flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => open("role", a)}>
-                        Changer le rôle
-                      </button>
-                      {!a.email && (
-                        <button className="btn btn-secondary btn-sm" onClick={() => open("email", a)}>
-                          Renseigner l&apos;adresse
-                        </button>
-                      )}
-                      {isSelf(a) ? (
-                        <Link className="btn btn-secondary btn-sm" href="/account">
-                          Mon compte
-                        </Link>
-                      ) : (
-                        <>
-                          {a.status === "INVITED" && (
-                            <button className="btn btn-danger btn-sm" onClick={() => open("remove", a)}>
-                              Retirer
-                            </button>
-                          )}
-                          {a.status !== "INVITED" && a.email && (
-                            <button className="btn btn-secondary btn-sm" onClick={() => open("reset", a)}>
-                              {a.status === "DISABLED" ? "Réactiver" : "Remettre en première connexion"}
-                            </button>
-                          )}
-                          {a.status === "ACTIVE" && (
-                            <button className="btn btn-danger btn-sm" onClick={() => open("disable", a)}>
-                              Désactiver
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    {isSelf(a) ? (
+                      <Link className={buttonClasses({ size: "sm" })} href="/account">
+                        Mon compte
+                      </Link>
+                    ) : (
+                      <>
+                        {a.status === "INVITED" && (
+                          <Button size="sm" variant="danger-soft" onClick={() => open("remove", a)}>
+                            Retirer
+                          </Button>
+                        )}
+                        {a.status !== "INVITED" && a.email && (
+                          <Button size="sm" onClick={() => open("reset", a)}>
+                            {a.status === "DISABLED" ? "Réactiver" : "Remettre en première connexion"}
+                          </Button>
+                        )}
+                        {a.status === "ACTIVE" && (
+                          <Button size="sm" variant="danger-soft" onClick={() => open("disable", a)}>
+                            Désactiver
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
       )}
 
       {dialog && (
-        <div className="modal-overlay">
-          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="users-dialog-title">
-            <div className="modal-header">
-              <h3 className="modal-title" id="users-dialog-title">
-                {dialog.kind === "add" && "Ajouter une adresse à la liste"}
-                {dialog.kind === "role" && account && `Rôle de ${nameOf(account)}`}
-                {dialog.kind === "reset" && account &&
-                  (account.status === "DISABLED" ? `Réactiver ${nameOf(account)} ?` : `Remettre ${nameOf(account)} en première connexion ?`)}
-                {dialog.kind === "disable" && account && `Désactiver ${nameOf(account)} ?`}
-                {dialog.kind === "remove" && account && `Retirer ${account.email} de la liste ?`}
-                {dialog.kind === "email" && account && `Adresse de ${nameOf(account)}`}
-              </h3>
-              <button className="modal-close" onClick={close} aria-label="Fermer">
-                ✕
-              </button>
-            </div>
+        <Dialog
+          key={`${dialog.kind}-${account?.id ?? "new"}`}
+          titleId="users-dialog-title"
+          onClose={close}
+          title={
+            <>
+              {dialog.kind === "add" && "Ajouter une adresse à la liste"}
+              {dialog.kind === "role" && account && `Rôle de ${nameOf(account)}`}
+              {dialog.kind === "reset" && account &&
+                (account.status === "DISABLED" ? `Réactiver ${nameOf(account)} ?` : `Remettre ${nameOf(account)} en première connexion ?`)}
+              {dialog.kind === "disable" && account && `Désactiver ${nameOf(account)} ?`}
+              {dialog.kind === "remove" && account && `Retirer ${account.email} de la liste ?`}
+              {dialog.kind === "email" && account && `Adresse de ${nameOf(account)}`}
+            </>
+          }
+        >
+          {dialogError && <Alert tone="danger">{dialogError}</Alert>}
 
-            {dialogError && (
-              <div className="alert alert-danger" role="alert" style={{ marginBottom: "16px" }}>
-                <span>⚠️ </span>
-                <span>{dialogError}</span>
-              </div>
-            )}
-
-            <form onSubmit={submit}>
-              {(dialog.kind === "add" || dialog.kind === "email") && (
-                <div className="form-group">
-                  <label className="form-label" htmlFor="users-email">
-                    Adresse e-mail de travail
-                  </label>
-                  <input
-                    id="users-email"
+          <form onSubmit={submit} className="flex flex-col gap-4">
+            {(dialog.kind === "add" || dialog.kind === "email") && (
+              <Field
+                id="users-email"
+                label="Adresse e-mail de travail"
+                hint={
+                  dialog.kind === "add"
+                    ? `Seules les adresses @${WORK_EMAIL_DOMAIN} sont acceptées. La personne devient « ${ROLE_LABELS.USER} » ; vous pourrez changer son rôle ensuite. Aucun e-mail n'est envoyé : prévenez-la vous-même.`
+                    : `Dès que l'adresse est enregistrée, l'identifiant « ${account?.username} » ne permet plus de se connecter : la personne utilise son adresse, avec son mot de passe actuel.`
+                }
+              >
+                {(control) => (
+                  <Input
+                    {...control}
                     type="email"
-                    className="form-control"
                     placeholder={`prenom.nom@${WORK_EMAIL_DOMAIN}`}
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
                     required
-                    autoFocus
+                    data-autofocus
                   />
-                  <p className="form-hint">
-                    {dialog.kind === "add"
-                      ? `Seules les adresses @${WORK_EMAIL_DOMAIN} sont acceptées. La personne devient « ${ROLE_LABELS.USER} » ; vous pourrez changer son rôle ensuite. Aucun e-mail n'est envoyé : prévenez-la vous-même.`
-                      : `Dès que l'adresse est enregistrée, l'identifiant « ${account?.username} » ne permet plus de se connecter : la personne utilise son adresse, avec son mot de passe actuel.`}
-                  </p>
-                </div>
-              )}
+                )}
+              </Field>
+            )}
 
-              {dialog.kind === "role" && account && (
-                <div className="form-group">
-                  <label className="form-label" htmlFor="users-role">
-                    Rôle
-                  </label>
-                  <select
-                    id="users-role"
-                    className="form-control"
-                    value={roleInput}
-                    onChange={(e) => setRoleInput(e.target.value as UserRole)}
-                  >
+            {dialog.kind === "role" && account && (
+              <Field
+                id="users-role"
+                label="Rôle"
+                hint={
+                  <>
+                    {ROLE_LABELS.USER} : consulte. {ROLE_LABELS.GESTIONNAIRE} : ajoute, modifie et supprime le contenu.{" "}
+                    {ROLE_LABELS.ADMIN} : gère aussi les comptes et l&apos;IA. Il reste toujours au moins un administrateur
+                    actif.
+                    {isSelf(account) && " Si vous quittez le rôle administrateur, vous perdez l'accès à cet écran."}
+                  </>
+                }
+              >
+                {(control) => (
+                  <Select {...control} value={roleInput} onChange={(e) => setRoleInput(e.target.value as UserRole)}>
                     {USER_ROLES.map((role) => (
                       <option key={role} value={role}>
                         {ROLE_LABELS[role]}
                       </option>
                     ))}
-                  </select>
-                  <p className="form-hint">
-                    {ROLE_LABELS.USER} : consulte. {ROLE_LABELS.GESTIONNAIRE} : ajoute, modifie et supprime le contenu.{" "}
-                    {ROLE_LABELS.ADMIN} : gère aussi les comptes et l&apos;IA. Il reste toujours au moins un administrateur
-                    actif.
-                    {isSelf(account) && " Si vous quittez le rôle administrateur, vous perdez l'accès à cet écran."}
-                  </p>
-                </div>
-              )}
+                  </Select>
+                )}
+              </Field>
+            )}
 
-              {dialog.kind === "reset" && account && (
-                <p className="modal-text">
-                  Le mot de passe de <strong>{nameOf(account)}</strong> est effacé et ses sessions ouvertes sont coupées.
-                  Son rôle et son nom sont gardés. La personne choisira un nouveau mot de passe sur la page de première
-                  connexion, avec son adresse <strong>{account.email}</strong>. Aucun e-mail n&apos;est envoyé : prévenez-la
-                  vous-même.
-                </p>
-              )}
+            {dialog.kind === "reset" && account && (
+              <p className="text-sm leading-relaxed text-ink-2">
+                Le mot de passe de <strong className="font-medium text-ink">{nameOf(account)}</strong> est effacé et ses
+                sessions ouvertes sont coupées. Son rôle et son nom sont gardés. La personne choisira un nouveau mot de
+                passe sur la page de première connexion, avec son adresse{" "}
+                <strong className="font-medium text-ink">{account.email}</strong>. Aucun e-mail n&apos;est envoyé :
+                prévenez-la vous-même.
+              </p>
+            )}
 
-              {dialog.kind === "disable" && account && (
-                <p className="modal-text">
-                  <strong>{nameOf(account)}</strong> ne pourra plus se connecter, et ses sessions ouvertes sont coupées. Son
-                  nom reste dans l&apos;historique des modifications. Vous pourrez réactiver le compte en le remettant en
-                  première connexion.
-                </p>
-              )}
+            {dialog.kind === "disable" && account && (
+              <p className="text-sm leading-relaxed text-ink-2">
+                <strong className="font-medium text-ink">{nameOf(account)}</strong> ne pourra plus se connecter, et ses
+                sessions ouvertes sont coupées. Son nom reste dans l&apos;historique des modifications. Vous pourrez
+                réactiver le compte en le remettant en première connexion.
+              </p>
+            )}
 
-              {dialog.kind === "remove" && account && (
-                <p className="modal-text">
-                  La personne ne s&apos;est pas encore connectée. Une fois l&apos;adresse retirée, elle ne pourra plus faire
-                  sa première connexion.
-                </p>
-              )}
+            {dialog.kind === "remove" && account && (
+              <p className="text-sm leading-relaxed text-ink-2">
+                La personne ne s&apos;est pas encore connectée. Une fois l&apos;adresse retirée, elle ne pourra plus faire
+                sa première connexion.
+              </p>
+            )}
 
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={close} disabled={busy}>
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className={`btn ${dialog.kind === "disable" || dialog.kind === "remove" ? "btn-danger" : "btn-primary"}`}
-                  disabled={busy}
-                >
-                  {busy
-                    ? "En cours…"
-                    : {
-                        add: "Ajouter à la liste",
-                        role: "Enregistrer le rôle",
-                        reset: account?.status === "DISABLED" ? "Réactiver" : "Remettre en première connexion",
-                        disable: "Désactiver le compte",
-                        remove: "Retirer de la liste",
-                        email: "Enregistrer l'adresse",
-                      }[dialog.kind]}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <DialogFooter>
+              <Button onClick={close} disabled={busy}>
+                Annuler
+              </Button>
+              <Button type="submit" variant={dialog.kind === "disable" || dialog.kind === "remove" ? "danger" : "primary"} disabled={busy}>
+                {busy
+                  ? "En cours…"
+                  : {
+                      add: "Ajouter à la liste",
+                      role: "Enregistrer le rôle",
+                      reset: account?.status === "DISABLED" ? "Réactiver" : "Remettre en première connexion",
+                      disable: "Désactiver le compte",
+                      remove: "Retirer de la liste",
+                      email: "Enregistrer l'adresse",
+                    }[dialog.kind]}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
       )}
-    </div>
+    </AdminPage>
   );
 }

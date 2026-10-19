@@ -2,7 +2,9 @@
 
 > **Relevé du 16 octobre 2026**, branche `gestion`, à la fin de l'étape 2 du
 > plan (liste blanche, première connexion, écran des rôles ; l'étape 1 a posé
-> les trois rôles, les gardes et la connexion obligatoire). Cette fiche décrit
+> les trois rôles, les gardes et la connexion obligatoire), **mis à jour le
+> 19 octobre** : site en ligne (étape 3), charte graphique et composants de
+> base (étape 4 : §3 et §6). Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
 > du plan la met à jour.
@@ -139,6 +141,11 @@ signalement de l'étape 6 la remplacera.
 | `/admin/users` | `admin` : les comptes (« Comptes » dans le menu) : ajouter une adresse à la liste, retirer un invité, changer un rôle, remettre en première connexion (ou réactiver), désactiver, renseigner l'adresse d'un compte ancien. Aucun e-mail envoyé | non |
 | `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs | **oui** |
 
+**Écrans à la charte graphique** (étape 4, §6) : la connexion et la première
+connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
+(`AdminPage`, dialogues natifs). Les autres gardent l'ancien style jusqu'à
+l'étape 9.
+
 ---
 
 ## 4. Routes
@@ -255,14 +262,29 @@ Le backend Python **lit** les tables de données (diff de la Phase 2) et
 
 ## 6. Styles
 
-- Pas de Tailwind. Tout le style est dans [`app/globals.css`](../../app/globals.css)
-  (1 833 lignes) : thème sombre seulement, 21 variables CSS (`--bg-*`,
-  `--text-*`, `--accent*`, `--danger*`, `--radius-*`…), des classes globales
-  (`badge`, `admin-layout-wrapper`…).
-- Environ 1 000 `className` sur 28 fichiers ; aucun dossier `components/`
-  partagé.
-- CSP posée par [`next.config.ts`](../../next.config.ts) :
-  `style-src 'self' 'unsafe-inline'`.
+Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
+[`charte-graphique.md`](charte-graphique.md).
+
+| | Écrans | Où |
+|---|---|---|
+| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
+| **L'ancien style** | tous les autres : accueil, fiches, `/api-docs`, écoles et onglets de gestion, inbox, `/admin/cron`, menu latéral du back-office | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
+
+- [`app/globals.css`](../../app/globals.css) est le point d'entrée : ordre des
+  couches `theme, legacy, base, components, utilities`, thème et utilitaires de
+  Tailwind **sans preflight**, `@source` limités aux dossiers des écrans repris
+  (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
+  `app/account/`) ; `block` et `fill-accent`, homonymes de classes de
+  `/admin/cron`, ne sont jamais générés.
+- La racine de chaque gabarit porte la classe `charte` : la base de la charte
+  n'agit que dans ce sous-arbre. Le menu latéral du back-office reste l'ancien
+  (décision du 19 octobre) ; `.admin-content-area:has(.charte)` peint la zone
+  de contenu d'un écran repris au fond de la charte.
+- Polices par `next/font` (`app/layout.tsx`) : Inter pour l'ancien style,
+  IBM Plex Sans, Sans Condensed et Mono pour la charte.
+- CSP posée par [`next.config.ts`](../../next.config.ts), inchangée :
+  `style-src 'self' 'unsafe-inline'` ; aucune violation sur un build de
+  production (19 octobre).
 
 ---
 
@@ -302,6 +324,15 @@ Le backend Python **lit** les tables de données (diff de la Phase 2) et
   `v1`, `inbox-*` (en `ADMIN`) ; `test/password.test.ts`.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts`.
+- **Charte** (étape 4) : `test/ui-components.test.ts` (le HTML rendu par
+  React côté serveur : libellés, aides et erreurs reliés, rôles des messages,
+  onglets au modèle ARIA et leur clavier, dialogue nommé, boutons qui
+  n'envoient pas un formulaire par défaut, racine `charte` des gabarits),
+  `test/charte.test.ts` (compilation de `app/globals.css` par PostCSS et
+  Tailwind : pas de preflight, aucune règle hors couche, aucun utilitaire
+  homonyme d'une ancienne classe, chaque fichier qui emploie la charte lu par
+  `@source` ; les écrans repris sans ancienne classe ni `style` en ligne ;
+  jetons et contrastes identiques à `charte-graphique.md` §2 et §3).
 - `npm run smoke` : contre `npm run dev`, d'abord **le mur** sans session
   (connexion et première connexion 200, chaque page renvoyée vers la
   connexion, `/account` compris, `/api/schools` et les 15 `GET /api/v1/*` en

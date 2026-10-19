@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { SiteShell } from "@/components/layout/SiteShell";
+import { Card } from "@/components/ui/Card";
 import { requirePage } from "@/lib/auth";
 import { ROLE_LABELS, hasAccess } from "@/lib/roles";
-import SignOutButton from "../SignOutButton";
 import AccountClient from "./AccountClient";
 
 export const metadata: Metadata = { title: "Mon compte" };
@@ -20,38 +20,28 @@ export default async function AccountPage() {
   const { user } = await requirePage("signedIn");
 
   return (
-    <>
-      <nav className="public-nav" id="main-nav">
-        <Link href="/" className="public-nav-logo">
-          <span className="public-nav-logo-icon">🎓</span>
-          EduData France
-        </Link>
-        <div className="public-nav-links">
-          <Link href="/" className="public-nav-link">Écoles</Link>
-          <Link href="/api-docs" className="public-nav-link">API</Link>
-          {hasAccess(user.role, "manager") && (
-            <Link href="/admin/schools" className="public-nav-link">Back-office</Link>
-          )}
-          <Link href="/account" className="public-nav-link active" aria-current="page">Mon compte</Link>
-          <SignOutButton className="public-nav-cta" />
+    <SiteShell current="account" showBackOffice={hasAccess(user.role, "manager")} width="narrow">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Mon compte</h1>
+          <p className="text-sm leading-relaxed text-ink-2">
+            Votre nom affiché signe vos modifications ; changez-le, ainsi que votre mot de passe, quand vous le souhaitez.
+          </p>
         </div>
-      </nav>
 
-      <main className="public-container" style={{ maxWidth: 720, paddingTop: 40 }}>
-        <h1>Mon compte</h1>
-        <p className="page-title-desc" style={{ marginBottom: 24 }}>
-          Votre nom affiché signe vos modifications ; changez-le, ainsi que votre mot de passe, quand vous le souhaitez.
-        </p>
-
-        <dl className="account-facts">
-          <dt>Adresse e-mail</dt>
-          <dd>{user.email ?? "Aucune adresse pour l'instant : un administrateur la renseignera."}</dd>
-          <dt>Rôle</dt>
-          <dd>{ROLE_LABELS[user.role]}</dd>
-        </dl>
+        <Card>
+          <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[10rem_1fr]">
+            <dt className="text-ink-2">Adresse e-mail</dt>
+            <dd className="font-medium break-words text-ink">
+              {user.email ?? "Aucune adresse pour l'instant : un administrateur la renseignera."}
+            </dd>
+            <dt className="text-ink-2">Rôle</dt>
+            <dd className="font-medium text-ink">{ROLE_LABELS[user.role]}</dd>
+          </dl>
+        </Card>
 
         <AccountClient initialName={user.name} />
-      </main>
-    </>
+      </div>
+    </SiteShell>
   );
 }

@@ -2445,6 +2445,23 @@ visible. C'est le second parti :
 Résultat : **0 erreur, 114 avertissements** au 2 septembre 2026 — **124 au 28
 septembre**. La dette n'est ni masquée ni bloquante, mais elle monte.
 
+### Styles : Tailwind CSS v4 et PostCSS
+
+Ajoutés le 19 octobre 2026 (plan gestion-contenu, étape 4) ; référence :
+[`charte-graphique.md`](charte-graphique.md) §9.
+
+| Élément | Rôle |
+|---|---|
+| `tailwindcss` et `@tailwindcss/postcss` `4.3.3` (dépendances de développement) | les deux seuls paquets ; la doc de Next 16 (`node_modules/next/dist/docs/01-app/01-getting-started/11-css.md`) n'en demande pas d'autre. `npm audit` inchangé : 9 hautes connues, 0 critique |
+| `postcss.config.mjs` | un seul greffon, `@tailwindcss/postcss`. Turbopack lit ce fichier en dev comme au build, puis passe le CSS à Lightning CSS |
+| `app/globals.css` | point d'entrée : ordre des couches `theme, legacy, base, components, utilities`, thème et utilitaires de Tailwind **sans preflight** (piège 10 du plan), `@source` limités aux dossiers des écrans repris ; l'ancien CSS, inchangé, dans la couche `legacy` |
+| `app/charte.css` | jetons de la charte (`@theme inline` sur des variables `--charte-*`) et base limitée au sous-arbre `.charte` |
+| `test/charte.test.ts` | compile `app/globals.css` par PostCSS et Tailwind, comme `next build` : pas de preflight, aucune règle hors couche, aucun utilitaire homonyme d'une ancienne classe, jetons et contrastes conformes à la charte |
+
+La CSP (`style-src 'self' 'unsafe-inline'`) ne change pas : Tailwind produit une
+feuille statique au build, servie par le site. Contrôlé le 19 octobre 2026 sur
+un build de production local : aucune violation dans la console.
+
 ### Tests
 
 `pytest` et `pytest-asyncio` étaient **utilisés sans être déclarés nulle part** :

@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Field, Input } from "@/components/ui/Field";
 import { MAX_DISPLAY_NAME_LENGTH } from "@/lib/accounts";
 import { MIN_PASSWORD_LENGTH } from "@/lib/password";
 
@@ -20,12 +24,7 @@ async function messageOf(res: Response, fallback: string): Promise<string> {
 
 function FeedbackLine({ feedback }: { feedback: Feedback }) {
   if (!feedback) return null;
-  return (
-    <div className={`alert ${feedback.kind === "success" ? "alert-success" : "alert-danger"}`} role="status">
-      <span>{feedback.kind === "success" ? "✅" : "⚠️"}</span>
-      <span>{feedback.message}</span>
-    </div>
-  );
+  return <Alert tone={feedback.kind === "success" ? "success" : "danger"}>{feedback.message}</Alert>;
 }
 
 /**
@@ -99,82 +98,86 @@ export default function AccountClient({ initialName }: AccountClientProps) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-      <section className="account-card">
-        <h2>Nom affiché</h2>
+    <>
+      <Card aria-labelledby="account-name-title" className="flex flex-col gap-4">
+        <CardHeader title="Nom affiché" titleId="account-name-title" />
         <FeedbackLine feedback={nameFeedback} />
-        <form onSubmit={saveName}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="account-name">Prénom et nom</label>
-            <input
-              id="account-name"
-              type="text"
-              className="form-control"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              maxLength={MAX_DISPLAY_NAME_LENGTH}
-              autoComplete="name"
-              required
-              disabled={nameBusy}
-            />
+        <form onSubmit={saveName} className="flex flex-col gap-4">
+          <Field id="account-name" label="Prénom et nom">
+            {(control) => (
+              <Input
+                {...control}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={MAX_DISPLAY_NAME_LENGTH}
+                autoComplete="name"
+                required
+                disabled={nameBusy}
+              />
+            )}
+          </Field>
+          <div>
+            <Button type="submit" variant="primary" disabled={nameBusy}>
+              {nameBusy ? "Enregistrement…" : "Enregistrer le nom"}
+            </Button>
           </div>
-          <button type="submit" className="btn btn-primary" disabled={nameBusy}>
-            {nameBusy ? "Enregistrement…" : "Enregistrer le nom"}
-          </button>
         </form>
-      </section>
+      </Card>
 
-      <section className="account-card">
-        <h2>Mot de passe</h2>
+      <Card aria-labelledby="account-password-title" className="flex flex-col gap-4">
+        <CardHeader title="Mot de passe" titleId="account-password-title" />
         <FeedbackLine feedback={passwordFeedback} />
-        <form onSubmit={savePassword}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="account-current-password">Mot de passe actuel</label>
-            <input
-              id="account-current-password"
-              type="password"
-              className="form-control"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              required
-              disabled={passwordBusy}
-            />
+        <form onSubmit={savePassword} className="flex flex-col gap-4">
+          <Field id="account-current-password" label="Mot de passe actuel">
+            {(control) => (
+              <Input
+                {...control}
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                disabled={passwordBusy}
+              />
+            )}
+          </Field>
+          <Field id="account-new-password" label="Nouveau mot de passe">
+            {(control) => (
+              <Input
+                {...control}
+                type="password"
+                placeholder={`Au moins ${MIN_PASSWORD_LENGTH} caractères`}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                minLength={MIN_PASSWORD_LENGTH}
+                required
+                disabled={passwordBusy}
+              />
+            )}
+          </Field>
+          <Field id="account-confirm-password" label="Confirmer le nouveau mot de passe">
+            {(control) => (
+              <Input
+                {...control}
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                minLength={MIN_PASSWORD_LENGTH}
+                required
+                disabled={passwordBusy}
+              />
+            )}
+          </Field>
+          <div>
+            <Button type="submit" variant="primary" disabled={passwordBusy}>
+              {passwordBusy ? "Mise à jour…" : "Changer le mot de passe"}
+            </Button>
           </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="account-new-password">Nouveau mot de passe</label>
-            <input
-              id="account-new-password"
-              type="password"
-              className="form-control"
-              placeholder={`Au moins ${MIN_PASSWORD_LENGTH} caractères`}
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              minLength={MIN_PASSWORD_LENGTH}
-              required
-              disabled={passwordBusy}
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label" htmlFor="account-confirm-password">Confirmer le nouveau mot de passe</label>
-            <input
-              id="account-confirm-password"
-              type="password"
-              className="form-control"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              minLength={MIN_PASSWORD_LENGTH}
-              required
-              disabled={passwordBusy}
-            />
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={passwordBusy}>
-            {passwordBusy ? "Mise à jour…" : "Changer le mot de passe"}
-          </button>
         </form>
-      </section>
-    </div>
+      </Card>
+    </>
   );
 }

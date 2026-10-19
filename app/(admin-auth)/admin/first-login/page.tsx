@@ -4,6 +4,11 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { AuthShell, AuthShellLoading } from "@/components/layout/AuthShell";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Field, Input } from "@/components/ui/Field";
+import { TEXT_LINK } from "@/components/ui/text-link";
 import { safeCallbackPath } from "@/lib/callback-url";
 import { MAX_DISPLAY_NAME_LENGTH, WORK_EMAIL_DOMAIN, nameFromEmail } from "@/lib/accounts";
 import { MIN_PASSWORD_LENGTH } from "@/lib/password";
@@ -80,32 +85,26 @@ function FirstLoginForm() {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <div className="login-header">
-          <h1 className="login-title">Première connexion</h1>
-          <p className="login-subtitle">
-            Votre adresse doit avoir été ajoutée par un administrateur. Aucun e-mail ne vous est
-            envoyé : vous choisissez votre mot de passe ici.
-          </p>
-        </div>
+    <AuthShell
+      title="Première connexion"
+      subtitle="Votre adresse doit avoir été ajoutée par un administrateur. Aucun e-mail ne vous est envoyé : vous choisissez votre mot de passe ici."
+      footer={
+        <>
+          Vous avez déjà un mot de passe ?{" "}
+          <Link href={loginHref} className={TEXT_LINK}>
+            Se connecter
+          </Link>
+        </>
+      }
+    >
+      {error && <Alert tone="danger">{error}</Alert>}
 
-        {error && (
-          <div className="alert alert-danger" role="alert">
-            <span>⚠️</span>
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="form-group">
-            <label className="form-label" htmlFor="first-login-email">
-              Adresse e-mail de travail
-            </label>
-            <input
-              id="first-login-email"
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field id="first-login-email" label="Adresse e-mail de travail">
+          {(control) => (
+            <Input
+              {...control}
               type="email"
-              className="form-control"
               placeholder={`prenom.nom@${WORK_EMAIL_DOMAIN}`}
               value={email}
               onChange={(e) => onEmailChange(e.target.value)}
@@ -113,16 +112,18 @@ function FirstLoginForm() {
               disabled={loading}
               autoComplete="username"
             />
-          </div>
+          )}
+        </Field>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="first-login-name">
-              Nom affiché
-            </label>
-            <input
-              id="first-login-name"
+        <Field
+          id="first-login-name"
+          label="Nom affiché"
+          hint="Il signera vos modifications. Vous pourrez le changer sur « Mon compte »."
+        >
+          {(control) => (
+            <Input
+              {...control}
               type="text"
-              className="form-control"
               placeholder="Prénom Nom"
               value={displayName}
               onChange={(e) => {
@@ -133,21 +134,15 @@ function FirstLoginForm() {
               required
               disabled={loading}
               autoComplete="name"
-              aria-describedby="first-login-name-hint"
             />
-            <p className="form-hint" id="first-login-name-hint">
-              Il signera vos modifications. Vous pourrez le changer sur « Mon compte ».
-            </p>
-          </div>
+          )}
+        </Field>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="first-login-password">
-              Mot de passe
-            </label>
-            <input
-              id="first-login-password"
+        <Field id="first-login-password" label="Mot de passe">
+          {(control) => (
+            <Input
+              {...control}
               type="password"
-              className="form-control"
               placeholder={`Au moins ${MIN_PASSWORD_LENGTH} caractères`}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -156,16 +151,14 @@ function FirstLoginForm() {
               disabled={loading}
               autoComplete="new-password"
             />
-          </div>
+          )}
+        </Field>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="first-login-confirm">
-              Confirmer le mot de passe
-            </label>
-            <input
-              id="first-login-confirm"
+        <Field id="first-login-confirm" label="Confirmer le mot de passe">
+          {(control) => (
+            <Input
+              {...control}
               type="password"
-              className="form-control"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               minLength={MIN_PASSWORD_LENGTH}
@@ -173,30 +166,20 @@ function FirstLoginForm() {
               disabled={loading}
               autoComplete="new-password"
             />
-          </div>
+          )}
+        </Field>
 
-          <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
-            {loading ? "Enregistrement…" : "Choisir mon mot de passe"}
-          </button>
-        </form>
-
-        <p className="login-footer">
-          Vous avez déjà un mot de passe ? <Link href={loginHref}>Se connecter</Link>
-        </p>
-      </div>
-    </div>
+        <Button type="submit" variant="primary" className="mt-1 w-full" disabled={loading}>
+          {loading ? "Enregistrement…" : "Choisir mon mot de passe"}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
 
 export default function FirstLoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="login-container" style={{ color: "#ffffff" }}>
-          Chargement...
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthShellLoading />}>
       <FirstLoginForm />
     </Suspense>
   );

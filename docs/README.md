@@ -16,6 +16,7 @@ index les range selon la partie du projet qu'ils servent.
 |---|---|
 | [`features/gestion-contenu.md`](features/gestion-contenu.md) | **le plan en cours** : décisions, étapes, journal (§9) |
 | [`architecture/gestion-contenu.md`](architecture/gestion-contenu.md) | **l'état réel du code** : rôles, gardes, écrans, routes, tables, styles, tests |
+| [`architecture/charte-graphique.md`](architecture/charte-graphique.md) | **la charte graphique** (étape 4) : couleurs, contrastes, polices, espacements, composants, gabarits, accessibilité, cohabitation avec l'ancien style |
 | [`architecture/bdd.md`](architecture/bdd.md) | schéma de la base et migrations |
 | [`architecture/API-rest.md`](architecture/API-rest.md) | l'API v1 (15 routes) |
 | [`memory/memory-deploiement-vercel.md`](memory/memory-deploiement-vercel.md) | mettre le site en ligne : variables, base, Upstash, ordre des opérations |

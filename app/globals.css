@@ -1,3 +1,43 @@
+/*
+ * app/globals.css — point d'entrée des styles (plan gestion-contenu, étape 4)
+ *
+ * Deux mondes cohabitent jusqu'à l'étape 9 (plan, G7 et piège 10) :
+ * - la charte graphique : Tailwind CSS v4, jetons et base dans ./charte.css,
+ *   pour les écrans repris, dont la racine porte la classe `charte` ;
+ * - l'ancien style, plus bas, gardé tel quel dans la couche `legacy`.
+ *
+ * L'ordre des couches compte : un style rangé dans aucune couche l'emporte
+ * sur toutes les couches. Laissé hors couche, l'ancien
+ * `* { margin: 0; padding: 0 }` annulerait les classes d'espacement de
+ * Tailwind ; rangé sous `base` et `utilities`, il ne touche plus aux écrans
+ * de la charte, et les anciens écrans, qui n'ont aucune classe Tailwind, ne
+ * changent pas.
+ *
+ * Pas de preflight (la remise à zéro de Tailwind) avant l'étape 9 : seuls le
+ * thème et les utilitaires sont importés. Tailwind ne lit que les dossiers
+ * nommés par @source, ceux des écrans repris : un ancien nom de classe qui
+ * serait aussi un utilitaire (`hidden`, `table`…) n'en reçoit pas les règles.
+ * Un écran qui passe à la charte ajoute son dossier ici
+ * (test/charte.test.ts le vérifie).
+ *
+ * Référence : docs/architecture/charte-graphique.md.
+ */
+@layer theme, legacy, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./charte.css";
+
+@source "../components";
+@source "./(admin-auth)/admin";
+@source "./admin/users";
+@source "./account";
+/* Homonymes de classes de /admin/cron (RotationPanel, CronMonitoringClient) :
+ * jamais générés, même si un fichier lu les contient. */
+@source not inline("block fill-accent");
+
+/* ─── L'ancien style (étape 2.1 du chantier d'origine), inchangé ─────────── */
+@layer legacy {
 /* globals.css — Design System & Dark Theme (Étape 2.1) */
 
 :root {
@@ -1967,4 +2007,5 @@ select.form-control optgroup {
 .users-actions .btn {
   padding: 6px 12px;
   font-size: 0.85rem;
+}
 }

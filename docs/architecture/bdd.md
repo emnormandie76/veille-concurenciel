@@ -9,12 +9,12 @@
 > **16 octobre 2026** (plan gestion-contenu, étape 1) : 11e migration,
 > `20261016120000_three_roles` : `User.role` passe aux trois rôles `USER`,
 > `GESTIONNAIRE`, `ADMIN` (défaut `USER`). Appliquée sur la branche Neon `dev`
-> seulement ; `main` à l'étape 3.
+> le 16 octobre, sur `main` le 19 octobre (étape 3).
 > **16 octobre 2026** (étape 2) : 12e migration,
 > `20261016150000_whitelist_accounts` : la liste blanche. `User` reçoit
 > l'adresse, le nom affiché, l'état, la date de première connexion et la
 > version de session ; `username` et `password_hash` deviennent facultatifs.
-> Appliquée sur `dev` seulement ; `main` à l'étape 3.
+> Appliquée sur `dev` le 16 octobre, sur `main` le 19 octobre (étape 3).
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -342,11 +342,11 @@ ContributionInbox ──→ School? · Campus? · Program? · ProgramCampus?   (
 ## 4. Migrations
 
 Douze migrations, à appliquer par `prisma migrate deploy` (ou
-`npm run db:migrate` par WebSocket). Les dix premières sont appliquées sur les
-branches Neon `main` et `dev` ; la onzième, `20261016120000_three_roles`, et la
-douzième, `20261016150000_whitelist_accounts`, sur `dev` seulement au
-16 octobre 2026 (elles partent sur `main` à l'étape 3 du plan gestion-contenu,
-avant la fusion).
+`npm run db:migrate` par WebSocket). Les douze sont appliquées sur les
+branches Neon `main` et `dev`. La onzième, `20261016120000_three_roles`, et la
+douzième, `20261016150000_whitelist_accounts`, sont arrivées sur `dev` le
+16 octobre 2026 et sur `main` le 19 octobre (étape 3 du plan gestion-contenu,
+avant la fusion dans la branche Git `main`).
 
 | Migration | Contenu |
 |-----------|---------|

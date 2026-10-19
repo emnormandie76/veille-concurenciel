@@ -56,9 +56,9 @@ branche `gestion` :
   l'étape 2) : décisions D1 (rôle relu en base), D2
   (`/contribute` retirée), D18 (l'écran des comptes crée des `GESTIONNAIRE`),
   D19 (créations et suppressions du contenu au gestionnaire) ; migration
-  `20261016120000_three_roles` appliquée sur la branche Neon `dev`, **pas sur
-  `main`** (étape 3) ; `npm run smoke` adapté et joué (vert) avec l'accord
-  du propriétaire ;
+  `20261016120000_three_roles` appliquée sur la branche Neon `dev`, puis sur
+  `main` le 19 octobre (étape 3) ; `npm run smoke` adapté et joué (vert) avec
+  l'accord du propriétaire ;
 - étape 2 (liste blanche, première connexion, écran des rôles) faite le
   16 octobre et validée (le propriétaire demande le commit, le push et le
   prompt de l'étape 3) : décisions D3
@@ -68,11 +68,15 @@ branche `gestion` :
   connexion), D20 (un compte qui n'est plus actif perd sa session ; la lecture
   reste possible jusqu'à 8 h), D21 (un compte actif se désactive au lieu
   d'être supprimé) ; migration `20261016150000_whitelist_accounts` appliquée
-  sur la branche Neon `dev`, **pas sur `main`** (étape 3) ; smoke adapté :
-  le mur est vert, la phase connectée reste à rejouer après un redémarrage du
-  `next dev` du propriétaire (client Prisma périmé) ;
-- prochaine : étape 3 (mise en ligne), en commençant par le smoke connecté,
-  puis décision du propriétaire sur D7 et sur le §8.2 du mémo Vercel.
+  sur la branche Neon `dev`, puis sur `main` le 19 octobre (étape 3) ; smoke
+  adapté et vert (la phase connectée, rejouée au début de l'étape 3) ;
+- en cours : étape 3 (mise en ligne). Faits : smoke connecté vert ; décisions
+  D7 (Hobby gardé, en connaissance de cause), D22 (préversions : base reliée
+  à Production seulement), D23 (`preload` de HSTS gardé) ; les deux
+  migrations sur la branche Neon `main` le 19 octobre (12/12) ; mot de passe
+  de `neondb_owner` changé par le propriétaire sur `main` et sur `dev` le
+  19 octobre, secrets GitHub à jour. Restent : Upstash, fusion de `gestion`
+  dans `main`, projet Vercel, vérifications après déploiement, comptes.
 
 L'étape en cours se lit dans le journal du plan (§9).
 

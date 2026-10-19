@@ -47,6 +47,16 @@
 > 15 minutes et par IP, tentatives confondues : Upstash compte aussi pour
 > elle, §5) ; les jetons émis avant ce code ne valent plus (version de
 > session), chacun se reconnecte une fois.
+>
+> **Étape 3, en cours (19 octobre 2026).** Les deux migrations des étapes 1
+> et 2 sont **appliquées sur la branche Neon `main`** (12/12, vérifié par le
+> MCP). Décisions du propriétaire (plan, §2.2) : **D7** l'offre Hobby est
+> gardée, en connaissance de cause (§6) ; **D22** les préversions suivent
+> l'option A du §8.2 (base reliée à Production seulement, « Only build
+> production ») ; **D23** `preload` de HSTS gardé (§7). Le mot de passe du
+> rôle `neondb_owner` a été changé sur `main` et sur `dev`, et les secrets
+> GitHub `DATABASE_URL` et `DIRECT_URL` mis à jour, **avant** de relier la base
+> à Vercel : l'intégration injectera directement le nouveau mot de passe.
 
 ---
 
@@ -187,9 +197,10 @@ et une migration s'y jouerait à des moments imprévisibles. La documentation
 Neon propose `npx prisma migrate deploy && npm run build` comme commande de
 build : **ne pas le faire.**
 
-**État au 15 octobre 2026** : `npm run db:status` annonce 10 migrations
-appliquées et aucune en attente. Le premier déploiement n'a donc aucune
-migration à appliquer.
+**État au 19 octobre 2026** : les 12 migrations sont appliquées sur `main`
+(les deux dernières le 19 octobre, `npm run db:migrate` lancé par le
+propriétaire après une passe à blanc), et aucune n'est en attente. Le premier
+déploiement n'a donc aucune migration à appliquer.
 
 ### 3.2. Une version qui apporte une migration
 

@@ -51,12 +51,19 @@ visiteurs voient.
 | `main` (production Vercel) | `ep-twilight-forest-ab9qjkm7` |
 | `dev` | `ep-falling-breeze-abibnpc4` |
 
-`dev` a hérité du rôle `neondb_owner` de `main`, mot de passe compris : seul
-l'identifiant d'endpoint change dans l'hôte. Pour basculer :
+**Depuis le 19 octobre 2026, les deux branches n'ont plus le même mot de
+passe.** `dev` avait hérité du rôle `neondb_owner` de `main`, mot de passe
+compris. Ce mot de passe ayant été exposé, le propriétaire l'a changé sur
+chaque branche (étape 3 du plan gestion-contenu), et un rôle Neon est propre à
+sa branche. Une bascule change donc **l'URL entière** (endpoint et mot de
+passe), et plus seulement l'identifiant d'endpoint. Les URL de chaque branche
+se copient dans la console Neon (bouton *Connect*, branche voulue, *Connection
+pooling* activé pour `DATABASE_URL`, désactivé pour `DIRECT_URL`). Pour
+basculer :
 
 1. arrêter le backend et Next.js ;
-2. remplacer l'identifiant d'endpoint dans les lignes actives suivantes, en
-   gardant `-pooler` là où il figure :
+2. remplacer l'URL dans les lignes actives suivantes, en gardant `-pooler` là
+   où il figure :
    - `.env.local` : `DATABASE_URL` (poolée) et `DIRECT_URL` (directe) ;
    - `.env` à la racine, s'il porte encore le doublon : les deux mêmes. Sinon
      la CLI Prisma (`prisma.config.ts`), qui lit `.env` en repli, viserait
@@ -71,7 +78,10 @@ l'identifiant d'endpoint change dans l'hôte. Pour basculer :
    `/admin/cron` une fois relancé.
 
 Le 15 octobre 2026, la bascule vers `dev` a touché exactement 5 lignes
-(`.env.local` : 2, `.env` : 2, `backend/.env` : 1).
+(`.env.local` : 2, `.env` : 2, `backend/.env` : 1). Le 19 octobre, l'aller et
+retour vers `main` pour les migrations (alors que les mots de passe étaient
+encore les mêmes) n'a touché que les 4 lignes de `.env.local` et `.env` : le
+backend ne se lançait pas, et `npm run db:migrate` ne lit pas `backend/.env`.
 
 ---
 

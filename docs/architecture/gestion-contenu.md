@@ -76,7 +76,7 @@ son jeton (8 h au plus), puisque le proxy ne relit pas la base.
 
 `User` (migrations `20261016120000_three_roles` et
 `20261016150000_whitelist_accounts`, appliquées sur la branche Neon `dev` le
-16 octobre 2026 ; **pas encore sur `main`**, étape 3) :
+16 octobre 2026 et sur `main`, la production, le 19 octobre, étape 3) :
 
 | Colonne | Contenu |
 |---|---|
@@ -92,8 +92,8 @@ son jeton (8 h au plus), puisque le proxy ne relit pas la base.
 Quatre autres contraintes `CHECK` tiennent les invariants dont dépend le code :
 un compte est actif **si et seulement si** il a un mot de passe ; un invité a
 une adresse ; tout compte a une adresse ou un ancien identifiant ; l'adresse
-est en minuscules. Relevé sur `dev` après la migration : 1 `ADMIN` et
-1 `GESTIONNAIRE`, actifs, sans adresse.
+est en minuscules. Relevé après la migration, sur `dev` (16 octobre) comme
+sur `main` (19 octobre) : 1 `ADMIN` et 1 `GESTIONNAIRE`, actifs, sans adresse.
 
 **Cycle de vie d'un compte** (G5, D4, D21) :
 

@@ -17,7 +17,9 @@ développement ni recette.
 - **Base Neon** partagée avec le backend gelé.
 - **Le backend FastAPI (Python)** se lance à la main sur le poste de l'admin,
   pour l'IA seulement (décision du 14 octobre 2026).
-- Pas encore déployé.
+- **En ligne depuis le 19 octobre 2026** : <https://app-vc-emn.vercel.app>,
+  sur les comptes de l'école (dépôt GitHub `emnormandie76/veille-concurenciel`,
+  Vercel et Neon de l'école ; `Anton1P` ne fait que commiter et pousser).
 
 ## Documents de référence
 
@@ -70,13 +72,17 @@ branche `gestion` :
   d'être supprimé) ; migration `20261016150000_whitelist_accounts` appliquée
   sur la branche Neon `dev`, puis sur `main` le 19 octobre (étape 3) ; smoke
   adapté et vert (la phase connectée, rejouée au début de l'étape 3) ;
-- en cours : étape 3 (mise en ligne). Faits : smoke connecté vert ; décisions
-  D7 (Hobby gardé, en connaissance de cause), D22 (préversions : base reliée
-  à Production seulement), D23 (`preload` de HSTS gardé) ; les deux
-  migrations sur la branche Neon `main` le 19 octobre (12/12) ; mot de passe
-  de `neondb_owner` changé par le propriétaire sur `main` et sur `dev` le
-  19 octobre, secrets GitHub à jour. Restent : Upstash, fusion de `gestion`
-  dans `main`, projet Vercel, vérifications après déploiement, comptes.
+- étape 3 (mise en ligne), **le site est en ligne depuis le 19 octobre** :
+  smoke connecté vert ; décisions D7 (Hobby gardé, en connaissance de cause),
+  D22 (préversions : base reliée à Production seulement), D23 (`preload` de
+  HSTS gardé) ; `main` rattrapée sur `gestion` par avance rapide, sans PR
+  (écart à G3, décision du propriétaire) ; hébergement déplacé sur les comptes
+  de l'école (dépôt, Vercel, nouvelle base Neon où les données ont été
+  copiées à l'identique) ; Upstash, projet `app-vc`, vérifications sans
+  session et connectées, 429 de la connexion, adresses des deux comptes
+  posées, mot de passe admin changé, un premier collègue, secrets Actions du
+  nouveau dépôt créés. Toutes les cases cochées : **validation du
+  propriétaire attendue**. Détail : journal du plan.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -213,22 +219,33 @@ Le réseau de l'établissement ne laisse sortir que les ports 80 et 443. Le port
 
 ## MCP Neon
 
-Autorisé, sur le **projet de l'application uniquement** :
+Autorisé, sur le **projet de l'application uniquement**. Depuis le
+19 octobre 2026, la base appartient au compte de l'école (étape 3 du plan,
+journal) ; le MCP est connecté à ce compte :
 
-- projet `vc-bdd`, id `lucky-cell-29057691`, dans l'organisation
-  `org-lively-cell-45152555` (gérée par Vercel) ;
-- branche `main`, id `br-bitter-cloud-ab3c0wop`, endpoint
-  `ep-twilight-forest-ab9qjkm7` : c'est aussi la **production Vercel** ;
-- branche `dev`, id `br-rapid-bird-abck4fdr`, endpoint
-  `ep-falling-breeze-abibnpc4`, créée depuis `main` le 15 octobre 2026 :
-  essais, vérifications et migrations à blanc. **Cible par défaut des
-  lectures**. Le poste vise `dev` depuis le 15 octobre 2026 ; bascule :
+- projet `vc-bdd`, id `noisy-credit-34683167`, dans l'organisation
+  `org-long-unit-38729916` (« Vercel: EM-Normandie », gérée par le Vercel de
+  l'école, compte `emnormandie76`) ; Postgres 18 ;
+- branche `main`, id `br-late-water-za82d15h`, endpoint
+  `ep-super-rain-zas6jyy2` : c'est aussi la **production Vercel** ;
+- branche `dev`, id `br-odd-cloud-zao7fqra`, endpoint
+  `ep-proud-lab-za705j3u`, créée depuis `main` le 19 octobre 2026 (données
+  comprises) : essais, vérifications et migrations à blanc. **Cible par défaut
+  des lectures**. Le poste vise `dev` ; bascule :
   `docs/testing/manual_testing_cron.md` §1.3 ;
-- région `aws-eu-west-2`.
+- région `aws-eu-west-2` (endpoints en `c-2.eu-west-2.aws.neon.tech`).
 
 Passer `project_id` **et** `branch_id` à chaque appel. Les autres projets que le
 MCP peut voir appartiennent à d'autres applications : n'y faire aucun appel.
-C'est le cas de `neon-cyclamen-river` et de tout projet d'un autre compte.
+C'est le cas de `neon-bisque-pillar` (`gentle-thunder-89807010`) et de tout
+projet d'un autre compte.
+
+**L'ancienne base** (projet `lucky-cell-29057691`, organisation
+`org-lively-cell-45152555`, gérée par le Vercel personnel d'`Anton1P` ;
+branches `main` `ep-twilight-forest-ab9qjkm7` et `dev`
+`ep-falling-breeze-abibnpc4`) reste en **sauvegarde figée** : ses données ont
+été copiées le 19 octobre 2026, à l'identique. Plus rien n'y écrit, et le MCP
+ne la voit plus.
 
 | | Outils |
 |---|---|
@@ -245,22 +262,31 @@ Branché le 14 octobre 2026 : serveur `vercel` de `.mcp.json`
 (`https://mcp.vercel.com`), connexion par `/mcp`. Il sert à l'agent pour lire
 l'état du déploiement ; il ne déploie pas à la place du propriétaire.
 
-- **Compte** : offre Hobby, portée `anton1ps-projects`
-  (`team_Q43uu5C1HjU5A00faL7P3qXG`). C'est le compte qui gère l'organisation
-  Neon de la base.
-- **Le projet Vercel de l'application n'existe pas encore.** Le créer revient
-  au propriétaire, à l'étape 3 du plan (après la connexion obligatoire ;
-  procédure dans
-  [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md)).
-  Une fois créé, noter ici son nom et son id `prj_…`, puis ne cibler que lui.
-- Les projets visibles aujourd'hui, `genshincraft` et
-  `genshin-gatcha-calculator-proba`, appartiennent à d'autres applications :
+- **Compte** (depuis le 19 octobre 2026) : celui de l'école, créé avec le
+  GitHub `emnormandie76` (utilisateur `BjIsUlzdkbYaOS6dBuc8YQpm`), offre
+  Hobby, équipe `team_hWcs8vjorV4Dp3j3YhN7HL1w`. C'est le compte qui gère
+  l'organisation Neon de la base. Le compte personnel d'`Anton1P`
+  (`anton1ps-projects`) ne sert plus.
+- **Projet de l'application** : `app-vc`, id
+  `prj_x0D6x90ihnJnc86piYtt9fJXfNLM`, créé par le propriétaire le 19 octobre
+  2026 depuis le compte de l'école (import du seul site Next.js, sans le
+  backend) ; équipe `em-normandie1`. **Adresse du site :
+  `https://app-vc-emn.vercel.app`**, domaine principal ajouté par le
+  propriétaire le 19 octobre (c'est la valeur de `NEXTAUTH_URL`) ; l'adresse
+  attribuée à la création, `https://app-vc-taupe.vercel.app`
+  (`app-vc.vercel.app` était prise), y renvoie en 307.
+  **Ne cibler que lui.** Deux essais d'import (`veille-concurenciel`, `vc`)
+  ont été supprimés par le propriétaire le 19 octobre.
+  Procédure :
+  [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md).
+- Le projet visible aujourd'hui, `les-petits-pronos-de-la-promo`
+  (`prj_yEjDnV9JJXXsVhHnyk6DZcrssT2Z`), appartient à une autre application :
   n'y faire aucun appel.
-- **Portée de la connexion** (relevé du 14/10/2026) : les appels **sans**
-  `teamId` passent ; tout appel **avec** `teamId` rend 403. Les outils qui
-  exigent `teamId`, comme `get_runtime_logs`, échoueront tant que le
-  propriétaire ne se sera pas reconnecté par `/mcp` en accordant la portée
-  `anton1ps-projects`.
+- **Portée de la connexion** (relevé du 19/10/2026) : les appels **sans**
+  `teamId` passent ; tout appel **avec** `teamId` rend 403 (« scope
+  em-normandie1 »). Les outils qui exigent `teamId`, comme `get_runtime_logs`,
+  échoueront tant que le propriétaire ne se sera pas reconnecté par `/mcp` en
+  accordant la portée de l'équipe `em-normandie1`.
 
 | | Outils |
 |---|---|

@@ -48,8 +48,14 @@ visiteurs voient.
 
 | Branche | Endpoint (dans l'hôte des URL) |
 |---|---|
-| `main` (production Vercel) | `ep-twilight-forest-ab9qjkm7` |
-| `dev` | `ep-falling-breeze-abibnpc4` |
+| `main` (production Vercel) | `ep-super-rain-zas6jyy2` |
+| `dev` | `ep-proud-lab-za705j3u` |
+
+Depuis le 19 octobre 2026, la base est celle du compte de l'école (projet Neon
+`noisy-credit-34683167`, hôtes en `c-2.eu-west-2.aws.neon.tech`). L'ancienne
+(`ep-twilight-forest-ab9qjkm7` et `ep-falling-breeze-abibnpc4`, projet
+`lucky-cell-29057691`) n'est plus qu'une sauvegarde figée : le poste ne la vise
+plus.
 
 **Depuis le 19 octobre 2026, les deux branches n'ont plus le même mot de
 passe.** `dev` avait hérité du rôle `neondb_owner` de `main`, mot de passe

@@ -122,8 +122,10 @@ La liste complète, commentée et classée par exécution, est dans
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Sans magasin partagé, la limitation de débit retombe en mémoire — elle ralentit une attaque mais ne la bloque pas sur une plateforme sans état. Ces noms exacts : `KV_REST_API_*` ne sont pas lus. |
 
 **Déploiement** : seul Next.js va sur Vercel (offre Hobby) ; le backend reste
-sur le poste. Variables à poser et à ne jamais poser sur Vercel, intégration
-Neon, Upstash, ordre des opérations et vérifications :
+sur le poste. **En ligne depuis le 19 octobre 2026** :
+<https://app-vc-emn.vercel.app> (projet `app-vc` du Vercel de l'école, base
+Neon de l'école, branche `main`). Variables à poser et à ne jamais poser sur
+Vercel, intégration Neon, Upstash, ordre des opérations et vérifications :
 [`docs/memory/memory-deploiement-vercel.md`](docs/memory/memory-deploiement-vercel.md).
 
 ---

@@ -215,6 +215,12 @@ const SCREENS = [
   "app/schools/[id]/SchoolDetailClient.tsx",
   "app/schools/[id]/programs/[pid]/page.tsx",
   "app/api-docs/page.tsx",
+  // Étape 9, lot 2 (D54) : la liste des écoles, le cadre de la gestion d'une
+  // école et la page des campus ; quatre onglets et leurs pièces sont lus
+  // fichier par fichier (D60, D61 : ceux du lot 3 restent dehors).
+  "app/admin/schools/page.tsx",
+  "app/admin/schools/[id]/manage/page.tsx",
+  "app/admin/schools/[id]/campuses/page.tsx",
 ];
 
 /** Un émoji (présentation émoji, ou sélecteur de variante U+FE0F) ; les flèches

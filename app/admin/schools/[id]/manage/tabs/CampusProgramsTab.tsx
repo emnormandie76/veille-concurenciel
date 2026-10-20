@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import LastEdit from "../../LastEdit";
+import LastEdit from "../legacy/LastEdit";
 
 interface Campus {
   id: string;

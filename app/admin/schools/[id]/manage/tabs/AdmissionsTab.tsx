@@ -14,7 +14,8 @@
  * - D49 : un lien source (contrôlé par le serveur, D27 ; cliquable en http(s)
  *   seulement) et « Modifié par … le … » sous chaque entrée (D29) ;
  * - D51 : l'ancien style de l'écran (cartes et fenêtre de l'onglet
- *   Accréditations), sans règle ajoutée à globals.css ; l'étape 9 le reprendra.
+ *   Accréditations) jusqu'à l'étape 9 ; dans la charte depuis le lot 2
+ *   (cartes, dialogues natifs ; l'erreur d'une fenêtre dans la fenêtre, D67).
  *
  * Les règles sont tenues par les routes ; cet écran ne fait que les montrer.
  */
@@ -34,6 +35,15 @@ import {
   routeLabel,
 } from "@/lib/program-entries";
 import { sourceHref } from "@/lib/provenance";
+import { ExternalIcon } from "@/app/schools/icons";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { cx } from "@/components/ui/cx";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { TEXT_LINK } from "@/components/ui/text-link";
 import ProgramSelector from "../components/ProgramSelector";
 import LastEdit from "../../LastEdit";
 
@@ -106,6 +116,7 @@ export default function AdmissionsTab({ schoolId }: { schoolId: string }) {
   const [modalError, setModalError] = useState<string | null>(null);
 
   const [deleteEntry, setDeleteEntry] = useState<ProgramEntry | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const apply = useCallback((loaded: Loaded) => {
     if (loaded.ok) {
@@ -156,6 +167,19 @@ export default function AdmissionsTab({ schoolId }: { schoolId: string }) {
     setIsModalOpen(true);
   };
 
+  const openDeleteModal = (entry: ProgramEntry) => {
+    setDeleteError(null);
+    setDeleteEntry(entry);
+  };
+
+  // Une fenêtre ne se ferme pas pendant l'enregistrement.
+  const closeModal = () => {
+    if (!actionLoading) setIsModalOpen(false);
+  };
+  const closeDeleteModal = () => {
+    if (!actionLoading) setDeleteEntry(null);
+  };
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formProgramId) {
@@ -200,137 +224,123 @@ export default function AdmissionsTab({ schoolId }: { schoolId: string }) {
   const handleDelete = async () => {
     if (!deleteEntry) return;
     setActionLoading(true);
+    setDeleteError(null);
     try {
       const res = await fetch(`/api/admin/program-entries/${deleteEntry.id}`, { method: "DELETE" });
       if (!res.ok) {
-        setError(await messageOf(res, "Erreur lors de la suppression"));
+        // D67 : dans la fenêtre restée ouverte, où elle est lue.
+        setDeleteError(await messageOf(res, "Erreur lors de la suppression"));
         return;
       }
       setDeleteEntry(null);
       await reload();
     } catch {
-      setError("Une erreur réseau est survenue. Veuillez réessayer.");
+      setDeleteError("Une erreur réseau est survenue. Veuillez réessayer.");
     } finally {
       setActionLoading(false);
     }
   };
 
   return (
-    <div>
-      <div className="tab-section-header">
-        <h2 className="tab-section-title">Admissions</h2>
-        <button className="btn btn-primary btn-sm" onClick={openAddModal} disabled={programs.length === 0}>
-          ➕ Ajouter une entrée
-        </button>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg leading-snug font-semibold text-ink">Admissions</h2>
+          <Button variant="primary" size="sm" onClick={openAddModal} disabled={programs.length === 0}>
+            Ajouter une entrée
+          </Button>
+        </div>
+        <p className="max-w-[70ch] text-sm leading-relaxed text-ink-2">
+          En quelle année du programme on entre, avec quel niveau et par quelle voie. Le nom du concours va dans la note.
+        </p>
       </div>
 
-      <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", marginBottom: "16px" }}>
-        En quelle année du programme on entre, avec quel niveau et par quelle voie. Le nom du concours va dans la note.
-      </p>
+      <ProgramSelector
+        programs={programs}
+        selectedProgramId={selectedProgramId}
+        onProgramChange={handleProgramChange}
+        showAllOption={true}
+        loading={loading || actionLoading}
+      />
 
-      <div style={{ marginBottom: "20px" }}>
-        <ProgramSelector
-          programs={programs}
-          selectedProgramId={selectedProgramId}
-          onProgramChange={handleProgramChange}
-          showAllOption={true}
-          loading={loading || actionLoading}
-        />
-      </div>
-
-      {error && <div className="alert alert-danger" style={{ marginBottom: "20px" }}>{error}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des admissions...
-        </div>
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des admissions...</p>
       ) : programs.length === 0 ? (
-        <div className="inline-form" style={{ textAlign: "center", padding: "40px" }}>
-          <p style={{ color: "var(--text-secondary)" }}>
+        <Card className="py-10 text-center">
+          <p className="text-sm text-ink-2">
             Aucun programme enregistré. Créez des programmes dans l&apos;onglet Campus & Programmes avant d&apos;ajouter des admissions.
           </p>
-        </div>
+        </Card>
       ) : entries.length === 0 ? (
-        <div className="inline-form" style={{ textAlign: "center", padding: "40px" }}>
-          <p style={{ color: "var(--text-secondary)", marginBottom: "16px" }}>
-            Aucune entrée enregistrée pour les critères sélectionnés.
-          </p>
-          <button className="btn btn-primary btn-sm" onClick={openAddModal}>
-            ➕ Ajouter une première entrée
-          </button>
-        </div>
+        <Card className="flex flex-col items-center gap-4 py-10 text-center">
+          <p className="text-sm text-ink-2">Aucune entrée enregistrée pour les critères sélectionnés.</p>
+          <Button variant="primary" size="sm" onClick={openAddModal}>
+            Ajouter une première entrée
+          </Button>
+        </Card>
       ) : (
-        <div className="cards-grid">
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {entries.map((entry) => (
-            <div key={entry.id} className="data-card">
-              <div className="data-card-header">
-                <span className="data-card-title">{describeEntry(entry)}</span>
-                <div className="data-card-actions">
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => openEditModal(entry)}
-                    style={{ padding: "4px 8px" }}
-                  >
-                    Modifier
-                  </button>
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() => setDeleteEntry(entry)}
-                    style={{ padding: "4px 8px" }}
-                  >
-                    Supprimer
-                  </button>
+            <li key={entry.id}>
+              <Card aria-labelledby={`entry-${entry.id}-title`} className="flex h-full flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 id={`entry-${entry.id}-title`} className="min-w-0 font-medium break-words text-ink">
+                    {describeEntry(entry)}
+                  </h3>
+                  <div className="flex shrink-0 gap-1.5">
+                    <Button size="sm" onClick={() => openEditModal(entry)}>
+                      Modifier
+                    </Button>
+                    <Button size="sm" variant="danger-soft" onClick={() => openDeleteModal(entry)}>
+                      Supprimer
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <div className="data-card-meta">
-                <span style={{ fontWeight: 600 }}>{entry.program.name}</span>
-                <span className="badge badge-admin">{levelLabel(entry.required_level)}</span>
-                <span>{routeLabel(entry.route)}</span>
-                {sourceHref(entry.source_url) && (
-                  <a
-                    href={sourceHref(entry.source_url)!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.85rem" }}
-                  >
-                    Source 🔗
-                  </a>
-                )}
-              </div>
-              {entry.note && (
-                <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem", marginTop: "8px" }}>{entry.note}</p>
-              )}
-              <LastEdit text={entry.last_edit} />
-            </div>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-ink-2">
+                  <span className="font-semibold text-ink">{entry.program.name}</span>
+                  <Badge>{levelLabel(entry.required_level)}</Badge>
+                  <span>{routeLabel(entry.route)}</span>
+                  {sourceHref(entry.source_url) && (
+                    <a
+                      href={sourceHref(entry.source_url)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cx(TEXT_LINK, "inline-flex items-center gap-1")}
+                    >
+                      Source
+                      <ExternalIcon />
+                    </a>
+                  )}
+                </div>
+                {entry.note && <p className="text-sm leading-relaxed text-ink-2">{entry.note}</p>}
+                <LastEdit text={entry.last_edit} />
+              </Card>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* Fenêtre d'ajout et de modification */}
       {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">{editingEntry ? "Modifier l'entrée" : "Ajouter une entrée"}</h3>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}>
-                ✕
-              </button>
-            </div>
+        <Dialog
+          titleId="entry-dialog-title"
+          onClose={closeModal}
+          title={editingEntry ? "Modifier l'entrée" : "Ajouter une entrée"}
+        >
+          {modalError && <Alert tone="danger">{modalError}</Alert>}
 
-            {modalError && <div className="alert alert-danger" style={{ marginBottom: "16px" }}>{modalError}</div>}
-
-            <form onSubmit={handleFormSubmit}>
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label" htmlFor="entry-program">
-                  Programme *
-                </label>
-                <select
-                  id="entry-program"
-                  className="form-control"
+          <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
+            <Field id="entry-program" label="Programme *">
+              {(control) => (
+                <Select
+                  {...control}
                   value={formProgramId}
                   onChange={(e) => setFormProgramId(e.target.value)}
                   disabled={Boolean(editingEntry)}
                   required
+                  data-autofocus={editingEntry ? undefined : true}
                 >
                   <option value="" disabled>
                     Choisir un programme
@@ -340,140 +350,107 @@ export default function AdmissionsTab({ schoolId }: { schoolId: string }) {
                       {p.name}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              )}
+            </Field>
 
-              <div className="inline-form-grid" style={{ marginBottom: "16px", gridTemplateColumns: "1fr 1fr" }}>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="entry-year">
-                    Année d&apos;entrée *
-                  </label>
-                  <select
-                    id="entry-year"
-                    className="form-control"
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field id="entry-year" label="Année d'entrée *">
+                {(control) => (
+                  <Select
+                    {...control}
                     value={formYear}
                     onChange={(e) => setFormYear(Number(e.target.value))}
+                    // Le programme ne change pas une fois l'entrée créée : le focus va à l'année.
+                    data-autofocus={editingEntry ? true : undefined}
                   >
                     {YEARS.map((year) => (
                       <option key={year} value={year}>
                         {entryYearLabel(year)}
                       </option>
                     ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="entry-level">
-                    Niveau requis *
-                  </label>
-                  <select
-                    id="entry-level"
-                    className="form-control"
-                    value={formLevel}
-                    onChange={(e) => setFormLevel(Number(e.target.value))}
-                  >
+                  </Select>
+                )}
+              </Field>
+              <Field id="entry-level" label="Niveau requis *">
+                {(control) => (
+                  <Select {...control} value={formLevel} onChange={(e) => setFormLevel(Number(e.target.value))}>
                     {LEVELS.map((level) => (
                       <option key={level} value={level}>
                         {levelLabel(level)}
                       </option>
                     ))}
-                  </select>
-                </div>
-              </div>
+                  </Select>
+                )}
+              </Field>
+            </div>
 
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label" htmlFor="entry-route">
-                  Voie *
-                </label>
-                <select
-                  id="entry-route"
-                  className="form-control"
-                  value={formRoute}
-                  onChange={(e) => setFormRoute(e.target.value)}
-                >
+            <Field id="entry-route" label="Voie *">
+              {(control) => (
+                <Select {...control} value={formRoute} onChange={(e) => setFormRoute(e.target.value)}>
                   {ENTRY_ROUTES.map((route) => (
                     <option key={route} value={route}>
                       {ROUTE_LABELS[route]}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label" htmlFor="entry-note">
-                  Note
-                </label>
-                <input
-                  id="entry-note"
+            <Field id="entry-note" label="Note">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   value={formNote}
                   onChange={(e) => setFormNote(e.target.value)}
                   maxLength={NOTE_MAX_LENGTH}
                   placeholder="ex: Concours BCE, Passerelle 1, BTS ou BUT validé..."
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ marginBottom: "24px" }}>
-                <label className="form-label" htmlFor="entry-source-url">
-                  URL de la source
-                </label>
-                <input
-                  id="entry-source-url"
+            <Field id="entry-source-url" label="URL de la source">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   value={formSourceUrl}
                   onChange={(e) => setFormSourceUrl(e.target.value)}
                   placeholder="https://ecole.fr/programme/admissions"
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={actionLoading}
-                >
-                  Annuler
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
-                  {actionLoading ? "Enregistrement..." : editingEntry ? "Modifier" : "Ajouter"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <DialogFooter>
+              <Button onClick={closeModal} disabled={actionLoading}>
+                Annuler
+              </Button>
+              <Button type="submit" variant="primary" disabled={actionLoading}>
+                {actionLoading ? "Enregistrement..." : editingEntry ? "Modifier" : "Ajouter"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
       )}
 
       {/* Confirmation de la suppression */}
       {deleteEntry && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">Supprimer l&apos;entrée</h3>
-              <button className="modal-close" onClick={() => setDeleteEntry(null)}>
-                ✕
-              </button>
-            </div>
-            <p style={{ marginBottom: "24px", color: "var(--text-secondary)" }}>
-              Êtes-vous sûr de vouloir supprimer cette entrée de {deleteEntry.program.name}{" "}
-              : <strong style={{ color: "#ffffff" }}>{describeEntry(deleteEntry)}</strong> ?
-            </p>
-            <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setDeleteEntry(null)}
-                disabled={actionLoading}
-              >
-                Annuler
-              </button>
-              <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={actionLoading}>
-                {actionLoading ? "Suppression..." : "Supprimer"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <Dialog titleId="entry-delete-title" onClose={closeDeleteModal} title="Supprimer l'entrée">
+          {deleteError && <Alert tone="danger">{deleteError}</Alert>}
+          <p className="text-sm leading-relaxed text-ink-2">
+            Êtes-vous sûr de vouloir supprimer cette entrée de {deleteEntry.program.name}{" "}
+            : <strong className="font-medium text-ink">{describeEntry(deleteEntry)}</strong> ?
+          </p>
+          <DialogFooter>
+            <Button onClick={closeDeleteModal} disabled={actionLoading}>
+              Annuler
+            </Button>
+            <Button variant="danger" onClick={handleDelete} disabled={actionLoading}>
+              {actionLoading ? "Suppression..." : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
     </div>
   );

@@ -41,6 +41,19 @@
 @source "./schools";
 @source "./api-docs";
 @source "./page.tsx";
+/* Étape 9, lot 2 : la liste des écoles, la page des campus, le cadre de la
+ * gestion d'une école et quatre de ses onglets, fichier par fichier. Les
+ * onglets du lot 3 et leur îlot (manage/legacy/, D60, D61) restent hors des
+ * sources jusqu'au lot 3. */
+@source "./admin/schools/page.tsx";
+@source "./admin/schools/[id]/LastEdit.tsx";
+@source "./admin/schools/[id]/campuses";
+@source "./admin/schools/[id]/manage/page.tsx";
+@source "./admin/schools/[id]/manage/components";
+@source "./admin/schools/[id]/manage/tabs/SchoolInfoTab.tsx";
+@source "./admin/schools/[id]/manage/tabs/AccreditationsTab.tsx";
+@source "./admin/schools/[id]/manage/tabs/StatsTab.tsx";
+@source "./admin/schools/[id]/manage/tabs/AdmissionsTab.tsx";
 /* Homonymes de classes de /admin/cron (RotationPanel, CronMonitoringClient) :
  * jamais générés, même si un fichier lu les contient. */
 @source not inline("block fill-accent");

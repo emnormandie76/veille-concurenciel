@@ -1,6 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Input, Label, Select } from "@/components/ui/Field";
+
+/**
+ * Le choix de l'année d'un onglet de gestion (Chiffres clés ; Tarifs,
+ * Classements et Capacités au lot 3), avec l'ajout d'une année et la copie
+ * depuis une autre. Dans la charte depuis l'étape 9 (lot 2) : une barre
+ * d'outils ; chaque champ a son libellé visible (D65 : « Nouvelle année »,
+ * « Copier depuis : »). Jusqu'au lot 3, les onglets encore à l'ancien style
+ * prennent la copie de `../legacy/` (D61).
+ */
 
 interface YearSelectorProps {
   availableYears: number[];
@@ -43,44 +54,61 @@ export default function YearSelector({
     }
   };
 
-  return (
-    <div className="year-selector" style={{ flexWrap: "wrap", gap: "12px" }}>
-      <label htmlFor="year-select">Année académique :</label>
+  // Le texte « Année académique : » reste affiché sans la liste (aucune année,
+  // ou l'ajout en cours), comme avant ; il n'est un libellé que de la liste.
+  const showSelect = availableYears.length > 0 && !isAddingYear;
 
-      {availableYears.length > 0 && !isAddingYear && (
-        <select
-          id="year-select"
-          value={selectedYear ?? ""}
-          onChange={(e) => onYearChange(Number(e.target.value))}
-          disabled={loading}
-        >
-          {availableYears.map((y) => (
-            <option key={y} value={y}>
-              Année {y}
-            </option>
-          ))}
-        </select>
-      )}
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-card border border-line bg-surface px-4 py-3">
+      <div className="flex items-center gap-2.5">
+        {showSelect ? (
+          <Label htmlFor="year-select" className="whitespace-nowrap">
+            Année académique :
+          </Label>
+        ) : (
+          <span className="text-sm font-medium whitespace-nowrap text-ink">Année académique :</span>
+        )}
+        {showSelect && (
+          <div className="w-36">
+            <Select
+              id="year-select"
+              value={selectedYear ?? ""}
+              onChange={(e) => onYearChange(Number(e.target.value))}
+              disabled={loading}
+            >
+              {availableYears.map((y) => (
+                <option key={y} value={y}>
+                  Année {y}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+      </div>
 
       {isAddingYear ? (
-        <form onSubmit={handleAddSubmit} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <input
-            type="number"
-            className="form-control"
-            style={{ width: "100px", padding: "6px 10px" }}
-            value={newYear}
-            onChange={(e) => setNewYear(Number(e.target.value))}
-            min={2000}
-            max={new Date().getFullYear() + 2}
-            disabled={loading}
-            autoFocus
-          />
-          <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
+        <form onSubmit={handleAddSubmit} className="flex flex-wrap items-center gap-2">
+          <Label htmlFor="year-new" className="whitespace-nowrap">
+            Nouvelle année
+          </Label>
+          <div className="w-28">
+            <Input
+              id="year-new"
+              type="number"
+              className="font-mono tabular-nums"
+              value={newYear}
+              onChange={(e) => setNewYear(Number(e.target.value))}
+              min={2000}
+              max={new Date().getFullYear() + 2}
+              disabled={loading}
+              autoFocus
+            />
+          </div>
+          <Button type="submit" variant="primary" size="sm" disabled={loading}>
             Ajouter
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
+          </Button>
+          <Button
+            size="sm"
             onClick={() => {
               setIsAddingYear(false);
               setError(null);
@@ -88,62 +116,51 @@ export default function YearSelector({
             disabled={loading}
           >
             Annuler
-          </button>
+          </Button>
         </form>
       ) : (
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={() => setIsAddingYear(true)}
-          disabled={loading}
-        >
-          ➕ Nouvelle année
-        </button>
+        <Button size="sm" onClick={() => setIsAddingYear(true)} disabled={loading}>
+          Nouvelle année
+        </Button>
       )}
 
       {onCopyYear && availableYears.length > 0 && selectedYear && !isAddingYear && (
         <>
           {isCopying ? (
-            <form onSubmit={handleCopySubmit} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>Copier depuis :</span>
-              <select
-                value={copySourceYear ?? ""}
-                onChange={(e) => setCopySourceYear(Number(e.target.value))}
-                disabled={loading}
-                className="form-control"
-                style={{ width: "120px", padding: "4px 8px" }}
-              >
-                <option value="" disabled>
-                  Choisir
-                </option>
-                {availableYears
-                  .filter((y) => y !== selectedYear)
-                  .map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-              </select>
-              <button
-                type="submit"
-                className="btn btn-primary btn-sm"
-                disabled={loading || !copySourceYear}
-              >
+            <form onSubmit={handleCopySubmit} className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="year-copy-source" className="whitespace-nowrap">
+                Copier depuis :
+              </Label>
+              <div className="w-28">
+                <Select
+                  id="year-copy-source"
+                  className="font-mono tabular-nums"
+                  value={copySourceYear ?? ""}
+                  onChange={(e) => setCopySourceYear(Number(e.target.value))}
+                  disabled={loading}
+                >
+                  <option value="" disabled>
+                    Choisir
+                  </option>
+                  {availableYears
+                    .filter((y) => y !== selectedYear)
+                    .map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                </Select>
+              </div>
+              <Button type="submit" variant="primary" size="sm" disabled={loading || !copySourceYear}>
                 Copier
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setIsCopying(false)}
-                disabled={loading}
-              >
+              </Button>
+              <Button size="sm" onClick={() => setIsCopying(false)} disabled={loading}>
                 Annuler
-              </button>
+              </Button>
             </form>
           ) : (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
+            <Button
+              size="sm"
               onClick={() => {
                 const otherYears = availableYears.filter((y) => y !== selectedYear);
                 setCopySourceYear(otherYears.length > 0 ? otherYears[0] : null);
@@ -151,16 +168,16 @@ export default function YearSelector({
               }}
               disabled={loading || availableYears.length <= 1}
             >
-              📋 Copier depuis une autre année...
-            </button>
+              Copier depuis une autre année...
+            </Button>
           )}
         </>
       )}
 
       {error && (
-        <div style={{ color: "#ef4444", fontSize: "0.85rem", width: "100%", marginTop: "4px" }}>
+        <p role="alert" className="w-full text-xs font-medium text-danger">
           {error}
-        </div>
+        </p>
       )}
     </div>
   );

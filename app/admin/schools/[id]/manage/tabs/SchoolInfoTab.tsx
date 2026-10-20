@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Field, Input, Select } from "@/components/ui/Field";
 import LastEdit from "../../LastEdit";
 
 interface SchoolInfoTabProps {
@@ -60,72 +64,62 @@ export default function SchoolInfoTab({
   };
 
   return (
-    <div className="inline-form">
-      <h3 className="tab-section-title" style={{ marginBottom: "20px" }}>
-        Informations générales de l'école
+    <Card aria-labelledby="school-info-title" className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <CardHeader title="Informations générales de l'école" titleId="school-info-title" />
         <LastEdit text={school.last_edit} />
-      </h3>
+      </div>
 
-      {error && <div className="alert alert-danger" style={{ marginBottom: "20px" }}>{error}</div>}
-      {success && <div className="alert alert-success" style={{ marginBottom: "20px" }}>{success}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
+      {success && <Alert tone="success">{success}</Alert>}
 
-      <form onSubmit={handleSubmit}>
-        <div className="inline-form-grid">
-          <div className="form-group">
-            <label className="form-label" htmlFor="school-name">
-              Nom de l'école *
-            </label>
-            <input
-              id="school-name"
-              type="text"
-              className="form-control"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              disabled={loading}
-            />
-          </div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field id="school-name" label="Nom de l'école *">
+            {(control) => (
+              <Input
+                {...control}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                disabled={loading}
+              />
+            )}
+          </Field>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="school-domain">
-              Domaine officiel *
-            </label>
-            <input
-              id="school-domain"
-              type="text"
-              className="form-control"
-              value={officialDomain}
-              onChange={(e) => setOfficialDomain(e.target.value)}
-              required
-              disabled={loading}
-              placeholder="ex: emlv.fr"
-            />
-          </div>
+          <Field id="school-domain" label="Domaine officiel *">
+            {(control) => (
+              <Input
+                {...control}
+                type="text"
+                className="font-mono"
+                value={officialDomain}
+                onChange={(e) => setOfficialDomain(e.target.value)}
+                required
+                disabled={loading}
+                placeholder="ex: emlv.fr"
+              />
+            )}
+          </Field>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="school-status">
-              Statut
-            </label>
-            <select
-              id="school-status"
-              className="form-control"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              disabled={loading}
-            >
-              <option value="ACTIVE">ACTIVE</option>
-              <option value="INACTIVE">INACTIVE</option>
-              <option value="DRAFT">DRAFT</option>
-            </select>
-          </div>
+          <Field id="school-status" label="Statut">
+            {(control) => (
+              <Select {...control} value={status} onChange={(e) => setStatus(e.target.value)} disabled={loading}>
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="INACTIVE">INACTIVE</option>
+                <option value="DRAFT">DRAFT</option>
+              </Select>
+            )}
+          </Field>
         </div>
 
-        <div className="inline-form-actions">
-          <button type="submit" className="btn btn-primary" disabled={loading}>
+        <div className="flex justify-end border-t border-line pt-4">
+          <Button type="submit" variant="primary" disabled={loading}>
             {loading ? "Enregistrement..." : "Enregistrer les modifications"}
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </Card>
   );
 }

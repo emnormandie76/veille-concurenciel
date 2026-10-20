@@ -160,10 +160,18 @@ branche `gestion` :
   propriétaire), D56 à D59 (émojis retirés, pas de « Back-office » sur les
   pages en cache, libellés visibles des recherches, exemples de code de
   `/api-docs` en clair) ; **lot 1** (site public et `/api-docs`) fait et
-  validé le 20 octobre. Détail : journal du plan ;
-- prochaine : le lot 2 (liste des écoles, cadre de la gestion, campus,
-  onglets Infos, Accréditations, Chiffres clés, Admissions) dans une nouvelle
-  session ; D15 reste ouverte.
+  validé le 20 octobre ; **lot 2** (liste des écoles, cadre de la gestion,
+  campus, onglets Infos, Accréditations, Chiffres clés, Admissions) fait et
+  validé le 20 octobre (le propriétaire demande le commit et le push sur
+  `gestion`) : D60 (les quatre
+  onglets du lot 3 dans un îlot sombre, hors du sous-arbre `.charte`), D61
+  (`LastEdit` et les deux sélecteurs à la charte en place, copies à
+  l'ancien style dans `manage/legacy/` jusqu'au lot 3), D62 à D67 (barre
+  d'onglets, dialogue à la place de `confirm()`, case à cocher, libellés,
+  tons des statuts, erreur dans la fenêtre). Détail : journal du plan ;
+- prochaine : le lot 3 (onglets Campus &
+  Programmes, Tarifs, Classements, Capacités ; il retire l'îlot et
+  `manage/legacy/`) dans une nouvelle session ; D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -297,8 +305,11 @@ propriétaire le 20 octobre.
   d'émoji (D56) dans un écran de la charte. Sans preflight, un utilitaire
   d'affichage défait l'attribut `hidden` : ne pas en poser sur un élément
   qui se cache par `hidden` (`TabPanel` s'en garde). Depuis le lot 1, le
-  site public et `/api-docs` sont dans la charte ; reste le back-office
-  (lots 2 à 6, `docs/architecture/charte-graphique.md` §9).
+  site public et `/api-docs` sont dans la charte ; depuis le lot 2, la
+  gestion des écoles aussi, sauf quatre onglets laissés à l'ancien style
+  dans un îlot hors du sous-arbre `.charte` (D60 : leurs fichiers et
+  `manage/legacy/` restent hors des `@source`) ; reste le back-office
+  (lots 3 à 6, `docs/architecture/charte-graphique.md` §9).
 
 ## Réseau du poste
 

@@ -238,3 +238,23 @@ test("AuthShell et AdminPage : la racine porte la classe charte, et un seul h1",
   assert.match(admin, /^<div class="charte /);
   assert.equal(admin.match(/<h1/g)?.length, 1);
 });
+
+test("AdminPage : sans lien de retour ni badge, l'en-tête de l'étape 4 ; avec, le lien au-dessus et le badge hors du titre (étape 9)", () => {
+  // Sans les deux emplacements : l'en-tête est le premier enfant, le titre le
+  // premier élément de sa colonne, comme pour « Comptes » et « Signalements ».
+  const plain = html(h(AdminPage, { title: "Comptes", children: "x" }));
+  assert.match(plain, /^<div class="charte [^"]*"><header [^>]*><div [^>]*><h1 [^>]*>Comptes<\/h1>/);
+  assert.doesNotMatch(plain, /<a /);
+
+  const full = html(
+    h(AdminPage, {
+      title: "Em Normandie",
+      back: { href: "/admin/schools", label: "← Retour à la liste des écoles" },
+      badge: h(Badge, { tone: "success", children: "ACTIVE" }),
+      children: "x",
+    }),
+  );
+  assert.match(full, /^<div class="charte [^"]*"><div [^>]*><a [^>]*href="\/admin\/schools"[^>]*>← Retour à la liste des écoles<\/a><header /, "le lien avant l'en-tête");
+  assert.match(full, /<h1 [^>]*>Em Normandie<\/h1><span [^>]*>ACTIVE<\/span>/, "le badge à côté du titre, pas dedans");
+  assert.equal(full.match(/<h1/g)?.length, 1);
+});

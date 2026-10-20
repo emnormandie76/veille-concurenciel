@@ -1,9 +1,24 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Field, Input } from "@/components/ui/Field";
+import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/Table";
 import LastEdit from "../LastEdit";
+
+/**
+ * Les campus d'une école : création, modification, suppression, et qui a
+ * modifié chacun (D29).
+ *
+ * Dans la charte depuis l'étape 9 (lot 2) : gabarit `AdminPage`, tableau,
+ * dialogues natifs ; l'erreur d'une fenêtre s'affiche dans la fenêtre (D67).
+ */
 
 interface Campus {
   id: string;
@@ -28,6 +43,8 @@ export default function CampusesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  // D67 : l'erreur d'une fenêtre, affichée dans la fenêtre.
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   // États des modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -74,7 +91,7 @@ export default function CampusesPage() {
   const handleAddCampus = async (e: React.FormEvent) => {
     e.preventDefault();
     setActionLoading(true);
-    setError(null);
+    setDialogError(null);
 
     try {
       const res = await fetch(`/api/admin/schools/${schoolId}/campuses`, {
@@ -93,7 +110,7 @@ export default function CampusesPage() {
       setIsAddModalOpen(false);
       fetchSchoolAndCampuses();
     } catch (err: any) {
-      setError(err.message);
+      setDialogError(err.message);
     } finally {
       setActionLoading(false);
     }
@@ -103,7 +120,7 @@ export default function CampusesPage() {
     e.preventDefault();
     if (!selectedCampus) return;
     setActionLoading(true);
-    setError(null);
+    setDialogError(null);
 
     try {
       const res = await fetch(`/api/admin/campuses/${selectedCampus.id}`, {
@@ -123,7 +140,7 @@ export default function CampusesPage() {
       setIsEditModalOpen(false);
       fetchSchoolAndCampuses();
     } catch (err: any) {
-      setError(err.message);
+      setDialogError(err.message);
     } finally {
       setActionLoading(false);
     }
@@ -132,7 +149,7 @@ export default function CampusesPage() {
   const handleDeleteCampus = async () => {
     if (!selectedCampus) return;
     setActionLoading(true);
-    setError(null);
+    setDialogError(null);
 
     try {
       const res = await fetch(`/api/admin/campuses/${selectedCampus.id}`, {
@@ -148,259 +165,203 @@ export default function CampusesPage() {
       setIsDeleteModalOpen(false);
       fetchSchoolAndCampuses();
     } catch (err: any) {
-      setError(err.message);
+      setDialogError(err.message);
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const openAddModal = () => {
+    setCampusName("");
+    setCampusCity("");
+    setError(null);
+    setDialogError(null);
+    setIsAddModalOpen(true);
   };
 
   const openEditModal = (campus: Campus) => {
     setSelectedCampus(campus);
     setCampusName(campus.name);
     setCampusCity(campus.city || "");
+    setDialogError(null);
     setIsEditModalOpen(true);
   };
 
   const openDeleteModal = (campus: Campus) => {
     setSelectedCampus(campus);
+    setDialogError(null);
     setIsDeleteModalOpen(true);
   };
 
-  return (
-    <div>
-      <div className="page-header">
-        <div>
-          <Link href="/admin/schools" className="back-link">
-            ← Retour aux écoles
-          </Link>
-          <h1 style={{ marginTop: "12px" }}>
-            Campus de {school ? school.name : "..."}
-          </h1>
-          <p className="page-title-desc">Gérez les différents sites géographiques de l'école.</p>
-        </div>
-        <button className="btn btn-primary" onClick={() => {
-          setCampusName("");
-          setCampusCity("");
-          setError(null);
-          setIsAddModalOpen(true);
-        }}>
-          <span>➕</span> Ajouter un campus
-        </button>
-      </div>
+  // Une fenêtre ne se ferme pas pendant l'enregistrement.
+  const closeAddModal = () => {
+    if (!actionLoading) setIsAddModalOpen(false);
+  };
+  const closeEditModal = () => {
+    if (actionLoading) return;
+    setSelectedCampus(null);
+    setIsEditModalOpen(false);
+  };
+  const closeDeleteModal = () => {
+    if (actionLoading) return;
+    setSelectedCampus(null);
+    setIsDeleteModalOpen(false);
+  };
 
-      {error && (
-        <div className="alert alert-danger">
-          <span>⚠️</span>
-          <span>{error}</span>
-        </div>
-      )}
+  return (
+    <AdminPage
+      back={{ href: "/admin/schools", label: "← Retour aux écoles" }}
+      title={`Campus de ${school ? school.name : "..."}`}
+      description="Gérez les différents sites géographiques de l'école."
+      actions={
+        <Button variant="primary" onClick={openAddModal}>
+          Ajouter un campus
+        </Button>
+      }
+    >
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des campus...
-        </div>
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des campus...</p>
       ) : campuses.length === 0 ? (
-        <div className="empty-state">
-          <span>📍</span>
-          <p>Aucun campus enregistré pour cette école.</p>
-        </div>
+        <Card className="py-10 text-center">
+          <p className="text-sm text-ink-2">Aucun campus enregistré pour cette école.</p>
+        </Card>
       ) : (
-        <div className="table-container">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Nom du Campus</th>
-                <th>Ville</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {campuses.map((campus) => (
-                <tr key={campus.id}>
-                  <td style={{ fontWeight: 600 }}>
-                    {campus.name}
+        <Table caption={`Les campus de ${school ? school.name : "l'école"}`}>
+          <THead>
+            <Tr>
+              <Th>Nom du Campus</Th>
+              <Th>Ville</Th>
+              <Th align="right">Actions</Th>
+            </Tr>
+          </THead>
+          <TBody>
+            {campuses.map((campus) => (
+              <Tr key={campus.id}>
+                <Td>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium text-ink">{campus.name}</span>
                     <LastEdit text={campus.last_edit} />
-                  </td>
-                  <td>
-                    {campus.city ? (
-                      <span className="city-tag">{campus.city}</span>
-                    ) : (
-                      <span style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>
-                        Non spécifiée
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(campus)} style={{ padding: "6px 12px" }}>
-                        Modifier
-                      </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => openDeleteModal(campus)} style={{ padding: "6px 12px" }}>
-                        Supprimer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </Td>
+                <Td>
+                  {campus.city ? (
+                    <Badge>{campus.city}</Badge>
+                  ) : (
+                    <span className="text-ink-3 italic">Non spécifiée</span>
+                  )}
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap justify-end gap-1.5">
+                    <Button size="sm" onClick={() => openEditModal(campus)}>
+                      Modifier
+                    </Button>
+                    <Button size="sm" variant="danger-soft" onClick={() => openDeleteModal(campus)}>
+                      Supprimer
+                    </Button>
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
       )}
 
-      {/* Modal Ajout */}
+      {/* Ajout */}
       {isAddModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">Ajouter un campus</h3>
-            </div>
-            <form onSubmit={handleAddCampus}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="add-campus-name">Nom du campus</label>
-                <input
-                  id="add-campus-name"
+        <Dialog titleId="campuses-add-title" onClose={closeAddModal} title="Ajouter un campus">
+          {dialogError && <Alert tone="danger">{dialogError}</Alert>}
+          <form onSubmit={handleAddCampus} className="flex flex-col gap-4">
+            <Field id="add-campus-name" label="Nom du campus">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   placeholder="ex: Paris La Défense"
                   value={campusName}
                   onChange={(e) => setCampusName(e.target.value)}
                   required
+                  data-autofocus
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="add-campus-city">Ville</label>
-                <input
-                  id="add-campus-city"
+              )}
+            </Field>
+            <Field id="add-campus-city" label="Ville">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   placeholder="ex: Puteaux"
                   value={campusCity}
                   onChange={(e) => setCampusCity(e.target.value)}
                 />
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setIsAddModalOpen(false)}>
-                  Annuler
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
-                  {actionLoading ? "Création..." : "Créer"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+              )}
+            </Field>
+            <DialogFooter>
+              <Button onClick={closeAddModal} disabled={actionLoading}>
+                Annuler
+              </Button>
+              <Button type="submit" variant="primary" disabled={actionLoading}>
+                {actionLoading ? "Création..." : "Créer"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
       )}
 
-      {/* Modal Édition */}
+      {/* Modification */}
       {isEditModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">Modifier le campus</h3>
-            </div>
-            <form onSubmit={handleEditCampus}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="edit-campus-name">Nom du campus</label>
-                <input
-                  id="edit-campus-name"
+        <Dialog titleId="campuses-edit-title" onClose={closeEditModal} title="Modifier le campus">
+          {dialogError && <Alert tone="danger">{dialogError}</Alert>}
+          <form onSubmit={handleEditCampus} className="flex flex-col gap-4">
+            <Field id="edit-campus-name" label="Nom du campus">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   value={campusName}
                   onChange={(e) => setCampusName(e.target.value)}
                   required
+                  data-autofocus
                 />
-              </div>
-              <div className="form-group">
-                <label className="form-label" htmlFor="edit-campus-city">Ville</label>
-                <input
-                  id="edit-campus-city"
-                  type="text"
-                  className="form-control"
-                  value={campusCity}
-                  onChange={(e) => setCampusCity(e.target.value)}
-                />
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => {
-                  setSelectedCampus(null);
-                  setIsEditModalOpen(false);
-                }}>
-                  Annuler
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
-                  {actionLoading ? "Enregistrement..." : "Enregistrer"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Suppression */}
-      {isDeleteModalOpen && selectedCampus && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title" style={{ color: "var(--danger)" }}>Confirmer la suppression</h3>
-            </div>
-            <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", marginBottom: "20px", lineHeight: "1.5" }}>
-              Êtes-vous sûr de vouloir supprimer définitivement le campus <strong>{selectedCampus.name}</strong> ? Tous les programmes liés à ce campus seront également supprimés en cascade.
-            </p>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => {
-                setSelectedCampus(null);
-                setIsDeleteModalOpen(false);
-              }} disabled={actionLoading}>
+              )}
+            </Field>
+            <Field id="edit-campus-city" label="Ville">
+              {(control) => (
+                <Input {...control} type="text" value={campusCity} onChange={(e) => setCampusCity(e.target.value)} />
+              )}
+            </Field>
+            <DialogFooter>
+              <Button onClick={closeEditModal} disabled={actionLoading}>
                 Annuler
-              </button>
-              <button className="btn btn-danger" onClick={handleDeleteCampus} disabled={actionLoading}>
-                {actionLoading ? "Suppression..." : "Supprimer"}
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+              <Button type="submit" variant="primary" disabled={actionLoading}>
+                {actionLoading ? "Enregistrement..." : "Enregistrer"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
       )}
 
-      <style jsx>{`
-        .back-link {
-          color: var(--text-secondary);
-          text-decoration: none;
-          font-size: 0.9rem;
-          transition: var(--transition-fast);
-        }
-
-        .back-link:hover {
-          color: #ffffff;
-        }
-
-        .city-tag {
-          background-color: var(--bg-tertiary);
-          border: 1px solid var(--border-color);
-          padding: 4px 8px;
-          border-radius: var(--radius-sm);
-          font-size: 0.85rem;
-          color: var(--text-primary);
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 60px 40px;
-          background-color: var(--bg-secondary);
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-lg);
-          color: var(--text-secondary);
-        }
-
-        .empty-state span {
-          font-size: 3rem;
-          display: block;
-          margin-bottom: 16px;
-        }
-
-        .empty-state p {
-          font-size: 1rem;
-        }
-      `}</style>
-    </div>
+      {/* Suppression */}
+      {isDeleteModalOpen && selectedCampus && (
+        <Dialog titleId="campuses-delete-title" onClose={closeDeleteModal} title="Confirmer la suppression">
+          {dialogError && <Alert tone="danger">{dialogError}</Alert>}
+          <p className="text-sm leading-relaxed text-ink-2">
+            Êtes-vous sûr de vouloir supprimer définitivement le campus{" "}
+            <strong className="font-medium text-ink">{selectedCampus.name}</strong> ? Tous les programmes liés à ce
+            campus seront également supprimés en cascade.
+          </p>
+          <DialogFooter>
+            <Button onClick={closeDeleteModal} disabled={actionLoading}>
+              Annuler
+            </Button>
+            <Button variant="danger" onClick={handleDeleteCampus} disabled={actionLoading}>
+              {actionLoading ? "Suppression..." : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </Dialog>
+      )}
+    </AdminPage>
   );
 }

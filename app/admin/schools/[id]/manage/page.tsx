@@ -1,8 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
+import { schoolStatusTone } from "../../school-status";
 
 import SchoolInfoTab from "./tabs/SchoolInfoTab";
 import AccreditationsTab from "./tabs/AccreditationsTab";
@@ -12,6 +16,20 @@ import PricingTab from "./tabs/PricingTab";
 import RankingsTab from "./tabs/RankingsTab";
 import CapacitiesTab from "./tabs/CapacitiesTab";
 import AdmissionsTab from "./tabs/AdmissionsTab";
+import TabFrame from "./legacy/TabFrame";
+
+/**
+ * La gestion du contenu d'une école : un en-tête, puis huit onglets.
+ *
+ * Dans la charte depuis l'étape 9 (lot 2) : gabarit `AdminPage`, onglets
+ * `Tabs` au modèle ARIA, une ligne qui défile en largeur sur un écran étroit
+ * (D62). Seul l'onglet choisi est monté, comme avant : chacun relit ses
+ * données en s'ouvrant.
+ *
+ * D60 : jusqu'au lot 3, les quatre onglets marqués `legacy` restent à
+ * l'ancien style. Leur panneau se pose après le gabarit, hors du sous-arbre
+ * `.charte`, dans l'îlot sombre de `legacy/TabFrame.tsx`.
+ */
 
 interface SchoolManageData {
   id: string;
@@ -34,19 +52,22 @@ interface SchoolManageData {
   };
 }
 
+// `legacy` : l'onglet est encore à l'ancien style, jusqu'au lot 3 (D60).
 const TABS = [
-  { key: "info", label: "Infos", icon: "📋" },
-  { key: "accreditations", label: "Accréditations", icon: "🏅" },
-  { key: "stats", label: "Statistiques", icon: "📊" },
-  { key: "campus-programs", label: "Campus & Programmes", icon: "🏫" },
-  { key: "pricing", label: "Tarifs", icon: "💰" },
-  { key: "rankings", label: "Classements", icon: "🏆" },
-  { key: "capacities", label: "Capacités", icon: "📈" },
+  { key: "info", label: "Infos", legacy: false },
+  { key: "accreditations", label: "Accréditations", legacy: false },
+  { key: "stats", label: "Statistiques", legacy: false },
+  { key: "campus-programs", label: "Campus & Programmes", legacy: true },
+  { key: "pricing", label: "Tarifs", legacy: true },
+  { key: "rankings", label: "Classements", legacy: true },
+  { key: "capacities", label: "Capacités", legacy: true },
   // Étape 8 (D50) : l'année d'entrée et le niveau requis de chaque programme.
-  { key: "admissions", label: "Admissions", icon: "🎓" },
+  { key: "admissions", label: "Admissions", legacy: false },
 ] as const;
 
 type TabKey = typeof TABS[number]["key"];
+
+const ID_PREFIX = "manage";
 
 /**
  * L'onglet demandé par `?tab=` (plan gestion-contenu, étape 6 : la vue des
@@ -108,9 +129,9 @@ export default function ManagePage() {
     }
   };
 
-  const renderTab = () => {
+  const renderTab = (key: TabKey) => {
     if (!school) return null;
-    switch (activeTab) {
+    switch (key) {
       case "info":
         return (
           <SchoolInfoTab
@@ -136,69 +157,57 @@ export default function ManagePage() {
     }
   };
 
+  // Un panneau par onglet, pour que chaque onglet commande le sien ; seul le
+  // panneau choisi contient son onglet, dans l'îlot sombre s'il est encore à
+  // l'ancien style (D60).
+  const panel = ({ key, legacy }: (typeof TABS)[number]) => (
+    <TabPanel key={key} idPrefix={ID_PREFIX} value={key} selected={activeTab === key}>
+      {activeTab === key && (legacy ? <TabFrame>{renderTab(key)}</TabFrame> : renderTab(key))}
+    </TabPanel>
+  );
+
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "32px 24px" }}>
-      <div style={{ marginBottom: "20px" }}>
-        <Link href="/admin/schools" className="back-link">
-          ← Retour à la liste des écoles
-        </Link>
-      </div>
+    <>
+      <AdminPage
+        back={{ href: "/admin/schools", label: "← Retour à la liste des écoles" }}
+        title={school ? school.name : "…"}
+        badge={school && <Badge tone={schoolStatusTone(school.status)}>{school.status}</Badge>}
+        description={
+          school && (
+            <>
+              Domaine officiel :{" "}
+              <code className="rounded-control bg-surface-2 px-1.5 py-0.5 font-mono text-compact text-ink">
+                {school.official_domain}
+              </code>
+            </>
+          )
+        }
+      >
+        {loading && !school && (
+          <p className="py-10 text-center text-sm text-ink-2">Chargement des informations de l&apos;école...</p>
+        )}
 
-      {loading && !school && (
-        <div style={{ padding: "40px 0", textAlign: "center", color: "var(--text-secondary)" }}>
-          Chargement des informations de l'école...
-        </div>
-      )}
+        {error && <Alert tone="danger">{error}</Alert>}
 
-      {error && (
-        <div className="alert alert-danger" style={{ marginBottom: "24px" }}>
-          {error}
-        </div>
-      )}
-
-      {school && (
-        <>
-          <div className="manage-header">
-            <div className="manage-header-top">
-              <h1 className="manage-school-name">{school.name}</h1>
-              <span
-                className={`badge ${
-                  school.status === "ACTIVE"
-                    ? "badge-active"
-                    : school.status === "INACTIVE"
-                    ? "badge-inactive"
-                    : "badge-moderator"
-                }`}
-              >
-                {school.status}
-              </span>
-            </div>
-            <div className="manage-school-meta">
-              <span>Domaine officiel :</span>
-              <code>{school.official_domain}</code>
-            </div>
+        {school && (
+          <div>
+            <Tabs
+              label="Rubriques de l'école"
+              idPrefix={ID_PREFIX}
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as TabKey)}
+              items={TABS.map((tab) => {
+                const count = getTabCount(tab.key);
+                return { value: tab.key, label: tab.label, count: count !== null && count > 0 ? count : undefined };
+              })}
+            />
+            {TABS.filter((tab) => !tab.legacy).map(panel)}
           </div>
+        )}
+      </AdminPage>
 
-          <div className="tabs-nav">
-            {TABS.map((tab) => {
-              const count = getTabCount(tab.key);
-              return (
-                <button
-                  key={tab.key}
-                  className={`tab-button ${activeTab === tab.key ? "active" : ""}`}
-                  onClick={() => setActiveTab(tab.key)}
-                >
-                  <span>{tab.icon}</span>
-                  <span>{tab.label}</span>
-                  {count !== null && count > 0 && <span className="tab-count">{count}</span>}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="tab-content">{renderTab()}</div>
-        </>
-      )}
-    </div>
+      {/* D60 : les onglets du lot 3, hors du sous-arbre .charte. */}
+      {school && TABS.filter((tab) => tab.legacy).map(panel)}
+    </>
   );
 }

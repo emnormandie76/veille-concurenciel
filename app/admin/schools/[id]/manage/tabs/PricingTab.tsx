@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import YearSelector from "../components/YearSelector";
-import ProgramSelector from "../components/ProgramSelector";
-import LastEdit from "../../LastEdit";
+import YearSelector from "../legacy/YearSelector";
+import ProgramSelector from "../legacy/ProgramSelector";
+import LastEdit from "../legacy/LastEdit";
 
 interface ProgramOption {
   id: string;

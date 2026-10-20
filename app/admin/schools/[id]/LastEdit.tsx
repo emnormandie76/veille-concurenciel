@@ -7,8 +7,9 @@
  * lecture (`last_edit`, lib/provenance.ts `forManager`) : ce composant ne fait
  * que le poser, et rien pour une donnée d'avant le suivi.
  *
- * À l'ancien style, comme `app/schools/SourceLine.tsx` (décision D28) : ces
- * écrans passent à la charte à l'étape 9, et ce composant avec eux.
+ * Dans la charte depuis l'étape 9 (lot 2), comme `app/schools/SourceLine.tsx` :
+ * petit texte secondaire, placé par son parent. Jusqu'au lot 3, les onglets
+ * encore à l'ancien style prennent la copie de `manage/legacy/` (D61).
  */
 
 interface Props {
@@ -18,7 +19,5 @@ interface Props {
 
 export default function LastEdit({ text }: Props) {
   if (!text) return null;
-  return (
-    <div style={{ fontSize: "0.75rem", fontWeight: 400, color: "var(--text-secondary)", marginTop: 4 }}>{text}</div>
-  );
+  return <p className="text-xs leading-relaxed font-normal text-ink-2">{text}</p>;
 }

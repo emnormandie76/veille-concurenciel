@@ -1,8 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Field, Input, type ControlProps } from "@/components/ui/Field";
 import YearSelector from "../components/YearSelector";
 import LastEdit from "../../LastEdit";
+
+/**
+ * L'onglet « Statistiques » (les chiffres clés) de la gestion d'une école,
+ * année par année. Dans la charte depuis l'étape 9 (lot 2) ; la suppression
+ * d'une année se confirme dans le dialogue de la charte (D63).
+ */
 
 interface StatsRecord {
   id?: string;
@@ -42,6 +53,7 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
   const [intlProfessorsPct, setIntlProfessorsPct] = useState<string>("");
   const [externalSpeakersPct, setExternalSpeakersPct] = useState<string>("");
   const [sourceUrl, setSourceUrl] = useState<string>("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     fetchStats();
@@ -188,9 +200,11 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
     }
   };
 
+  // D63 : le dialogue de la charte remplace `confirm()`. La suppression part
+  // une fois le dialogue fermé, comme après la fenêtre du navigateur.
   const handleDeleteYear = async () => {
     if (!record || !record.id) return;
-    if (!confirm(`Supprimer les statistiques pour l'année ${selectedYear} ?`)) return;
+    setConfirmDelete(false);
 
     setSaving(true);
     setError(null);
@@ -209,8 +223,20 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
     }
   };
 
+  /** Un champ chiffré : un nombre entier, ou un pourcentage à toutes décimales (D30). */
+  const numberInput = (control: ControlProps, value: string, onChange: (value: string) => void, placeholder: string) => (
+    <Input
+      {...control}
+      type="number"
+      className="font-mono tabular-nums"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+    />
+  );
+
   return (
-    <div>
+    <div className="flex flex-col gap-5">
       <YearSelector
         availableYears={availableYears}
         selectedYear={selectedYear}
@@ -219,190 +245,125 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
         loading={loading || saving}
       />
 
-      {error && <div className="alert alert-danger" style={{ marginBottom: "20px" }}>{error}</div>}
-      {success && <div className="alert alert-success" style={{ marginBottom: "20px" }}>{success}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
+      {success && <Alert tone="success">{success}</Alert>}
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des statistiques...
-        </div>
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des statistiques...</p>
       ) : selectedYear ? (
-        <form onSubmit={handleSubmit} className="inline-form">
-          <h3 className="tab-section-title" style={{ marginBottom: "20px" }}>
-            Statistiques globales — Année {selectedYear}
+        <Card aria-labelledby="stats-title" className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1">
+            <CardHeader title={`Statistiques globales — Année ${selectedYear}`} titleId="stats-title" />
             <LastEdit text={record?.last_edit} />
-          </h3>
-
-          <div className="inline-form-grid">
-            <div className="form-group">
-              <label className="form-label" htmlFor="total_students">
-                Nombre total d'étudiants
-              </label>
-              <input
-                id="total_students"
-                type="number"
-                className="form-control"
-                value={totalStudents}
-                onChange={(e) => setTotalStudents(e.target.value)}
-                placeholder="ex: 8500"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="total_alumni">
-                Nombre total de diplômés (Alumni)
-              </label>
-              <input
-                id="total_alumni"
-                type="number"
-                className="form-control"
-                value={totalAlumni}
-                onChange={(e) => setTotalAlumni(e.target.value)}
-                placeholder="ex: 45000"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="partner_companies">
-                Entreprises partenaires
-              </label>
-              <input
-                id="partner_companies"
-                type="number"
-                className="form-control"
-                value={partnerCompanies}
-                onChange={(e) => setPartnerCompanies(e.target.value)}
-                placeholder="ex: 500"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="annual_internship_offers">
-                Offres de stage annuelles
-              </label>
-              <input
-                id="annual_internship_offers"
-                type="number"
-                className="form-control"
-                value={internshipOffers}
-                onChange={(e) => setInternshipOffers(e.target.value)}
-                placeholder="ex: 12000"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="abroad_campuses">
-                Campus à l'étranger
-              </label>
-              <input
-                id="abroad_campuses"
-                type="number"
-                className="form-control"
-                value={abroadCampuses}
-                onChange={(e) => setAbroadCampuses(e.target.value)}
-                placeholder="ex: 3"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="partner_universities">
-                Universités partenaires
-              </label>
-              <input
-                id="partner_universities"
-                type="number"
-                className="form-control"
-                value={partnerUniversities}
-                onChange={(e) => setPartnerUniversities(e.target.value)}
-                placeholder="ex: 150"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="permanent_professors">
-                Professeurs permanents
-              </label>
-              <input
-                id="permanent_professors"
-                type="number"
-                className="form-control"
-                value={permanentProfessors}
-                onChange={(e) => setPermanentProfessors(e.target.value)}
-                placeholder="ex: 120"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="international_professors_pct">
-                % Professeurs internationaux
-              </label>
-              <input
-                id="international_professors_pct"
-                type="number"
-                step="any"
-                min="0"
-                max="100"
-                className="form-control"
-                value={intlProfessorsPct}
-                onChange={(e) => setIntlProfessorsPct(e.target.value)}
-                placeholder="ex: 45.5"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="external_speakers_pct">
-                % Intervenants professionnels externes
-              </label>
-              <input
-                id="external_speakers_pct"
-                type="number"
-                step="any"
-                min="0"
-                max="100"
-                className="form-control"
-                value={externalSpeakersPct}
-                onChange={(e) => setExternalSpeakersPct(e.target.value)}
-                placeholder="ex: 60"
-              />
-            </div>
           </div>
 
-          <div className="form-group" style={{ margin: "20px 0" }}>
-            <label className="form-label" htmlFor="stats-source-url">
-              URL de la source des chiffres clés
-            </label>
-            <input
-              id="stats-source-url"
-              type="text"
-              className="form-control"
-              value={sourceUrl}
-              onChange={(e) => setSourceUrl(e.target.value)}
-              placeholder="https://ecole.fr/chiffres-cles"
-            />
-          </div>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field id="total_students" label="Nombre total d'étudiants">
+                {(control) => numberInput(control, totalStudents, setTotalStudents, "ex: 8500")}
+              </Field>
 
-          <div
-            className="inline-form-actions"
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-          >
-            {record && record.id ? (
-              <button
-                type="button"
-                className="btn btn-danger btn-sm"
-                onClick={handleDeleteYear}
-                disabled={saving}
-              >
-                🗑️ Supprimer cette année
-              </button>
-            ) : (
-              <div />
-            )}
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? "Enregistrement..." : "Enregistrer les statistiques"}
-            </button>
-          </div>
-        </form>
+              <Field id="total_alumni" label="Nombre total de diplômés (Alumni)">
+                {(control) => numberInput(control, totalAlumni, setTotalAlumni, "ex: 45000")}
+              </Field>
+
+              <Field id="partner_companies" label="Entreprises partenaires">
+                {(control) => numberInput(control, partnerCompanies, setPartnerCompanies, "ex: 500")}
+              </Field>
+
+              <Field id="annual_internship_offers" label="Offres de stage annuelles">
+                {(control) => numberInput(control, internshipOffers, setInternshipOffers, "ex: 12000")}
+              </Field>
+
+              <Field id="abroad_campuses" label="Campus à l'étranger">
+                {(control) => numberInput(control, abroadCampuses, setAbroadCampuses, "ex: 3")}
+              </Field>
+
+              <Field id="partner_universities" label="Universités partenaires">
+                {(control) => numberInput(control, partnerUniversities, setPartnerUniversities, "ex: 150")}
+              </Field>
+
+              <Field id="permanent_professors" label="Professeurs permanents">
+                {(control) => numberInput(control, permanentProfessors, setPermanentProfessors, "ex: 120")}
+              </Field>
+
+              <Field id="international_professors_pct" label="% Professeurs internationaux">
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    step="any"
+                    min="0"
+                    max="100"
+                    className="font-mono tabular-nums"
+                    value={intlProfessorsPct}
+                    onChange={(e) => setIntlProfessorsPct(e.target.value)}
+                    placeholder="ex: 45.5"
+                  />
+                )}
+              </Field>
+
+              <Field id="external_speakers_pct" label="% Intervenants professionnels externes">
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="number"
+                    step="any"
+                    min="0"
+                    max="100"
+                    className="font-mono tabular-nums"
+                    value={externalSpeakersPct}
+                    onChange={(e) => setExternalSpeakersPct(e.target.value)}
+                    placeholder="ex: 60"
+                  />
+                )}
+              </Field>
+            </div>
+
+            <Field id="stats-source-url" label="URL de la source des chiffres clés">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="text"
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(e.target.value)}
+                  placeholder="https://ecole.fr/chiffres-cles"
+                />
+              )}
+            </Field>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+              {record && record.id ? (
+                <Button variant="danger-soft" size="sm" onClick={() => setConfirmDelete(true)} disabled={saving}>
+                  Supprimer cette année
+                </Button>
+              ) : (
+                <div />
+              )}
+              <Button type="submit" variant="primary" disabled={saving}>
+                {saving ? "Enregistrement..." : "Enregistrer les statistiques"}
+              </Button>
+            </div>
+          </form>
+        </Card>
       ) : null}
+
+      {confirmDelete && (
+        <Dialog
+          titleId="stats-delete-title"
+          onClose={() => setConfirmDelete(false)}
+          title={`Supprimer les statistiques pour l'année ${selectedYear} ?`}
+        >
+          <DialogFooter>
+            <Button onClick={() => setConfirmDelete(false)} data-autofocus>
+              Annuler
+            </Button>
+            <Button variant="danger" onClick={handleDeleteYear}>
+              Supprimer cette année
+            </Button>
+          </DialogFooter>
+        </Dialog>
+      )}
     </div>
   );
 }

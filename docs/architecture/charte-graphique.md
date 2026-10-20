@@ -16,8 +16,10 @@
 > du §3.
 >
 > **Étape 9, reprise des écrans restants** (D54 : six lots, une session par
-> lot) : le lot 1 (site public et `/api-docs`) est fait le 20 octobre ;
-> l'état de la reprise est au §9.
+> lot) : le lot 1 (site public et `/api-docs`) et le lot 2 (liste des
+> écoles, cadre de la gestion, campus, onglets Infos, Accréditations,
+> Chiffres clés, Admissions) sont faits le 20 octobre ; l'état de la reprise
+> est au §9.
 
 ---
 
@@ -208,10 +210,21 @@ Sur les fiches (étape 9, lot 1, sur la maquette A) : le type de diplôme en
 `accent`, le niveau, le concours et l'expatriation en `neutral`,
 « Alternance » en `success` ; une école active en `success` sur l'accueil.
 
+Dans la gestion des écoles (étape 9, lot 2) : le statut d'une école, sur la
+liste et dans l'en-tête, ACTIVE en `success`, INACTIVE en `neutral`, DRAFT
+en `warning` (D66, `app/admin/schools/school-status.ts`) ; le type d'une
+accréditation en catégorie (`international` en `accent`, `state` en
+`solid`, `label` en `neutral`), « Actif » en `success`, « Inactif » en
+`neutral` ; le niveau requis d'une admission et la ville d'un campus en
+`neutral`. Une case à cocher reste native (`accent-accent`), libellée, dans
+un `fieldset` dont la légende nomme le groupe (D64 : le statut d'une
+accréditation, qui était un interrupteur sans clavier).
+
 **Pas d'émoji** (§1, D56) : les émojis décoratifs des anciens écrans partent
 à la reprise, leurs textes restent ; une icône SVG cachée aux lecteurs
 d'écran les remplace là où elle aide (le repère des campus, le lien
-externe : `app/schools/icons.tsx`). `test/charte.test.ts` refuse un émoji
+externe : `app/schools/icons.tsx`, repris par les cartes du gestionnaire au
+lot 2). `test/charte.test.ts` refuse un émoji
 dans un écran de la charte ; les flèches de texte (« → », « ↗ ») n'en sont
 pas.
 
@@ -224,7 +237,7 @@ classe `charte` (§9).
 |---|---|---|
 | Site | `SiteShell.tsx` | la barre du site (Écoles, API, Back-office pour qui y a droit, Mon compte, Se déconnecter), puis une colonne `narrow` (48 rem, formulaires) ou `wide` (72 rem). « Back-office » suit la session relue en base : les pages qui ne la lisent pas (l'accueil, les fiches en cache, `/api-docs`) passent `showBackOffice={false}` (D57). `current` marque l'entrée qui mène à la page affichée (Écoles sur l'accueil, API sur `/api-docs`), aucune sur une fiche |
 | Connexion | `AuthShell.tsx` | une colonne de 24 rem au centre : titre, carte du formulaire, lien vers l'autre page ; sans barre. `AuthShellLoading` pendant la lecture de l'adresse |
-| Back-office | `AdminPage.tsx` | l'en-tête d'un écran (titre, explication, actions), puis son contenu ; se pose dans le cadre de `app/admin/layout.tsx`, dont le menu reste l'ancien jusqu'à l'étape 9 |
+| Back-office | `AdminPage.tsx` | l'en-tête d'un écran (titre, explication, actions), puis son contenu ; se pose dans le cadre de `app/admin/layout.tsx`, dont le menu reste l'ancien jusqu'à l'étape 9. Deux emplacements facultatifs depuis le lot 2 de l'étape 9, sur la maquette A : `back`, le lien de retour au-dessus du titre (« ← Retour à la liste des écoles »), et `badge`, à côté du titre et hors du `h1` (le statut d'une école) ; sans eux, le rendu est celui de l'étape 4 |
 
 ## 8. Accessibilité
 
@@ -255,7 +268,7 @@ de l'étape 9 (D54).
 | Lot (D54) | Écrans | État |
 |---|---|---|
 | 1 | accueil, fiche école, fiche programme, `/api-docs` (avec `SourceLine`) | **fait le 20 octobre** |
-| 2 | liste des écoles, cadre de la gestion, page des campus, onglets Infos, Accréditations, Chiffres clés, Admissions | à faire |
+| 2 | liste des écoles, cadre de la gestion, page des campus, onglets Infos, Accréditations, Chiffres clés, Admissions (avec `LastEdit` et les sélecteurs de programme et d'année) | **fait le 20 octobre** |
 | 3 | onglets Campus & Programmes, Tarifs, Classements, Capacités | à faire |
 | 4 | inbox | à faire |
 | 5 | `/admin/cron` | à faire |
@@ -277,11 +290,16 @@ de l'étape 9 (D54).
   et pose le focus visible.
 - **Sources** : Tailwind ne lit que les dossiers nommés par `@source`
   (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
-  `app/account/`, depuis l'étape 6 `app/admin/reports/`, et depuis le lot 1
+  `app/account/`, depuis l'étape 6 `app/admin/reports/`, depuis le lot 1
   de l'étape 9 `app/schools/` (les fiches, le formulaire de signalement),
   `app/api-docs/` et le seul fichier `app/page.tsx` (l'accueil : lire tout
   `app/` ferait générer les homonymes des classes des écrans pas encore
-  repris) ; un chemin qui existe est lu à la lettre, crochets compris), avec
+  repris), et depuis le lot 2, fichier par fichier ou dossier par dossier,
+  la gestion des écoles sans les onglets du lot 3 :
+  `app/admin/schools/page.tsx`, `[id]/LastEdit.tsx`, `[id]/campuses/`,
+  `[id]/manage/page.tsx`, `[id]/manage/components/` et les quatre onglets
+  `SchoolInfoTab`, `AccreditationsTab`, `StatsTab`, `AdmissionsTab` ; un
+  chemin qui existe est lu à la lettre, crochets compris), avec
   `source(none)` sur l'import des utilitaires : un ancien
   nom de classe qui serait aussi un utilitaire n'en reçoit pas les règles.
   `block` et `fill-accent`, deux classes de `/admin/cron`, ne sont jamais
@@ -289,6 +307,15 @@ de l'étape 9 (D54).
   (une colonne flex à la place de `block`).
 - **Transition du back-office** : `.admin-content-area:has(.charte)` peint
   toute la zone de contenu au fond de la charte quand l'écran est repris.
+- **L'îlot sombre des onglets du lot 3** (lot 2, D60, D61) : la gestion
+  d'une école est dans la charte, mais quatre de ses onglets (Campus &
+  Programmes, Tarifs, Classements, Capacités) gardent l'ancien style
+  jusqu'au lot 3. La base `.charte` étant au-dessus de `legacy`, leur
+  panneau se pose après le gabarit, hors du sous-arbre `.charte`, dans
+  `manage/legacy/TabFrame.tsx` (fond sombre du back-office, largeur de
+  l'ancienne page) ; ils prennent les copies à l'ancien style de
+  `LastEdit`, `ProgramSelector` et `YearSelector` rangées dans
+  `manage/legacy/`, hors des `@source`. Le lot 3 supprime ce dossier.
 - **Polices** : Inter reste pour les anciens écrans (`--font-inter`) ; les
   trois Plex s'y ajoutent (`app/layout.tsx`).
 
@@ -302,8 +329,10 @@ de l'étape 9 (D54).
 4. garder libellés, identifiants de champ et comportement ;
 5. regarder l'écran dans un navigateur, et un écran voisin non repris.
 
-**Restes pour l'étape 9** (lots 2 à 6) : les écrans de la gestion des écoles
-(lots 2 et 3), l'inbox (lot 4) et `/admin/cron` (lot 5) ; puis, au lot 6, le
+**Restes pour l'étape 9** (lots 3 à 6) : les quatre onglets du lot 3, avec
+la suppression de l'îlot et des copies de `manage/legacy/` (et de leur
+exception dans `test/manager-screens.test.ts`), l'inbox (lot 4) et
+`/admin/cron` (lot 5) ; puis, au lot 6, le
 menu latéral et le cadre du back-office (jetons `side-*`), le preflight à la
 place de la base `.charte` (il pose aussi `[hidden] { display: none }`), la
 règle de transition `:has()`, les exclusions `block` et `fill-accent`, Inter,
@@ -315,6 +344,10 @@ et les classes mortes de l'ancien CSS. Relevé à la fin du lot 1 : 142 des
 `accreditation-*`, `breadcrumb*`, `login-*`, `account-*`, `users-actions`,
 `badge-user`, `badge-invited`, `user-secondary`, `modal-text`…) et quelques
 autres déjà mortes avant l'étape 9 (`campus-accordion`, `forbidden-*`,
-`spinner`, `page-loading`…). Elles restent jusqu'au lot 6 : la couche
+`spinner`, `page-loading`…). Le lot 2 en ajoute douze : `manage-header`,
+`manage-header-top`, `manage-school-name`, `manage-school-meta`, `tabs-nav`,
+`tab-button`, `tab-count`, `tab-content`, `badge-type-international`,
+`badge-type-state`, `badge-type-label`, `modal-footer` (relevé par le même
+script au début et à la fin du lot). Elles restent jusqu'au lot 6 : la couche
 `legacy` de `globals.css` ne change pas avant (seuls ses `@source`
 s'allongent, lot après lot).

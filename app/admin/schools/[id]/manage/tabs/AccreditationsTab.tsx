@@ -1,8 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ExternalIcon } from "@/app/schools/icons";
+import { Alert } from "@/components/ui/Alert";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { cx } from "@/components/ui/cx";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { TEXT_LINK } from "@/components/ui/text-link";
 import { sourceHref } from "@/lib/provenance";
 import LastEdit from "../../LastEdit";
+
+/**
+ * L'onglet « Accréditations » de la gestion d'une école. Dans la charte
+ * depuis l'étape 9 (lot 2) : une carte par accréditation, les fenêtres en
+ * dialogues natifs ; le statut se coche (D64) ; l'erreur d'une fenêtre
+ * s'affiche dans la fenêtre (D67).
+ */
 
 interface Accreditation {
   id: string;
@@ -18,6 +34,13 @@ interface Accreditation {
   // « Modifié par … le … » (étape 5, D29).
   last_edit: string | null;
 }
+
+// Trois catégories, trois tons de catégorie (charte §6) ; le texte reste le type.
+const TYPE_TONES: Record<string, BadgeTone> = {
+  international: "accent",
+  state: "solid",
+  label: "neutral",
+};
 
 export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
   const [accreditations, setAccreditations] = useState<Accreditation[]>([]);
@@ -35,6 +58,7 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
   const [modalError, setModalError] = useState<string | null>(null);
 
   const [deleteRecord, setDeleteRecord] = useState<Accreditation | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAccreditations();
@@ -75,6 +99,19 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
     setFormSourceUrl(rec.source_url || "");
     setModalError(null);
     setIsModalOpen(true);
+  };
+
+  const openDeleteModal = (rec: Accreditation) => {
+    setDeleteError(null);
+    setDeleteRecord(rec);
+  };
+
+  // Une fenêtre ne se ferme pas pendant l'enregistrement.
+  const closeModal = () => {
+    if (!actionLoading) setIsModalOpen(false);
+  };
+  const closeDeleteModal = () => {
+    if (!actionLoading) setDeleteRecord(null);
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -118,6 +155,7 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
   const handleDelete = async () => {
     if (!deleteRecord) return;
     setActionLoading(true);
+    setDeleteError(null);
     try {
       const res = await fetch(`/api/admin/accreditations/${deleteRecord.id}`, {
         method: "DELETE",
@@ -128,231 +166,185 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
       setDeleteRecord(null);
       fetchAccreditations();
     } catch (err: any) {
-      setError(err.message);
+      // D67 : dans la fenêtre restée ouverte, où elle est lue.
+      setDeleteError(err.message);
     } finally {
       setActionLoading(false);
     }
   };
 
   return (
-    <div>
-      <div className="tab-section-header">
-        <h2 className="tab-section-title">Accréditations et Labels</h2>
-        <button className="btn btn-primary btn-sm" onClick={openAddModal}>
-          ➕ Ajouter une accréditation
-        </button>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-display text-lg leading-snug font-semibold text-ink">Accréditations et Labels</h2>
+        <Button variant="primary" size="sm" onClick={openAddModal}>
+          Ajouter une accréditation
+        </Button>
       </div>
 
-      {error && <div className="alert alert-danger" style={{ marginBottom: "20px" }}>{error}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des accréditations...
-        </div>
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des accréditations...</p>
       ) : accreditations.length === 0 ? (
-        <div className="inline-form" style={{ textAlign: "center", padding: "40px" }}>
-          <p style={{ color: "var(--text-secondary)", marginBottom: "16px" }}>
-            Aucune accréditation enregistrée pour cette école.
-          </p>
-          <button className="btn btn-primary btn-sm" onClick={openAddModal}>
-            ➕ Ajouter une première accréditation
-          </button>
-        </div>
+        <Card className="flex flex-col items-center gap-4 py-10 text-center">
+          <p className="text-sm text-ink-2">Aucune accréditation enregistrée pour cette école.</p>
+          <Button variant="primary" size="sm" onClick={openAddModal}>
+            Ajouter une première accréditation
+          </Button>
+        </Card>
       ) : (
-        <div className="cards-grid">
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {accreditations.map((acc) => (
-            <div key={acc.id} className="data-card">
-              <div className="data-card-header">
-                <span className="data-card-title">{acc.accreditation_name}</span>
-                <div className="data-card-actions">
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => openEditModal(acc)}
-                    style={{ padding: "4px 8px" }}
-                  >
-                    Modifier
-                  </button>
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() => setDeleteRecord(acc)}
-                    style={{ padding: "4px 8px" }}
-                  >
-                    Supprimer
-                  </button>
+            <li key={acc.id}>
+              <Card aria-labelledby={`acc-${acc.id}-title`} className="flex h-full flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 id={`acc-${acc.id}-title`} className="min-w-0 font-medium break-words text-ink">
+                    {acc.accreditation_name}
+                  </h3>
+                  <div className="flex shrink-0 gap-1.5">
+                    <Button size="sm" onClick={() => openEditModal(acc)}>
+                      Modifier
+                    </Button>
+                    <Button size="sm" variant="danger-soft" onClick={() => openDeleteModal(acc)}>
+                      Supprimer
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <div className="data-card-meta">
-                <span className={`badge badge-type-${acc.accreditation_type}`}>
-                  {acc.accreditation_type}
-                </span>
-                <span className={`badge ${acc.is_active ? "badge-active" : "badge-inactive"}`}>
-                  {acc.is_active ? "Actif" : "Inactif"}
-                </span>
-                <span>
-                  {acc.year_obtained != null
-                    ? `Obtenue en ${acc.year_obtained}`
-                    : "Année d'obtention inconnue"}
-                </span>
-                {sourceHref(acc.source_url) && (
-                  <a
-                    href={sourceHref(acc.source_url)!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.85rem" }}
-                  >
-                    Source 🔗
-                  </a>
-                )}
-              </div>
-              <LastEdit text={acc.last_edit} />
-            </div>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-ink-2">
+                  <Badge tone={TYPE_TONES[acc.accreditation_type] ?? "neutral"}>{acc.accreditation_type}</Badge>
+                  <Badge tone={acc.is_active ? "success" : "neutral"}>{acc.is_active ? "Actif" : "Inactif"}</Badge>
+                  <span>
+                    {acc.year_obtained != null
+                      ? `Obtenue en ${acc.year_obtained}`
+                      : "Année d'obtention inconnue"}
+                  </span>
+                  {sourceHref(acc.source_url) && (
+                    <a
+                      href={sourceHref(acc.source_url)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cx(TEXT_LINK, "inline-flex items-center gap-1")}
+                    >
+                      Source
+                      <ExternalIcon />
+                    </a>
+                  )}
+                </div>
+                <LastEdit text={acc.last_edit} />
+              </Card>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
-      {/* Modal Ajout/Édition */}
+      {/* Ajout et modification */}
       {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">
-                {editingRecord ? "Modifier l'accréditation" : "Ajouter une accréditation"}
-              </h3>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}>
-                ✕
-              </button>
-            </div>
+        <Dialog
+          titleId="acc-dialog-title"
+          onClose={closeModal}
+          title={editingRecord ? "Modifier l'accréditation" : "Ajouter une accréditation"}
+        >
+          {modalError && <Alert tone="danger">{modalError}</Alert>}
 
-            {modalError && <div className="alert alert-danger" style={{ marginBottom: "16px" }}>{modalError}</div>}
-
-            <form onSubmit={handleFormSubmit}>
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label" htmlFor="acc-name">
-                  Nom de l'accréditation *
-                </label>
-                <input
-                  id="acc-name"
+          <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
+            <Field id="acc-name" label="Nom de l'accréditation *">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   placeholder="ex: EQUIS, AACSB, CTI..."
                   required
+                  data-autofocus
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label" htmlFor="acc-type">
-                  Type d'accréditation *
-                </label>
-                <select
-                  id="acc-type"
-                  className="form-control"
-                  value={formType}
-                  onChange={(e) => setFormType(e.target.value as any)}
-                >
+            <Field id="acc-type" label="Type d'accréditation *">
+              {(control) => (
+                <Select {...control} value={formType} onChange={(e) => setFormType(e.target.value as any)}>
                   <option value="international">International (ex: EQUIS, AACSB, AMBA)</option>
                   <option value="state">État (ex: Visa, Grade de Master, CTI)</option>
                   <option value="label">Label (ex: Bienvenue en France, EESPIG)</option>
-                </select>
-              </div>
+                </Select>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label" htmlFor="acc-year">
-                  Année d'obtention *
-                </label>
-                <input
-                  id="acc-year"
+            <Field id="acc-year" label="Année d'obtention *">
+              {(control) => (
+                <Input
+                  {...control}
                   type="number"
-                  className="form-control"
+                  className="font-mono tabular-nums"
                   value={formYear}
                   onChange={(e) => setFormYear(Number(e.target.value))}
                   min={2000}
                   max={new Date().getFullYear() + 2}
                   required
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label" htmlFor="acc-source-url">
-                  URL de la source
-                </label>
-                <input
-                  id="acc-source-url"
+            <Field id="acc-source-url" label="URL de la source">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   value={formSourceUrl}
                   onChange={(e) => setFormSourceUrl(e.target.value)}
                   placeholder="https://ecole.fr/accreditations"
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ marginBottom: "24px" }}>
-                <label className="form-label">Statut de l'accréditation</label>
-                <div
-                  className="toggle-container"
-                  onClick={() => setFormIsActive(!formIsActive)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <div className={`toggle-switch ${formIsActive ? "active" : ""}`} />
-                  <span style={{ fontSize: "0.9rem", color: "var(--text-primary)" }}>
-                    {formIsActive ? "Accréditation encore active" : "Accréditation expirée / inactive"}
-                  </span>
-                </div>
+            {/* D64 : une case native, au clavier comme à la souris. */}
+            <fieldset className="flex flex-col gap-1.5">
+              <legend className="mb-1.5 text-sm font-medium text-ink">Statut de l&apos;accréditation</legend>
+              <div className="flex items-center gap-2">
+                <input
+                  id="acc-active"
+                  type="checkbox"
+                  className="size-4 cursor-pointer accent-accent"
+                  checked={formIsActive}
+                  onChange={(e) => setFormIsActive(e.target.checked)}
+                />
+                <label htmlFor="acc-active" className="cursor-pointer text-sm text-ink">
+                  Accréditation encore active
+                </label>
               </div>
+            </fieldset>
 
-              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={actionLoading}
-                >
-                  Annuler
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
-                  {actionLoading ? "Enregistrement..." : editingRecord ? "Modifier" : "Ajouter"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <DialogFooter>
+              <Button onClick={closeModal} disabled={actionLoading}>
+                Annuler
+              </Button>
+              <Button type="submit" variant="primary" disabled={actionLoading}>
+                {actionLoading ? "Enregistrement..." : editingRecord ? "Modifier" : "Ajouter"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
       )}
 
-      {/* Modal Confirmation Suppression */}
+      {/* Confirmation de la suppression */}
       {deleteRecord && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">Confirmer la suppression</h3>
-              <button className="modal-close" onClick={() => setDeleteRecord(null)}>
-                ✕
-              </button>
-            </div>
-            <p style={{ marginBottom: "24px", color: "var(--text-secondary)" }}>
-              Êtes-vous sûr de vouloir supprimer l'accréditation{" "}
-              <strong style={{ color: "#ffffff" }}>{deleteRecord.accreditation_name}</strong> ?
-            </p>
-            <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setDeleteRecord(null)}
-                disabled={actionLoading}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={handleDelete}
-                disabled={actionLoading}
-              >
-                {actionLoading ? "Suppression..." : "Supprimer"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <Dialog titleId="acc-delete-title" onClose={closeDeleteModal} title="Confirmer la suppression">
+          {deleteError && <Alert tone="danger">{deleteError}</Alert>}
+          <p className="text-sm leading-relaxed text-ink-2">
+            Êtes-vous sûr de vouloir supprimer l&apos;accréditation{" "}
+            <strong className="font-medium text-ink">{deleteRecord.accreditation_name}</strong> ?
+          </p>
+          <DialogFooter>
+            <Button onClick={closeDeleteModal} disabled={actionLoading}>
+              Annuler
+            </Button>
+            <Button variant="danger" onClick={handleDelete} disabled={actionLoading}>
+              {actionLoading ? "Suppression..." : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
     </div>
   );

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import YearSelector from "../components/YearSelector";
-import LastEdit from "../../LastEdit";
+import YearSelector from "../legacy/YearSelector";
+import LastEdit from "../legacy/LastEdit";
 
 interface ProgramWithCampuses {
   id: string;

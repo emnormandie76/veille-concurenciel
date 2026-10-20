@@ -33,6 +33,15 @@
 > `PipelineJob`, que le backend gelé écrit, n'est pas touchée. Appliquée sur
 > la branche Neon `dev`, puis sur `main` le 20 octobre, avant la mise en
 > production du code qui la lit.
+> **20 octobre 2026** (étape 8) : 16e migration,
+> `20261020180000_program_entries` : les **admissions d'un programme**
+> (année d'entrée, niveau requis, voie), dans une table fille neuve,
+> `ProgramEntry` (D16), avec la provenance de l'étape 5 (D49) ; et une
+> 9e catégorie de signalement, `ADMISSIONS` (D52 : la contrainte de
+> `ContentReport` est remplacée). `Program` n'est pas touchée ;
+> `admission_exam` reste tel quel (D47). Appliquée sur la branche Neon `dev`
+> seulement ; `main` à la prochaine mise en production, avant le code qui la
+> lit (la fiche programme, l'onglet « Admissions », l'API v1).
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -99,7 +108,8 @@ model User {
   session_version Int       @default(0)         // recopiée dans le jeton ; augmentée par une remise à zéro (D20)
   createdAt       DateTime  @default(now())
   // relations inverses de la provenance (étape 5) : updatedSchools, updatedCampuses,
-  // updatedPrograms… une par table de données ; la clé RESTRICT garde le nom (D24)
+  // updatedPrograms… une par table de données, updatedProgramEntries compris (étape 8) ;
+  // la clé RESTRICT garde le nom (D24)
   reports         ContentReport[] @relation("ContentReportAuthor")   // étape 6, RESTRICT (D38)
   handledReports  ContentReport[] @relation("ContentReportHandler")  // étape 6, RESTRICT (D38)
   researchLaunches ResearchLaunch[]                                  // étape 7, RESTRICT (D42)
@@ -159,6 +169,7 @@ model Program {
   source_url                String?            // lien source de la fiche (D12, étape 5)
   campuses                  ProgramCampus[]
   placements                ProgramPlacement[]
+  entries                   ProgramEntry[]     // admissions (étape 8, D16)
   contributions             ContributionInbox[]
   contentReports            ContentReport[]
   pricingRecords            PricingRecord[]
@@ -216,6 +227,24 @@ model ProgramPlacement {
   program    Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   @@unique([programId, study_year, regime, label])
+}
+
+// Une entrée possible dans un programme (étape 8, D16). Listes : lib/program-entries.ts (D48).
+model ProgramEntry {
+  id             String   @id @default(uuid())
+  programId      String
+  entry_year     Int                              // CHECK 1 à 5 : l'année du programme où l'on entre
+  required_level Int                              // CHECK 0 (Bac) à 5 (Bac+5)
+  route          String   @default("UNSPECIFIED") // CHECK : PARCOURSUP | EXAM | TITLE | INTERNATIONAL | UNSPECIFIED
+  note           String?                          // le concours, les diplômes acceptés ; CHECK 500 caractères au plus
+  source_url     String?                          // D27
+  program        Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  updated_at      DateTime?                       // provenance (étape 5, D49) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
+
+  @@unique([programId, entry_year, required_level, route])   // « non précisée » est une valeur : deux NULL seraient distincts
 }
 
 // ── TABLES TEMPORELLES ────────────────────────────────────────────
@@ -379,7 +408,7 @@ model ContentReport {
   programId     String?
   target_type   String                        // CHECK : SCHOOL | CAMPUS | PROGRAM
   target_label  String                        // le nom de la cible à l'envoi (D37)
-  category      String                        // CHECK : SCHOOL_INFO | CAMPUS_PROGRAM | PRICING | CAPACITY | RANKING | STATS | ACCREDITATION | OTHER
+  category      String                        // CHECK : SCHOOL_INFO | CAMPUS_PROGRAM | ADMISSIONS (étape 8, D52) | PRICING | CAPACITY | RANKING | STATS | ACCREDITATION | OTHER
   message       String                        // CHECK : 10 à 2 000 caractères
   source_url    String?                       // règle D27 (D34)
   status        String    @default("OPEN")   // CHECK : OPEN | RESOLVED | REJECTED
@@ -437,6 +466,7 @@ School (1) ──→ (N) Campus
 School (1) ──→ (N) Program ──→ (N) PricingRecord
                             ──→ (N) RankingRecord
                             ──→ (N) ProgramPlacement
+                            ──→ (N) ProgramEntry          (étape 8)
 School (1) ──→ (N) SchoolStatsRecord
 School (1) ──→ (N) AccreditationRecord
 School (1) ──→ (N) PipelineJob
@@ -454,6 +484,7 @@ ResearchLaunch ──→ User (lanceur : RESTRICT)      ·· PipelineJob par job
 |---------------------|--------------|
 | École — stats, accréditations | `School` |
 | Programme — tarifs, classements, lieux hors du parc, note de campus | `Program` |
+| Programme — admissions (année d'entrée, niveau requis, voie) | `ProgramEntry` (étape 8) |
 | **Programme × campus — capacités** | **`ProgramCampus`** |
 | **Programme × campus × année × régime — langues** | **`ProgramCampusAttachment`** |
 
@@ -461,7 +492,7 @@ ResearchLaunch ──→ User (lanceur : RESTRICT)      ·· PipelineJob par job
 
 ## 4. Migrations
 
-Quinze migrations, à appliquer par `prisma migrate deploy` (ou
+Seize migrations, à appliquer par `prisma migrate deploy` (ou
 `npm run db:migrate` par WebSocket). La onzième, `20261016120000_three_roles`,
 et la douzième, `20261016150000_whitelist_accounts`, sont arrivées sur `dev` le
 16 octobre 2026 et sur `main` le 19 octobre (étape 3 du plan gestion-contenu,
@@ -474,7 +505,10 @@ la lit (« Mon compte » la lit). Les quatorze sont appliquées sur les deux
 branches Neon. La quinzième, `20261020150000_research_launches` (étape 7),
 est arrivée sur `dev` puis sur `main` le 20 octobre, **avant** la fusion du
 code qui la lit (l'historique de `/admin/cron`). Les quinze sont appliquées
-sur les deux branches Neon.
+sur les deux branches Neon. La seizième, `20261020180000_program_entries`
+(étape 8), est appliquée sur `dev` le 20 octobre ; elle part sur `main`
+**avant** le code qui la lit (la fiche programme, l'onglet « Admissions »,
+l'API v1), à la prochaine mise en production.
 
 | Migration | Contenu |
 |-----------|---------|
@@ -493,6 +527,7 @@ sur les deux branches Neon.
 | `20261019120000_content_provenance` | **écrite à la main, additive, colonnes facultatives seulement** : `source_url` sur `SchoolStatsRecord`, `AccreditationRecord` et `Program` (D12) ; sur les neuf tables de données (`School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ProgramCampusAttachment`), `updated_at`, `updated_by_id` et `updated_via`, avec par table une clé `<Table>_updated_by_id_fkey` vers `User` (`ON DELETE RESTRICT`, D24) et deux contraintes `CHECK` : `<Table>_updated_via_check` (`MANUAL`, `AI`, `REPORT`) et `<Table>_provenance_check` (les trois colonnes vides ensemble ou pleines ensemble). Aucun index, aucune donnée réécrite : les lignes existantes restent « non suivies ». Le backend gelé lit ces tables (`SELECT *` dans le diff de la Phase 2) mais ne compare que ses propres colonnes : il n'est pas touché |
 | `20261020120000_content_reports` | **écrite à la main, additive** : une table neuve, `ContentReport` (D13), ses trois index et ses cinq clés : l'auteur (`author_id`) et celui qui traite (`handled_by_id`) vers `User` en `ON DELETE RESTRICT` (D38), l'école en `CASCADE`, le campus et le programme en `SET NULL` (D37). Sept contraintes `CHECK` : `ContentReport_target_type_check`, `_target_check` (une cible fine à la fois), `_category_check` (huit catégories), `_message_check` (10 à 2 000 caractères), `_status_check` (`OPEN`, `RESOLVED`, `REJECTED`), `_response_check` (1 000 caractères au plus), `_handled_check` (en attente : personne ne l'a traité ; fermé : qui et quand). Aucune table existante modifiée, aucune ligne écrite ; le backend gelé ne la connaît pas |
 | `20261020150000_research_launches` | **écrite à la main, additive** : une table neuve, `ResearchLaunch` (D14), ses deux index (`kind, launched_at` ; `job_id`) et une seule clé : le lanceur (`triggered_by_id`) vers `User` en `ON DELETE RESTRICT` (D42). `launched_at` en `DEFAULT CURRENT_TIMESTAMP`, l'heure de la base (D40). Six contraintes `CHECK` : `ResearchLaunch_kind_check` (`TARGETED`, `DUE_PASSES`), `_status_check` (`PENDING`, `STARTED`, `NOT_STARTED`, `UNKNOWN`), `_max_passes_check` (1 à 5 pour des passes dues, vide pour une recherche ciblée), `_job_check` (une recherche ciblée partie porte l'id de son job ; des passes dues n'en ont pas), `_answer_check` (en attente : pas de réponse ; sinon un code HTTP), `_detail_check` (1 000 caractères au plus). **Aucune clé vers `PipelineJob`** : le backend purge ses jobs, une clé bloquerait sa purge. Aucune table existante modifiée, aucune ligne écrite ; le backend gelé ne la connaît pas |
+| `20261020180000_program_entries` | **écrite à la main, additive** : une table neuve, `ProgramEntry` (D16), son index unique `(programId, entry_year, required_level, route)` et deux clés : le programme en `CASCADE`, l'auteur (`updated_by_id`) vers `User` en `ON DELETE RESTRICT` (D24, D49). `route` en `DEFAULT 'UNSPECIFIED'` (une valeur, et non un vide : deux `NULL` seraient distincts dans l'unique). Six contraintes `CHECK` : `ProgramEntry_entry_year_check` (1 à 5), `_required_level_check` (0 à 5), `_route_check` (`PARCOURSUP`, `EXAM`, `TITLE`, `INTERNATIONAL`, `UNSPECIFIED`), `_note_check` (500 caractères au plus), et les deux de la provenance, `_updated_via_check` et `_provenance_check`, comme à l'étape 5. Puis `ContentReport_category_check` est **remplacée** (`DROP` puis `ADD`) par la liste à neuf catégories, `ADMISSIONS` comprise (D52) : la seule table existante touchée, que le backend gelé ne connaît pas ; les lignes existantes tiennent la nouvelle liste. `Program` n'est pas touchée (`admission_exam` reste tel quel, D47) ; aucune ligne écrite |
 
 ### Ce qu'il faut savoir sur la migration de rattrapage
 
@@ -672,7 +707,8 @@ une extraction réussie le supprime.
   dans le back-office), `AI` (validée depuis l'inbox ; l'auteur est l'admin qui
   valide, D11), `REPORT` (signalement, étape 6). Le module de référence est
   `lib/provenance.ts` (`UPDATE_ORIGINS`, `provenance()`), vérifié contre la
-  migration par `test/provenance-migration.test.ts`. Seule la **dernière**
+  migration par `test/provenance-migration.test.ts`. Depuis l'étape 8,
+  `ProgramEntry` porte la même provenance (D49). Seule la **dernière**
   modification est connue, et une suppression ne laisse pas de trace (D10).
   Pas de `@updatedAt` de Prisma : il daterait aussi une écriture sans auteur.
 - **Un compte qui figure comme auteur ne se supprime pas** : la clé
@@ -684,7 +720,10 @@ une extraction réussie le supprime.
   L'auteur et celui qui traite viennent de la session ; le nom de la cible
   est lu en base à l'envoi, et la cible doit appartenir à l'école. Listes et
   bornes de référence : `lib/content-reports.ts`, vérifié contre la
-  migration par `test/content-reports-migration.test.ts`. Traiter un
+  migration par `test/content-reports-migration.test.ts` (et, pour la liste
+  des catégories en vigueur depuis l'étape 8, par
+  `test/program-entries-migration.test.ts` : ajouter une catégorie, c'est
+  remplacer la contrainte par une nouvelle migration). Traiter un
   signalement ne date aucune donnée (D32) : `updated_via = REPORT` reste
   permis par la contrainte, sans servir.
 - **Next.js n'écrit jamais `PipelineJob`** (D14, piège 5) : la table est au
@@ -700,6 +739,15 @@ une extraction réussie le supprime.
   et règles de référence : `lib/research-launches.ts`, vérifié contre la
   migration par `test/research-launches-migration.test.ts`, qui vérifie aussi
   qu'aucun fichier de `app/` ni de `lib/` n'écrit `PipelineJob`.
+- **Les admissions d'un programme vivent dans `ProgramEntry`** (étape 8, D16) :
+  une ligne par entrée possible (l'année du programme où l'on entre, le
+  niveau requis, la voie), une seule par année, niveau et voie dans un
+  programme. Listes et bornes de référence : `lib/program-entries.ts`
+  (`ENTRY_ROUTES`, `readEntry`), vérifié contre la migration par
+  `test/program-entries-migration.test.ts`. Chaque écriture pose la
+  provenance de la session (D49), comme les neuf tables. `Program.admission_exam`
+  (le concours, en texte libre) n'est **pas** remplacé : la validation de
+  l'inbox l'écrit encore et l'API v1 le filtre (D47).
 - **Ne jamais créer une arête `ProgramCampus` depuis le rattachement campus.**
   Une arête ouvre une option dans les menus de capacité et une tâche `Capacity`
   facturée à chaque passe de Phase 2 ; elle passe par la validation d'une

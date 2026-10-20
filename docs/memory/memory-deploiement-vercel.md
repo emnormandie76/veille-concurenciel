@@ -265,6 +265,15 @@ du propriétaire), **avant** le push sur `main` (l'historique de `/admin/cron`
 lit la nouvelle table : sans elle, il tomberait en erreur). Quinze migrations
 sur les deux branches.
 
+**20 octobre 2026** (étape 8) : une seizième migration,
+`20261020180000_program_entries` (une table neuve, `ProgramEntry`, et la
+contrainte des catégories de signalement élargie à `ADMISSIONS`), appliquée
+sur `dev` seulement. **Elle attend `main`** : à la prochaine mise en
+production, elle part sur la branche Neon `main` d'abord (§3.2), **avant** le
+push sur `main` (la fiche programme, l'onglet « Admissions » et l'API v1
+lisent la nouvelle table : sans elle, la fiche programme tomberait en
+erreur).
+
 ### 3.2. Une version qui apporte une migration
 
 1. `npm run db:status` : lecture seule, permis à l'agent ;

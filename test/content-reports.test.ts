@@ -128,7 +128,9 @@ test("readDecision : traité ou rejeté, avec une réponse facultative de 1 000 
 // ─── Les listes, et l'onglet de chaque catégorie ────────────────────────────
 
 test("chaque catégorie a un libellé et un onglet de gestion ; chaque état a un libellé", () => {
-  assert.deepEqual([...REPORT_CATEGORIES], ["SCHOOL_INFO", "CAMPUS_PROGRAM", "PRICING", "CAPACITY", "RANKING", "STATS", "ACCREDITATION", "OTHER"]);
+  // Étape 8 (D52) : « Admissions », reliée au nouvel onglet.
+  assert.deepEqual([...REPORT_CATEGORIES], ["SCHOOL_INFO", "CAMPUS_PROGRAM", "ADMISSIONS", "PRICING", "CAPACITY", "RANKING", "STATS", "ACCREDITATION", "OTHER"]);
+  assert.equal(CATEGORY_LABELS.ADMISSIONS, "Admissions");
   assert.deepEqual(Object.keys(CATEGORY_LABELS), [...REPORT_CATEGORIES]);
   assert.deepEqual(Object.keys(CATEGORY_TABS), [...REPORT_CATEGORIES]);
   assert.deepEqual([...REPORT_STATUSES], ["OPEN", "RESOLVED", "REJECTED"]);
@@ -138,6 +140,7 @@ test("chaque catégorie a un libellé et un onglet de gestion ; chaque état a u
 test("manageHref : l'onglet de la catégorie, « Infos » pour une catégorie inconnue", () => {
   assert.equal(manageHref("school-1", "PRICING"), "/admin/schools/school-1/manage?tab=pricing");
   assert.equal(manageHref("school-1", "CAPACITY"), "/admin/schools/school-1/manage?tab=capacities");
+  assert.equal(manageHref("school-1", "ADMISSIONS"), "/admin/schools/school-1/manage?tab=admissions");
   assert.equal(manageHref("school-1", "OTHER"), "/admin/schools/school-1/manage?tab=info");
   assert.equal(manageHref("school-1", "INCONNUE"), "/admin/schools/school-1/manage?tab=info");
   assert.equal(manageHref("a/b?c", "STATS"), "/admin/schools/a%2Fb%3Fc/manage?tab=stats");

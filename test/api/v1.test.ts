@@ -59,7 +59,10 @@ const SHOWN = { updated_at: "2026-10-19T08:30:00.000Z" };
 const row = <T extends object>(data: T) => ({ ...data, ...READ });
 const shown = <T extends object>(data: T) => ({ ...data, ...SHOWN });
 // Une comparaison lit toujours les trois relations du programme.
-const COMPARED = { campuses: [], pricingRecords: [], rankingRecords: [] };
+// Étape 8 (D53) : les admissions d'un programme, imbriquées dans son détail
+// et dans la comparaison.
+const ENTRY = { id: "en-1", entry_year: 1, required_level: 2, route: "EXAM", note: "Concours BCE", source_url: null };
+const COMPARED = { campuses: [], pricingRecords: [], rankingRecords: [], entries: [] };
 
 const active = { school: { status: "ACTIVE" } };
 const inactive = { school: { status: "INACTIVE" } };
@@ -174,8 +177,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/programs/[id]/route",
     url: `/programs/${PROGRAM_ID}`,
     id: PROGRAM_ID,
-    nominal: { program: { findUnique: () => ({ ...row(PROGRAM), school: SCHOOL, campuses: [] }) } },
-    shape: isObject({ ...shown(PROGRAM), school: SCHOOL, campuses: [] }),
+    nominal: { program: { findUnique: () => ({ ...row(PROGRAM), school: SCHOOL, campuses: [], entries: [row(ENTRY)] }) } },
+    shape: isObject({ ...shown(PROGRAM), school: SCHOOL, campuses: [], entries: [shown(ENTRY)] }),
     notFound: programMissing,
   },
   {
@@ -548,6 +551,19 @@ test("/programs/[id]/capacity : capacités par campus, filtre année", async () 
   assert.deepEqual(args.where, { programId: PROGRAM_ID });
   assert.deepEqual(args.select.capacityRecords.where, { academic_year: 2025 });
   assertSchema();
+});
+
+test("/programs/[id] et /compare/programs : les admissions, par année d'entrée puis niveau, sans auteur (D53)", async () => {
+  for (const path of ["/programs/[id]", "/compare/programs"]) {
+    const route = routeOf(path);
+    db.use(route.nominal);
+    await call(route);
+    const call0 = db.calls.find((c) => c.model === "program")!;
+    const entries = (call0.args[0] as { select: { entries: { select: Record<string, true>; orderBy: unknown } } }).select.entries;
+    assert.deepEqual(Object.keys(entries.select).sort(), ["entry_year", "id", "note", "required_level", "route", "source_url", "updated_at"], path);
+    assert.deepEqual(entries.orderBy, [{ entry_year: "asc" }, { required_level: "asc" }, { route: "asc" }], path);
+    assertSchema();
+  }
 });
 
 // ── Comparaison ──────────────────────────────────────────────────────

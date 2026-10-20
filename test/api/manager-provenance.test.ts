@@ -5,7 +5,8 @@
  *
  * Plan gestion-contenu, étape 5, décision D29 (20 octobre) : dans le
  * gestionnaire, chaque donnée (l'école, ses campus, programmes, tarifs,
- * places, classements, chiffres clés et accréditations) montre le **nom** de
+ * places, classements, chiffres clés et accréditations ; depuis l'étape 8,
+ * les admissions de ses programmes, D49) montre le **nom** de
  * la personne qui l'a modifiée en dernier et la **date** : « Modifié par
  * Camille Martin le 19 octobre 2026 ». Ni l'origine (saisie, IA, signalement),
  * ni l'identifiant du compte, ni son adresse.
@@ -67,6 +68,8 @@ const CAPACITY = {
 };
 const STATS = { id: "st-1", schoolId: SCHOOL_ID, academic_year: 2026, total_students: 8000, source_url: null, ...PROV };
 const ACCREDITATION = { id: "ac-1", schoolId: SCHOOL_ID, accreditation_name: "AACSB", accreditation_type: "international", year_obtained: 2014, is_active: true, source_url: null, ...PROV };
+// Étape 8 (D49, D50) : une entrée d'un programme, dans l'onglet « Admissions ».
+const ENTRY = { id: "en-1", programId: "pg-1", entry_year: 1, required_level: 0, route: "PARCOURSUP", note: null, source_url: null, ...PROV, program: { id: "pg-1", name: "PGE" } };
 
 /** Les années distinctes d'une table, ou ses lignes. */
 const yearsOr = (rows: unknown[]) => (args: { distinct?: unknown }) => (args?.distinct ? [{ academic_year: 2026 }] : rows);
@@ -98,6 +101,7 @@ const CASES: Case[] = [
       pricingRecord: { count: () => 1 },
       rankingRecord: { count: () => 1 },
       capacityRecord: { count: () => 1 },
+      programEntry: { count: () => 1 },
       schoolStatsRecord: { findMany: () => [{ academic_year: 2026 }] },
     },
     rows: (json) => [json],
@@ -149,6 +153,13 @@ const CASES: Case[] = [
     module: "schools/[id]/accreditations/route",
     url: `/schools/${SCHOOL_ID}/accreditations`,
     models: { school, accreditationRecord: { findMany: () => [ACCREDITATION] } },
+    rows: (json) => json,
+  },
+  {
+    name: "les admissions",
+    module: "schools/[id]/entries/route",
+    url: `/schools/${SCHOOL_ID}/entries`,
+    models: { school, programEntry: { findMany: () => [ENTRY] } },
     rows: (json) => json,
   },
 ];

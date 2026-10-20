@@ -6,7 +6,8 @@
  * Plan gestion-contenu, étape 5 (décisions D10, D11, D26) : chaque écriture
  * des neuf tables de données (`School`, `Campus`, `Program`, `PricingRecord`,
  * `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`,
- * `AccreditationRecord`, `ProgramCampusAttachment`) porte la provenance :
+ * `AccreditationRecord`, `ProgramCampusAttachment`), et depuis l'étape 8 de
+ * `ProgramEntry` (D49), porte la provenance :
  * `updated_by_id` (le compte de la session, relu en base par lib/auth.ts,
  * jamais le corps de la requête), `updated_at` et `updated_via` (`MANUAL`
  * pour une saisie, `AI` pour une donnée validée depuis l'inbox).
@@ -75,6 +76,7 @@ const TRACKED = new Set([
   "schoolStatsRecord",
   "accreditationRecord",
   "programCampusAttachment",
+  "programEntry",
 ]);
 
 const PROVENANCE_KEYS = ["updated_by_id", "updated_at", "updated_via"];
@@ -95,6 +97,7 @@ const ACCREDITATION = {
   year_obtained: 2015,
   is_active: true,
 };
+const ENTRY = { id: "entry-1", programId: PROGRAM.id, entry_year: 1, required_level: 0, route: "PARCOURSUP" };
 
 /** Une écriture rend ce qu'on lui donne, avec un id. */
 const echo = (id: string) => (args: { data?: object; create?: object }) => ({ id, ...(args.data ?? args.create ?? {}) });
@@ -401,6 +404,39 @@ const SCENARIOS: Scenario[] = [
     models: { accreditationRecord: { findUnique: () => ACCREDITATION, delete: () => ACCREDITATION } },
     tracked: [],
   },
+  // ── Admissions (étape 8, D49) ──
+  {
+    name: "créer une entrée d'un programme",
+    route: "programs/[id]/entries/route",
+    method: "POST",
+    profile: "GESTIONNAIRE",
+    via: "MANUAL",
+    params: { id: PROGRAM.id },
+    payload: { entry_year: 1, required_level: 0, route: "PARCOURSUP" },
+    models: { program: { findUnique: () => PROGRAM }, programEntry: { findUnique: () => null, create: echo("entry-new") } },
+    tracked: ["programEntry.create"],
+  },
+  {
+    name: "modifier une entrée d'un programme",
+    route: "program-entries/[id]/route",
+    method: "PUT",
+    profile: "GESTIONNAIRE",
+    via: "MANUAL",
+    params: { id: ENTRY.id },
+    payload: { entry_year: 3, required_level: 2, route: "EXAM" },
+    models: { programEntry: { findUnique: byId(ENTRY), findFirst: () => null, update: echo(ENTRY.id) } },
+    tracked: ["programEntry.update"],
+  },
+  {
+    name: "supprimer une entrée d'un programme",
+    route: "program-entries/[id]/route",
+    method: "DELETE",
+    profile: "GESTIONNAIRE",
+    via: "MANUAL",
+    params: { id: ENTRY.id },
+    models: { programEntry: { findUnique: () => ENTRY, delete: () => ENTRY } },
+    tracked: [],
+  },
   // ── Inbox : le validateur est l'auteur, l'origine est l'IA (D11) ──
   {
     name: "valider une découverte (campus et programmes)",
@@ -659,10 +695,11 @@ for (const s of SCENARIOS) {
 
 test("chaque écriture du contenu a son scénario", () => {
   // Relevé du 19 octobre 2026 : 29 appels d'écriture dans 25 handlers
-  // (22 du contenu, 3 de l'inbox), 33 scénarios. Une route d'écriture
+  // (22 du contenu, 3 de l'inbox), 33 scénarios. Étape 8 (20 octobre) : les
+  // trois handlers des admissions, 36 scénarios. Une route d'écriture
   // ajoutée sans scénario fait tomber ce décompte.
-  assert.equal(SCENARIOS.length, 33);
-  assert.equal(new Set(SCENARIOS.map((s) => `${s.method} ${s.route}`)).size, 25);
+  assert.equal(SCENARIOS.length, 36);
+  assert.equal(new Set(SCENARIOS.map((s) => `${s.method} ${s.route}`)).size, 28);
 });
 
 test("une écriture refusée ne revalide rien", async () => {

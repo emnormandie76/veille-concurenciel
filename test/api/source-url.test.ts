@@ -5,7 +5,8 @@
  *
  * Plan gestion-contenu, étape 5 :
  * - D27 : une seule règle pour tout lien source saisi à la main (tarifs,
- *   places, classements, chiffres clés, accréditations, programmes) : vide,
+ *   places, classements, chiffres clés, accréditations, programmes ; depuis
+ *   l'étape 8, les admissions d'un programme, D49) : vide,
  *   pas de lien ; sinon une adresse http(s) de 2 048 caractères au plus,
  *   sinon 400, rien d'écrit ;
  * - D12 : les chiffres clés, les accréditations et les programmes ont enfin
@@ -39,6 +40,7 @@ const PC = { id: "pc-1", programId: PROGRAM.id, campusId: CAMPUS.id };
 const CAPACITY = { id: "capacity-1", programCampusId: PC.id, academic_year: 2025, spots_available: 30 };
 const RANKING = { id: "ranking-1", programId: PROGRAM.id, academic_year: 2025, ranking_name: "Figaro", rank: 9 };
 const ACCREDITATION = { id: "accreditation-1", schoolId: SCHOOL.id, accreditation_name: "EQUIS", accreditation_type: "international", is_active: true };
+const ENTRY = { id: "entry-1", programId: PROGRAM.id, entry_year: 1, required_level: 0, route: "PARCOURSUP" };
 
 const echo = (id: string) => (args: { data?: object; create?: object }) => ({ id, ...(args.data ?? args.create ?? {}) });
 const byId = (row: object) => ({ where }: { where: { id?: string } }) => (where.id ? row : null);
@@ -149,6 +151,24 @@ const ROUTES: Route[] = [
     payload: { name: "Programme Grande École" },
     models: { program: { findUnique: byId(PROGRAM), update: echo(PROGRAM.id) } },
     write: "program.update",
+  },
+  {
+    name: "admission (création)",
+    route: "programs/[id]/entries/route",
+    method: "POST",
+    params: { id: PROGRAM.id },
+    payload: { entry_year: 1, required_level: 0, route: "PARCOURSUP" },
+    models: { program: { findUnique: () => PROGRAM }, programEntry: { findUnique: () => null, create: echo("entry-2") } },
+    write: "programEntry.create",
+  },
+  {
+    name: "admission (modification)",
+    route: "program-entries/[id]/route",
+    method: "PUT",
+    params: { id: ENTRY.id },
+    payload: { entry_year: 3, required_level: 2, route: "EXAM" },
+    models: { programEntry: { findUnique: byId(ENTRY), findFirst: () => null, update: echo(ENTRY.id) } },
+    write: "programEntry.update",
   },
 ];
 

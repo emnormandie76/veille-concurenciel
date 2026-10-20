@@ -206,5 +206,7 @@ test("toutes les méthodes du back-office ont été appelées", () => {
   // 48 à la fin de l'étape 1 (16 octobre 2026) ; 53 à l'étape 2 : quatre
   // routes des comptes (rôle, remise à zéro, désactivation, adresse) et deux
   // de « Mon compte » ; la route du mot de passe d'un tiers a disparu (D4).
-  assert.ok(handlerCount >= 53, `seulement ${handlerCount} handlers appelés`);
+  // 56 à l'étape 6 (les trois méthodes des signalements) ; 60 à l'étape 8 :
+  // les quatre des admissions (D50).
+  assert.ok(handlerCount >= 60, `seulement ${handlerCount} handlers appelés`);
 });

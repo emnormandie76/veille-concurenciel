@@ -7,10 +7,13 @@
  *
  * - Cache ISR 1h
  * - CORS enabled
+ * - Plan gestion-contenu, étape 8 (D53) : les admissions de chaque programme
+ *   (`entries`), avec la date seule de leur provenance (D25 revue).
  */
 
 import { corsResponse, corsErrorResponse } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { ENTRY_API_SELECT, ENTRY_ORDER_BY } from "@/lib/program-entries";
 import { API_PROVENANCE_SELECT } from "@/lib/provenance";
 
 export const revalidate = 3600; // Cache 1h
@@ -127,6 +130,10 @@ export async function GET(request: Request) {
             ...API_PROVENANCE_SELECT,
           },
           orderBy: [{ academic_year: "desc" }, { ranking_name: "asc" }],
+        },
+        entries: {
+          select: ENTRY_API_SELECT,
+          orderBy: ENTRY_ORDER_BY,
         },
       },
     });

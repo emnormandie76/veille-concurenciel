@@ -34,7 +34,7 @@ parties : gestion de contenu, IA gelée.
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** du gestionnaire de contenu : rôles, gardes, écrans, routes, tables, styles, tests |
 | [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** (étape 4) : jetons, contrastes, polices, composants, gabarits, accessibilité, cohabitation avec l'ancien style |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
-| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (15 migrations, dont la provenance de chaque donnée, les signalements et le journal des lancements de l'IA) · API v1 (15 routes, session exigée) |
+| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (16 migrations, dont la provenance de chaque donnée, les signalements, le journal des lancements de l'IA et les admissions des programmes) · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | mise en ligne sur Vercel |
 | [docs/cahier-des-charges-school-pipeline.md](docs/cahier-des-charges-school-pipeline.md) | exigences d'origine (l'en-tête renvoie au plan d'évolution) |
 | [docs/architecture/architecture.md](docs/architecture/architecture.md) | référence technique v2.1, centrée sur le pipeline IA : pour les questions sur l'IA, la sécurité (§10) et l'outillage (§10 bis) |
@@ -139,8 +139,20 @@ branche `gestion` :
   20 octobre, puis sur `main` le même jour, avant l'avance de `main` sur
   `gestion` (mise en production) ; contrôle visuel de l'agent dans le Chrome
   du propriétaire. Détail : journal du plan ;
-- prochaine : étape 8 (événements, année d'entrée), en commençant par D15 et
-  D16.
+- étape 8 (nouvelles données) faite et validée le 20 octobre (le
+  propriétaire demande le commit, le push et la fusion dans `main`) : D15
+  (les événements) **pas encore
+  tranchée**, l'équipe ne les a pas confirmés : l'étape ne fait que l'année
+  d'entrée ; D16 (une table fille, `ProgramEntry`), D47 (`admission_exam`
+  reste tel quel), D48 (listes fermées), D49 (provenance de l'étape 5 et
+  lien source), D50 (onglet « Admissions », routes par entrée), D51 (ancien
+  style), D52 (catégorie de signalement `ADMISSIONS`), D53 (admissions
+  imbriquées dans l'API v1) ; migration `20261020180000_program_entries`
+  appliquée sur la branche Neon `dev` seulement (`main` à la prochaine mise
+  en production, avant le code) ; contrôle visuel de l'agent dans le Chrome
+  du propriétaire. Détail : journal du plan ;
+- prochaine : étape 9 (reprise graphique), en commençant par D17 ; D15
+  reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 

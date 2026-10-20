@@ -99,6 +99,8 @@ test("fiche programme : le lien choisit le programme d'avance", async () => {
         campuses: [],
         pricingRecords: [],
         rankingRecords: [],
+        // Étape 8 : la fiche lit aussi les admissions du programme.
+        entries: [],
         ...UNTRACKED,
       }),
     },
@@ -262,6 +264,8 @@ test("l'écran de gestion ouvre l'onglet demandé par ?tab=, s'il existe", () =>
   const source = read("app/admin/schools/[id]/manage/page.tsx");
   assert.match(source, /useSearchParams\(\)/);
   const tabs = [...source.matchAll(/\{ key: "([\w-]+)", label:/g)].map((m) => m[1]);
-  assert.equal(tabs.length, 7);
+  // Étape 8 (D50) : un 8e onglet, « Admissions ».
+  assert.equal(tabs.length, 8);
+  assert.ok(tabs.includes("admissions"));
   for (const tab of Object.values(CATEGORY_TABS)) assert.ok(tabs.includes(tab), tab);
 });

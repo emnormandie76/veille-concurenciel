@@ -39,6 +39,8 @@ model User {
   updatedSchoolStatsRecords       SchoolStatsRecord[]
   updatedAccreditationRecords     AccreditationRecord[]
   updatedProgramCampusAttachments ProgramCampusAttachment[]
+  // Les admissions des programmes (etape 8, D49) : meme cle RESTRICT.
+  updatedProgramEntries           ProgramEntry[]
   // Les signalements envoyes et traites par ce compte (etape 6) ; cles
   // RESTRICT, comme pour les auteurs du contenu (D38).
   reports                         ContentReport[]         @relation("ContentReportAuthor")
@@ -147,6 +149,8 @@ model Program {
   source_url                String?
   campuses                  ProgramCampus[]
   placements                ProgramPlacement[]
+  // Les admissions : en quelle annee on entre, avec quel niveau (etape 8, D16).
+  entries                   ProgramEntry[]
   contributions             ContributionInbox[]
   contentReports            ContentReport[]
   pricingRecords            PricingRecord[]
@@ -252,6 +256,37 @@ model ProgramPlacement {
   program    Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
   @@unique([programId, study_year, regime, label])
+}
+
+// Une entree possible dans un programme : en quelle annee, avec quel niveau,
+// par quelle voie (plan gestion-contenu, etape 8, D16). Un programme en a
+// souvent plusieurs : post-bac en 1re annee, Bac+2 en 3e annee. Listes et
+// bornes de reference dans lib/program-entries.ts (D48) ; contraintes CHECK en
+// base (migration 20261020180000_program_entries). "admission_exam", sur
+// Program, reste tel quel (D47).
+model ProgramEntry {
+  id             String  @id @default(uuid())
+  programId      String
+  // L'annee du programme ou l'on entre : 1 a 5.
+  entry_year     Int
+  // Le niveau requis : 0 pour le Bac, 1 a 5 pour Bac+1 a Bac+5.
+  required_level Int
+  // PARCOURSUP | EXAM | TITLE | INTERNATIONAL | UNSPECIFIED. Sentinelle et non
+  // NULL : deux NULL sont distincts, et l'unique laisserait entrer deux fois
+  // la meme entree (comme ProgramPlacement.study_year).
+  route          String  @default("UNSPECIFIED")
+  // Le nom du concours, les diplomes acceptes... : 500 caracteres au plus.
+  note           String?
+  source_url     String?
+  program        Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  // Provenance (etape 5, D49) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
+
+  @@unique([programId, entry_year, required_level, route])
 }
 
 model PricingRecord {

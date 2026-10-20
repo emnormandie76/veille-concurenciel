@@ -10,6 +10,9 @@
  *   Le cache d'une heure est levé à chaque écriture (lib/content-cache.ts).
  * - Étape 6 : un lien « Signaler une information » vers le formulaire, le
  *   programme choisi d'avance.
+ * - Étape 8 (D16, D51) : une section « Admissions », une ligne par entrée
+ *   (« Entrée en 1re année avec le Bac, par Parcoursup », lib/program-entries.ts),
+ *   avec sa note, son lien source et « Modifié par … le … », à l'ancien style.
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
@@ -17,6 +20,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import SignOutButton from "../../../../SignOutButton";
 import SourceLine from "../../../SourceLine";
+import { ENTRY_ORDER_BY, describeEntry } from "@/lib/program-entries";
 import { AUTHOR_SELECT, describeProvenance, sourceHref } from "@/lib/provenance";
 
 export const revalidate = 3600; // ISR 1h — Étape 8.3
@@ -51,6 +55,10 @@ async function getProgram(schoolId: string, programId: string) {
       },
       rankingRecords: {
         orderBy: [{ academic_year: "desc" }, { ranking_name: "asc" }],
+        include: { updatedBy: AUTHOR_SELECT },
+      },
+      entries: {
+        orderBy: ENTRY_ORDER_BY,
         include: { updatedBy: AUTHOR_SELECT },
       },
     },
@@ -161,6 +169,34 @@ export default async function ProgramDetailPage({ params }: Props) {
 
       {/* Content */}
       <div className="tab-content" style={{ maxWidth: 1200, margin: "0 auto" }}>
+
+        {/* Section Admissions — étape 8 (D16, D51) */}
+        <section id="section-admissions" style={{ marginBottom: 48 }}>
+          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 20, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+            🎓 Admissions
+          </h2>
+
+          {program.entries.length === 0 ? (
+            <div className="no-data" id="no-admissions-data">
+              Aucune donnée d&apos;admission disponible.
+            </div>
+          ) : (
+            <div className="rankings-list" id="admissions-list">
+              {program.entries.map((entry) => (
+                <div key={entry.id} className="ranking-item" id={`admission-${entry.id}`}>
+                  <div>
+                    <div className="ranking-name">{describeEntry(entry)}</div>
+                    {entry.note && (
+                      <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: 4 }}>{entry.note}</div>
+                    )}
+                    {/* Le lien n'est cliquable qu'en http(s) (D27). */}
+                    <SourceLine href={sourceHref(entry.source_url)} provenance={describeProvenance(entry)} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* Section Tarifs */}
         <section id="section-pricing" style={{ marginBottom: 48 }}>

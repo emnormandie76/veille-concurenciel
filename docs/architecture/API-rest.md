@@ -12,6 +12,9 @@
 > **20 octobre 2026** (étape 5) : chaque donnée dit **d'où elle vient et de
 > quand elle date** (`source_url`, `updated_at`), sans dire qui l'a modifiée
 > (D25, revue par le propriétaire). Voir *Provenance de chaque donnée*.
+> **20 octobre 2026** (étape 8, D53) : le détail d'un programme et la
+> comparaison portent ses **admissions** (`entries` : année d'entrée, niveau
+> requis, voie), imbriquées ; toujours 15 routes. Voir *Programmes*.
 
 ## Objectif
 
@@ -123,8 +126,9 @@ tronquer de donnée réelle.
 
 Chaque ressource exposée (école, campus, programme, chiffres clés,
 accréditation, tarif, classement, capacité), et chaque enregistrement imbriqué
-(les places d'un programme dans `/programs/[id]` ; ses places, tarifs et
-classements dans `/compare/programs`), porte **`updated_at`** : la date de sa
+(les places et les admissions d'un programme dans `/programs/[id]` ; ses
+places, tarifs, classements et admissions dans `/compare/programs`), porte
+**`updated_at`** : la date de sa
 dernière modification (ISO 8601), ou `null` pour une donnée **non suivie**
 (écrite avant le 20 octobre 2026 et jamais modifiée depuis). Seule la
 dernière modification est connue (D10).
@@ -141,7 +145,8 @@ elle-même.
 
 `source_url` existait déjà sur les tarifs, classements et capacités ; les
 **chiffres clés**, les **accréditations** et les **programmes** le portent
-aussi (D12), `null` quand aucun lien n'est connu. Une saisie à la main n'est
+aussi (D12), comme les **admissions** depuis l'étape 8 (D49), `null` quand
+aucun lien n'est connu. Une saisie à la main n'est
 acceptée qu'en `http(s)`, 2 048 caractères au plus (D27) ; les liens plus
 anciens sont rendus tels quels.
 
@@ -177,11 +182,22 @@ Toutes sous `/api/v1/`. Seules les écoles `status == "ACTIVE"` sont exposées.
 | Méthode | Endpoint | Description | Paramètres | Forme |
 |---|---|---|---|---|
 | `GET` | `/api/v1/schools/[id]/programs` | Programmes de l'école | `?campus_id=` | tableau, `take: 500` |
-| `GET` | `/api/v1/programs/[id]` | Détail d'un programme | — | objet |
+| `GET` | `/api/v1/programs/[id]` | Détail d'un programme : son école, ses campus et leurs places, ses admissions (`entries`, étape 8) | — | objet |
 | `GET` | `/api/v1/programs` | Recherche globale | `?search=&admission_exam=&alternance=&page=&limit=` | `{ data, pagination }` |
 
 > **Modèle** : un programme appartient à une **école**, pas à un campus. Le
 > filtre `campus_id` passe par la table d'association `ProgramCampus`.
+
+> **Admissions** *(plan gestion-contenu, étape 8, D16, D48, D53)* :
+> `entries` est un tableau, dans l'ordre de l'année d'entrée puis du niveau,
+> une ligne par entrée possible : `entry_year` (l'année du programme où l'on
+> entre, de 1 à 5), `required_level` (0 pour le Bac, de 1 à 5 pour Bac+1 à
+> Bac+5), `route` (`PARCOURSUP`, `EXAM` pour un concours, `TITLE` pour une
+> admission sur titre, `INTERNATIONAL`, `UNSPECIFIED`), `note` (le concours,
+> les diplômes acceptés), `source_url` et `updated_at`. Vide quand aucune
+> entrée n'est connue. `admission_exam` (le concours, en texte libre) reste
+> à côté, inchangé, et le filtre `?admission_exam=` de `/programs` aussi
+> (D47). Ni l'auteur ni l'origine (D25 revue).
 
 ### Tarifs, classements, capacités
 
@@ -208,6 +224,9 @@ Toutes sous `/api/v1/`. Seules les écoles `status == "ACTIVE"` sont exposées.
 | Méthode | Endpoint | Paramètres |
 |---|---|---|
 | `GET` | `/api/v1/compare/programs` | `?ids=uuid1,uuid2,uuid3` — **5 maximum** |
+
+Chaque programme y porte son école, ses campus et leurs places, ses tarifs,
+ses classements et, depuis l'étape 8, ses admissions (`entries`).
 
 Les identifiants sont **dédupliqués** avant la requête. Sans cela, `?ids=X,X`
 renvoyait un `404 introuvable` pour un programme parfaitement valide, la route
@@ -286,7 +305,8 @@ des crédits sur des cibles arbitraires.
 - Recherche et filtres fonctionnent sur les routes paginées.
 - La comparaison accepte jusqu'à 5 programmes, identifiants dupliqués compris.
 - Chaque ressource et chaque enregistrement imbriqué porte sa date
-  (`updated_at`), sans auteur ni origine (`test/api/v1-provenance.test.ts`).
+  (`updated_at`), sans auteur ni origine (`test/api/v1-provenance.test.ts`),
+  admissions comprises (étape 8).
 - **Le plafond de 60 requêtes/minute se déclenche** — vérifié : 66 appels
   successifs donnent 60 réponses `200` puis des `429`.
 - **Le cache ISR ne fonctionne pas** ; ne pas s'appuyer dessus tant que le point

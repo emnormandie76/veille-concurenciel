@@ -22,7 +22,9 @@
  *   plus le mot de passe d'un tiers (D4) ;
  * - `manager` : tout le reste, c'est-à-dire la lecture et l'écriture du
  *   contenu, création et suppressions d'école, de campus et de programme
- *   comprises (D19).
+ *   comprises (D19) ; depuis l'étape 8, les admissions d'un programme
+ *   (`GET schools/[id]/entries`, `POST programs/[id]/entries`, `PUT` et
+ *   `DELETE program-entries/[id]`, D50).
  *
  * Toute route ajoutée sous app/api/admin tombe en `manager` par défaut : le
  * test statique exige alors `guardManager`, ce qui ferme l'accès aux USER.

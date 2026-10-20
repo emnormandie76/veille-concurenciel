@@ -114,6 +114,8 @@ const EXPECTED: Record<string, Array<{ at: string; source: boolean }>> = {
   "/api/v1/programs/[id]": [
     { at: "", source: true },
     { at: "campuses[0].capacityRecords[0]", source: true },
+    // Étape 8 (D53) : les admissions du programme, imbriquées.
+    { at: "entries[0]", source: true },
   ],
   "/api/v1/programs": [{ at: "data[0]", source: true }],
   "/api/v1/programs/[id]/pricing": [{ at: "[0]", source: true }],
@@ -127,6 +129,7 @@ const EXPECTED: Record<string, Array<{ at: string; source: boolean }>> = {
     { at: "[0].campuses[0].capacityRecords[0]", source: true },
     { at: "[0].pricingRecords[0]", source: true },
     { at: "[0].rankingRecords[0]", source: true },
+    { at: "[0].entries[0]", source: true },
   ],
 };
 

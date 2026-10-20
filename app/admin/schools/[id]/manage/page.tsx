@@ -11,6 +11,7 @@ import CampusProgramsTab from "./tabs/CampusProgramsTab";
 import PricingTab from "./tabs/PricingTab";
 import RankingsTab from "./tabs/RankingsTab";
 import CapacitiesTab from "./tabs/CapacitiesTab";
+import AdmissionsTab from "./tabs/AdmissionsTab";
 
 interface SchoolManageData {
   id: string;
@@ -27,6 +28,8 @@ interface SchoolManageData {
     pricingRecords: number;
     rankingRecords: number;
     capacityRecords: number;
+    // Les admissions des programmes (étape 8, D50).
+    programEntries: number;
     statsYears: number[];
   };
 }
@@ -39,6 +42,8 @@ const TABS = [
   { key: "pricing", label: "Tarifs", icon: "💰" },
   { key: "rankings", label: "Classements", icon: "🏆" },
   { key: "capacities", label: "Capacités", icon: "📈" },
+  // Étape 8 (D50) : l'année d'entrée et le niveau requis de chaque programme.
+  { key: "admissions", label: "Admissions", icon: "🎓" },
 ] as const;
 
 type TabKey = typeof TABS[number]["key"];
@@ -96,6 +101,8 @@ export default function ManagePage() {
         return school._counts.rankingRecords;
       case "capacities":
         return school._counts.capacityRecords;
+      case "admissions":
+        return school._counts.programEntries;
       default:
         return null;
     }
@@ -124,6 +131,8 @@ export default function ManagePage() {
         return <RankingsTab schoolId={schoolId} />;
       case "capacities":
         return <CapacitiesTab schoolId={schoolId} />;
+      case "admissions":
+        return <AdmissionsTab schoolId={schoolId} />;
     }
   };
 

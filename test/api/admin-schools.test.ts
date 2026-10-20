@@ -346,6 +346,8 @@ test("GET /schools/[id]/manage : 404 ; sinon l'école et ses compteurs", async (
     pricingRecord: { count: () => 7 },
     rankingRecord: { count: () => 3 },
     capacityRecord: { count: () => 4 },
+    // Étape 8 (D50) : le compteur de l'onglet « Admissions ».
+    programEntry: { count: () => 6 },
     schoolStatsRecord: { findMany: () => [{ academic_year: 2026 }, { academic_year: 2025 }] },
   });
   const res = await h.manage(get(), id(SCHOOL_ID));
@@ -358,8 +360,11 @@ test("GET /schools/[id]/manage : 404 ; sinon l'école et ses compteurs", async (
     pricingRecords: 7,
     rankingRecords: 3,
     capacityRecords: 4,
+    programEntries: 6,
     statsYears: [2026, 2025],
   });
+  const entries = db.calls.find((c) => c.model === "programEntry")!.args[0] as { where: unknown };
+  assert.deepEqual(entries.where, { program: { schoolId: SCHOOL_ID } });
   assertSchema();
 });
 

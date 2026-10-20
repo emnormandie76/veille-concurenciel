@@ -50,6 +50,7 @@ const SCREENS: Record<string, number> = {
   "manage/tabs/RankingsTab.tsx": 1,
   "manage/tabs/StatsTab.tsx": 1,
   "manage/tabs/AccreditationsTab.tsx": 1,
+  "manage/tabs/AdmissionsTab.tsx": 1, // les entrées d'un programme (étape 8, D49)
   "campuses/page.tsx": 1, // les campus
 };
 
@@ -62,6 +63,24 @@ for (const [file, count] of Object.entries(SCREENS)) {
     assert.match(source, /last_edit\??: string \| null;/, `${file} : last_edit dans le type des données`);
   });
 }
+
+test("D50, D51 : l'onglet « Admissions » lit l'école, écrit chaque entrée, prend ses listes à lib/program-entries.ts", () => {
+  const source = readFileSync(`${DIR}/manage/tabs/AdmissionsTab.tsx`, "utf8");
+  assert.match(source, /fetch\(`\/api\/admin\/schools\/\$\{schoolId\}\/entries/);
+  assert.match(source, /`\/api\/admin\/programs\/\$\{[\w.]+\}\/entries`/);
+  assert.match(source, /`\/api\/admin\/program-entries\/\$\{[\w.]+\}`/);
+  assert.match(source, /from "@\/lib\/program-entries"/);
+  assert.match(source, /ENTRY_ROUTES\.map/, "les voies viennent de la liste de référence");
+  assert.match(source, /sourceHref\(/, "seul un lien http(s) est cliquable (D27)");
+  // L'ancien style de l'écran (D51) : ni composant ni gabarit de la charte.
+  assert.doesNotMatch(source, /@\/components\/(ui|layout)\//);
+
+  const page = readFileSync(`${DIR}/manage/page.tsx`, "utf8");
+  assert.match(page, /import AdmissionsTab from "\.\/tabs\/AdmissionsTab";/);
+  assert.match(page, /\{ key: "admissions", label: "Admissions",/);
+  assert.match(page, /<AdmissionsTab schoolId=\{schoolId\} \/>/);
+  assert.match(page, /school\._counts\.programEntries/);
+});
 
 test("D30 : chaque pourcentage des chiffres clés accepte toutes les décimales", () => {
   const source = readFileSync(`${DIR}/manage/tabs/StatsTab.tsx`, "utf8");

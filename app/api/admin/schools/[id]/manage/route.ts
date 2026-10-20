@@ -32,12 +32,14 @@ export async function GET(
       return NextResponse.json({ error: "École introuvable" }, { status: 404 });
     }
 
-    const [pricingCount, rankingCount, capacityCount] = await Promise.all([
+    const [pricingCount, rankingCount, capacityCount, entryCount] = await Promise.all([
       prisma.pricingRecord.count({ where: { program: { schoolId: id } } }),
       prisma.rankingRecord.count({ where: { program: { schoolId: id } } }),
       prisma.capacityRecord.count({
         where: { programCampus: { campus: { schoolId: id } } },
       }),
+      // Le compteur de l'onglet « Admissions » (étape 8, D50).
+      prisma.programEntry.count({ where: { program: { schoolId: id } } }),
     ]);
 
     const statsYears = await prisma.schoolStatsRecord.findMany({
@@ -57,6 +59,7 @@ export async function GET(
         pricingRecords: pricingCount,
         rankingRecords: rankingCount,
         capacityRecords: capacityCount,
+        programEntries: entryCount,
         statsYears: statsYears.map((s) => s.academic_year),
       },
     });

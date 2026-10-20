@@ -31,9 +31,12 @@ import { authorName, formatProvenanceDate, readSourceUrl, sourceHref } from "@/l
 // Listes de référence (contraintes CHECK de la migration)
 // ──────────────────────────────────────────────
 
+// Étape 8 (D52) : « Admissions », reliée à l'onglet du même nom ; la
+// contrainte est remplacée par la migration 20261020180000_program_entries.
 export const REPORT_CATEGORIES = [
   "SCHOOL_INFO",
   "CAMPUS_PROGRAM",
+  "ADMISSIONS",
   "PRICING",
   "CAPACITY",
   "RANKING",
@@ -46,6 +49,7 @@ export type ReportCategory = (typeof REPORT_CATEGORIES)[number];
 export const CATEGORY_LABELS: Record<ReportCategory, string> = {
   SCHOOL_INFO: "Informations de l'école",
   CAMPUS_PROGRAM: "Campus et programmes",
+  ADMISSIONS: "Admissions",
   PRICING: "Tarifs",
   CAPACITY: "Places",
   RANKING: "Classements",
@@ -55,12 +59,21 @@ export const CATEGORY_LABELS: Record<ReportCategory, string> = {
 };
 
 /** Les onglets de l'écran de gestion d'une école (app/admin/schools/[id]/manage). */
-export type ManageTab = "info" | "accreditations" | "stats" | "campus-programs" | "pricing" | "rankings" | "capacities";
+export type ManageTab =
+  | "info"
+  | "accreditations"
+  | "stats"
+  | "campus-programs"
+  | "pricing"
+  | "rankings"
+  | "capacities"
+  | "admissions";
 
 /** L'onglet où se corrige chaque catégorie ; « Autre » ouvre les informations. */
 export const CATEGORY_TABS: Record<ReportCategory, ManageTab> = {
   SCHOOL_INFO: "info",
   CAMPUS_PROGRAM: "campus-programs",
+  ADMISSIONS: "admissions",
   PRICING: "pricing",
   CAPACITY: "capacities",
   RANKING: "rankings",

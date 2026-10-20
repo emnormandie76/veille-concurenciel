@@ -16,6 +16,9 @@
  * une donnée lue par l'API est tenue pour vérifiée (D25, revue le
  * 20 octobre). Les simples renvois (l'école d'un programme, le programme d'un
  * campus) n'en portent pas.
+ *
+ * Étape 8 (D53) : le détail d'un programme et la comparaison portent ses
+ * admissions (`entries`), avec leur lien source et leur date.
  */
 
 export interface EndpointParam {
@@ -133,6 +136,29 @@ const RANKING_ID = "5b7d9f1a-3c5e-4a7b-9d1f-3a5c7e9b1d3f";
 const RANKING = { id: RANKING_ID, programId: EXAMPLE_IDS.program, ...RANKING_FIELDS };
 
 const PROGRAM_CAMPUS = { id: PROGRAM_CAMPUS_ID, campus: CAMPUS };
+
+// Les admissions d'un programme (plan gestion-contenu, étape 8, D53), dans
+// l'ordre de l'année d'entrée, puis du niveau requis.
+const ENTRIES = [
+  {
+    id: "6a8c0e2b-4d6f-4a8c-9e0b-2d4f6a8c0e2b",
+    entry_year: 1,
+    required_level: 2,
+    route: "EXAM",
+    note: "Concours BCE, après une classe préparatoire.",
+    source_url: "https://www.ecole-exemple.fr/programme-grande-ecole/admissions",
+    ...EDITED,
+  },
+  {
+    id: "b2d4f6a8-0c2e-4b4d-8f6a-8c0e2b4d6f8a",
+    entry_year: 2,
+    required_level: 4,
+    route: "TITLE",
+    note: null,
+    source_url: null,
+    ...UNTRACKED,
+  },
+];
 
 const PAGINATION = (limit: number) => ({
   page: 1,
@@ -362,13 +388,17 @@ export const endpoints: Endpoint[] = [
     title: "Détail d'un programme",
     description:
       "Retourne un programme, son école et ses campus. Pour chaque campus, `capacityRecords` porte les trois années " +
-      "de places disponibles les plus récentes.",
+      "de places disponibles les plus récentes. Les admissions (`entries`) disent en quelle année du programme on entre " +
+      "(`entry_year`, de 1 à 5), avec quel niveau (`required_level` : 0 pour le Bac, de 1 à 5 pour Bac+1 à Bac+5) et par " +
+      "quelle voie (`route` : `PARCOURSUP`, `EXAM` pour un concours, `TITLE` pour une admission sur titre, `INTERNATIONAL` " +
+      "pour les candidats internationaux, `UNSPECIFIED` si elle n'est pas précisée) ; `note` nomme le concours ou les diplômes acceptés.",
     category: "programs",
     params: [pathId("du programme")],
     mockResponse: {
       ...PROGRAM_DATA,
       school: { ...SCHOOL, status: "ACTIVE" },
       campuses: [{ ...PROGRAM_CAMPUS, capacityRecords: [CAPACITY] }],
+      entries: ENTRIES,
     },
   },
   {
@@ -517,7 +547,8 @@ export const endpoints: Endpoint[] = [
     path: "/api/v1/compare/programs",
     title: "Comparaison de programmes",
     description:
-      "Compare jusqu'à 5 programmes : chacun avec son école, ses campus et leurs places, ses tarifs et ses classements. " +
+      "Compare jusqu'à 5 programmes : chacun avec son école, ses campus et leurs places, ses tarifs, ses classements " +
+      "et ses admissions (`entries`, décrites dans le détail d'un programme). " +
       "Les programmes reviennent dans l'ordre de `ids`, et un identifiant répété ne compte qu'une fois. " +
       "Plus de 5 identifiants donnent 400 ; un programme inconnu ou d'une école inactive, 404.",
     category: "compare",
@@ -538,6 +569,7 @@ export const endpoints: Endpoint[] = [
         campuses: [{ ...PROGRAM_CAMPUS, capacityRecords: [CAPACITY] }],
         pricingRecords: [{ id: PRICING_ID, ...PRICING_FIELDS }],
         rankingRecords: [{ id: RANKING_ID, ...RANKING_FIELDS }],
+        entries: ENTRIES,
       },
       {
         ...OTHER_PROGRAM_DATA,
@@ -545,6 +577,7 @@ export const endpoints: Endpoint[] = [
         campuses: [{ id: OTHER_PROGRAM_CAMPUS_ID, campus: CAMPUS, capacityRecords: [] }],
         pricingRecords: [],
         rankingRecords: [],
+        entries: [],
       },
     ],
   },

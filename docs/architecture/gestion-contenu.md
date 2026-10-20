@@ -7,7 +7,8 @@
 > base (étape 4 : §3 et §6), **et le 20 octobre** : sources et auteur de
 > chaque modification (étape 5 : §2.3, §3, §4, §5, §6, §7), puis le formulaire
 > de signalement (étape 6 : §2, §3, §4, §5, §6, §7), puis l'historique des
-> recherches IA (étape 7 : §2.3, §3.2, §4.2, §5, §7). Cette fiche décrit
+> recherches IA (étape 7 : §2.3, §3.2, §4.2, §5, §7), puis les admissions
+> des programmes (étape 8 : §2, §3, §4, §5, §6, §7). Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
 > du plan la met à jour.
@@ -41,7 +42,7 @@ référence ; décision G4) :
 | Rôle | Qui | Peut |
 |---|---|---|
 | `USER` | toute personne connectée | consulter le site, `/api-docs` et l'API v1 ; **signaler une information** depuis une fiche (étape 6) et en suivre la suite ; changer son nom affiché et son mot de passe sur « Mon compte » (`/account`). **Ne voit pas `/admin`** |
-| `GESTIONNAIRE` | les anciens `MODERATOR` | en plus : le back-office du contenu (écoles, campus, programmes, tarifs, places, classements, chiffres clés, accréditations), créations et suppressions comprises (D19), et **les signalements** (`/admin/reports`, D31) |
+| `GESTIONNAIRE` | les anciens `MODERATOR` | en plus : le back-office du contenu (écoles, campus, programmes, tarifs, places, classements, chiffres clés, accréditations, et depuis l'étape 8 les admissions des programmes), créations et suppressions comprises (D19), et **les signalements** (`/admin/reports`, D31) |
 | `ADMIN` | | en plus : les comptes (liste blanche, rôles, remise en première connexion, désactivation), et **seul l'IA** (inbox, `/admin/cron`, routes du backend) |
 
 Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
@@ -137,7 +138,7 @@ reste affiché dans « Modifié par », quel que soit son état (D25).
 |---|---|---|
 | `/` ([`app/page.tsx`](../../app/page.tsx)) | liste et recherche des écoles | client : `fetch('/api/schools')`, erreurs par [`lib/public-schools.ts`](../../lib/public-schools.ts) |
 | `/schools/[id]` | fiche école (campus, programmes, chiffres clés, accréditations) | serveur, Prisma, ISR 1 h |
-| `/schools/[id]/programs/[pid]` | fiche programme (tarifs, places, classements, rattachements) | serveur, Prisma, ISR 1 h |
+| `/schools/[id]/programs/[pid]` | fiche programme (admissions depuis l'étape 8, tarifs, places, classements, rattachements) | serveur, Prisma, ISR 1 h |
 | `/api-docs` | documentation de l'API v1 | statique, verrouillée par `test/api-docs.test.ts` |
 | `/schools/[id]/report` | « Signaler une information » (étape 6) : la cible (l'école, un de ses campus ou de ses programmes ; `?program=` la choisit depuis la fiche programme), la catégorie, le message, un lien facultatif | serveur (`requirePage("signedIn")`, Prisma : une école active seulement), formulaire client ; envoi par `POST /api/admin/reports` |
 | `/account` | « Mon compte » : adresse, rôle, nom affiché, mot de passe ; « Vos signalements » (étape 6, D36) : date, cible, catégorie, état, réponse | serveur (`requirePage("signedIn")`), formulaires client |
@@ -172,6 +173,15 @@ le gestionnaire (§3.2) ; celle d'un rattachement reste en base (aucun écran
 ne les montre). L'API v1 ne rend que la date, ni l'auteur ni l'origine (D25,
 revue le 20 octobre).
 
+**Admissions** (étape 8, D16, D51) : la fiche programme ouvre sur une section
+« Admissions », avant les tarifs : une ligne par entrée possible, dans l'ordre
+de l'année d'entrée puis du niveau (« Entrée en 3e année avec un Bac+2, sur
+concours », texte de `describeEntry`, [`lib/program-entries.ts`](../../lib/program-entries.ts)),
+sa note (le concours, les diplômes acceptés) et sa `SourceLine` ; « Aucune
+donnée d'admission disponible. » sinon. À l'ancien style de la fiche (D51).
+L'étiquette du concours (`admission_exam`) reste dans l'en-tête, inchangée
+(D47).
+
 **Cache** (D26, piège 4) : après chaque écriture réussie du contenu, la route
 appelle `revalidateContent()` ([`lib/content-cache.ts`](../../lib/content-cache.ts)),
 qui invalide `/schools` et `/api/schools` en `layout` : toutes les fiches
@@ -184,7 +194,7 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 | Chemin | Niveau | IA ? |
 |---|---|---|
 | `/admin/schools` | `manager` : liste, création et suppression des écoles | non |
-| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 7 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab` ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source 🔗 » sur la carte d'une accréditation. Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux). `?tab=` ouvre un onglet (`info`, `accreditations`, `stats`, `campus-programs`, `pricing`, `rankings`, `capacities`) : la vue des signalements y renvoie (étape 6) | non |
+| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 8 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab`, et depuis l'étape 8 `AdmissionsTab` (« Admissions », D50 : une carte par entrée d'un programme, filtre par programme, année d'entrée, niveau requis et voie choisis dans les listes de `lib/program-entries.ts`, note, lien source ; compteur dans l'onglet) ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source 🔗 » sur la carte d'une accréditation. Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux). `?tab=` ouvre un onglet (`info`, `accreditations`, `stats`, `campus-programs`, `pricing`, `rankings`, `capacities`, `admissions`) : la vue des signalements y renvoie (étape 6 ; la catégorie « Admissions » mène au 8e onglet, D52). La barre d'onglets, plus large que l'écran, défile en largeur (comme à 7 onglets) | non |
 | `/admin/schools/[id]/campuses` | `manager` : les campus d'une école, avec « Modifié par … le … » (D29) | non |
 | `/admin/reports` | `manager` (étape 6, D31) : « Signalements », en attente (les plus anciens d'abord) et fermés (les 100 derniers). Pour chacun : l'école, la cible (« supprimé » si le campus ou le programme n'existe plus, D37), la catégorie, le message, le lien (`sourceHref`), le nom affiché de l'auteur (D39) ; « Ouvrir l'onglet de gestion » (l'onglet de la catégorie), « Traiter » et « Rejeter » (dialogue, réponse facultative pour l'auteur). Fermer un signalement ne date aucune donnée (D32) | non |
 | `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter | **oui** |
@@ -204,9 +214,10 @@ dialogue). Les autres gardent l'ancien style jusqu'à l'étape 9.
 Garde de chaque méthode à la fin de l'étape 2 (16 octobre 2026), inchangée à
 l'étape 5 (aucune route ajoutée) ; l'étape 6 ajoute les trois méthodes des
 signalements (§4.1 bis) ; l'étape 7 n'en ajoute aucune (les routes IA
-existantes écrivent et lisent le journal des lancements, §4.2). `Gest.` = `guardManager` (gestionnaire ou admin),
+existantes écrivent et lisent le journal des lancements, §4.2) ; l'étape 8
+ajoute les quatre des admissions (§4.1). `Gest.` = `guardManager` (gestionnaire ou admin),
 `Admin` = `guardAdmin`, `Session` = `guardSignedIn` (toute session).
-56 méthodes : 35 `Gest.`, 18 `Admin`, 3 `Session`.
+60 méthodes : 39 `Gest.`, 18 `Admin`, 3 `Session`.
 
 La table de référence est [`test/helpers/access-policy.ts`](../../test/helpers/access-policy.ts) :
 `test/api/admin-guards.test.ts` vérifie que chaque handler attend la garde de
@@ -232,6 +243,7 @@ modification se reporte ici.
 | `schools/[id]/rankings` · `programs/[id]/rankings` · `rankings/[id]` | GET Gest. · POST Gest. · PUT Gest. · DELETE Gest. |
 | `schools/[id]/stats` · `schools/[id]/stats/[recordId]` | GET Gest. · PUT Gest. · DELETE Gest. |
 | `schools/[id]/accreditations` · `accreditations/[id]` | GET Gest. · POST Gest. · PUT Gest. · DELETE Gest. |
+| `schools/[id]/entries` · `programs/[id]/entries` · `program-entries/[id]` | GET Gest. (les admissions des programmes de l'école, `?programId=`) · POST Gest. (une entrée d'un programme) · PUT Gest. (l'entrée entière) · DELETE Gest. Étape 8, D50, au motif des classements ; l'envoi est lu par `readEntry` avant toute lecture en base (400, rien d'écrit) ; une entrée en double (même année, niveau et voie dans le programme) → 400 ; le corps illisible → 400 (`readJsonObject`) |
 | `users` | GET Admin (la liste, invités compris, sans empreinte) · POST Admin (ajoute une adresse à la liste : invité `USER`, sans mot de passe, aucun e-mail ; D5) |
 | `users/[id]` | DELETE Admin (retire un **invité** ; un compte qui a servi se désactive, D21 ; un invité qui figure comme auteur aussi : 409, D24, comme l'auteur ou le traitant d'un signalement, D38 ; pas soi-même) |
 | `users/[id]/role` | PATCH Admin (`USER`, `GESTIONNAIRE`, `ADMIN` ; le dernier admin actif ne se rétrograde pas) |
@@ -260,9 +272,10 @@ programme le date aussi. Les routes de saisie lisent `source_url` par
 écriture. Après une écriture réussie, suppressions comprises,
 `revalidateContent()` (§3.1).
 
-**Provenance lue** (D29) : les neuf routes de lecture qui nourrissent les
+**Provenance lue** (D29) : les dix routes de lecture qui nourrissent les
 écrans de gestion d'une école (`schools/[id]`, `manage`, `campuses`,
-`programs`, `pricing`, `capacities`, `rankings`, `stats`, `accreditations`)
+`programs`, `pricing`, `capacities`, `rankings`, `stats`, `accreditations`,
+et depuis l'étape 8 `entries`)
 lisent l'auteur par son seul nom affiché (`AUTHOR_SELECT`) et rendent, sur
 chaque ligne, `last_edit` : « Modifié par X le … », ou `null` pour une ligne
 non suivie (`forManager`, `describeLastEdit`). Ni l'identifiant de l'auteur
@@ -338,7 +351,8 @@ ne lisent pas la session, ce qui garde leur cache ISR.
 - `app/api/schools/*` : 3 routes GET, ISR 1 h, utilisées par l'accueil.
 - `app/api/v1/*` : 15 routes GET, plafonnées à 60 requêtes par minute et par
   IP ; de la provenance, la date seule (`updated_at`, D25 revue le
-  20 octobre). Référence : [`API-rest.md`](API-rest.md).
+  20 octobre). Depuis l'étape 8, le détail d'un programme et la comparaison
+  portent ses admissions (`entries`, D53). Référence : [`API-rest.md`](API-rest.md).
 - `app/api/first-login` : POST, **sans session** (proxy), au plafond de la
   connexion ; la seule route hors de `/api/auth/*` ouverte sans session (§2.2).
 - `app/api/contribute` : **retirée** (D2), remplacée par le signalement
@@ -367,6 +381,7 @@ sur les écoles » du propriétaire.
 | `SchoolStatsRecord` | école × année | oui (étape 5, D12) | Next.js |
 | `AccreditationRecord` | école | oui (étape 5, D12) | Next.js |
 | `ProgramPlacement` | programme | oui | aucun chemin d'écriture (abandonné, gardé) |
+| `ProgramEntry` | programme × année d'entrée × niveau requis × voie | oui (étape 8, D49) | Next.js (onglet « Admissions », étape 8) |
 | `User` | — | — | Next.js (§2.3) |
 | `ContributionInbox` | école, campus, programme (facultatifs) | `urls[]` | Next.js **et** backend Python |
 | `PipelineJob` | école | — | backend Python seulement (Next.js la lit, ne l'écrit jamais : D14) |
@@ -382,7 +397,20 @@ portent la **dernière** modification : `updated_by_id` (clé vers `User`,
 contrainte `CHECK`). Les trois sont vides ensemble (ligne « non suivie »,
 écrite avant la migration et jamais modifiée depuis) ou pleines ensemble
 (contrainte `CHECK`). Une suppression ne laisse pas de trace ; il n'y a pas
-d'historique complet (D10).
+d'historique complet (D10). Depuis l'étape 8, `ProgramEntry` porte la même
+provenance (D49).
+
+**Admissions** (étape 8, migration `20261020180000_program_entries`,
+appliquée sur `dev` le 20 octobre ; `main` à la prochaine mise en
+production) : `ProgramEntry` (D16) dit, pour un programme, en quelle année on
+entre (`entry_year`, 1 à 5), avec quel niveau (`required_level`, 0 pour le
+Bac à 5 pour Bac+5) et par quelle voie (`route`, cinq valeurs, `UNSPECIFIED`
+par défaut), avec une note de 500 caractères au plus et un lien source ;
+une seule ligne par année, niveau et voie dans un programme (index unique).
+Un programme supprimé emporte ses entrées (`CASCADE`). `admission_exam`, sur
+`Program`, reste tel quel (D47). La même migration élargit
+`ContentReport_category_check` à `ADMISSIONS` (D52). Listes et contraintes :
+`bdd.md` §4.
 
 **Signalements** (étape 6, migration `20261020120000_content_reports`,
 appliquée sur `dev` et sur `main` le 20 octobre) : `ContentReport` (D13) garde l'auteur,
@@ -405,7 +433,7 @@ code HTTP, le message, et l'id du job d'une recherche ciblée, **sans clé vers
 
 Le backend Python **lit** les tables de données (diff de la Phase 2) et
 **écrit** `ContributionInbox` et `PipelineJob`. Il ne connaît ni
-`ContentReport` ni `ResearchLaunch`. Ajouter une colonne obligatoire
+`ContentReport`, ni `ResearchLaunch`, ni `ProgramEntry`. Ajouter une colonne obligatoire
 à ces deux tables, ou renommer une colonne qu'il lit, casse le backend gelé.
 
 ---
@@ -439,7 +467,11 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   **l'ancien style** de chaque écran, avec ses `style` en ligne, sans règle
   ajoutée à `globals.css` (D28) ; ils passeront à la charte avec leurs
   écrans, à l'étape 9. De même le lien « Signaler une information » des
-  fiches (étape 6, D33), en `btn btn-secondary`.
+  fiches (étape 6, D33), en `btn btn-secondary`, et, à l'étape 8 (D51),
+  l'onglet « Admissions » (`AdmissionsTab`, sur les motifs de l'onglet
+  Accréditations : cartes, fenêtre) et la section « Admissions » de la fiche
+  programme (`ranking-item` et `SourceLine`) ; leur texte vient de
+  `lib/program-entries.ts`, sans style.
 - Deux défauts des composants de l'étape 4, vus au contrôle visuel de
   l'étape 6 et corrigés : les onglets (`Tabs`) montraient une barre de
   défilement verticale (le filet du bas est désormais une ombre intérieure) ;
@@ -532,6 +564,21 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   chaque job (par l'id, par la fenêtre, « non suivi », le nom seul) ; dans
   `pipeline-history.test.ts`, « non suivi » et la colonne de l'écran ; dans
   `users.test.ts`, D42.
+- **Admissions** (étape 8) : `test/program-entries.test.ts`
+  (`lib/program-entries.ts` : listes, libellés, phrase de chaque entrée,
+  lecture d'un envoi bornée, note comptée comme Postgres, lien D27, rien de
+  l'auteur ni du programme lu dans le corps), `test/program-entries-migration.test.ts`
+  (une table neuve, la seule suppression est la contrainte des catégories
+  qu'elle remplace ; contraintes alignées sur le code, provenance de
+  l'étape 5, clés `CASCADE` et `RESTRICT`, `schema.prisma`, `Program` non
+  touchée), `test/api/program-entries.test.ts` (les quatre méthodes : auteur
+  de la session, programme de l'URL, envoi illisible ou doublon → 400 sans
+  écriture, P2002, 404, revalidation, rien dans l'inbox) ; scénarios ajoutés
+  à `api/provenance`, `api/source-url`, `api/manager-provenance` (la lecture
+  de l'onglet), `manager-screens` (l'onglet, ses routes, ses listes, l'ancien
+  style), `api/v1-provenance` et `api/v1` (les admissions imbriquées),
+  `provenance-pages` (la section de la fiche) ; `content-reports`,
+  `content-reports-migration` et `reports-pages` suivent D52 et D50.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts`.
 - **Charte** (étape 4) : `test/ui-components.test.ts` (le HTML rendu par

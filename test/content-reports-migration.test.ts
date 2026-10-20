@@ -78,7 +78,10 @@ test("piège 6 : rien ne passe par l'inbox, aucun statut de ticket", () => {
 });
 
 test("les contraintes tiennent les listes de lib/content-reports.ts", () => {
-  assert.deepEqual(checkedValues("ContentReport_category_check"), [...REPORT_CATEGORIES]);
+  // Étape 8 (D52) : la liste a gagné ADMISSIONS. Cette migration posait les
+  // huit premières ; la contrainte en vigueur est remplacée par la migration
+  // 20261020180000_program_entries (test/program-entries-migration.test.ts).
+  assert.deepEqual(checkedValues("ContentReport_category_check"), REPORT_CATEGORIES.filter((c) => c !== "ADMISSIONS"));
   assert.deepEqual(checkedValues("ContentReport_status_check"), [...REPORT_STATUSES]);
   assert.deepEqual(checkedValues("ContentReport_target_type_check"), [...TARGET_TYPES]);
   assert.match(statements(), /"status" TEXT NOT NULL DEFAULT 'OPEN'/);

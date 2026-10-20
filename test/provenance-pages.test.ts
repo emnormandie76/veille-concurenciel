@@ -111,6 +111,11 @@ const PROGRAM = {
   rankingRecords: [
     { id: "rk-1", academic_year: 2025, ranking_name: "Figaro", rank: 9, source_url: "https://etudiant.lefigaro.fr/x", ...by("AI") },
   ],
+  // Étape 8 (D16, D51) : les admissions du programme.
+  entries: [
+    { id: "en-1", entry_year: 1, required_level: 0, route: "PARCOURSUP", note: "Bac général ou technologique", source_url: "https://www.em-normandie.com/fr/pge/admissions", ...by("MANUAL") },
+    { id: "en-2", entry_year: 3, required_level: 2, route: "EXAM", note: null, source_url: "javascript:alert(2)", ...UNTRACKED },
+  ],
 };
 
 const html = (element: ReactElement) => renderToStaticMarkup(element);
@@ -143,6 +148,28 @@ test("fiche programme : les liens source http(s) sont cliquables, les autres non
   }
   assert.doesNotMatch(out, /href="javascript:/i);
   assert.doesNotMatch(out, /u-camille|@em-normandie\.fr/, "ni identifiant ni adresse");
+});
+
+test("fiche programme : la section « Admissions » dit chaque entrée, sa note, sa source et qui l'a modifiée (D51)", async () => {
+  db.use({ program: { findUnique: () => PROGRAM } });
+  const out = html(await ProgramPage({ params: Promise.resolve({ id: SCHOOL.id, pid: PROGRAM.id }) }));
+
+  assert.match(out, /id="section-admissions"/);
+  assert.match(out, /Entrée en 1re année avec le Bac, par Parcoursup/);
+  assert.match(out, /Bac général ou technologique/);
+  assert.match(out, /Entrée en 3e année avec un Bac\+2, sur concours/);
+  assert.match(out, /href="https:\/\/www\.em-normandie\.com\/fr\/pge\/admissions"[^>]*rel="noopener noreferrer"/);
+  assert.doesNotMatch(out, /href="javascript:/i);
+  // Les entrées, dans l'ordre de l'année d'entrée, et l'auteur par son nom seul.
+  const read = db.calls[0].args[0] as { include: { entries: { orderBy: unknown; include: unknown } } };
+  assert.deepEqual(read.include.entries.orderBy, [{ entry_year: "asc" }, { required_level: "asc" }, { route: "asc" }]);
+  assertAuthorSelects();
+});
+
+test("fiche programme : sans entrée, la section le dit", async () => {
+  db.use({ program: { findUnique: () => ({ ...PROGRAM, entries: [] }) } });
+  const out = html(await ProgramPage({ params: Promise.resolve({ id: SCHOOL.id, pid: PROGRAM.id }) }));
+  assert.match(out, /Aucune donnée d&#x27;admission disponible\./);
 });
 
 test("fiche école : l'en-tête dit qui a modifié l'école ; chiffres clés et accréditations reçoivent leur provenance", async () => {

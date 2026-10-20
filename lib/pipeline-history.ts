@@ -24,6 +24,11 @@ export interface PipelineJobRow {
   started_at: string;
   updated_at: string;
   finished_at: string | null;
+  /**
+   * Le nom affiché de qui l'a lancé (étape 7 du plan gestion-contenu), ou
+   * `null` sans lancement connu au journal.
+   */
+  triggered_by: string | null;
 }
 
 export interface PipelineJobsResponse {
@@ -87,6 +92,23 @@ export function errorPreview(error: string | null): { short: string; truncated: 
   if (!error) return null;
   if (error.length <= ERROR_PREVIEW_LENGTH) return { short: error, truncated: false };
   return { short: `${error.slice(0, ERROR_PREVIEW_LENGTH)}…`, truncated: true };
+}
+
+export const UNTRACKED_LAUNCHER = "non suivi";
+export const UNTRACKED_LAUNCHER_HINT =
+  "Lancé avant le suivi des lancements (20 octobre 2026), ou hors de cet écran : appel direct au backend, ancien cron.";
+
+/**
+ * Qui a lancé le job : son nom, ou « non suivi » (D44 : le mot de D10), avec
+ * la raison au survol. Jamais de devinette.
+ */
+export function launcherLabel(job: Pick<PipelineJobRow, "triggered_by">): {
+  text: string;
+  tracked: boolean;
+  hint: string | null;
+} {
+  if (job.triggered_by) return { text: job.triggered_by, tracked: true, hint: null };
+  return { text: UNTRACKED_LAUNCHER, tracked: false, hint: UNTRACKED_LAUNCHER_HINT };
 }
 
 /** Le bandeau des contributions en attente du backend local ; `null` s'il n'y en a pas. */

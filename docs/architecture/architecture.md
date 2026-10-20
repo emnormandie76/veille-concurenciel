@@ -270,6 +270,14 @@ progression, `error` bornée à 2 000 caractères) et le nombre de contributions
 `Pending_AI` : c'est l'historique de `/admin/cron`, lisible en ligne comme en
 local (§7.4).
 
+> **Qui a lancé chaque recherche** (plan gestion-contenu, étape 7, 20 octobre
+> 2026) : `trigger-research` et `run-due-passes` (passe réelle) écrivent
+> d'abord le lancement dans `ResearchLaunch`, une table que seul Next.js tient
+> (si cette écriture échoue, rien ne part), puis son issue ; `pipeline-jobs`
+> en tire le lanceur de chaque job (`triggered_by`). Le backend gelé n'a pas
+> changé, et Next.js n'écrit jamais `PipelineJob`. Détail :
+> [`gestion-contenu.md`](gestion-contenu.md) §4.2.
+
 > **Nom du jeton : `INTERNAL_API_TOKEN`.** Ce secret a porté trois noms de part
 > et d'autre de la même frontière de confiance — Next.js envoyait
 > `FASTAPI_INTERNAL_TOKEN`, FastAPI attendait `INTERNAL_API_TOKEN` ou

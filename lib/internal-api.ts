@@ -98,20 +98,14 @@ function relayError(status: number, code: BackendErrorCode, error: string): Next
   return NextResponse.json({ error, code }, { status });
 }
 
+const LOCAL_ONLY_MESSAGE =
+  "Les recherches se pilotent depuis le poste local : ce serveur n'a pas de backend (FASTAPI_URL absente).";
+const TOKEN_MISSING_MESSAGE = `${INTERNAL_TOKEN_VAR} absente : posez-la dans .env.local, avec la même valeur que dans backend/.env.`;
+
 /** La réponse d'une route qui ne peut pas joindre le backend, sans appel réseau. */
 export function backendUnavailable(code: "BACKEND_LOCAL_ONLY" | "TOKEN_MISSING"): NextResponse {
-  if (code === "BACKEND_LOCAL_ONLY") {
-    return relayError(
-      503,
-      code,
-      "Les recherches se pilotent depuis le poste local : ce serveur n'a pas de backend (FASTAPI_URL absente)."
-    );
-  }
-  return relayError(
-    500,
-    code,
-    `${INTERNAL_TOKEN_VAR} absente : posez-la dans .env.local, avec la même valeur que dans backend/.env.`
-  );
+  if (code === "BACKEND_LOCAL_ONLY") return relayError(503, code, LOCAL_ONLY_MESSAGE);
+  return relayError(500, code, TOKEN_MISSING_MESSAGE);
 }
 
 export interface RelayOptions {
@@ -133,19 +127,35 @@ function networkCode(err: unknown): string {
 }
 
 /**
- * Relaie un appel vers `path` sur le backend local, avec le jeton interne.
+ * Ce qu'a donné un appel au backend : sa réponse (statut et corps JSON), ou
+ * la raison pour laquelle il n'y en a pas, avec le statut et le message que
+ * la route renverra. Les routes qui lancent une recherche le lisent avant de
+ * répondre, pour noter l'issue du lancement (lib/research-launches.ts).
+ */
+export type BackendResult =
+  | { kind: "answered"; status: number; data: unknown }
+  | { kind: "failed"; status: number; code: BackendErrorCode; error: string };
+
+function failed(status: number, code: BackendErrorCode, error: string): BackendResult {
+  return { kind: "failed", status, code, error };
+}
+
+/**
+ * Appelle `path` sur le backend local, avec le jeton interne.
  *
- * - Pas d'URL ou pas de jeton : la réponse de `backendUnavailable`, sans appel.
+ * - Pas d'URL ou pas de jeton : l'échec de `backendUnavailable`, sans appel.
  * - Connexion impossible : 503 `BACKEND_NOT_RUNNING`.
  * - Délai dépassé : 504 `BACKEND_TIMEOUT`.
  * - Corps illisible : 502 `BACKEND_BAD_RESPONSE`.
- * - Sinon, la réponse du backend **telle quelle** : statut et corps JSON, y
- *   compris ses refus (401, 409, 422, 503…), que l'écran sait lire
- *   (lib/backend-state.ts).
+ * - Sinon, la réponse du backend, y compris ses refus (401, 409, 422, 503…).
  */
-export async function relayToBackend(path: string, options: RelayOptions): Promise<NextResponse> {
+export async function callBackend(path: string, options: RelayOptions): Promise<BackendResult> {
   const target = backendTarget();
-  if (!target.ok) return backendUnavailable(target.code);
+  if (!target.ok) {
+    return target.code === "BACKEND_LOCAL_ONLY"
+      ? failed(503, target.code, LOCAL_ONLY_MESSAGE)
+      : failed(500, target.code, TOKEN_MISSING_MESSAGE);
+  }
 
   const { method = "GET", body, timeoutMs, mayHaveStarted = false } = options;
   const controller = new AbortController();
@@ -169,7 +179,7 @@ export async function relayToBackend(path: string, options: RelayOptions): Promi
   } catch (err) {
     if (controller.signal.aborted) {
       const seconds = Math.round(timeoutMs / 1000);
-      return relayError(
+      return failed(
         504,
         "BACKEND_TIMEOUT",
         mayHaveStarted
@@ -178,20 +188,28 @@ export async function relayToBackend(path: string, options: RelayOptions): Promi
           : `Le backend n'a pas répondu en ${seconds} s.`
       );
     }
-    return relayError(
-      503,
-      "BACKEND_NOT_RUNNING",
-      `Backend local injoignable (${networkCode(err)}) : est-il lancé ?`
-    );
+    return failed(503, "BACKEND_NOT_RUNNING", `Backend local injoignable (${networkCode(err)}) : est-il lancé ?`);
   } finally {
     clearTimeout(timer);
   }
 
-  let data: unknown;
   try {
-    data = JSON.parse(text);
+    return { kind: "answered", status, data: JSON.parse(text) };
   } catch {
-    return relayError(502, "BACKEND_BAD_RESPONSE", `Réponse illisible du backend (HTTP ${status}).`);
+    return failed(502, "BACKEND_BAD_RESPONSE", `Réponse illisible du backend (HTTP ${status}).`);
   }
-  return NextResponse.json(data, { status });
+}
+
+/**
+ * La réponse de la route : celle du backend **telle quelle** (statut et corps
+ * JSON), que l'écran sait lire (lib/backend-state.ts), ou `{ error, code }`.
+ */
+export function backendResultResponse(result: BackendResult): NextResponse {
+  if (result.kind === "failed") return relayError(result.status, result.code, result.error);
+  return NextResponse.json(result.data, { status: result.status });
+}
+
+/** Relaie un appel vers `path` sur le backend local : `callBackend`, puis sa réponse. */
+export async function relayToBackend(path: string, options: RelayOptions): Promise<NextResponse> {
+  return backendResultResponse(await callBackend(path, options));
 }

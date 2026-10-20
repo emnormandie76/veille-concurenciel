@@ -34,7 +34,7 @@ parties : gestion de contenu, IA gelée.
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** du gestionnaire de contenu : rôles, gardes, écrans, routes, tables, styles, tests |
 | [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** (étape 4) : jetons, contrastes, polices, composants, gabarits, accessibilité, cohabitation avec l'ancien style |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
-| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (14 migrations, dont la provenance de chaque donnée et les signalements) · API v1 (15 routes, session exigée) |
+| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (15 migrations, dont la provenance de chaque donnée, les signalements et le journal des lancements de l'IA) · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | mise en ligne sur Vercel |
 | [docs/cahier-des-charges-school-pipeline.md](docs/cahier-des-charges-school-pipeline.md) | exigences d'origine (l'en-tête renvoie au plan d'évolution) |
 | [docs/architecture/architecture.md](docs/architecture/architecture.md) | référence technique v2.1, centrée sur le pipeline IA : pour les questions sur l'IA, la sécurité (§10) et l'outillage (§10 bis) |
@@ -127,7 +127,19 @@ branche `gestion` :
   `dev` le 20 octobre, puis sur `main` le même jour, avant l'avance de
   `main` sur `gestion` (mise en production) ; contrôle visuel de l'agent dans le
   Chrome du propriétaire. Détail : journal du plan ;
-- prochaine : étape 7 (historique des recherches IA), en commençant par D14.
+- étape 7 (historique des recherches IA) faite et validée le 20 octobre (le
+  propriétaire demande le commit et la fusion dans `main`) : décisions D14 (un journal des lancements
+  tenu par Next.js seul, `ResearchLaunch` ; `PipelineJob` et le backend gelé
+  intacts ; écart au texte du plan, qui prévoyait une colonne), D40 (passes
+  dues : fenêtre de lancement, au plus N jobs), D41 (la trace d'abord : rien
+  ne part sans trace), D42 (clé `RESTRICT`), D43 (une colonne « Lancé par »
+  dans l'historique, rien d'autre), D44 (« non suivi »), D45 (ancien style),
+  D46 (messages IA : rien à l'étape 7, liste consignée) ; migration
+  `20261020150000_research_launches` appliquée sur la branche Neon `dev`
+  (`main` avant l'avance de `main` sur `gestion`, le code la lit) ; contrôle
+  visuel de l'agent dans le Chrome du propriétaire. Détail : journal du plan ;
+- prochaine : étape 8 (événements, année d'entrée), en commençant par D15 et
+  D16.
 
 L'étape en cours se lit dans le journal du plan (§9).
 

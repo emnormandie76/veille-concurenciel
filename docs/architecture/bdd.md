@@ -27,6 +27,12 @@
 > neuve, `ContentReport` (D13), jamais dans `ContributionInbox` (piège 6).
 > Appliquée sur la branche Neon `dev`, puis sur `main` le 20 octobre, avant
 > la mise en production du code qui la lit.
+> **20 octobre 2026** (étape 7) : 15e migration,
+> `20261020150000_research_launches` : le **journal des lancements de l'IA**,
+> dans une table neuve, `ResearchLaunch` (D14), tenue par Next.js seul ;
+> `PipelineJob`, que le backend gelé écrit, n'est pas touchée. Appliquée sur
+> la branche Neon `dev` le 20 octobre ; `main` à la prochaine mise en
+> production, avant le code qui la lit.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -96,6 +102,7 @@ model User {
   // updatedPrograms… une par table de données ; la clé RESTRICT garde le nom (D24)
   reports         ContentReport[] @relation("ContentReportAuthor")   // étape 6, RESTRICT (D38)
   handledReports  ContentReport[] @relation("ContentReportHandler")  // étape 6, RESTRICT (D38)
+  researchLaunches ResearchLaunch[]                                  // étape 7, RESTRICT (D42)
 }
 
 // ── ENTITÉS PRINCIPALES ───────────────────────────────────────────
@@ -390,6 +397,25 @@ model ContentReport {
   @@index([schoolId])
   @@index([author_id])
 }
+
+// ── JOURNAL DES LANCEMENTS DE L'IA (étape 7) ──────────────────────
+
+model ResearchLaunch {
+  id              String   @id @default(uuid())
+  kind            String                        // CHECK : TARGETED (recherche ciblée) | DUE_PASSES (passes dues réelles)
+  triggered_by_id String                        // le compte de la session, jamais le corps de la requête
+  launched_at     DateTime @default(dbgenerated("CURRENT_TIMESTAMP"))  // l'heure de la base, comme PipelineJob.started_at (D40)
+  status          String   @default("PENDING") // CHECK : PENDING | STARTED | NOT_STARTED | UNKNOWN (D41)
+  request         Json                          // le corps envoyé au backend, et l'école d'une recherche ciblée
+  max_passes      Int?                          // passes dues : 1 à 5, borne de la fenêtre (D40)
+  job_id          String?                       // recherche ciblée : l'id rendu par le backend, sans clé vers PipelineJob
+  http_status     Int?                          // la réponse : code HTTP…
+  detail          String?                       // …et message, 1 000 caractères au plus
+  triggeredBy User @relation(fields: [triggered_by_id], references: [id], onDelete: Restrict)
+
+  @@index([kind, launched_at])
+  @@index([job_id])
+}
 ```
 
 > Les contraintes `CHECK` ne sont pas visibles dans `schema.prisma` : elles
@@ -421,6 +447,7 @@ ProgramCampus (1) ──→ (N) ProgramCampusAttachment
 
 ContributionInbox ──→ School? · Campus? · Program? · ProgramCampus?   (ON DELETE SET NULL)
 ContentReport ──→ User (auteur, traitant : RESTRICT) · School (CASCADE) · Campus? · Program? (SET NULL)
+ResearchLaunch ──→ User (lanceur : RESTRICT)      ·· PipelineJob par job_id ou par fenêtre, sans clé
 ```
 
 | Niveau de la donnée | Rattachement |
@@ -434,7 +461,7 @@ ContentReport ──→ User (auteur, traitant : RESTRICT) · School (CASCADE) �
 
 ## 4. Migrations
 
-Quatorze migrations, à appliquer par `prisma migrate deploy` (ou
+Quinze migrations, à appliquer par `prisma migrate deploy` (ou
 `npm run db:migrate` par WebSocket). La onzième, `20261016120000_three_roles`,
 et la douzième, `20261016150000_whitelist_accounts`, sont arrivées sur `dev` le
 16 octobre 2026 et sur `main` le 19 octobre (étape 3 du plan gestion-contenu,
@@ -444,7 +471,9 @@ sur `main` le 20 octobre, avant la fusion de l'étape 5 dans la branche Git
 `main`. La quatorzième, `20261020120000_content_reports` (étape 6), est
 arrivée sur `dev` puis sur `main` le 20 octobre, avant la fusion du code qui
 la lit (« Mon compte » la lit). Les quatorze sont appliquées sur les deux
-branches Neon.
+branches Neon. La quinzième, `20261020150000_research_launches` (étape 7),
+est appliquée sur `dev` le 20 octobre ; `main` la recevra à la prochaine mise
+en production, **avant** le code qui la lit (l'historique de `/admin/cron`).
 
 | Migration | Contenu |
 |-----------|---------|
@@ -462,6 +491,7 @@ branches Neon.
 | `20261016150000_whitelist_accounts` | **écrite à la main, additive** : `username` et `password_hash` facultatifs ; `email` (index unique `User_email_key`), `display_name`, `status` (les comptes existants `ACTIVE`, puis défaut `INVITED`), `first_login_at`, `session_version` (défaut 0) ; cinq contraintes `CHECK`, posées validées (les lignes existantes les tiennent) : `User_status_check`, `User_password_status_check` (actif ⇔ mot de passe), `User_invited_email_check`, `User_identity_check` (adresse ou identifiant), `User_email_lower_check`. Ne touche que `User` |
 | `20261019120000_content_provenance` | **écrite à la main, additive, colonnes facultatives seulement** : `source_url` sur `SchoolStatsRecord`, `AccreditationRecord` et `Program` (D12) ; sur les neuf tables de données (`School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ProgramCampusAttachment`), `updated_at`, `updated_by_id` et `updated_via`, avec par table une clé `<Table>_updated_by_id_fkey` vers `User` (`ON DELETE RESTRICT`, D24) et deux contraintes `CHECK` : `<Table>_updated_via_check` (`MANUAL`, `AI`, `REPORT`) et `<Table>_provenance_check` (les trois colonnes vides ensemble ou pleines ensemble). Aucun index, aucune donnée réécrite : les lignes existantes restent « non suivies ». Le backend gelé lit ces tables (`SELECT *` dans le diff de la Phase 2) mais ne compare que ses propres colonnes : il n'est pas touché |
 | `20261020120000_content_reports` | **écrite à la main, additive** : une table neuve, `ContentReport` (D13), ses trois index et ses cinq clés : l'auteur (`author_id`) et celui qui traite (`handled_by_id`) vers `User` en `ON DELETE RESTRICT` (D38), l'école en `CASCADE`, le campus et le programme en `SET NULL` (D37). Sept contraintes `CHECK` : `ContentReport_target_type_check`, `_target_check` (une cible fine à la fois), `_category_check` (huit catégories), `_message_check` (10 à 2 000 caractères), `_status_check` (`OPEN`, `RESOLVED`, `REJECTED`), `_response_check` (1 000 caractères au plus), `_handled_check` (en attente : personne ne l'a traité ; fermé : qui et quand). Aucune table existante modifiée, aucune ligne écrite ; le backend gelé ne la connaît pas |
+| `20261020150000_research_launches` | **écrite à la main, additive** : une table neuve, `ResearchLaunch` (D14), ses deux index (`kind, launched_at` ; `job_id`) et une seule clé : le lanceur (`triggered_by_id`) vers `User` en `ON DELETE RESTRICT` (D42). `launched_at` en `DEFAULT CURRENT_TIMESTAMP`, l'heure de la base (D40). Six contraintes `CHECK` : `ResearchLaunch_kind_check` (`TARGETED`, `DUE_PASSES`), `_status_check` (`PENDING`, `STARTED`, `NOT_STARTED`, `UNKNOWN`), `_max_passes_check` (1 à 5 pour des passes dues, vide pour une recherche ciblée), `_job_check` (une recherche ciblée partie porte l'id de son job ; des passes dues n'en ont pas), `_answer_check` (en attente : pas de réponse ; sinon un code HTTP), `_detail_check` (1 000 caractères au plus). **Aucune clé vers `PipelineJob`** : le backend purge ses jobs, une clé bloquerait sa purge. Aucune table existante modifiée, aucune ligne écrite ; le backend gelé ne la connaît pas |
 
 ### Ce qu'il faut savoir sur la migration de rattrapage
 
@@ -647,7 +677,7 @@ une extraction réussie le supprime.
 - **Un compte qui figure comme auteur ne se supprime pas** : la clé
   `ON DELETE RESTRICT` le refuse (P2003), et la route répond 409 ; il se
   désactive (D24). Il en va de même de l'auteur d'un signalement et de celui
-  qui l'a traité (D38).
+  qui l'a traité (D38), et de qui a lancé une recherche IA (D42).
 - **Un signalement n'entre jamais dans `ContributionInbox`** (D13, piège 6) :
   il va dans `ContentReport`, que seul Next.js écrit (`/api/admin/reports`).
   L'auteur et celui qui traite viennent de la session ; le nom de la cible
@@ -656,6 +686,19 @@ une extraction réussie le supprime.
   migration par `test/content-reports-migration.test.ts`. Traiter un
   signalement ne date aucune donnée (D32) : `updated_via = REPORT` reste
   permis par la contrainte, sans servir.
+- **Next.js n'écrit jamais `PipelineJob`** (D14, piège 5) : la table est au
+  backend gelé, qui l'écrit et la purge. Qui a lancé une recherche se lit dans
+  `ResearchLaunch`, que seul Next.js écrit (`trigger-research`,
+  `run-due-passes`), **avant** l'appel au backend : si cette écriture échoue,
+  rien ne part (D41). Le lanceur vient de la session. Une recherche ciblée se
+  relie à son job par l'id que le backend rend ; une passe due par la
+  **fenêtre** de son lancement (D40) : les jobs `rotation` créés à partir de
+  son heure et avant le lancement suivant qui a pu partir, au plus
+  `max_passes`. D'où `launched_at` à l'heure de la base : `@default(now())`
+  donnerait l'heure du poste, que le client Prisma 7 calcule lui-même. Listes
+  et règles de référence : `lib/research-launches.ts`, vérifié contre la
+  migration par `test/research-launches-migration.test.ts`, qui vérifie aussi
+  qu'aucun fichier de `app/` ni de `lib/` n'écrit `PipelineJob`.
 - **Ne jamais créer une arête `ProgramCampus` depuis le rattachement campus.**
   Une arête ouvre une option dans les menus de capacité et une tâche `Capacity`
   facturée à chaque passe de Phase 2 ; elle passe par la validation d'une

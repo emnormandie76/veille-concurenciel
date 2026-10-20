@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guardAdmin } from "@/lib/auth";
-import { BACKEND_TIMEOUTS_MS, backendTarget, backendUnavailable, relayToBackend } from "@/lib/internal-api";
+import { BACKEND_TIMEOUTS_MS, backendTarget, backendUnavailable, callBackend } from "@/lib/internal-api";
+import { tracedLaunch } from "@/lib/research-launch-log";
 import { parseTriggerResearchBody } from "@/lib/trigger-research";
 
 /**
@@ -17,10 +18,15 @@ import { parseTriggerResearchBody } from "@/lib/trigger-research";
  *
  * En ligne, sans `FASTAPI_URL` : 503 `BACKEND_LOCAL_ONLY`, sans appel. Corps
  * invalide ou illisible : 400. Sinon la réponse du backend passe telle quelle
- * (lib/internal-api.ts, `relayToBackend`).
+ * (lib/internal-api.ts).
+ *
+ * Plan gestion-contenu, étape 7 (D14, D41) : le lancement s'écrit au journal
+ * `ResearchLaunch` avant l'appel, au nom de la session ; si cette écriture
+ * échoue, rien ne part (500). L'issue et l'id du job rendu s'y ajoutent après
+ * la réponse (lib/research-launch-log.ts).
  */
 export async function POST(request: Request) {
-  const { error } = await guardAdmin();
+  const { session, error } = await guardAdmin();
   if (error) return error;
 
   const target = backendTarget();
@@ -38,13 +44,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  return relayToBackend(
-    `/internal/trigger-targeted-research/${encodeURIComponent(parsed.schoolId)}`,
-    {
-      method: "POST",
-      body: parsed.forward,
-      timeoutMs: BACKEND_TIMEOUTS_MS.trigger,
-      mayHaveStarted: true,
-    }
-  );
+  return tracedLaunch({
+    userId: session.user.id,
+    kind: "TARGETED",
+    request: { school_id: parsed.schoolId, ...parsed.forward },
+    maxPasses: null,
+    call: () =>
+      callBackend(`/internal/trigger-targeted-research/${encodeURIComponent(parsed.schoolId)}`, {
+        method: "POST",
+        body: parsed.forward,
+        timeoutMs: BACKEND_TIMEOUTS_MS.trigger,
+        mayHaveStarted: true,
+      }),
+  });
 }

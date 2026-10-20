@@ -282,6 +282,19 @@ test("D38 : un invité qui a envoyé ou traité un signalement ne se retire pas 
   assert.deepEqual(users.get("u-jean"), reset, "le compte et son nom restent");
 });
 
+test("D42 : un invité qui a lancé une recherche IA ne se retire pas non plus → 409", async () => {
+  // La clé `triggered_by_id` du journal des lancements (étape 7) est en
+  // RESTRICT, comme celles du contenu et des signalements : même P2003.
+  const reset = { ...ACTIVE_USER, role: "ADMIN", status: "INVITED", password_hash: null, first_login_at: null, session_version: 1 };
+  const users = tableWithAuthors(["u-jean"], ME, reset);
+
+  const res = await removeUser(empty("DELETE"), ctx("u-jean"));
+
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /recherche IA[\s\S]*désactiv/);
+  assert.deepEqual(users.get("u-jean"), reset, "le compte et son nom restent");
+});
+
 test("D24 : un invité qui n'a rien modifié se retire toujours", async () => {
   const users = tableWithAuthors(["u-jean"], ME, INVITED);
   assert.equal((await removeUser(empty("DELETE"), ctx("u-invite"))).status, 200);

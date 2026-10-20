@@ -12,12 +12,19 @@
  *   ratées : l'écran l'affiche (décision du propriétaire du 14 octobre 2026) ;
  * - `pending_ai` : les contributions `Pending_AI`, qui attendent le
  *   traitement par le backend local.
+ *
+ * Plan gestion-contenu, étape 7 : chaque job porte `triggered_by`, le nom
+ * affiché de qui l'a lancé (D25 : le nom seul, ni identifiant ni adresse),
+ * lu dans le journal `ResearchLaunch` (D14) : une recherche ciblée par l'id de
+ * son job, une passe due par la fenêtre de son lancement (D40) ; `null` pour
+ * un job sans lancement connu, que l'écran dit « non suivi » (D44).
  */
 
 import { NextResponse } from "next/server";
 import { guardAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_PENDING_AI } from "@/lib/contribution";
+import { readLaunchers } from "@/lib/research-launch-log";
 
 const HISTORY_SIZE = 30;
 const ERROR_MAX_LENGTH = 2000;
@@ -49,6 +56,7 @@ export async function GET() {
       }),
       prisma.contributionInbox.count({ where: { status: STATUS_PENDING_AI } }),
     ]);
+    const launchers = await readLaunchers(jobs);
 
     return NextResponse.json({
       jobs: jobs.map((job) => ({
@@ -63,6 +71,7 @@ export async function GET() {
         started_at: iso(job.started_at),
         updated_at: iso(job.updated_at),
         finished_at: iso(job.finished_at),
+        triggered_by: launchers.get(job.id) ?? null,
       })),
       pending_ai: pendingAi,
     });

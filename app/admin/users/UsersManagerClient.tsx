@@ -354,7 +354,8 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
             {dialog.kind === "remove" && account && (
               <p className="text-sm leading-relaxed text-ink-2">
                 Une fois l&apos;adresse retirée, la personne ne pourra plus faire sa première connexion. Un compte qui a
-                déjà modifié des données, ou envoyé ou traité un signalement, ne se retire pas : désactivez-le.
+                déjà modifié des données, envoyé ou traité un signalement, ou lancé une recherche IA, ne se retire
+                pas : désactivez-le.
               </p>
             )}
 

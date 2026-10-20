@@ -6,7 +6,8 @@
 > 19 octobre** : site en ligne (étape 3), charte graphique et composants de
 > base (étape 4 : §3 et §6), **et le 20 octobre** : sources et auteur de
 > chaque modification (étape 5 : §2.3, §3, §4, §5, §6, §7), puis le formulaire
-> de signalement (étape 6 : §2, §3, §4, §5, §6, §7). Cette fiche décrit
+> de signalement (étape 6 : §2, §3, §4, §5, §6, §7), puis l'historique des
+> recherches IA (étape 7 : §2.3, §3.2, §4.2, §5, §7). Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
 > du plan la met à jour.
@@ -104,7 +105,9 @@ Depuis l'étape 5, les neuf tables de données pointent vers `User` par
 `updated_by_id` (§5), en `ON DELETE RESTRICT` (D24) : la base refuse de
 supprimer un compte qui figure comme auteur. Depuis l'étape 6, `ContentReport`
 aussi, par `author_id` et `handled_by_id`, en `RESTRICT` (D38) : un compte qui
-a envoyé ou traité un signalement ne se supprime pas non plus.
+a envoyé ou traité un signalement ne se supprime pas non plus. Depuis
+l'étape 7, `ResearchLaunch` aussi, par `triggered_by_id`, en `RESTRICT`
+(D42) : un compte qui a lancé une recherche IA ne se supprime pas.
 
 **Cycle de vie d'un compte** (G5, D4, D21) :
 
@@ -112,16 +115,16 @@ a envoyé ou traité un signalement ne se supprime pas non plus.
 |---|---|---|---|
 | ajouter une adresse à la liste | admin | — | `INVITED` (`USER`) |
 | première connexion | la personne | `INVITED` | `ACTIVE` |
-| retirer de la liste | admin | `INVITED` qui n'a modifié aucune donnée, ni envoyé ni traité de signalement | supprimé |
+| retirer de la liste | admin | `INVITED` qui n'a modifié aucune donnée, ni envoyé ni traité de signalement, ni lancé de recherche IA | supprimé |
 | remettre en première connexion | admin | `ACTIVE` | `INVITED` |
 | désactiver | admin | `ACTIVE` ou `INVITED` (D24) | `DISABLED` |
 | réactiver (remise en première connexion) | admin | `DISABLED` | `INVITED` |
 
 Le rôle se change dans tous les états. Une adresse ajoutée devient un invité
 `USER`. Un compte actif ou désactivé ne se supprime pas (D21), ni un invité qui
-a déjà modifié une donnée (un compte remis en première connexion, D4), ou
-envoyé ou traité un signalement (D38) : la base le refuse et « Retirer »
-répond 409 ; il se désactive (D24). Son nom
+a déjà modifié une donnée (un compte remis en première connexion, D4),
+envoyé ou traité un signalement (D38), ou lancé une recherche IA (D42) : la
+base le refuse et « Retirer » répond 409 ; il se désactive (D24). Son nom
 reste affiché dans « Modifié par », quel que soit son état (D25).
 
 ---
@@ -186,7 +189,7 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 | `/admin/reports` | `manager` (étape 6, D31) : « Signalements », en attente (les plus anciens d'abord) et fermés (les 100 derniers). Pour chacun : l'école, la cible (« supprimé » si le campus ou le programme n'existe plus, D37), la catégorie, le message, le lien (`sourceHref`), le nom affiché de l'auteur (D39) ; « Ouvrir l'onglet de gestion » (l'onglet de la catégorie), « Traiter » et « Rejeter » (dialogue, réponse facultative pour l'auteur). Fermer un signalement ne date aucune donnée (D32) | non |
 | `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter | **oui** |
 | `/admin/users` | `admin` : les comptes (« Comptes » dans le menu) : ajouter une adresse à la liste, retirer un invité, changer un rôle, remettre en première connexion (ou réactiver), désactiver (un actif ou un invité, D24), renseigner l'adresse d'un compte ancien. Aucun e-mail envoyé | non |
-| `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs | **oui** |
+| `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs. Depuis l'étape 7, l'historique a une colonne « Lancé par » : le nom affiché du lanceur (D25), ou « non suivi », avec sa raison au survol (D44) ; à l'ancien style de l'écran (D45) | **oui** |
 
 **Écrans à la charte graphique** (étape 4, §6) : la connexion et la première
 connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
@@ -200,7 +203,8 @@ dialogue). Les autres gardent l'ancien style jusqu'à l'étape 9.
 
 Garde de chaque méthode à la fin de l'étape 2 (16 octobre 2026), inchangée à
 l'étape 5 (aucune route ajoutée) ; l'étape 6 ajoute les trois méthodes des
-signalements (§4.1 bis). `Gest.` = `guardManager` (gestionnaire ou admin),
+signalements (§4.1 bis) ; l'étape 7 n'en ajoute aucune (les routes IA
+existantes écrivent et lisent le journal des lancements, §4.2). `Gest.` = `guardManager` (gestionnaire ou admin),
 `Admin` = `guardAdmin`, `Session` = `guardSignedIn` (toute session).
 56 méthodes : 35 `Gest.`, 18 `Admin`, 3 `Session`.
 
@@ -289,9 +293,42 @@ IA ou passent par lui.
 | `inbox/[id]/create-programs` | POST Admin | depuis un ticket `Program_Discovery` (Phase 1) ; provenance `AI` sur les programmes créés, un programme déjà là garde son auteur |
 | `inbox/[id]/attachments` | PUT Admin | rattachement campus collecté par l'IA ; provenance `AI` sur les lignes et sur la note de campus du programme |
 | `inbox/purge` | DELETE Admin | |
-| `trigger-research` · `run-due-passes` | POST Admin | **appellent le backend** |
+| `trigger-research` · `run-due-passes` | POST Admin | **appellent le backend**. Étape 7 : un lancement réel s'écrit d'abord au journal `ResearchLaunch` (D14, D41), puis son issue (ci-dessous) ; une simulation des passes dues ne s'écrit pas |
 | `pipeline-status` | GET Admin | **appelle le backend** |
-| `pipeline-jobs` | GET Admin | historique, lu en base |
+| `pipeline-jobs` | GET Admin | historique, lu en base ; depuis l'étape 7, chaque job porte `triggered_by` : le nom affiché de son lanceur, ou `null` |
+
+**Journal des lancements** (étape 7, [`lib/research-launches.ts`](../../lib/research-launches.ts)
+pour les règles, [`lib/research-launch-log.ts`](../../lib/research-launch-log.ts)
+pour la base). Next.js tient seul `ResearchLaunch` (D14) ; le backend gelé ne
+le connaît pas, et **Next.js n'écrit jamais `PipelineJob`** (piège 5).
+
+- **La trace d'abord** (D41) : la route écrit le lancement « en attente »
+  (`PENDING`) avant l'appel au backend, au nom de la session (jamais du
+  corps), à l'heure de la base. Si cette écriture échoue : 500, **rien ne
+  part**. Après la réponse, l'issue s'y ajoute : `STARTED` (recherche ciblée :
+  200 avec l'id du job ; passes dues : 202 au statut `planned`),
+  `NOT_STARTED` (refus du backend, rapport final sans passe, backend
+  injoignable), `UNKNOWN` (délai dépassé, réponse illisible : la demande a pu
+  partir), avec le code HTTP et le message. Si cette seconde écriture échoue,
+  la demande est partie : la réponse du backend revient telle quelle, l'erreur
+  est journalisée (`[research-launch]`), et le lancement reste en attente,
+  sans job relié. Une ligne `[audit]` dit chaque lancement noté.
+- **Le lanceur d'un job** (lecture de `pipeline-jobs`) : une recherche ciblée
+  par l'id de job que le backend a rendu (lancements `STARTED`) ; une passe
+  due par la **fenêtre** de son lancement (D40) : la réponse 202 ne porte
+  aucun id de job, et les jobs `rotation` naissent après elle, un par un.
+  Chaque lancement de passes dues qui a pu partir (tout sauf `NOT_STARTED`)
+  reçoit les jobs `rotation` nés à partir de son heure et avant le suivant,
+  au plus `max_passes` ; le verrou du backend (409 si une exécution réelle
+  tourne) empêche deux exécutions de se mêler. Un job d'avant le journal, de
+  l'ancien cron, ou lancé hors de l'écran (appel direct au backend avec le
+  jeton, guide de test) n'a pas de lanceur : « non suivi » (D44), jamais une
+  devinette. Un job dont le lancement est resté en attente ou inconnu est
+  aussi « non suivi » ; le lancement se lit en base.
+- **La purge** (D43) : le backend supprime ses jobs terminés (7 jours pour
+  une recherche ciblée Phase 2, 400 pour un passage complet) ; le journal,
+  lui, reste. L'écran ne montre que les 30 derniers jobs encore en base ; un
+  lancement dont le job est purgé se lit en base, pas à l'écran.
 
 ### 4.3. Lecture du site
 
@@ -332,7 +369,8 @@ sur les écoles » du propriétaire.
 | `ProgramPlacement` | programme | oui | aucun chemin d'écriture (abandonné, gardé) |
 | `User` | — | — | Next.js (§2.3) |
 | `ContributionInbox` | école, campus, programme (facultatifs) | `urls[]` | Next.js **et** backend Python |
-| `PipelineJob` | école | — | backend Python seulement |
+| `PipelineJob` | école | — | backend Python seulement (Next.js la lit, ne l'écrit jamais : D14) |
+| `ResearchLaunch` | lanceur (`User`) ; un job par son id, sans clé | — | Next.js seulement (`trigger-research`, `run-due-passes`, étape 7) |
 | `ContentReport` | école ; campus ou programme facultatif | oui (facultatif) | Next.js seulement (`/api/admin/reports`, étape 6) |
 
 **Provenance** (étape 5, migration `20261019120000_content_provenance`,
@@ -355,9 +393,19 @@ supprimée emporte ses signalements ; un campus ou un programme supprimé
 laisse le sien à l'école, avec son nom (D37). Contraintes et clés : `bdd.md`
 §4.
 
+**Journal des lancements** (étape 7, migration
+`20261020150000_research_launches`, appliquée sur `dev` le 20 octobre ;
+`main` à la prochaine mise en production, avant le code qui la lit) :
+`ResearchLaunch` (D14) garde qui a lancé quoi (le corps envoyé au backend),
+quand (l'heure de la base, `CURRENT_TIMESTAMP`, comme `PipelineJob.started_at`
+que le backend écrit : la fenêtre de D40 compare les deux), l'issue (D41), le
+code HTTP, le message, et l'id du job d'une recherche ciblée, **sans clé vers
+`PipelineJob`** (une clé bloquerait la purge du backend). Contraintes et clé :
+`bdd.md` §4.
+
 Le backend Python **lit** les tables de données (diff de la Phase 2) et
-**écrit** `ContributionInbox` et `PipelineJob`. Il ne connaît pas
-`ContentReport`. Ajouter une colonne obligatoire
+**écrit** `ContributionInbox` et `PipelineJob`. Il ne connaît ni
+`ContentReport` ni `ResearchLaunch`. Ajouter une colonne obligatoire
 à ces deux tables, ou renommer une colonne qu'il lit, casse le backend gelé.
 
 ---
@@ -471,6 +519,19 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   la page du formulaire, « Vos signalements », la vue des gestionnaires,
   `?tab=`) ; dans `users.test.ts`, D38 ; le menu et le niveau de l'écran
   dans `admin-pages.test.ts`.
+- **Journal des lancements** (étape 7) : `test/research-launches.test.ts`
+  (`lib/research-launches.ts` : l'issue de chaque réponse, le message borné,
+  la fenêtre des passes dues et sa borne N), `test/research-launches-migration.test.ts`
+  (une table neuve, rien vers `PipelineJob` ; contraintes alignées sur le
+  code, `launched_at` à l'heure de la base, clé `RESTRICT`, `schema.prisma` ;
+  aucun fichier de `app/` ni de `lib/` n'écrit `PipelineJob`) ; dans
+  `test/api/trigger-research.test.ts` et `run-due-passes.test.ts`, la trace
+  d'abord (écrite avant l'appel, au nom de la session ; rien ne part si elle
+  échoue ; la réponse revient telle quelle si l'issue ne s'écrit pas ; une
+  simulation ne s'écrit pas) ; dans `pipeline-jobs.test.ts`, le lanceur de
+  chaque job (par l'id, par la fenêtre, « non suivi », le nom seul) ; dans
+  `pipeline-history.test.ts`, « non suivi » et la colonne de l'écran ; dans
+  `users.test.ts`, D42.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts`.
 - **Charte** (étape 4) : `test/ui-components.test.ts` (le HTML rendu par

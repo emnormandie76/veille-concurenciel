@@ -5,6 +5,7 @@ import {
   describePendingAi,
   errorPreview,
   jobDuration,
+  launcherLabel,
   sourceLabel,
   statusLabel,
   type PipelineJobsResponse,
@@ -26,7 +27,9 @@ function formatStart(iso: string): string {
 /**
  * Les 30 derniers jobs du pipeline, lus en base (/api/admin/pipeline-jobs) :
  * affichés en ligne comme en local, que le backend tourne ou non. L'erreur
- * d'un job en échec s'affiche en aperçu, le texte entier au survol.
+ * d'un job en échec s'affiche en aperçu, le texte entier au survol. « Lancé
+ * par » (étape 7 du plan gestion-contenu) : le nom, ou « non suivi » et sa
+ * raison au survol (D44) ; à l'ancien style de l'écran (D45).
  */
 export default function JobHistory({ history, error, now }: JobHistoryProps) {
   const pending = history ? describePendingAi(history.pending_ai) : null;
@@ -54,6 +57,7 @@ export default function JobHistory({ history, error, now }: JobHistoryProps) {
                 <th>École</th>
                 <th>Phase</th>
                 <th>Origine</th>
+                <th>Lancé par</th>
                 <th>Statut</th>
                 <th>Durée</th>
                 <th>Détail</th>
@@ -65,12 +69,21 @@ export default function JobHistory({ history, error, now }: JobHistoryProps) {
                 const active = job.status === "running" || job.status === "queued";
                 const failure = job.status === "failed" ? errorPreview(job.error) : null;
                 const action = active ? currentAction(job.progress) : null;
+                const launcher = launcherLabel(job);
                 return (
                   <tr key={job.id}>
                     <td className="cell-nowrap">{formatStart(job.started_at)}</td>
                     <td>{job.school_name}</td>
                     <td>{job.phase}</td>
                     <td className="cell-nowrap">{sourceLabel(job.source)}</td>
+                    <td className="cell-nowrap">
+                      <span
+                        className={launcher.tracked ? undefined : "history-muted-inline"}
+                        title={launcher.hint ?? undefined}
+                      >
+                        {launcher.text}
+                      </span>
+                    </td>
                     <td className="cell-nowrap">
                       <span className={`status-pill tone-${status.tone}`}>{status.label}</span>
                     </td>

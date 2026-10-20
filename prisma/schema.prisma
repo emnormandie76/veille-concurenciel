@@ -43,6 +43,8 @@ model User {
   // RESTRICT, comme pour les auteurs du contenu (D38).
   reports                         ContentReport[]         @relation("ContentReportAuthor")
   handledReports                  ContentReport[]         @relation("ContentReportHandler")
+  // Les recherches IA lancees par ce compte (etape 7) ; cle RESTRICT (D42).
+  researchLaunches                ResearchLaunch[]
 }
 
 model School {
@@ -462,4 +464,43 @@ model ContentReport {
   @@index([status, created_at])
   @@index([schoolId])
   @@index([author_id])
+}
+
+// ── JOURNAL DES LANCEMENTS DE L'IA (ETAPE 7) ───────────────────────
+
+// Qui a lance quelle recherche IA (D14). Tenu par Next.js seul : le backend
+// gele ne connait pas cette table, et PipelineJob n'est pas touchee. Le
+// lancement s'ecrit avant l'appel au backend, puis son issue (D41).
+model ResearchLaunch {
+  id              String   @id @default(uuid())
+  // TARGETED (recherche ciblee) | DUE_PASSES (passes dues reelles ; une
+  // simulation ne s'ecrit pas). Liste de reference : lib/research-launches.ts.
+  kind            String
+  // Le lanceur : le compte de la session, jamais le corps de la requete.
+  triggered_by_id String
+  // L'heure de la base, comme PipelineJob.started_at que le backend ecrit
+  // par now() : la fenetre des passes dues (D40) compare les deux. Un
+  // @default(now()) donnerait l'heure du poste, calculee par le client Prisma.
+  launched_at     DateTime @default(dbgenerated("CURRENT_TIMESTAMP"))
+  // PENDING (ecrit avant l'appel) | STARTED | NOT_STARTED | UNKNOWN (D41).
+  status          String   @default("PENDING")
+  // Le corps envoye au backend, et l'ecole d'une recherche ciblee.
+  request         Json
+  // Passes dues : le nombre demande, borne de la fenetre (D40).
+  max_passes      Int?
+  // Recherche ciblee : l'id du job rendu par le backend. Sans cle vers
+  // PipelineJob : le backend purge ses jobs (7 jours pour une Phase 2 ciblee).
+  job_id          String?
+  // La reponse : code HTTP (du backend, ou de la route s'il n'a pas repondu)
+  // et message, borne a 1 000 caracteres.
+  http_status     Int?
+  detail          String?
+
+  // Cle RESTRICT, comme pour les auteurs du contenu et des signalements (D42).
+  triggeredBy User @relation(fields: [triggered_by_id], references: [id], onDelete: Restrict)
+
+  // L'historique cherche les fenetres des passes dues par date, et les
+  // recherches ciblees par l'id de leur job.
+  @@index([kind, launched_at])
+  @@index([job_id])
 }

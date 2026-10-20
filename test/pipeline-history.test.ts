@@ -7,11 +7,15 @@
  * s'affiche en ligne comme en local. Ces tests tiennent ce que l'écran en dit :
  * origine, statut, durée, action en cours, et l'erreur d'un job en échec, en
  * aperçu de 300 caractères (décision du propriétaire du 14 octobre 2026).
- * Aussi le bandeau des contributions qui attendent le backend local.
+ * Aussi le bandeau des contributions qui attendent le backend local, et,
+ * depuis l'étape 7 du plan gestion-contenu, qui a lancé chaque job : son nom,
+ * ou « non suivi » (D44).
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
 import {
   ERROR_PREVIEW_LENGTH,
@@ -19,6 +23,7 @@ import {
   describePendingAi,
   errorPreview,
   jobDuration,
+  launcherLabel,
   sourceLabel,
   statusLabel,
   type PipelineJobRow,
@@ -37,6 +42,7 @@ function job(overrides: Partial<PipelineJobRow> = {}): PipelineJobRow {
     started_at: "2026-10-14T08:00:00.000Z",
     updated_at: "2026-10-14T09:05:00.000Z",
     finished_at: "2026-10-14T09:05:30.000Z",
+    triggered_by: null,
     ...overrides,
   };
 }
@@ -88,4 +94,22 @@ test("contributions qui attendent le backend local", () => {
   assert.equal(describePendingAi(0), null);
   assert.equal(describePendingAi(1), "1 contribution attend le traitement par le backend local.");
   assert.equal(describePendingAi(4), "4 contributions attendent le traitement par le backend local.");
+});
+
+test("D44 : le lanceur, ou « non suivi » avec la raison au survol ; jamais de devinette", () => {
+  assert.deepEqual(launcherLabel(job({ triggered_by: "Goat" })), { text: "Goat", tracked: true, hint: null });
+  const untracked = launcherLabel(job());
+  assert.equal(untracked.text, "non suivi");
+  assert.equal(untracked.tracked, false);
+  assert.match(untracked.hint ?? "", /avant le suivi des lancements/);
+  assert.match(untracked.hint ?? "", /hors de cet écran/);
+});
+
+test("D43, D45 : l'historique de /admin/cron montre la colonne « Lancé par », à l'ancien style de l'écran", () => {
+  const screen = fs.readFileSync(path.join(process.cwd(), "app", "admin", "cron", "JobHistory.tsx"), "utf-8");
+  assert.match(screen, /<th>Origine<\/th>\s*<th>Lancé par<\/th>/);
+  assert.match(screen, /launcherLabel\(job\)/);
+  // La bulle de « non suivi » ; aucune classe de la charte dans cet écran resté sombre.
+  assert.match(screen, /title=\{launcher\.hint \?\? undefined\}/);
+  assert.equal(/className="[^"]*\b(text-ink|bg-surface|charte)\b/.test(screen), false);
 });

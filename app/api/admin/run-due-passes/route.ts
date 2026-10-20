@@ -16,15 +16,23 @@
  * - 409, 503 (`USAGE_SYNC_FAILED`, `KEY_MANAGER_MISSING`) du backend : tels
  *   quels ;
  * - en ligne, sans `FASTAPI_URL` : 503 `BACKEND_LOCAL_ONLY`, sans appel.
+ *
+ * Plan gestion-contenu, étape 7 (D14, D40, D41) : une passe réelle s'écrit au
+ * journal `ResearchLaunch` avant l'appel, au nom de la session, avec le
+ * nombre de passes demandé ; si cette écriture échoue, rien ne part (500).
+ * Son issue s'y ajoute après la réponse. Ses jobs `rotation`, créés ensuite
+ * par le backend, lui reviennent par la fenêtre de son lancement. Une
+ * simulation ne lance rien : elle ne s'écrit pas.
  */
 
 import { NextResponse } from "next/server";
 import { guardAdmin } from "@/lib/auth";
-import { BACKEND_TIMEOUTS_MS, backendTarget, backendUnavailable, relayToBackend } from "@/lib/internal-api";
+import { BACKEND_TIMEOUTS_MS, backendTarget, backendUnavailable, callBackend, relayToBackend } from "@/lib/internal-api";
+import { tracedLaunch } from "@/lib/research-launch-log";
 import { parseRunDuePassesBody } from "@/lib/rotation-status";
 
 export async function POST(request: Request) {
-  const { error } = await guardAdmin();
+  const { session, error } = await guardAdmin();
   if (error) return error;
 
   const target = backendTarget();
@@ -42,10 +50,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  return relayToBackend("/internal/run-due-passes", {
-    method: "POST",
+  const options = {
+    method: "POST" as const,
     body: parsed.forward,
     timeoutMs: BACKEND_TIMEOUTS_MS.duePasses,
     mayHaveStarted: !parsed.forward.dry_run,
+  };
+  if (parsed.forward.dry_run) return relayToBackend("/internal/run-due-passes", options);
+
+  return tracedLaunch({
+    userId: session.user.id,
+    kind: "DUE_PASSES",
+    request: { ...parsed.forward },
+    maxPasses: parsed.forward.max_passes,
+    call: () => callBackend("/internal/run-due-passes", options),
   });
 }

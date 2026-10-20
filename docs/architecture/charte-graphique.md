@@ -190,9 +190,9 @@ variantes (`cx` ne fusionne pas les classes contradictoires).
 | Liste déroulante | `Field.tsx` : `Select` | `<select>` natif, avec une flèche ; se place dans un `Field` |
 | Tableau | `Table.tsx` : `Table`, `THead`, `TBody`, `Tr`, `Th`, `Td` | `caption` (lu, pas affiché) ; en-têtes `scope="col"` ; `numeric` aligne à droite en chiffres tabulaires ; défile en largeur dans son cadre |
 | Carte | `Card.tsx` : `Card`, `CardHeader` | un bloc détaché (formulaire, groupe de faits) ; `CardHeader` donne un titre `h2` et un `titleId` pour `aria-labelledby` |
-| Onglets | `Tabs.tsx` : `Tabs`, `TabPanel` ; `tabs-keys.ts` | modèle ARIA : flèches gauche et droite (en boucle), Début, Fin ; un seul onglet dans l'ordre de tabulation ; compteur facultatif |
+| Onglets | `Tabs.tsx` : `Tabs`, `TabPanel` ; `tabs-keys.ts` | modèle ARIA : flèches gauche et droite (en boucle), Début, Fin ; un seul onglet dans l'ordre de tabulation ; compteur facultatif. Le filet du bas est une ombre intérieure, que couvre le soulignement de l'onglet choisi : rien ne déborde de la liste, qui défile en largeur sans barre verticale (corrigé à l'étape 6) |
 | Badge | `Badge.tsx` | `neutral`, `accent`, `solid` (catégories : rôles) ; `success`, `warning`, `danger` (états) |
-| Dialogue | `Dialog.tsx` : `Dialog`, `DialogFooter` | `<dialog>` natif ouvert par `showModal()` : focus gardé dans le dialogue, page inerte, focus rendu à la fermeture ; Échap et « Fermer » passent par `onClose`, qui peut refuser ; `data-autofocus` désigne le premier champ. Remplace `confirm()` |
+| Dialogue | `Dialog.tsx` : `Dialog`, `DialogFooter` | `<dialog>` natif ouvert par `showModal()` : focus gardé dans le dialogue, page inerte, focus rendu à la fermeture ; Échap et « Fermer » passent par `onClose`, qui peut refuser ; `data-autofocus` désigne le premier champ. Remplace `confirm()`. Un événement `close` du navigateur arrivé quand le dialogue est de nouveau ouvert est ignoré : sous `next dev`, React rejoue les effets, et le dialogue se refermait aussitôt ouvert (corrigé à l'étape 6) |
 | Message | `Alert.tsx` | `danger` (`role="alert"`), `success` et `info` (`role="status"`) ; texte en encre, teinte portée par le fond et l'icône |
 | Lien dans un texte | `text-link.ts` : `TEXT_LINK` | souligné, en `accent-strong` |
 
@@ -252,10 +252,13 @@ L'ancien style et la charte cohabitent (plan, G7 et piège 10).
   et pose le focus visible.
 - **Sources** : Tailwind ne lit que les dossiers nommés par `@source`
   (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
-  `app/account/`), avec `source(none)` sur l'import des utilitaires : un ancien
+  `app/account/`, et depuis l'étape 6 `app/schools/[id]/report/` et
+  `app/admin/reports/` : un chemin qui existe est lu à la lettre, crochets
+  compris), avec `source(none)` sur l'import des utilitaires : un ancien
   nom de classe qui serait aussi un utilitaire n'en reçoit pas les règles.
   `block` et `fill-accent`, deux classes de `/admin/cron`, ne sont jamais
-  générés (`@source not inline`).
+  générés (`@source not inline`) : un écran de la charte ne s'en sert pas
+  (une colonne flex à la place de `block`).
 - **Transition du back-office** : `.admin-content-area:has(.charte)` peint
   toute la zone de contenu au fond de la charte quand l'écran est repris.
 - **Polices** : Inter reste pour les anciens écrans (`--font-inter`) ; les

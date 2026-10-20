@@ -40,6 +40,8 @@ const PAGE_LEVEL: Record<string, AccessLevel> = {
   "schools/page.tsx": "manager",
   "schools/[id]/manage/page.tsx": "manager",
   "schools/[id]/campuses/page.tsx": "manager",
+  // Étape 6 (D31) : les signalements, à part de l'inbox.
+  "reports/page.tsx": "manager",
   "inbox/page.tsx": "admin",
   "cron/page.tsx": "admin",
   "users/page.tsx": "admin",
@@ -87,11 +89,12 @@ test("chaque page du back-office a un niveau connu, et ses contrôles l'imposent
   }
 });
 
-test("le menu : un gestionnaire ne voit que les écoles ; un admin voit tout", () => {
+test("le menu : un gestionnaire ne voit que les écoles et les signalements ; un admin voit tout", () => {
   assert.deepEqual(navFor("USER").map((i) => i.href), []);
-  assert.deepEqual(navFor("GESTIONNAIRE").map((i) => i.href), ["/admin/schools"]);
+  assert.deepEqual(navFor("GESTIONNAIRE").map((i) => i.href), ["/admin/schools", "/admin/reports"]);
   assert.deepEqual(navFor("ADMIN").map((i) => i.href), [
     "/admin/schools",
+    "/admin/reports",
     "/admin/inbox",
     "/admin/cron",
     "/admin/users",

@@ -15,7 +15,9 @@ import { cx } from "./cx";
  * décide seul de le fermer. Échap et le bouton « Fermer » appellent
  * `onClose`, qui peut refuser (une opération en cours, par exemple) : le
  * dialogue se rouvre alors au rendu suivant. Le champ à remplir d'abord
- * porte `data-autofocus`.
+ * porte `data-autofocus`. Un événement `close` du navigateur arrivé quand le
+ * dialogue est de nouveau ouvert (effets rejoués par React en développement)
+ * est ignoré.
  */
 
 interface DialogProps {
@@ -53,7 +55,13 @@ export function Dialog({ title, titleId, onClose, children, className }: DialogP
         event.preventDefault();
         onClose();
       }}
-      onClose={onClose}
+      // L'événement `close` arrive après coup (une tâche) : il ne compte que si
+      // le dialogue est encore fermé. En développement, React rejoue les effets
+      // (StrictMode) : le `close()` du démontage simulé fermait sinon le
+      // dialogue aussitôt rouvert (relevé à l'étape 6, sous `next dev`).
+      onClose={(event) => {
+        if (!event.currentTarget.open) onClose();
+      }}
       className={cx(
         "m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto",
         "rounded-card border border-line bg-surface p-0 text-ink shadow-xl",

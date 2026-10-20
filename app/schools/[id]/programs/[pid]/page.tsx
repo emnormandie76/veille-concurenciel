@@ -8,6 +8,8 @@
  *   tarif, classement et capacité), son lien source et « Modifié par … le … »
  *   (SourceLine). L'auteur n'est lu que par son nom (AUTHOR_SELECT, D25).
  *   Le cache d'une heure est levé à chaque écriture (lib/content-cache.ts).
+ * - Étape 6 : un lien « Signaler une information » vers le formulaire, le
+ *   programme choisi d'avance.
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
@@ -146,6 +148,15 @@ export default async function ProgramDetailPage({ params }: Props) {
           )}
         </div>
         <SourceLine href={sourceHref(program.source_url)} provenance={describeProvenance(program)} />
+        {/* Étape 6 (D33) : le formulaire, le programme choisi d'avance ; le
+            lien garde l'ancien style de la fiche. */}
+        <Link
+          href={`/schools/${school.id}/report?program=${program.id}`}
+          className="btn btn-secondary"
+          style={{ marginTop: 16 }}
+        >
+          Signaler une information
+        </Link>
       </div>
 
       {/* Content */}

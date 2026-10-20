@@ -199,6 +199,9 @@ const SCREENS = [
   "app/(admin-auth)/admin/first-login/page.tsx",
   "app/admin/users/UsersManagerClient.tsx",
   "app/account/page.tsx",
+  // Étape 6 (D33) : le formulaire de signalement et la vue des gestionnaires.
+  "app/schools/[id]/report/page.tsx",
+  "app/admin/reports/ReportsManagerClient.tsx",
 ];
 
 test("les écrans repris : un gabarit, aucune classe de l'ancien CSS, aucun style en ligne", () => {

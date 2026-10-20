@@ -22,6 +22,11 @@
 > `SchoolStatsRecord`, `AccreditationRecord` et `Program` reçoivent
 > `source_url` (D12). Appliquée sur `dev`, puis sur `main` le 20 octobre,
 > avant la mise en production du code qui la lit.
+> **20 octobre 2026** (étape 6) : 14e migration,
+> `20261020120000_content_reports` : les **signalements**, dans une table
+> neuve, `ContentReport` (D13), jamais dans `ContributionInbox` (piège 6).
+> Appliquée sur la branche Neon `dev` le 20 octobre ; `main` à la prochaine
+> mise en production.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -89,6 +94,8 @@ model User {
   createdAt       DateTime  @default(now())
   // relations inverses de la provenance (étape 5) : updatedSchools, updatedCampuses,
   // updatedPrograms… une par table de données ; la clé RESTRICT garde le nom (D24)
+  reports         ContentReport[] @relation("ContentReportAuthor")   // étape 6, RESTRICT (D38)
+  handledReports  ContentReport[] @relation("ContentReportHandler")  // étape 6, RESTRICT (D38)
 }
 
 // ── ENTITÉS PRINCIPALES ───────────────────────────────────────────
@@ -101,6 +108,7 @@ model School {
   accreditations  AccreditationRecord[]
   campuses        Campus[]
   contributions   ContributionInbox[]
+  contentReports  ContentReport[]       // signalements (étape 6)
   pipelineJobs    PipelineJob[]
   programs        Program[]              // ← relation directe
   statsRecords    SchoolStatsRecord[]
@@ -120,6 +128,7 @@ model Campus {
   name            String              // tel qu'en base : "Lyon campus", "Campus Saint‑Étienne" (U+2011)
   city            String?
   contributions   ContributionInbox[]
+  contentReports  ContentReport[]
   school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   programCampuses ProgramCampus[]
   updated_at      DateTime?                     // provenance (étape 5) : voir School
@@ -144,6 +153,7 @@ model Program {
   campuses                  ProgramCampus[]
   placements                ProgramPlacement[]
   contributions             ContributionInbox[]
+  contentReports            ContentReport[]
   pricingRecords            PricingRecord[]
   rankingRecords            RankingRecord[]
   school                    School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
@@ -351,6 +361,35 @@ model ContributionInbox {
   @@index([programId])
   @@index([status, createdAt])
 }
+
+// ── SIGNALEMENTS (étape 6) ────────────────────────────────────────
+
+model ContentReport {
+  id            String    @id @default(uuid())
+  author_id     String                        // le compte de la session, jamais le corps de la requête
+  schoolId      String
+  campusId      String?                       // un campus OU un programme de l'école, ou rien (l'école)
+  programId     String?
+  target_type   String                        // CHECK : SCHOOL | CAMPUS | PROGRAM
+  target_label  String                        // le nom de la cible à l'envoi (D37)
+  category      String                        // CHECK : SCHOOL_INFO | CAMPUS_PROGRAM | PRICING | CAPACITY | RANKING | STATS | ACCREDITATION | OTHER
+  message       String                        // CHECK : 10 à 2 000 caractères
+  source_url    String?                       // règle D27 (D34)
+  status        String    @default("OPEN")   // CHECK : OPEN | RESOLVED | REJECTED
+  response      String?                       // la réponse du gestionnaire, 1 000 caractères au plus (D36)
+  handled_by_id String?
+  handled_at    DateTime?
+  created_at    DateTime  @default(now())
+  author    User     @relation("ContentReportAuthor", fields: [author_id], references: [id], onDelete: Restrict)
+  handledBy User?    @relation("ContentReportHandler", fields: [handled_by_id], references: [id], onDelete: Restrict)
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campus    Campus?  @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  program   Program? @relation(fields: [programId], references: [id], onDelete: SetNull)
+
+  @@index([status, created_at])
+  @@index([schoolId])
+  @@index([author_id])
+}
 ```
 
 > Les contraintes `CHECK` ne sont pas visibles dans `schema.prisma` : elles
@@ -381,6 +420,7 @@ ProgramCampus (1) ──→ (N) CapacityRecord
 ProgramCampus (1) ──→ (N) ProgramCampusAttachment
 
 ContributionInbox ──→ School? · Campus? · Program? · ProgramCampus?   (ON DELETE SET NULL)
+ContentReport ──→ User (auteur, traitant : RESTRICT) · School (CASCADE) · Campus? · Program? (SET NULL)
 ```
 
 | Niveau de la donnée | Rattachement |
@@ -394,14 +434,16 @@ ContributionInbox ──→ School? · Campus? · Program? · ProgramCampus?   (
 
 ## 4. Migrations
 
-Treize migrations, à appliquer par `prisma migrate deploy` (ou
+Quatorze migrations, à appliquer par `prisma migrate deploy` (ou
 `npm run db:migrate` par WebSocket). La onzième, `20261016120000_three_roles`,
 et la douzième, `20261016150000_whitelist_accounts`, sont arrivées sur `dev` le
 16 octobre 2026 et sur `main` le 19 octobre (étape 3 du plan gestion-contenu,
 avant la fusion dans la branche Git `main`). La treizième,
 `20261019120000_content_provenance` (étape 5), est arrivée sur `dev` puis
 sur `main` le 20 octobre, avant la fusion de l'étape 5 dans la branche Git
-`main`. Les treize sont appliquées sur les deux branches Neon.
+`main`. La quatorzième, `20261020120000_content_reports` (étape 6), est
+arrivée sur `dev` le 20 octobre ; `main` la recevra à la prochaine mise en
+production, avant la fusion du code qui la lit (« Mon compte » la lit).
 
 | Migration | Contenu |
 |-----------|---------|
@@ -418,6 +460,7 @@ sur `main` le 20 octobre, avant la fusion de l'étape 5 dans la branche Git
 | `20261016120000_three_roles` | **écrite à la main** : remplace `User_role_check` par les trois rôles (`USER`, `GESTIONNAIRE`, `ADMIN`, `NOT VALID`), convertit `MODERATOR` en `GESTIONNAIRE`, défaut `USER`. Ne touche que `User`, que le backend Python ne lit pas |
 | `20261016150000_whitelist_accounts` | **écrite à la main, additive** : `username` et `password_hash` facultatifs ; `email` (index unique `User_email_key`), `display_name`, `status` (les comptes existants `ACTIVE`, puis défaut `INVITED`), `first_login_at`, `session_version` (défaut 0) ; cinq contraintes `CHECK`, posées validées (les lignes existantes les tiennent) : `User_status_check`, `User_password_status_check` (actif ⇔ mot de passe), `User_invited_email_check`, `User_identity_check` (adresse ou identifiant), `User_email_lower_check`. Ne touche que `User` |
 | `20261019120000_content_provenance` | **écrite à la main, additive, colonnes facultatives seulement** : `source_url` sur `SchoolStatsRecord`, `AccreditationRecord` et `Program` (D12) ; sur les neuf tables de données (`School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ProgramCampusAttachment`), `updated_at`, `updated_by_id` et `updated_via`, avec par table une clé `<Table>_updated_by_id_fkey` vers `User` (`ON DELETE RESTRICT`, D24) et deux contraintes `CHECK` : `<Table>_updated_via_check` (`MANUAL`, `AI`, `REPORT`) et `<Table>_provenance_check` (les trois colonnes vides ensemble ou pleines ensemble). Aucun index, aucune donnée réécrite : les lignes existantes restent « non suivies ». Le backend gelé lit ces tables (`SELECT *` dans le diff de la Phase 2) mais ne compare que ses propres colonnes : il n'est pas touché |
+| `20261020120000_content_reports` | **écrite à la main, additive** : une table neuve, `ContentReport` (D13), ses trois index et ses cinq clés : l'auteur (`author_id`) et celui qui traite (`handled_by_id`) vers `User` en `ON DELETE RESTRICT` (D38), l'école en `CASCADE`, le campus et le programme en `SET NULL` (D37). Sept contraintes `CHECK` : `ContentReport_target_type_check`, `_target_check` (une cible fine à la fois), `_category_check` (huit catégories), `_message_check` (10 à 2 000 caractères), `_status_check` (`OPEN`, `RESOLVED`, `REJECTED`), `_response_check` (1 000 caractères au plus), `_handled_check` (en attente : personne ne l'a traité ; fermé : qui et quand). Aucune table existante modifiée, aucune ligne écrite ; le backend gelé ne la connaît pas |
 
 ### Ce qu'il faut savoir sur la migration de rattrapage
 
@@ -602,7 +645,16 @@ une extraction réussie le supprime.
   Pas de `@updatedAt` de Prisma : il daterait aussi une écriture sans auteur.
 - **Un compte qui figure comme auteur ne se supprime pas** : la clé
   `ON DELETE RESTRICT` le refuse (P2003), et la route répond 409 ; il se
-  désactive (D24).
+  désactive (D24). Il en va de même de l'auteur d'un signalement et de celui
+  qui l'a traité (D38).
+- **Un signalement n'entre jamais dans `ContributionInbox`** (D13, piège 6) :
+  il va dans `ContentReport`, que seul Next.js écrit (`/api/admin/reports`).
+  L'auteur et celui qui traite viennent de la session ; le nom de la cible
+  est lu en base à l'envoi, et la cible doit appartenir à l'école. Listes et
+  bornes de référence : `lib/content-reports.ts`, vérifié contre la
+  migration par `test/content-reports-migration.test.ts`. Traiter un
+  signalement ne date aucune donnée (D32) : `updated_via = REPORT` reste
+  permis par la contrainte, sans servir.
 - **Ne jamais créer une arête `ProgramCampus` depuis le rattachement campus.**
   Une arête ouvre une option dans les menus de capacité et une tâche `Capacity`
   facturée à chaque passe de Phase 2 ; elle passe par la validation d'une

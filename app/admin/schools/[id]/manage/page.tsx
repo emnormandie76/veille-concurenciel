@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import SchoolInfoTab from "./tabs/SchoolInfoTab";
@@ -43,12 +43,22 @@ const TABS = [
 
 type TabKey = typeof TABS[number]["key"];
 
+/**
+ * L'onglet demandé par `?tab=` (plan gestion-contenu, étape 6 : la vue des
+ * signalements ouvre l'onglet de la catégorie, lib/content-reports.ts), s'il
+ * existe ; sinon « Infos ».
+ */
+function tabFrom(requested: string | null): TabKey {
+  return TABS.find((tab) => tab.key === requested)?.key ?? "info";
+}
+
 export default function ManagePage() {
   const { id: schoolId } = useParams() as { id: string };
+  const searchParams = useSearchParams();
   const [school, setSchool] = useState<SchoolManageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>("info");
+  const [activeTab, setActiveTab] = useState<TabKey>(() => tabFrom(searchParams.get("tab")));
 
   useEffect(() => {
     if (schoolId) {

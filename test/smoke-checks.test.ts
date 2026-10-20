@@ -158,6 +158,7 @@ test("judge : page — 200, HTML, sans marque d'erreur", () => {
 test("PAGES : la contribution n'en fait plus partie (D2) ; « Mon compte » y entre (étape 2)", () => {
   assert.equal((PAGES as readonly string[]).includes("/contribute"), false);
   assert.equal((PAGES as readonly string[]).includes("/account"), true);
+  assert.equal((PAGES as readonly string[]).includes("/schools/[id]/report"), true, "le signalement (étape 6)");
 });
 
 test("buildWallChecks : la connexion, chaque page, le back-office, /api/schools et les 15 routes v1", () => {

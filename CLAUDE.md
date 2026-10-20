@@ -34,7 +34,7 @@ parties : gestion de contenu, IA gelée.
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** du gestionnaire de contenu : rôles, gardes, écrans, routes, tables, styles, tests |
 | [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** (étape 4) : jetons, contrastes, polices, composants, gabarits, accessibilité, cohabitation avec l'ancien style |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
-| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (13 migrations, dont la provenance de chaque donnée) · API v1 (15 routes, session exigée) |
+| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (14 migrations, dont la provenance de chaque donnée et les signalements) · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | mise en ligne sur Vercel |
 | [docs/cahier-des-charges-school-pipeline.md](docs/cahier-des-charges-school-pipeline.md) | exigences d'origine (l'en-tête renvoie au plan d'évolution) |
 | [docs/architecture/architecture.md](docs/architecture/architecture.md) | référence technique v2.1, centrée sur le pipeline IA : pour les questions sur l'IA, la sécurité (§10) et l'outillage (§10 bis) |
@@ -113,7 +113,21 @@ branche `gestion` :
   20 octobre, puis sur `main` le même jour, avant la fusion de `gestion`
   dans `main` (mise en production) ; contrôles
   visuels de l'agent et du propriétaire. Détail : journal du plan ;
-- prochaine : étape 6 (formulaire de signalement), en commençant par D13.
+- étape 6 (formulaire de signalement) faite et validée le 20 octobre (le
+  propriétaire demande le push, la fusion dans `main` et le prompt de
+  l'étape 7) : décisions D13 (une table neuve,
+  `ContentReport`, jamais l'inbox), D31 (écran `/admin/reports` à part de
+  l'inbox), D32 (pas d'origine `REPORT` : une correction reste `MANUAL`),
+  D33 (lien à l'ancien style sur les fiches, formulaire dans la charte),
+  D34 (lien selon D27), D35 (10 signalements par heure et par compte),
+  D36 (« Vos signalements » sur « Mon compte »), D37 (école supprimée :
+  signalements supprimés ; campus ou programme : détachés), D38 (clés
+  `RESTRICT` sur l'auteur et le traitant), D39 (le nom affiché seul) ;
+  migration `20261020120000_content_reports` appliquée sur la branche Neon
+  `dev` le 20 octobre, `main` à la prochaine mise en production (avant le
+  code : « Mon compte » lit la table) ; contrôle visuel de l'agent dans le
+  Chrome du propriétaire. Détail : journal du plan ;
+- prochaine : étape 7 (historique des recherches IA), en commençant par D14.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -196,8 +210,9 @@ L'étape en cours se lit dans le journal du plan (§9).
      `requirePage` ; le rôle est relu en base à chaque requête (D1), jamais
      pris dans le jeton ; un compte qui n'est pas actif, ou dont la version
      de session a changé, n'a plus de session (D20) ; ce que chacun fait pour
-     soi (« Mon compte ») est en `guardSignedIn`, sans identifiant dans la
-     route ; aucune opération ne laisse zéro admin actif
+     soi (« Mon compte ») et l'envoi d'un signalement (étape 6) sont en
+     `guardSignedIn`, sans identifiant dans la route, l'auteur pris dans la
+     session ; aucune opération ne laisse zéro admin actif
      (`lib/account-admin.ts`) ;
    - tout contenu externe injecté dans un prompt passe par `wrap_source()` ;
    - `user_text` n'atteint jamais un modèle d'IA ;

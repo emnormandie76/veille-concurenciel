@@ -18,8 +18,8 @@ psycopg2 côté Python.
 > **gestionnaire de contenu** en ligne, derrière une connexion obligatoire, avec
 > trois rôles (utilisateur, gestionnaire, admin). La partie FastAPI (recherche
 > IA) est **gelée** : conservée telle quelle, réservée à l'admin. La
-> contribution du public est abandonnée, remplacée à terme par un formulaire de
-> signalement. Plan : [`docs/features/gestion-contenu.md`](docs/features/gestion-contenu.md) ;
+> contribution du public est abandonnée, remplacée par un formulaire de
+> signalement sans IA (étape 6). Plan : [`docs/features/gestion-contenu.md`](docs/features/gestion-contenu.md) ;
 > index de la documentation : [`docs/README.md`](docs/README.md). Ce README
 > décrit le code tel qu'il est ; chaque étape du plan le met à jour.
 
@@ -219,7 +219,7 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
    l'existence de la session ; le rôle et l'état du compte se contrôlent côté
    serveur, et un compte qui n'est plus actif perd sa session.
 2. **Toute route admin choisit une garde de `lib/auth.ts`, et une seule** :
-   `guardSignedIn` (toute session : son nom affiché et son mot de passe), `guardManager`
+   `guardSignedIn` (toute session : son nom affiché, son mot de passe, l'envoi d'un signalement), `guardManager`
    (gestionnaire ou admin : tout le contenu) ou `guardAdmin` (les comptes et
    toute l'IA, inbox comprise). L'ancienne garde « toute session » du
    back-office n'existe plus. Le rôle est **relu en base** à chaque requête,
@@ -231,8 +231,11 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
    Les règles vont dans le `system_prompt`, jamais dans le message utilisateur.
 4. **Next.js ne crée aucun ticket dans l'inbox** : la contribution du public
    (`/api/contribute`) est retirée, et un test garde la porte fermée. Un ticket
-   `Pending_AI` serait payé au prochain lancement du backend.
-5. **`lib/rate-limit.ts` est l'implémentation unique** de la limitation de débit.
+   `Pending_AI` serait payé au prochain lancement du backend. Le formulaire de
+   signalement (étape 6) écrit dans sa propre table, `ContentReport`, sans IA.
+5. **`lib/rate-limit.ts` est l'implémentation unique** de la limitation de débit :
+   connexion et API v1 dans le proxy, par IP ; signalement dans sa route, par
+   compte (10 par heure), l'équipe partageant l'IP de l'école.
 
 ---
 

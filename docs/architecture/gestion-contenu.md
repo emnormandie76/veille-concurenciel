@@ -5,7 +5,8 @@
 > les trois rôles, les gardes et la connexion obligatoire), **mis à jour le
 > 19 octobre** : site en ligne (étape 3), charte graphique et composants de
 > base (étape 4 : §3 et §6), **et le 20 octobre** : sources et auteur de
-> chaque modification (étape 5 : §2.3, §3, §4, §5, §6, §7). Cette fiche décrit
+> chaque modification (étape 5 : §2.3, §3, §4, §5, §6, §7), puis le formulaire
+> de signalement (étape 6 : §2, §3, §4, §5, §6, §7). Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
 > du plan la met à jour.
@@ -38,8 +39,8 @@ référence ; décision G4) :
 
 | Rôle | Qui | Peut |
 |---|---|---|
-| `USER` | toute personne connectée | consulter le site, `/api-docs` et l'API v1 ; changer son nom affiché et son mot de passe sur « Mon compte » (`/account`). **Ne voit pas `/admin`** |
-| `GESTIONNAIRE` | les anciens `MODERATOR` | en plus : le back-office du contenu (écoles, campus, programmes, tarifs, places, classements, chiffres clés, accréditations), créations et suppressions comprises (D19) |
+| `USER` | toute personne connectée | consulter le site, `/api-docs` et l'API v1 ; **signaler une information** depuis une fiche (étape 6) et en suivre la suite ; changer son nom affiché et son mot de passe sur « Mon compte » (`/account`). **Ne voit pas `/admin`** |
+| `GESTIONNAIRE` | les anciens `MODERATOR` | en plus : le back-office du contenu (écoles, campus, programmes, tarifs, places, classements, chiffres clés, accréditations), créations et suppressions comprises (D19), et **les signalements** (`/admin/reports`, D31) |
 | `ADMIN` | | en plus : les comptes (liste blanche, rôles, remise en première connexion, désactivation), et **seul l'IA** (inbox, `/admin/cron`, routes du backend) |
 
 Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
@@ -56,11 +57,12 @@ Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 | Session | [`lib/auth.ts`](../../lib/auth.ts), `getSession()` | lit le jeton, puis **relit le compte en base par son id** à chaque appel (D1) : nom affiché, adresse et rôle viennent de la base. `null` sans session, sur un cookie illisible, si le compte n'existe plus, s'il **n'est pas actif** (invité après une remise à zéro, désactivé) ou si la version de session du jeton n'est pas celle du compte (jeton d'avant une remise à zéro, ou émis avant l'étape 2 : D20). Un rôle inconnu en base ne vaut que `USER`. Une panne de la base remonte (500), elle ne se déguise pas en refus |
 | Gardes des API | `lib/auth.ts` | `guardSignedIn()` : 401 sans session. `guardManager()` : 401, puis 403 pour un `USER`. `guardAdmin()` : 401, puis 403 hors `ADMIN`. Chaque handler de `app/api/admin/**` en attend **une seule** ; l'ancienne garde « toute session » du back-office n'existe plus (piège 1) |
 | Gardes des écrans | `lib/auth.ts`, `requirePage(level)` | rend la session, ou redirige : vers la connexion sans session, vers `/` pour un `USER`, vers `/admin/schools` pour un gestionnaire sur un écran `admin` |
-| Proxy | [`proxy.ts`](../../proxy.ts) (tient lieu de middleware) | **session exigée sur tout le site** (G6), sauf `/admin/login`, `/admin/first-login`, `POST /api/first-login` et `/api/auth/*` (chemins dans [`lib/roles.ts`](../../lib/roles.ts)). Sans session : une page renvoie vers `/admin/login?callbackUrl=…`, une route `/api/*` répond 401 en JSON. Ne regarde que l'existence d'un jeton valide (contrôle « optimiste », doc Next 16), jamais le rôle ni l'état du compte. Matcher : tout sauf `_next/static`, `_next/image`, `favicon.ico`. Plafonds par [`lib/rate-limit.ts`](../../lib/rate-limit.ts) : connexion **et** première connexion sur un seul compteur (5 POST / 15 min / IP, avant tout ; alterner ne double pas les essais), `/api/v1/*` (60 / min / IP, requêtes connectées seulement, pré-vols `OPTIONS` non comptés) |
+| Proxy | [`proxy.ts`](../../proxy.ts) (tient lieu de middleware) | **session exigée sur tout le site** (G6), sauf `/admin/login`, `/admin/first-login`, `POST /api/first-login` et `/api/auth/*` (chemins dans [`lib/roles.ts`](../../lib/roles.ts)). Sans session : une page renvoie vers `/admin/login?callbackUrl=…`, une route `/api/*` répond 401 en JSON. Ne regarde que l'existence d'un jeton valide (contrôle « optimiste », doc Next 16), jamais le rôle ni l'état du compte. Matcher : tout sauf `_next/static`, `_next/image`, `favicon.ico`. Plafonds par [`lib/rate-limit.ts`](../../lib/rate-limit.ts) : connexion **et** première connexion sur un seul compteur (5 POST / 15 min / IP, avant tout ; alterner ne double pas les essais), `/api/v1/*` (60 / min / IP, requêtes connectées seulement, pré-vols `OPTIONS` non comptés). Le plafond du signalement est dans sa route, par compte (ligne suivante) |
+| Signalement | [`app/api/admin/reports/route.ts`](../../app/api/admin/reports/route.ts), [`lib/content-reports.ts`](../../lib/content-reports.ts) | `POST` en `guardSignedIn` : l'auteur est le compte de la session, jamais le corps. **10 envois par heure et par compte** (D35 : l'équipe sort par la même IP), par `checkRateLimit("report:<compte>")` de `lib/rate-limit.ts`, compté une fois le corps lu et avant toute lecture en base ; au-delà, 429 avec `Retry-After`. Le seul plafond hors du proxy, parce que le proxy ne connaît pas le compte |
 | Layout admin | [`app/admin/layout.tsx`](../../app/admin/layout.tsx) | `requirePage("manager")` : un `USER` est renvoyé vers le site (piège 2) |
 | Écrans IA et comptes | `app/admin/inbox/layout.tsx`, `app/admin/cron/page.tsx`, `app/admin/users/page.tsx` | `requirePage("admin")` |
-| « Mon compte » | [`app/account/page.tsx`](../../app/account/page.tsx) | `requirePage("signedIn")` : toute session, hors du back-office. Nom affiché et mot de passe, par `PATCH /api/admin/account` et `PATCH /api/admin/account/password`, qui ne prennent aucun identifiant |
-| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » ; un admin voit aussi l'inbox, le cron et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Mon compte » est au pied du menu, hors de `navFor` |
+| « Mon compte » | [`app/account/page.tsx`](../../app/account/page.tsx) | `requirePage("signedIn")` : toute session, hors du back-office. Nom affiché et mot de passe, par `PATCH /api/admin/account` et `PATCH /api/admin/account/password`, qui ne prennent aucun identifiant. « Vos signalements » (étape 6, D36) : la page lit en base les signalements **de la session**, et eux seuls |
+| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » (étape 6) ; un admin voit aussi l'inbox, le cron et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Mon compte » est au pied du menu, hors de `navFor` |
 | Déconnexion | `app/admin/SidebarClient.tsx`, [`app/SignOutButton.tsx`](../../app/SignOutButton.tsx) | dans le menu du back-office, et dans la barre du site (le bouton « Se déconnecter » a pris la place du lien « Contribuer » ; « Mon compte » le précède) |
 | Mots de passe | [`lib/password.ts`](../../lib/password.ts) | politique unique (longueurs, borne bcrypt de 72 octets) |
 | Adresses, noms, états | [`lib/accounts.ts`](../../lib/accounts.ts) | module sans dépendance : domaine imposé `WORK_EMAIL_DOMAIN` = `em-normandie.fr` (D5), adresses rangées en minuscules, nom affiché déduit de l'adresse et borné (2 à 80 caractères, D6), états `INVITED`, `ACTIVE`, `DISABLED` |
@@ -100,7 +102,9 @@ sur `main` (19 octobre) : 1 `ADMIN` et 1 `GESTIONNAIRE`, actifs, sans adresse.
 
 Depuis l'étape 5, les neuf tables de données pointent vers `User` par
 `updated_by_id` (§5), en `ON DELETE RESTRICT` (D24) : la base refuse de
-supprimer un compte qui figure comme auteur.
+supprimer un compte qui figure comme auteur. Depuis l'étape 6, `ContentReport`
+aussi, par `author_id` et `handled_by_id`, en `RESTRICT` (D38) : un compte qui
+a envoyé ou traité un signalement ne se supprime pas non plus.
 
 **Cycle de vie d'un compte** (G5, D4, D21) :
 
@@ -108,15 +112,16 @@ supprimer un compte qui figure comme auteur.
 |---|---|---|---|
 | ajouter une adresse à la liste | admin | — | `INVITED` (`USER`) |
 | première connexion | la personne | `INVITED` | `ACTIVE` |
-| retirer de la liste | admin | `INVITED` qui n'a modifié aucune donnée | supprimé |
+| retirer de la liste | admin | `INVITED` qui n'a modifié aucune donnée, ni envoyé ni traité de signalement | supprimé |
 | remettre en première connexion | admin | `ACTIVE` | `INVITED` |
 | désactiver | admin | `ACTIVE` ou `INVITED` (D24) | `DISABLED` |
 | réactiver (remise en première connexion) | admin | `DISABLED` | `INVITED` |
 
 Le rôle se change dans tous les états. Une adresse ajoutée devient un invité
 `USER`. Un compte actif ou désactivé ne se supprime pas (D21), ni un invité qui
-a déjà modifié une donnée (un compte remis en première connexion, D4) : la
-base le refuse et « Retirer » répond 409 ; il se désactive (D24). Son nom
+a déjà modifié une donnée (un compte remis en première connexion, D4), ou
+envoyé ou traité un signalement (D38) : la base le refuse et « Retirer »
+répond 409 ; il se désactive (D24). Son nom
 reste affiché dans « Modifié par », quel que soit son état (D25).
 
 ---
@@ -131,11 +136,20 @@ reste affiché dans « Modifié par », quel que soit son état (D25).
 | `/schools/[id]` | fiche école (campus, programmes, chiffres clés, accréditations) | serveur, Prisma, ISR 1 h |
 | `/schools/[id]/programs/[pid]` | fiche programme (tarifs, places, classements, rattachements) | serveur, Prisma, ISR 1 h |
 | `/api-docs` | documentation de l'API v1 | statique, verrouillée par `test/api-docs.test.ts` |
-| `/account` | « Mon compte » : adresse, rôle, nom affiché, mot de passe | serveur (`requirePage("signedIn")`), formulaires client |
+| `/schools/[id]/report` | « Signaler une information » (étape 6) : la cible (l'école, un de ses campus ou de ses programmes ; `?program=` la choisit depuis la fiche programme), la catégorie, le message, un lien facultatif | serveur (`requirePage("signedIn")`, Prisma : une école active seulement), formulaire client ; envoi par `POST /api/admin/reports` |
+| `/account` | « Mon compte » : adresse, rôle, nom affiché, mot de passe ; « Vos signalements » (étape 6, D36) : date, cible, catégorie, état, réponse | serveur (`requirePage("signedIn")`), formulaires client |
 
 Les pages en cache ISR ne lisent pas la session : le proxy passe avant le
 cache, et le mur tient (plan, piège 4). `/contribute` est retirée (D2) ; le
-signalement de l'étape 6 la remplacera.
+signalement l'a remplacée (étape 6, ci-dessous).
+
+**Signaler une information** (étape 6, G8, D33) : les fiches école et programme
+portent un lien « Signaler une information », à leur ancien style
+(`btn btn-secondary`), vers `/schools/[id]/report` (depuis une fiche
+programme : `?program=<id>`). Le formulaire est dans la charte ; les fiches
+ne lisent toujours pas la session et gardent leur cache. Aucune IA : le
+signalement va dans `ContentReport`, jamais dans l'inbox (D13, piège 6).
+L'auteur suit la suite donnée sur « Mon compte » (D36) ; aucun e-mail.
 
 **Provenance affichée** (étape 5) : une ligne « Source ↗ · Modifié par … le … »
 ([`app/schools/SourceLine.tsx`](../../app/schools/SourceLine.tsx)) sous
@@ -167,25 +181,28 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 | Chemin | Niveau | IA ? |
 |---|---|---|
 | `/admin/schools` | `manager` : liste, création et suppression des écoles | non |
-| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 7 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab` ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source 🔗 » sur la carte d'une accréditation. Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux) | non |
+| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 7 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab` ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source 🔗 » sur la carte d'une accréditation. Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux). `?tab=` ouvre un onglet (`info`, `accreditations`, `stats`, `campus-programs`, `pricing`, `rankings`, `capacities`) : la vue des signalements y renvoie (étape 6) | non |
 | `/admin/schools/[id]/campuses` | `manager` : les campus d'une école, avec « Modifié par … le … » (D29) | non |
+| `/admin/reports` | `manager` (étape 6, D31) : « Signalements », en attente (les plus anciens d'abord) et fermés (les 100 derniers). Pour chacun : l'école, la cible (« supprimé » si le campus ou le programme n'existe plus, D37), la catégorie, le message, le lien (`sourceHref`), le nom affiché de l'auteur (D39) ; « Ouvrir l'onglet de gestion » (l'onglet de la catégorie), « Traiter » et « Rejeter » (dialogue, réponse facultative pour l'auteur). Fermer un signalement ne date aucune donnée (D32) | non |
 | `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter | **oui** |
 | `/admin/users` | `admin` : les comptes (« Comptes » dans le menu) : ajouter une adresse à la liste, retirer un invité, changer un rôle, remettre en première connexion (ou réactiver), désactiver (un actif ou un invité, D24), renseigner l'adresse d'un compte ancien. Aucun e-mail envoyé | non |
 | `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs | **oui** |
 
 **Écrans à la charte graphique** (étape 4, §6) : la connexion et la première
 connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
-(`AdminPage`, dialogues natifs). Les autres gardent l'ancien style jusqu'à
-l'étape 9.
+(`AdminPage`, dialogues natifs) ; depuis l'étape 6, le formulaire de
+signalement (`SiteShell`) et « Signalements » (`AdminPage`, onglets et
+dialogue). Les autres gardent l'ancien style jusqu'à l'étape 9.
 
 ---
 
 ## 4. Routes
 
 Garde de chaque méthode à la fin de l'étape 2 (16 octobre 2026), inchangée à
-l'étape 5 (aucune route ajoutée). `Gest.` = `guardManager` (gestionnaire ou
-admin), `Admin` = `guardAdmin`, `Session` = `guardSignedIn` (toute session).
-53 méthodes : 33 `Gest.`, 18 `Admin`, 2 `Session`.
+l'étape 5 (aucune route ajoutée) ; l'étape 6 ajoute les trois méthodes des
+signalements (§4.1 bis). `Gest.` = `guardManager` (gestionnaire ou admin),
+`Admin` = `guardAdmin`, `Session` = `guardSignedIn` (toute session).
+56 méthodes : 35 `Gest.`, 18 `Admin`, 3 `Session`.
 
 La table de référence est [`test/helpers/access-policy.ts`](../../test/helpers/access-policy.ts) :
 `test/api/admin-guards.test.ts` vérifie que chaque handler attend la garde de
@@ -212,7 +229,7 @@ modification se reporte ici.
 | `schools/[id]/stats` · `schools/[id]/stats/[recordId]` | GET Gest. · PUT Gest. · DELETE Gest. |
 | `schools/[id]/accreditations` · `accreditations/[id]` | GET Gest. · POST Gest. · PUT Gest. · DELETE Gest. |
 | `users` | GET Admin (la liste, invités compris, sans empreinte) · POST Admin (ajoute une adresse à la liste : invité `USER`, sans mot de passe, aucun e-mail ; D5) |
-| `users/[id]` | DELETE Admin (retire un **invité** ; un compte qui a servi se désactive, D21 ; un invité qui figure comme auteur aussi : 409, D24 ; pas soi-même) |
+| `users/[id]` | DELETE Admin (retire un **invité** ; un compte qui a servi se désactive, D21 ; un invité qui figure comme auteur aussi : 409, D24, comme l'auteur ou le traitant d'un signalement, D38 ; pas soi-même) |
 | `users/[id]/role` | PATCH Admin (`USER`, `GESTIONNAIRE`, `ADMIN` ; le dernier admin actif ne se rétrograde pas) |
 | `users/[id]/reset` | POST Admin (D4 : remise en première connexion, ou réactivation ; mot de passe effacé, sessions coupées ; pas soi-même, pas sans adresse) |
 | `users/[id]/disable` | POST Admin (D21 : un compte actif, ou un invité (D24) ; sessions coupées ; pas soi-même, pas un compte déjà désactivé) |
@@ -247,6 +264,18 @@ chaque ligne, `last_edit` : « Modifié par X le … », ou `null` pour une lign
 non suivie (`forManager`, `describeLastEdit`). Ni l'identifiant de l'auteur
 ni l'origine ne partent vers le navigateur.
 
+### 4.1 bis. Signalements (étape 6)
+
+| Route | Méthodes |
+|---|---|
+| `reports` | POST **Session** (envoyer un signalement : l'auteur est la session, jamais le corps ; une école active, un campus ou un programme **de cette école** sinon 400, le nom de la cible lu en base ; catégorie, message de 10 à 2 000 caractères, lien D27 (D34) ; 10 par heure et par compte, D35 ; 201) · GET Gest. (`{ open, closed }` : en attente du plus ancien au plus récent, puis les 100 derniers fermés ; l'auteur et le traitant par leur nom affiché seul, D39 ; ni identifiant de compte ni adresse) |
+| `reports/[id]` | PATCH Gest. (`RESOLVED` ou `REJECTED`, réponse facultative de 1 000 caractères au plus ; le traitant est la session, la date celle du serveur ; seul un signalement en attente se ferme : 409 s'il l'est déjà, 404 s'il n'existe pas) |
+
+Aucune de ces routes n'écrit dans `ContributionInbox` ni n'appelle un modèle
+d'IA (D13, piège 6 ; `test/no-public-tickets.test.ts`). Fermer un
+signalement ne date aucune donnée du contenu (D32). L'API v1 n'expose rien
+des signalements.
+
 ### 4.2. Inbox et IA
 
 Tout est réservé à `ADMIN` : les tickets de l'inbox viennent tous du pipeline
@@ -275,9 +304,10 @@ ne lisent pas la session, ce qui garde leur cache ISR.
   20 octobre). Référence : [`API-rest.md`](API-rest.md).
 - `app/api/first-login` : POST, **sans session** (proxy), au plafond de la
   connexion ; la seule route hors de `/api/auth/*` ouverte sans session (§2.2).
-- `app/api/contribute` : **retirée** (D2). Aucun fichier de `app/` ni de `lib/`
-  ne crée plus de ticket `ContributionInbox` (`test/no-public-tickets.test.ts`,
-  piège 6) : seul le backend gelé en écrit.
+- `app/api/contribute` : **retirée** (D2), remplacée par le signalement
+  (§4.1 bis). Aucun fichier de `app/` ni de `lib/` ne crée plus de ticket
+  `ContributionInbox` (`test/no-public-tickets.test.ts`, piège 6) : seul le
+  backend gelé en écrit.
 
 ---
 
@@ -303,6 +333,7 @@ sur les écoles » du propriétaire.
 | `User` | — | — | Next.js (§2.3) |
 | `ContributionInbox` | école, campus, programme (facultatifs) | `urls[]` | Next.js **et** backend Python |
 | `PipelineJob` | école | — | backend Python seulement |
+| `ContentReport` | école ; campus ou programme facultatif | oui (facultatif) | Next.js seulement (`/api/admin/reports`, étape 6) |
 
 **Provenance** (étape 5, migration `20261019120000_content_provenance`,
 appliquée sur `dev` et sur `main` le 20 octobre) : les neuf tables
@@ -315,8 +346,18 @@ contrainte `CHECK`). Les trois sont vides ensemble (ligne « non suivie »,
 (contrainte `CHECK`). Une suppression ne laisse pas de trace ; il n'y a pas
 d'historique complet (D10).
 
+**Signalements** (étape 6, migration `20261020120000_content_reports`,
+appliquée sur `dev` le 20 octobre) : `ContentReport` (D13) garde l'auteur,
+l'école, la cible (`target_type`, le nom à l'envoi `target_label`, la clé du
+campus ou du programme), la catégorie, le message, le lien, l'état (`OPEN`,
+`RESOLVED`, `REJECTED`), la réponse, qui l'a traité et quand. Une école
+supprimée emporte ses signalements ; un campus ou un programme supprimé
+laisse le sien à l'école, avec son nom (D37). Contraintes et clés : `bdd.md`
+§4.
+
 Le backend Python **lit** les tables de données (diff de la Phase 2) et
-**écrit** `ContributionInbox` et `PipelineJob`. Ajouter une colonne obligatoire
+**écrit** `ContributionInbox` et `PipelineJob`. Il ne connaît pas
+`ContentReport`. Ajouter une colonne obligatoire
 à ces deux tables, ou renommer une colonne qu'il lit, casse le backend gelé.
 
 ---
@@ -328,14 +369,15 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
 
 | | Écrans | Où |
 |---|---|---|
-| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
+| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
 | **L'ancien style** | tous les autres : accueil, fiches, `/api-docs`, écoles et onglets de gestion, inbox, `/admin/cron`, menu latéral du back-office | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
 
 - [`app/globals.css`](../../app/globals.css) est le point d'entrée : ordre des
   couches `theme, legacy, base, components, utilities`, thème et utilitaires de
   Tailwind **sans preflight**, `@source` limités aux dossiers des écrans repris
   (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
-  `app/account/`) ; `block` et `fill-accent`, homonymes de classes de
+  `app/account/`, et depuis l'étape 6 `app/schools/[id]/report/` et
+  `app/admin/reports/` ; Tailwind lit `[id]` à la lettre, le dossier existant) ; `block` et `fill-accent`, homonymes de classes de
   `/admin/cron`, ne sont jamais générés.
 - La racine de chaque gabarit porte la classe `charte` : la base de la charte
   n'agit que dans ce sous-arbre. Le menu latéral du back-office reste l'ancien
@@ -348,7 +390,14 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   `LastEdit` du gestionnaire) suivent
   **l'ancien style** de chaque écran, avec ses `style` en ligne, sans règle
   ajoutée à `globals.css` (D28) ; ils passeront à la charte avec leurs
-  écrans, à l'étape 9.
+  écrans, à l'étape 9. De même le lien « Signaler une information » des
+  fiches (étape 6, D33), en `btn btn-secondary`.
+- Deux défauts des composants de l'étape 4, vus au contrôle visuel de
+  l'étape 6 et corrigés : les onglets (`Tabs`) montraient une barre de
+  défilement verticale (le filet du bas est désormais une ombre intérieure) ;
+  le dialogue (`Dialog`) se refermait aussitôt ouvert sous `next dev`
+  (effets rejoués par React : un `close` natif n'est suivi que si le
+  dialogue est resté fermé).
 - CSP posée par [`next.config.ts`](../../next.config.ts), inchangée :
   `style-src 'self' 'unsafe-inline'` ; aucune violation sur un build de
   production (19 octobre).
@@ -410,6 +459,18 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   gestion ; D30, les pourcentages en `step="any"`),
   `test/provenance-pages.test.ts` (les fiches rendues : source, « Modifié
   par », pas d'adresse ni de lien hors `http(s)`) ; dans `users.test.ts`, D24.
+- **Signalements** (étape 6) : `test/content-reports.test.ts`
+  (`lib/content-reports.ts` : corps lu et borné, longueur comptée comme
+  Postgres, lien D27, décision, onglet de chaque catégorie, ce que voient le
+  gestionnaire et l'auteur), `test/content-reports-migration.test.ts` (une
+  table neuve, rien d'autre ; contraintes et clés alignées sur le code et
+  `schema.prisma`), `test/api/reports.test.ts` (les trois méthodes : auteur
+  et traitant de la session, cible de l'école, école active, plafond par
+  compte après la lecture du corps, rien dans l'inbox, 409 sur un
+  signalement fermé), `test/reports-pages.test.ts` (les liens des fiches,
+  la page du formulaire, « Vos signalements », la vue des gestionnaires,
+  `?tab=`) ; dans `users.test.ts`, D38 ; le menu et le niveau de l'écran
+  dans `admin-pages.test.ts`.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts`.
 - **Charte** (étape 4) : `test/ui-components.test.ts` (le HTML rendu par
@@ -423,7 +484,7 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   jetons et contrastes identiques à `charte-graphique.md` §2 et §3).
 - `npm run smoke` : contre `npm run dev`, d'abord **le mur** sans session
   (connexion et première connexion 200, chaque page renvoyée vers la
-  connexion, `/account` compris, `/api/schools` et les 15 `GET /api/v1/*` en
+  connexion, `/account` et le formulaire de signalement compris, `/api/schools` et les 15 `GET /api/v1/*` en
   401), puis, si `APPVC_ADMIN_PASSWORD` et `APPVC_ADMIN_EMAIL` (ou, tant que
   le compte n'a pas d'adresse, `APPVC_ADMIN_USERNAME`) sont posées, les pages
   et l'API **connecté** ; lit la base visée, accord du propriétaire.

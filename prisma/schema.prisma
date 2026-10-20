@@ -39,6 +39,10 @@ model User {
   updatedSchoolStatsRecords       SchoolStatsRecord[]
   updatedAccreditationRecords     AccreditationRecord[]
   updatedProgramCampusAttachments ProgramCampusAttachment[]
+  // Les signalements envoyes et traites par ce compte (etape 6) ; cles
+  // RESTRICT, comme pour les auteurs du contenu (D38).
+  reports                         ContentReport[]         @relation("ContentReportAuthor")
+  handledReports                  ContentReport[]         @relation("ContentReportHandler")
 }
 
 model School {
@@ -49,6 +53,7 @@ model School {
   accreditations  AccreditationRecord[]
   campuses        Campus[]
   contributions   ContributionInbox[]
+  contentReports  ContentReport[]
   pipelineJobs    PipelineJob[]
   programs        Program[]
   statsRecords    SchoolStatsRecord[]
@@ -108,6 +113,7 @@ model Campus {
   name            String
   city            String?
   contributions   ContributionInbox[]
+  contentReports  ContentReport[]
   school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   programCampuses ProgramCampus[]
 
@@ -140,6 +146,7 @@ model Program {
   campuses                  ProgramCampus[]
   placements                ProgramPlacement[]
   contributions             ContributionInbox[]
+  contentReports            ContentReport[]
   pricingRecords            PricingRecord[]
   school                    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   rankingRecords            RankingRecord[]
@@ -404,4 +411,55 @@ model ContributionInbox {
   // La file de traitement filtre sur status et trie sur createdAt a chaque
   // passage (toutes les minutes). Aucun index ne couvrait ces colonnes.
   @@index([status, createdAt])
+}
+
+// Signalements (plan gestion-contenu, etape 6 ; G8 : la contribution du
+// public est remplacee par un formulaire de signalement, sans IA).
+//
+// Une table a part, jamais ContributionInbox (D13) : le traitement gele de
+// l'inbox lit les tickets Pending_AI et paie Tavily et Gemini (piege 6). Ecrite
+// par Next.js seulement (/api/admin/reports) ; le backend Python ne la connait
+// pas. Listes et bornes de reference : lib/content-reports.ts ; contraintes
+// CHECK dans la migration 20261020120000_content_reports.
+model ContentReport {
+  id            String    @id @default(uuid())
+  // Le compte de la session, jamais une valeur du corps de la requete.
+  author_id     String
+  schoolId      String
+  // La cible fine, facultative : un campus OU un programme de l'ecole.
+  campusId      String?
+  programId     String?
+  // SCHOOL | CAMPUS | PROGRAM, et le nom de la cible a l'envoi : il reste
+  // lisible quand le campus ou le programme est supprime (D37).
+  target_type   String
+  target_label  String
+  // SCHOOL_INFO | CAMPUS_PROGRAM | PRICING | CAPACITY | RANKING | STATS |
+  // ACCREDITATION | OTHER : chacune mene a un onglet de gestion.
+  category      String
+  message       String
+  // Lien facultatif, controle comme toute saisie (D27, D34) ; aucun serveur ne l'ouvre.
+  source_url    String?
+  // OPEN | RESOLVED | REJECTED. Un signalement ferme ne change plus.
+  status        String    @default("OPEN")
+  // La reponse du gestionnaire, que l'auteur lit sur « Mon compte » (D36).
+  response      String?
+  handled_by_id String?
+  handled_at    DateTime?
+  created_at    DateTime  @default(now())
+
+  // Cles (D37, D38) : l'auteur et celui qui traite en RESTRICT, comme les
+  // auteurs du contenu (D24) ; l'ecole en CASCADE, comme toutes ses donnees ;
+  // le campus et le programme en SET NULL, le signalement reste a l'ecole.
+  author    User     @relation("ContentReportAuthor", fields: [author_id], references: [id], onDelete: Restrict)
+  handledBy User?    @relation("ContentReportHandler", fields: [handled_by_id], references: [id], onDelete: Restrict)
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  campus    Campus?  @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  program   Program? @relation(fields: [programId], references: [id], onDelete: SetNull)
+
+  // La vue des gestionnaires filtre sur l'etat et trie sur la date ; « Mon
+  // compte » lit les signalements de son auteur ; une suppression d'ecole
+  // trouve les siens sans parcourir la table.
+  @@index([status, created_at])
+  @@index([schoolId])
+  @@index([author_id])
 }

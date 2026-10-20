@@ -6,6 +6,7 @@
  * - Plan gestion-contenu, étape 5 : l'école, ses chiffres clés et ses
  *   accréditations montrent leur lien source et « Modifié par … le … »,
  *   préparés par la page serveur (`provenance`, `source_href`)
+ * - Étape 6 : un lien « Signaler une information » vers le formulaire
  * - Référence : task.md §8.1
  */
 
@@ -193,6 +194,11 @@ export default function SchoolDetailClient({ school }: { school: School }) {
               </span>
             </div>
             <SourceLine href={null} provenance={school.provenance} />
+            {/* Étape 6 (D33) : le formulaire de signalement est une page de la
+                charte ; le lien garde l'ancien style de la fiche. */}
+            <Link href={`/schools/${school.id}/report`} className="btn btn-secondary" style={{ marginTop: 12 }}>
+              Signaler une information
+            </Link>
           </div>
         </div>
       </div>

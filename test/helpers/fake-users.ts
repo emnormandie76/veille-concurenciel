@@ -15,7 +15,8 @@
  * contrainte lève et ne change rien.
  *
  * Elle tient aussi la clé `ON DELETE RESTRICT` des auteurs du contenu
- * (migration 20261019120000_content_provenance, D24) : un compte nommé dans
+ * (migration 20261019120000_content_provenance, D24) et des signalements
+ * (migration 20261020120000_content_reports, D38) : un compte nommé dans
  * `authors` ne se supprime pas (erreur `P2003`, comme Prisma).
  *
  * Le faux n'a pas de transaction : `$transaction(fn)` appelle `fn` avec le

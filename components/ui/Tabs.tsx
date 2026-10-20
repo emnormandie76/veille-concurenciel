@@ -41,8 +41,16 @@ export function Tabs({ label, idPrefix, items, value, onValueChange, className }
     buttons.current[next]?.focus();
   };
 
+  // Le filet du bas est une ombre intérieure, sous le soulignement de l'onglet
+  // choisi : un `border-b` couvert par des onglets en `-mb-px` débordait d'un
+  // pixel, et `overflow-x-auto` (qui passe l'autre axe en `auto`) montrait
+  // alors une barre de défilement verticale (relevé à l'étape 6).
   return (
-    <div role="tablist" aria-label={label} className={cx("flex gap-x-6 overflow-x-auto border-b border-line", className)}>
+    <div
+      role="tablist"
+      aria-label={label}
+      className={cx("flex gap-x-6 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-line)]", className)}
+    >
       {items.map((item, index) => {
         const selected = item.value === value;
         return (
@@ -60,7 +68,7 @@ export function Tabs({ label, idPrefix, items, value, onValueChange, className }
             onClick={() => onValueChange(item.value)}
             onKeyDown={(event) => onKeyDown(event, index)}
             className={cx(
-              "-mb-px inline-flex h-10 shrink-0 items-center gap-2 border-b-2 px-1 text-sm font-medium",
+              "inline-flex h-10 shrink-0 items-center gap-2 border-b-2 px-1 text-sm font-medium",
               "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
               selected ? "border-accent text-ink" : "border-transparent text-ink-2 hover:text-ink",
             )}

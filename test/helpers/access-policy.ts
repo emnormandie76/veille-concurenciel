@@ -16,8 +16,10 @@
  *   (liste blanche, rôles, remise en première connexion, désactivation,
  *   adresse d'un compte ancien) ;
  * - `signedIn` : ce que chacun fait pour soi, sur « Mon compte » : son nom
- *   affiché et son mot de passe. Ces routes ne prennent pas d'identifiant ;
- *   personne ne fixe plus le mot de passe d'un tiers (D4) ;
+ *   affiché et son mot de passe ; et, depuis l'étape 6, envoyer un
+ *   signalement, dont l'auteur est la session (G4 : un USER « consulte et
+ *   signale »). Ces routes ne prennent pas d'identifiant ; personne ne fixe
+ *   plus le mot de passe d'un tiers (D4) ;
  * - `manager` : tout le reste, c'est-à-dire la lecture et l'écriture du
  *   contenu, création et suppressions d'école, de campus et de programme
  *   comprises (D19).
@@ -65,7 +67,13 @@ export const ADMIN_ONLY = [
 ];
 
 /** « MÉTHODE chemin » ouverts à toute session : ce que chacun fait pour soi. */
-export const SIGNED_IN = ["PATCH account", "PATCH account/password"];
+export const SIGNED_IN = [
+  "PATCH account",
+  "PATCH account/password",
+  // Étape 6 : envoyer un signalement. Le lire et le traiter restent aux
+  // gestionnaires (`GET reports`, `PATCH reports/[id]`, niveau par défaut).
+  "POST reports",
+];
 
 export function expectedLevel(key: string): AccessLevel {
   if (ADMIN_ONLY.includes(key)) return "admin";

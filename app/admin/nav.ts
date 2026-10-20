@@ -18,6 +18,8 @@ export interface NavItem {
 
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin/schools", label: "Écoles & Campus", icon: "🏫", level: "manager" },
+  // Étape 6 (D31) : les signalements, à part de l'inbox, qui reste à l'IA.
+  { href: "/admin/reports", label: "Signalements", icon: "🚩", level: "manager" },
   { href: "/admin/inbox", label: "Validation Inbox", icon: "📬", level: "admin" },
   { href: "/admin/cron", label: "Monitoring & Cron", icon: "⚙️", level: "admin" },
   { href: "/admin/users", label: "Comptes", icon: "👥", level: "admin" },

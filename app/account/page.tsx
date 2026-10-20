@@ -2,10 +2,16 @@ import type { Metadata } from "next";
 import { SiteShell } from "@/components/layout/SiteShell";
 import { Card } from "@/components/ui/Card";
 import { requirePage } from "@/lib/auth";
+import { AUTHOR_REPORT_SELECT, forReportAuthor } from "@/lib/content-reports";
+import { prisma } from "@/lib/prisma";
 import { ROLE_LABELS, hasAccess } from "@/lib/roles";
 import AccountClient from "./AccountClient";
+import MyReports from "./MyReports";
 
 export const metadata: Metadata = { title: "Mon compte" };
+
+/** Les signalements montrés : les 50 derniers suffisent à suivre les siens. */
+const REPORTS_SHOWN = 50;
 
 /**
  * /account — « Mon compte » (plan gestion-contenu, étape 2)
@@ -15,9 +21,19 @@ export const metadata: Metadata = { title: "Mon compte" };
  * données viennent de la session, relue en base (`requirePage`, D1 et D20) ;
  * les écritures passent par /api/admin/account et /api/admin/account/password
  * (`guardSignedIn`), qui ne visent que le compte de la session.
+ *
+ * Étape 6 (D36) : « Vos signalements », lus ici, ceux de la session et eux
+ * seuls, avec leur état et la réponse du gestionnaire.
  */
 export default async function AccountPage() {
   const { user } = await requirePage("signedIn");
+
+  const reports = await prisma.contentReport.findMany({
+    where: { author_id: user.id },
+    orderBy: { created_at: "desc" },
+    take: REPORTS_SHOWN,
+    select: AUTHOR_REPORT_SELECT,
+  });
 
   return (
     <SiteShell current="account" showBackOffice={hasAccess(user.role, "manager")} width="narrow">
@@ -41,6 +57,8 @@ export default async function AccountPage() {
         </Card>
 
         <AccountClient initialName={user.name} />
+
+        <MyReports reports={reports.map(forReportAuthor)} />
       </div>
     </SiteShell>
   );

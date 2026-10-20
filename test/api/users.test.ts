@@ -269,6 +269,19 @@ test("D24 : un invité qui a modifié des données (remis en première connexion
   assert.deepEqual(users.get("u-jean"), reset, "le compte et son nom restent");
 });
 
+test("D38 : un invité qui a envoyé ou traité un signalement ne se retire pas non plus → 409", async () => {
+  // Les clés `author_id` et `handled_by_id` de ContentReport (étape 6) sont en
+  // RESTRICT, comme celle des auteurs du contenu : la base rend le même P2003.
+  const reset = { ...ACTIVE_USER, status: "INVITED", password_hash: null, first_login_at: null, session_version: 1 };
+  const users = tableWithAuthors(["u-jean"], ME, reset);
+
+  const res = await removeUser(empty("DELETE"), ctx("u-jean"));
+
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /signalement[\s\S]*désactiv/);
+  assert.deepEqual(users.get("u-jean"), reset, "le compte et son nom restent");
+});
+
 test("D24 : un invité qui n'a rien modifié se retire toujours", async () => {
   const users = tableWithAuthors(["u-jean"], ME, INVITED);
   assert.equal((await removeUser(empty("DELETE"), ctx("u-invite"))).status, 200);

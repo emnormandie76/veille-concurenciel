@@ -35,7 +35,8 @@ export const V1_ROUTES = [
 ] as const;
 
 /** Les pages du site appelées (plan backend-local, étape 7 ; /contribute retirée, D2 ; /account, étape 2). */
-export const PAGES = ["/", "/api-docs", "/schools/[id]", "/schools/[id]/programs/[pid]", "/account"] as const;
+// Étape 6 : le formulaire de signalement d'une école, ouvert à toute session.
+export const PAGES = ["/", "/api-docs", "/schools/[id]", "/schools/[id]/programs/[pid]", "/schools/[id]/report", "/account"] as const;
 
 export interface SmokeIds {
   schoolId: string;

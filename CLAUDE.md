@@ -19,7 +19,9 @@ développement ni recette.
   pour l'IA seulement (décision du 14 octobre 2026).
 - **En ligne depuis le 19 octobre 2026** : <https://app-vc-emn.vercel.app>,
   sur les comptes de l'école (dépôt GitHub `emnormandie76/veille-concurenciel`,
-  Vercel et Neon de l'école ; `Anton1P` ne fait que commiter et pousser).
+  Vercel et Neon de l'école ; `Anton1P` ne fait que pousser : les commits
+  sont signés au nom d'`emnormandie76` par le réglage Git local du dépôt,
+  sans quoi Vercel bloque le déploiement, offre Hobby).
 
 ## Documents de référence
 

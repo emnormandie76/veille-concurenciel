@@ -64,7 +64,8 @@
 >
 > **Ce qui est en ligne (19 octobre 2026).** Le propriétaire a déplacé
 > l'hébergement sur des **comptes de l'école** ; `Anton1P` ne fait plus que
-> commiter et pousser.
+> commiter et pousser. *(Depuis le 20 octobre, les commits sont signés au
+> nom d'`emnormandie76` : voir le §6.)*
 >
 > - **Dépôt** : `emnormandie76/veille-concurenciel` (compte GitHub personnel
 >   de l'école, `Anton1P` collaborateur). `main` = `ecad4a9`, rattrapée sur
@@ -255,7 +256,9 @@ blanc, puis réelle, avec l'accord du propriétaire), **avant** le push sur
 2. `npm run db:migrate:dry` : applique tout, puis `ROLLBACK` ;
 3. `npm run db:migrate`, **avec l'accord du propriétaire** : la base est aussi
    la production ;
-4. ensuite seulement, la fusion ou le push qui déclenche le déploiement.
+4. ensuite seulement, la fusion ou le push qui déclenche le déploiement, avec
+   un dernier commit signé au nom d'`emnormandie76` (§6), sans quoi Vercel le
+   bloque.
 
 Entre 3 et 4, l'ancien code tourne encore sur le nouveau schéma : une migration
 doit rester compatible avec lui (ajouter d'abord, retirer dans une version
@@ -409,6 +412,18 @@ L'appelant est identifié par `x-vercel-forwarded-for`, un en-tête que Vercel
   en connaissance de cause (D7, 16 octobre 2026 ; l'agent recommandait Pro).
 - **Fait le 19 octobre 2026** : `lhr1`, Fluid compute actif ; le déploiement
   en production tourne en `lhr1` (MCP).
+- **L'auteur des commits** (relevé le 20 octobre 2026, documentation Vercel
+  *Troubleshoot project collaboration*) : en Hobby, avec un dépôt **privé**,
+  Vercel ne déploie un commit que si son **auteur** est le propriétaire de
+  l'équipe, `emnormandie76`. Un commit d'`Anton1P` donne un déploiement
+  `BLOCKED`, même lancé à la main par le propriétaire (« Create
+  Deployment ») : la règle porte sur l'auteur du commit. Parade retenue par le
+  propriétaire : sur ce dépôt, `git config --local` signe les commits au nom
+  d'`emnormandie76` (`335444819+emnormandie76@users.noreply.github.com`,
+  l'adresse privée que GitHub rattache à ce compte) ; `Anton1P` reste celui
+  qui pousse (`git -c credential.username=Anton1P push`). Autres voies
+  écartées : l'offre Pro (D7) ou un dépôt public. Le relevé du 19 octobre
+  (« Vercel ne bloque que les dépôts d'organisation ») était faux.
 
 ---
 

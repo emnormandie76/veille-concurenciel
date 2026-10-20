@@ -28,6 +28,17 @@ model User {
   // ou desactivation, elle coupe les sessions ouvertes (D20, lib/auth.ts).
   session_version Int       @default(0)
   createdAt       DateTime  @default(now())
+  // Les donnees dont ce compte est le dernier auteur (etape 5, D10) ; la cle
+  // RESTRICT garde son nom tant qu'il en reste une (D24).
+  updatedSchools                  School[]
+  updatedCampuses                 Campus[]
+  updatedPrograms                 Program[]
+  updatedPricingRecords           PricingRecord[]
+  updatedCapacityRecords          CapacityRecord[]
+  updatedRankingRecords           RankingRecord[]
+  updatedSchoolStatsRecords       SchoolStatsRecord[]
+  updatedAccreditationRecords     AccreditationRecord[]
+  updatedProgramCampusAttachments ProgramCampusAttachment[]
 }
 
 model School {
@@ -41,6 +52,18 @@ model School {
   pipelineJobs    PipelineJob[]
   programs        Program[]
   statsRecords    SchoolStatsRecord[]
+
+  // Provenance (plan gestion-contenu, etape 5, D10 et D11), sur les neuf tables
+  // de donnees. Facultative : une ligne d'avant la migration
+  // 20261019120000_content_provenance n'en a pas. Posee par le code avec
+  // l'auteur de la session (lib/provenance.ts), pas par la date automatique
+  // de Prisma. La cle
+  // RESTRICT empeche de supprimer un compte qui a modifie une donnee (D24).
+  updated_at    DateTime?
+  updated_by_id String?
+  // MANUAL (saisie) | AI (validee depuis l'inbox) | REPORT (etape 6) : CHECK en base.
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 }
 
 // Etat d'avancement du pipeline (Phase 1, Phase 2, recherche ciblee).
@@ -88,6 +111,12 @@ model Campus {
   school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   programCampuses ProgramCampus[]
 
+  // Provenance (etape 5) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
+
   @@unique([schoolId, name])
 }
 
@@ -106,12 +135,20 @@ model Program {
   // annee obligatoire sur l'un des campus internationaux ». Conservee en clair,
   // pour l'admin qui arbitre ; aucune requete ne s'appuie dessus.
   campus_policy_note        String?
+  // Lien source de la fiche (D12, etape 5).
+  source_url                String?
   campuses                  ProgramCampus[]
   placements                ProgramPlacement[]
   contributions             ContributionInbox[]
   pricingRecords            PricingRecord[]
   school                    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   rankingRecords            RankingRecord[]
+
+  // Provenance (etape 5) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, name])
 }
@@ -162,6 +199,12 @@ model ProgramCampusAttachment {
   note            String?
   source_url      String?
   programCampus   ProgramCampus @relation(fields: [programCampusId], references: [id], onDelete: Cascade)
+
+  // Provenance (etape 5) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([programCampusId, study_year, regime])
 }
@@ -220,6 +263,12 @@ model PricingRecord {
   source_url            String?
   program               Program @relation(fields: [programId], references: [id], onDelete: Cascade)
 
+  // Provenance (etape 5) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
+
   @@unique([programId, academic_year])
 }
 
@@ -230,6 +279,12 @@ model CapacityRecord {
   spots_available Int
   source_url      String?
   programCampus   ProgramCampus @relation(fields: [programCampusId], references: [id], onDelete: Cascade)
+
+  // Provenance (etape 5) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([programCampusId, academic_year])
 }
@@ -242,6 +297,12 @@ model RankingRecord {
   rank          Int
   source_url    String?
   program       Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  // Provenance (etape 5) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([programId, academic_year, ranking_name])
 }
@@ -259,7 +320,14 @@ model SchoolStatsRecord {
   permanent_professors         Int?
   international_professors_pct Float?
   external_speakers_pct        Float?
+  source_url                   String? // D12, etape 5
   school                       School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  // Provenance (etape 5) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, academic_year])
 }
@@ -276,7 +344,14 @@ model AccreditationRecord {
   is_active          Boolean @default(true)
   // "international" = EQUIS, AACSB, AMBA, BSIS… | "label" = CGE, Qualiopi, DD&RS… | "state" = Grade Master, CTI…
   accreditation_type String  @default("international")
+  source_url         String? // D12, etape 5
   school             School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  // Provenance (etape 5) : voir School.
+  updated_at    DateTime?
+  updated_by_id String?
+  updated_via   String?
+  updatedBy     User?     @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, accreditation_name])
 }

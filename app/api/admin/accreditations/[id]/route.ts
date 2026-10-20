@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance, readSourceUrl } from "@/lib/provenance";
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
 
   try {
     const body = await request.json();
-    const { accreditation_name, accreditation_type, year_obtained, is_active } = body;
+    const { accreditation_name, accreditation_type, year_obtained, is_active, source_url } = body;
 
     const existingRecord = await prisma.accreditationRecord.findUnique({
       where: { id },
@@ -88,11 +90,21 @@ export async function PUT(
       data.is_active = Boolean(is_active);
     }
 
+    if (source_url !== undefined) {
+      // Le lien source (D12), contrôlé comme toute saisie (D27).
+      const source = readSourceUrl(source_url);
+      if (!source.ok) {
+        return NextResponse.json({ error: source.error }, { status: 400 });
+      }
+      data.source_url = source.value;
+    }
+
     const updated = await prisma.accreditationRecord.update({
       where: { id },
-      data,
+      data: { ...data, ...provenance(session.user.id, "MANUAL") },
     });
 
+    revalidateContent();
     return NextResponse.json(updated);
   } catch (err) {
     console.error(`PUT /api/admin/accreditations/${id} error:`, err);
@@ -122,6 +134,7 @@ export async function DELETE(
     }
 
     await prisma.accreditationRecord.delete({ where: { id } });
+    revalidateContent();
 
     return NextResponse.json({ message: "Accréditation supprimée avec succès" });
   } catch (err) {

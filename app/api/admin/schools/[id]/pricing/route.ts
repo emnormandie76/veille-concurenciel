@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { AUTHOR_SELECT, forManager } from "@/lib/provenance";
 
 export async function GET(
   request: Request,
@@ -36,6 +37,7 @@ export async function GET(
     const records = await prisma.pricingRecord.findMany({
       where: whereFilter,
       include: {
+        updatedBy: AUTHOR_SELECT,
         program: {
           select: { id: true, name: true },
         },
@@ -54,7 +56,8 @@ export async function GET(
 
     return NextResponse.json({
       availableYears,
-      records,
+      // « Modifié par … le … » de chaque ligne : le nom et la date (étape 5, D29).
+      records: records.map(forManager),
     });
   } catch (err) {
     console.error(`GET /api/admin/schools/${id}/pricing error:`, err);

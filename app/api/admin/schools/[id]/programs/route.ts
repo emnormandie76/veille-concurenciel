@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
+import { AUTHOR_SELECT, describeLastEdit, provenance, readSourceUrl } from "@/lib/provenance";
 import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function GET(
@@ -22,6 +24,7 @@ export async function GET(
       where: { schoolId: id },
       orderBy: { name: "asc" },
       include: {
+        updatedBy: AUTHOR_SELECT,
         campuses: {
           include: {
             campus: {
@@ -47,6 +50,9 @@ export async function GET(
       is_expatriation_mandatory: p.is_expatriation_mandatory,
       min_expatriation_months: p.min_expatriation_months,
       max_internship_months: p.max_internship_months,
+      source_url: p.source_url,
+      // « Modifié par … le … » de chaque ligne : le nom et la date (étape 5, D29).
+      last_edit: describeLastEdit(p),
       _count: p._count,
       associatedCampuses: p.campuses.map((pc) => ({
         programCampusId: pc.id,
@@ -67,7 +73,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
@@ -108,6 +114,12 @@ export async function POST(
         { error: invalidNumbersMessage(months.invalid) },
         { status: 400 }
       );
+    }
+
+    // Le lien source de la fiche (D12), contrôlé comme toute saisie (D27).
+    const source = readSourceUrl(body.source_url);
+    if (!source.ok) {
+      return NextResponse.json({ error: source.error }, { status: 400 });
     }
 
     const school = await prisma.school.findUnique({ where: { id } });
@@ -155,6 +167,8 @@ export async function POST(
           is_alternance_possible: Boolean(is_alternance_possible),
           is_expatriation_mandatory: Boolean(is_expatriation_mandatory),
           ...months.values,
+          source_url: source.value,
+          ...provenance(session.user.id, "MANUAL"),
         },
       });
 
@@ -172,6 +186,7 @@ export async function POST(
       return program;
     });
 
+    revalidateContent();
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     console.error(`POST /api/admin/schools/${id}/programs error:`, err);

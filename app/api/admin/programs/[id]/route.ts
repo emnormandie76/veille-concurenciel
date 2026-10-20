@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance, readSourceUrl } from "@/lib/provenance";
 import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
@@ -22,6 +24,7 @@ export async function PUT(
       min_expatriation_months,
       max_internship_months,
       campusIds,
+      source_url,
     } = body;
 
     const existingProgram = await prisma.program.findUnique({
@@ -75,6 +78,13 @@ export async function PUT(
       );
     }
 
+    // Le lien source (D12), contrôlé comme toute saisie (D27). Absent, il ne
+    // change pas ; vide, il s'efface.
+    const source = readSourceUrl(source_url);
+    if (!source.ok) {
+      return NextResponse.json({ error: source.error }, { status: 400 });
+    }
+
     // Les campus doivent appartenir à l'école du programme, comme à la
     // création. Jusqu'au 14 octobre 2026, ce contrôle manquait : un programme
     // pouvait être rattaché au campus d'une autre école (décision 11, plan
@@ -104,10 +114,13 @@ export async function PUT(
       if (is_expatriation_mandatory !== undefined) dataToUpdate.is_expatriation_mandatory = Boolean(is_expatriation_mandatory);
       if (min_expatriation_months !== undefined) dataToUpdate.min_expatriation_months = months.values.min_expatriation_months;
       if (max_internship_months !== undefined) dataToUpdate.max_internship_months = months.values.max_internship_months;
+      if (source_url !== undefined) dataToUpdate.source_url = source.value;
 
+      // Changer les campus, c'est aussi modifier le programme : la provenance
+      // est posée à chaque enregistrement (étape 5, D10).
       const program = await tx.program.update({
         where: { id },
-        data: dataToUpdate,
+        data: { ...dataToUpdate, ...provenance(session.user.id, "MANUAL") },
       });
 
       if (Array.isArray(campusIds)) {
@@ -146,6 +159,7 @@ export async function PUT(
       return program;
     });
 
+    revalidateContent();
     return NextResponse.json(updated);
   } catch (err) {
     console.error(`PUT /api/admin/programs/${id} error:`, err);
@@ -173,6 +187,7 @@ export async function DELETE(
 
     await prisma.program.delete({ where: { id } });
 
+    revalidateContent();
     return NextResponse.json({ message: "Programme supprimé avec succès" });
   } catch (err) {
     console.error(`DELETE /api/admin/programs/${id} error:`, err);

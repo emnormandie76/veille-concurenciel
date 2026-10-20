@@ -9,6 +9,9 @@
 > `test/api-docs.test.ts` la confronte aux routes (`architecture.md` §7.3).
 > **16 octobre 2026** (plan gestion-contenu, étape 1, décision G6) : l'API
 > **exige une session**, comme tout le site. Voir *Authentification*.
+> **20 octobre 2026** (étape 5) : chaque donnée dit **d'où elle vient et de
+> quand elle date** (`source_url`, `updated_at`), sans dire qui l'a modifiée
+> (D25, revue par le propriétaire). Voir *Provenance de chaque donnée*.
 
 ## Objectif
 
@@ -113,6 +116,39 @@ paginer aurait changé leur forme de réponse — un tableau nu devient
 `{ data, pagination }` — et cassé tout consommateur existant. La valeur est très
 au-dessus de tout volume légitime : elle borne une requête pathologique sans
 tronquer de donnée réelle.
+
+---
+
+## Provenance de chaque donnée *(plan gestion-contenu, étape 5)*
+
+Chaque ressource exposée (école, campus, programme, chiffres clés,
+accréditation, tarif, classement, capacité), et chaque enregistrement imbriqué
+(les places d'un programme dans `/programs/[id]` ; ses places, tarifs et
+classements dans `/compare/programs`), porte **`updated_at`** : la date de sa
+dernière modification (ISO 8601), ou `null` pour une donnée **non suivie**
+(écrite avant le 20 octobre 2026 et jamais modifiée depuis). Seule la
+dernière modification est connue (D10).
+
+**Ni l'auteur ni l'origine** (D25, revue par le propriétaire le 20 octobre) :
+une donnée rendue par l'API est tenue pour vérifiée. Le nom de la personne qui
+l'a modifiée ou validée, et l'origine de la modification (saisie, recherche
+IA, signalement), restent en base ; ils s'affichent sur le site et dans le
+gestionnaire, jamais dans l'API. Les routes ne lisent même pas l'auteur.
+
+Les simples renvois (l'école d'un programme, le campus d'une capacité, le
+programme d'un tarif) ne portent pas de date : elle se lit sur la ressource
+elle-même.
+
+`source_url` existait déjà sur les tarifs, classements et capacités ; les
+**chiffres clés**, les **accréditations** et les **programmes** le portent
+aussi (D12), `null` quand aucun lien n'est connu. Une saisie à la main n'est
+acceptée qu'en `http(s)`, 2 048 caractères au plus (D27) ; les liens plus
+anciens sont rendus tels quels.
+
+`/api-docs` décrit ces deux champs dans sa présentation et dans chaque exemple
+de réponse ; `test/api-docs.test.ts` et `test/api/v1-provenance.test.ts` les
+confrontent aux routes, et le second vérifie qu'aucun champ d'auteur ni
+d'origine ne sort.
 
 ---
 
@@ -227,7 +263,8 @@ des crédits sur des cibles arbitraires.
 ## Tables exclues de toute réponse
 
 - `ContributionInbox` — zone tampon interne, jamais exposée
-- `User` — authentification du back-office
+- `User` — authentification du back-office ; l'auteur d'une donnée n'est pas
+  exposé (D25, revue le 20 octobre)
 - `PipelineJob` — suivi interne des passes du pipeline
 
 > **Pas encore exposés** : le détail année par année d'un programme sur un
@@ -248,6 +285,8 @@ des crédits sur des cibles arbitraires.
 - Les en-têtes CORS sont appliqués.
 - Recherche et filtres fonctionnent sur les routes paginées.
 - La comparaison accepte jusqu'à 5 programmes, identifiants dupliqués compris.
+- Chaque ressource et chaque enregistrement imbriqué porte sa date
+  (`updated_at`), sans auteur ni origine (`test/api/v1-provenance.test.ts`).
 - **Le plafond de 60 requêtes/minute se déclenche** — vérifié : 66 appels
   successifs donnent 60 réponses `200` puis des `429`.
 - **Le cache ISR ne fonctionne pas** ; ne pas s'appuyer dessus tant que le point

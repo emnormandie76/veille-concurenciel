@@ -16,6 +16,9 @@
  * - D4 : il remet un compte en première connexion (mot de passe effacé,
  *   sessions coupées) ; il ne fixe plus jamais le mot de passe d'un tiers ;
  * - D21 : un compte actif se désactive, il ne se supprime plus ;
+ * - D24 (étape 5) : un compte qui a modifié une donnée ne se supprime jamais,
+ *   même redevenu invité par une remise en première connexion (la base le
+ *   refuse) ; un invité se désactive ;
  * - D3 : il renseigne l'adresse d'un compte d'avant la liste blanche, et
  *   l'ancien identifiant cesse alors de servir ;
  * - D5 : seul le domaine imposé est accepté.
@@ -98,6 +101,13 @@ const LEGACY = userRow({ id: "u-legacy", username: "gestion1", password_hash: HA
 
 function table(...rows: UserRow[]): UserTable {
   const users = userTable(rows);
+  db.use({ user: users.methods });
+  return users;
+}
+
+/** La table, où les comptes `authors` ont modifié des données (clé RESTRICT, D24). */
+function tableWithAuthors(authors: string[], ...rows: UserRow[]): UserTable {
+  const users = userTable(rows, { authors });
   db.use({ user: users.methods });
   return users;
 }
@@ -245,6 +255,24 @@ test("D21 : un compte actif ou désactivé ne se supprime pas, il se désactive"
     assert.match((await res.json()).error, /désactiv/);
     assert.ok(users.get("u-jean"), row.status);
   }
+});
+
+test("D24 : un invité qui a modifié des données (remis en première connexion) ne se retire pas → 409", async () => {
+  // Jean a servi, puis a été remis en première connexion (D4) : il est invité.
+  const reset = { ...ACTIVE_USER, status: "INVITED", password_hash: null, first_login_at: null, session_version: 1 };
+  const users = tableWithAuthors(["u-jean"], ME, reset);
+
+  const res = await removeUser(empty("DELETE"), ctx("u-jean"));
+
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /modifié des données[\s\S]*désactiv/);
+  assert.deepEqual(users.get("u-jean"), reset, "le compte et son nom restent");
+});
+
+test("D24 : un invité qui n'a rien modifié se retire toujours", async () => {
+  const users = tableWithAuthors(["u-jean"], ME, INVITED);
+  assert.equal((await removeUser(empty("DELETE"), ctx("u-invite"))).status, 200);
+  assert.equal(users.get("u-invite"), undefined);
 });
 
 test("retirer : pas soi-même ; un compte inconnu → 404", async () => {
@@ -451,16 +479,29 @@ test("D21 : désactiver coupe la connexion et les sessions ; nom, adresse et dat
   assert.equal(await verifyCredentials("jean.dupont@em-normandie.fr", PASSWORD), null);
 });
 
-test("D21 : un invité ne se désactive pas, il se retire ; un désactivé l'est déjà", async () => {
-  let users = table(ME, INVITED);
-  let res = await disableUser(empty(), ctx("u-invite"));
-  assert.equal(res.status, 409);
-  assert.match((await res.json()).error, /retir/);
-  assert.deepEqual(users.get("u-invite"), INVITED);
+test("D24 : un invité se désactive (un compte remis en première connexion doit pouvoir se fermer)", async () => {
+  // Jusqu'à l'étape 5, un invité ne se désactivait pas (D21) : il se
+  // retirait. Un invité qui a modifié des données ne se retire plus (D24).
+  const reset = { ...ACTIVE_USER, status: "INVITED", password_hash: null, first_login_at: null, session_version: 1 };
+  const users = tableWithAuthors(["u-jean"], ME, reset);
 
+  const res = await disableUser(empty(), ctx("u-jean"));
+
+  assert.equal(res.status, 200);
+  const row = users.get("u-jean")!;
+  assert.equal(row.status, "DISABLED");
+  assert.equal(row.session_version, 2);
+  assert.equal(row.display_name, "Jean Dupont", "le nom reste pour l'historique");
+  const firstLoginRes = await firstLogin(
+    json({ email: "jean.dupont@em-normandie.fr", password: PASSWORD, displayName: "Jean Dupont" })
+  );
+  assert.equal(firstLoginRes.status, 403, "un compte désactivé ne fait pas de première connexion");
+});
+
+test("D21 : un compte déjà désactivé l'est déjà", async () => {
   const disabled = { ...ACTIVE_USER, status: "DISABLED", password_hash: null };
-  users = table(ME, disabled);
-  res = await disableUser(empty(), ctx("u-jean"));
+  const users = table(ME, disabled);
+  const res = await disableUser(empty(), ctx("u-jean"));
   assert.equal(res.status, 409);
   assert.deepEqual(users.get("u-jean"), disabled);
 });

@@ -246,7 +246,9 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
                             {a.status === "DISABLED" ? "Réactiver" : "Remettre en première connexion"}
                           </Button>
                         )}
-                        {a.status === "ACTIVE" && (
+                        {/* D24 : un invité se désactive aussi (remis en première
+                            connexion, il ne se retire plus s'il a modifié des données). */}
+                        {a.status !== "DISABLED" && (
                           <Button size="sm" variant="danger-soft" onClick={() => open("disable", a)}>
                             Désactiver
                           </Button>
@@ -342,16 +344,17 @@ export default function UsersManagerClient({ currentUserId }: UsersManagerClient
 
             {dialog.kind === "disable" && account && (
               <p className="text-sm leading-relaxed text-ink-2">
-                <strong className="font-medium text-ink">{nameOf(account)}</strong> ne pourra plus se connecter, et ses
-                sessions ouvertes sont coupées. Son nom reste dans l&apos;historique des modifications. Vous pourrez
+                <strong className="font-medium text-ink">{nameOf(account)}</strong> ne pourra plus se connecter ni faire
+                de première connexion, et ses sessions ouvertes sont coupées. Son nom reste dans l&apos;historique des
+                modifications. Vous pourrez
                 réactiver le compte en le remettant en première connexion.
               </p>
             )}
 
             {dialog.kind === "remove" && account && (
               <p className="text-sm leading-relaxed text-ink-2">
-                La personne ne s&apos;est pas encore connectée. Une fois l&apos;adresse retirée, elle ne pourra plus faire
-                sa première connexion.
+                Une fois l&apos;adresse retirée, la personne ne pourra plus faire sa première connexion. Un compte qui a
+                déjà modifié des données ne se retire pas : désactivez-le.
               </p>
             )}
 

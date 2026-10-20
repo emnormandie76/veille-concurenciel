@@ -4,12 +4,18 @@
  * - Tarifs par année + total, classements, capacité par campus
  * - ISR 1h
  * - Vérification école ACTIVE + appartenance programme (schoolId)
+ * - Plan gestion-contenu, étape 5 : sous chaque donnée (le programme, chaque
+ *   tarif, classement et capacité), son lien source et « Modifié par … le … »
+ *   (SourceLine). L'auteur n'est lu que par son nom (AUTHOR_SELECT, D25).
+ *   Le cache d'une heure est levé à chaque écriture (lib/content-cache.ts).
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import SignOutButton from "../../../../SignOutButton";
+import SourceLine from "../../../SourceLine";
+import { AUTHOR_SELECT, describeProvenance, sourceHref } from "@/lib/provenance";
 
 export const revalidate = 3600; // ISR 1h — Étape 8.3
 
@@ -24,6 +30,7 @@ async function getProgram(schoolId: string, programId: string) {
     where: { id: programId },
     include: {
       school: true,
+      updatedBy: AUTHOR_SELECT,
       campuses: {
         include: {
           campus: {
@@ -31,15 +38,18 @@ async function getProgram(schoolId: string, programId: string) {
           },
           capacityRecords: {
             orderBy: { academic_year: "desc" },
+            include: { updatedBy: AUTHOR_SELECT },
           },
         },
         orderBy: { campus: { name: "asc" } },
       },
       pricingRecords: {
         orderBy: { academic_year: "desc" },
+        include: { updatedBy: AUTHOR_SELECT },
       },
       rankingRecords: {
         orderBy: [{ academic_year: "desc" }, { ranking_name: "asc" }],
+        include: { updatedBy: AUTHOR_SELECT },
       },
     },
   });
@@ -135,6 +145,7 @@ export default async function ProgramDetailPage({ params }: Props) {
             <span className="program-tag tag-expat">✈️ Expatriation obligatoire</span>
           )}
         </div>
+        <SourceLine href={sourceHref(program.source_url)} provenance={describeProvenance(program)} />
       </div>
 
       {/* Content */}
@@ -164,6 +175,7 @@ export default async function ProgramDetailPage({ params }: Props) {
                     <th>Total cursus</th>
                     <th>Tarif intl.</th>
                     <th>Notes</th>
+                    <th>Source</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -185,6 +197,13 @@ export default async function ProgramDetailPage({ params }: Props) {
                       </td>
                       <td style={{ fontSize: "0.8rem", color: "var(--text-secondary)", maxWidth: 200 }}>
                         {pr.additional_fees_notes ?? "—"}
+                      </td>
+                      <td style={{ maxWidth: 220 }}>
+                        {sourceHref(pr.source_url) || describeProvenance(pr) ? (
+                          <SourceLine href={sourceHref(pr.source_url)} provenance={describeProvenance(pr)} />
+                        ) : (
+                          <span className="price-null">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -211,16 +230,8 @@ export default async function ProgramDetailPage({ params }: Props) {
                   <div className="ranking-position">#{rk.rank}</div>
                   <div>
                     <div className="ranking-name">{rk.ranking_name}</div>
-                    {rk.source_url && (
-                      <a
-                        href={rk.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontSize: "0.75rem", color: "var(--accent)" }}
-                      >
-                        Source ↗
-                      </a>
-                    )}
+                    {/* Le lien n'est cliquable qu'en http(s) (D27). */}
+                    <SourceLine href={sourceHref(rk.source_url)} provenance={describeProvenance(rk)} />
                   </div>
                   <div className="ranking-year">{rk.academic_year}</div>
                 </div>
@@ -253,6 +264,7 @@ export default async function ProgramDetailPage({ params }: Props) {
                       <div key={cap.id} className="stat-card" id={`capacity-${cap.id}`}>
                         <div className="stat-card-value">{cap.spots_available.toLocaleString("fr-FR")}</div>
                         <div className="stat-card-label">Places — {cap.academic_year}</div>
+                        <SourceLine href={sourceHref(cap.source_url)} provenance={describeProvenance(cap)} />
                       </div>
                     ))}
                   </div>

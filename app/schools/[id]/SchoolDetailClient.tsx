@@ -3,6 +3,9 @@
  *
  * - Affichage avec onglets : Programmes, Statistiques, Accréditations
  * - Micro-animations, design premium dark
+ * - Plan gestion-contenu, étape 5 : l'école, ses chiffres clés et ses
+ *   accréditations montrent leur lien source et « Modifié par … le … »,
+ *   préparés par la page serveur (`provenance`, `source_href`)
  * - Référence : task.md §8.1
  */
 
@@ -11,6 +14,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import SignOutButton from "../../SignOutButton";
+import SourceLine from "../SourceLine";
 
 interface PricingRecord {
   id: string;
@@ -59,6 +63,9 @@ interface StatsRecord {
   permanent_professors: number | null;
   international_professors_pct: number | null;
   external_speakers_pct: number | null;
+  /** « Modifié par … le … » et le lien vérifié, préparés par la page (étape 5). */
+  provenance: string | null;
+  source_href: string | null;
 }
 
 interface AccreditationRecord {
@@ -67,6 +74,8 @@ interface AccreditationRecord {
   accreditation_type?: string;
   year_obtained: number | null;
   is_active: boolean;
+  provenance: string | null;
+  source_href: string | null;
 }
 
 interface School {
@@ -74,6 +83,7 @@ interface School {
   name: string;
   official_domain: string;
   status: string;
+  provenance: string | null;
   campuses: Campus[];
   programs: Program[]; // programmes au niveau école (pas par campus)
   statsRecords: StatsRecord[];
@@ -182,6 +192,7 @@ export default function SchoolDetailClient({ school }: { school: School }) {
                 • {school.campuses.length} campus • {totalPrograms} programme{totalPrograms > 1 ? "s" : ""}
               </span>
             </div>
+            <SourceLine href={null} provenance={school.provenance} />
           </div>
         </div>
       </div>
@@ -370,6 +381,7 @@ export default function SchoolDetailClient({ school }: { school: School }) {
             <>
               <div style={{ marginBottom: 24, color: "var(--text-secondary)", fontSize: "0.85rem" }}>
                 Données année {latestStats.academic_year}
+                <SourceLine href={latestStats.source_href} provenance={latestStats.provenance} />
               </div>
               <div className="stats-grid">
                 {latestStats.total_students !== null && (
@@ -459,6 +471,7 @@ export default function SchoolDetailClient({ school }: { school: School }) {
             {!acc.is_active && (
               <span style={{ fontSize: "0.72rem", color: "#6b7280", marginLeft: 4 }}>(expirée)</span>
             )}
+            <SourceLine href={acc.source_href} provenance={acc.provenance} />
           </div>
         );
 

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardAdmin } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance } from "@/lib/provenance";
 
 /**
  * POST /api/admin/inbox/[id]/create-programs
@@ -9,12 +11,16 @@ import { guardAdmin } from "@/lib/auth";
  * puis met à jour le JSON du ticket pour les déplacer dans `programs` (matchés).
  * 
  * Body attendu : { programNames: string[] }
+ *
+ * Provenance (plan gestion-contenu, étape 5, D11) : un programme créé a pour
+ * auteur l'admin, origine `AI` ; un programme déjà là n'est pas modifié
+ * (`update: {}`), il garde donc son auteur.
  */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAdmin();
+  const { session, error } = await guardAdmin();
   if (error) return error;
 
   const { id } = await params;
@@ -43,6 +49,8 @@ export async function POST(
       );
     }
 
+    const stamp = provenance(session.user.id, "AI");
+
     // Créer les programmes dans une transaction
     const createdPrograms = await prisma.$transaction(async (tx) => {
       const results: { id: string; name: string }[] = [];
@@ -62,6 +70,7 @@ export async function POST(
           create: {
             schoolId: ticket.schoolId!,
             name: trimmedName,
+            ...stamp,
           },
           update: {}, // pas de modification si déjà existant
         });
@@ -118,6 +127,7 @@ export async function POST(
       return { createdPrograms: results, updatedJson };
     });
 
+    revalidateContent();
     return NextResponse.json({
       message: `${createdPrograms.createdPrograms.length} programme(s) créé(s) et rattaché(s)`,
       count: createdPrograms.createdPrograms.length,

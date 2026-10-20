@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import LastEdit from "../../LastEdit";
 
 interface Campus {
   id: string;
   schoolId: string;
   name: string;
   city: string | null;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit: string | null;
 }
 
 interface AssociatedCampus {
@@ -25,6 +28,10 @@ interface Program {
   is_expatriation_mandatory: boolean;
   min_expatriation_months: number | null;
   max_internship_months: number | null;
+  // Le lien source de la fiche (étape 5, D12).
+  source_url: string | null;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit: string | null;
   associatedCampuses: AssociatedCampus[];
 }
 
@@ -50,6 +57,7 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
   const [progExpatriation, setProgExpatriation] = useState(false);
   const [progMinExpat, setProgMinExpat] = useState("");
   const [progMaxInternship, setProgMaxInternship] = useState("");
+  const [progSourceUrl, setProgSourceUrl] = useState("");
   const [progCampusIds, setProgCampusIds] = useState<string[]>([]);
   const [deleteProgram, setDeleteProgram] = useState<Program | null>(null);
 
@@ -162,6 +170,7 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
     setProgExpatriation(false);
     setProgMinExpat("");
     setProgMaxInternship("");
+    setProgSourceUrl("");
     setProgCampusIds(campuses.map((c) => c.id)); // Cocher tout par défaut
     setModalError(null);
     setIsProgramModalOpen(true);
@@ -175,6 +184,7 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
     setProgExpatriation(p.is_expatriation_mandatory);
     setProgMinExpat(p.min_expatriation_months !== null ? String(p.min_expatriation_months) : "");
     setProgMaxInternship(p.max_internship_months !== null ? String(p.max_internship_months) : "");
+    setProgSourceUrl(p.source_url || "");
     setProgCampusIds(p.associatedCampuses.map((ac) => ac.campusId));
     setModalError(null);
     setIsProgramModalOpen(true);
@@ -197,6 +207,8 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
       is_expatriation_mandatory: progExpatriation,
       min_expatriation_months: progMinExpat ? parseInt(progMinExpat) : null,
       max_internship_months: progMaxInternship ? parseInt(progMaxInternship) : null,
+      // Vide : pas de lien. Le serveur refuse ce qui n'est pas une adresse web (D27).
+      source_url: progSourceUrl.trim(),
       campusIds: progCampusIds,
     };
 
@@ -317,6 +329,7 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
                 <div className="data-card-meta">
                   <span>📍 Ville : {c.city || "Non précisée"}</span>
                 </div>
+                <LastEdit text={c.last_edit} />
               </div>
             ))}
           </div>
@@ -363,7 +376,10 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
                   const associatedIds = prog.associatedCampuses.map((ac) => ac.campusId);
                   return (
                     <tr key={prog.id}>
-                      <td style={{ fontWeight: 600 }}>{prog.name}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        {prog.name}
+                        <LastEdit text={prog.last_edit} />
+                      </td>
                       <td>{prog.admission_exam || "—"}</td>
                       <td>
                         <span className={`badge ${prog.is_alternance_possible ? "badge-active" : "badge-inactive"}`}>
@@ -561,6 +577,18 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
                     placeholder="ex: 12"
                   />
                 </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: "16px" }}>
+                <label className="form-label" htmlFor="prog-source-url">URL de la source du programme</label>
+                <input
+                  id="prog-source-url"
+                  type="text"
+                  className="form-control"
+                  value={progSourceUrl}
+                  onChange={(e) => setProgSourceUrl(e.target.value)}
+                  placeholder="https://ecole.fr/programme-grande-ecole"
+                />
               </div>
 
               <div className="form-group" style={{ marginBottom: "24px" }}>

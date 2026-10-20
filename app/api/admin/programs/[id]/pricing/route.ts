@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance, readSourceUrl } from "@/lib/provenance";
 import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id: programId } = await params;
@@ -58,6 +60,12 @@ export async function PUT(
       );
     }
 
+    // D27 : un lien source saisi est une adresse web, ou rien.
+    const source = readSourceUrl(source_url);
+    if (!source.ok) {
+      return NextResponse.json({ error: source.error }, { status: 400 });
+    }
+
     const program = await prisma.program.findUnique({ where: { id: programId } });
     if (!program) {
       return NextResponse.json({ error: "Programme introuvable" }, { status: 404 });
@@ -68,7 +76,8 @@ export async function PUT(
       ...fees.values,
       intl_currency: intl_currency?.trim() || null,
       additional_fees_notes: additional_fees_notes?.trim() || null,
-      source_url: source_url?.trim() || null,
+      source_url: source.value,
+      ...provenance(session.user.id, "MANUAL"),
     };
 
     const record = await prisma.pricingRecord.upsert({
@@ -86,6 +95,7 @@ export async function PUT(
       },
     });
 
+    revalidateContent();
     return NextResponse.json(record);
   } catch (err) {
     console.error(`PUT /api/admin/programs/${programId}/pricing error:`, err);

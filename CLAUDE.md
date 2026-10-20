@@ -32,7 +32,7 @@ parties : gestion de contenu, IA gelée.
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** du gestionnaire de contenu : rôles, gardes, écrans, routes, tables, styles, tests |
 | [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** (étape 4) : jetons, contrastes, polices, composants, gabarits, accessibilité, cohabitation avec l'ancien style |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
-| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (12 migrations) · API v1 (15 routes, session exigée) |
+| [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (13 migrations, dont la provenance de chaque donnée) · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | mise en ligne sur Vercel |
 | [docs/cahier-des-charges-school-pipeline.md](docs/cahier-des-charges-school-pipeline.md) | exigences d'origine (l'en-tête renvoie au plan d'évolution) |
 | [docs/architecture/architecture.md](docs/architecture/architecture.md) | référence technique v2.1, centrée sur le pipeline IA : pour les questions sur l'IA, la sécurité (§10) et l'outillage (§10 bis) |
@@ -94,8 +94,23 @@ branche `gestion` :
   charte dans `docs/architecture/charte-graphique.md` ; connexion, première
   connexion, « Comptes » et « Mon compte » repris ; contrôle CSP et visuel
   sur un build de production. Détail : journal du plan ;
-- prochaine : étape 5 (sources et auteur de chaque modification), en
-  commençant par D10, D11 et D12.
+- étape 5 (sources et auteur de chaque modification) faite et validée le
+  20 octobre (le propriétaire demande le commit, le push et la fusion dans
+  `main`) : décisions D10 (colonnes de dernière
+  modification sur les neuf tables de données), D11 (l'auteur d'une donnée
+  validée depuis l'inbox est l'admin qui valide, avec l'origine `MANUAL`,
+  `AI` ou `REPORT`), D12 (lien source sur les chiffres clés, les
+  accréditations et le programme), D24 (clé `RESTRICT` : un auteur ne se
+  supprime pas, il se désactive, invités compris), D25 (« modifié par »
+  affiche le nom seul ; revue le 20 octobre : l'API v1 ne rend que la date),
+  D26 (fiches revalidées à chaque écriture), D27 (liens `http(s)` contrôlés à
+  la saisie), D28 (ajouts à l'ancien style), D29 (le gestionnaire montre le
+  nom et la date de chaque modification), D30 (pourcentages des chiffres clés
+  à toutes décimales) ; migration
+  `20261019120000_content_provenance` appliquée sur la branche Neon `dev` le
+  20 octobre ; elle part sur `main` avant le code, à la fusion ; contrôles
+  visuels de l'agent et du propriétaire. Détail : journal du plan ;
+- prochaine : étape 6 (formulaire de signalement), en commençant par D13.
 
 L'étape en cours se lit dans le journal du plan (§9).
 

@@ -14,6 +14,10 @@
  * migration 20261016150000_whitelist_accounts. Une écriture qui viole une
  * contrainte lève et ne change rien.
  *
+ * Elle tient aussi la clé `ON DELETE RESTRICT` des auteurs du contenu
+ * (migration 20261019120000_content_provenance, D24) : un compte nommé dans
+ * `authors` ne se supprime pas (erreur `P2003`, comme Prisma).
+ *
  * Le faux n'a pas de transaction : `$transaction(fn)` appelle `fn` avec le
  * même client (test/helpers/fake-prisma.ts). Filtres compris : égalité et
  * `{ not: valeur }`. Données : valeurs et `{ increment: n }`.
@@ -117,7 +121,7 @@ export interface UserTable {
   get(id: string): UserRow | undefined;
 }
 
-export function userTable(initial: UserRow[] = []): UserTable {
+export function userTable(initial: UserRow[] = [], { authors = [] }: { authors?: string[] } = {}): UserTable {
   let rows = initial.map((row) => ({ ...row }));
   enforce(rows);
   let created = 0;
@@ -126,6 +130,12 @@ export function userTable(initial: UserRow[] = []): UserTable {
   const commit = (next: UserRow[]) => {
     enforce(next);
     rows = next;
+  };
+
+  /** La clé des auteurs : un compte qui a modifié une donnée ne se supprime pas. */
+  const restrict = (removed: UserRow[]) => {
+    const author = removed.find((row) => authors.includes(row.id));
+    if (author) throw new ConstraintError(`updated_by_id_fkey (${author.id})`, "P2003");
   };
 
   const methods = {
@@ -166,11 +176,13 @@ export function userTable(initial: UserRow[] = []): UserTable {
     delete({ where }: { where: Where }) {
       const row = rows.find((r) => matches(r, where));
       if (!row) throw Object.assign(new Error("Faux Prisma : ligne à supprimer introuvable"), { code: "P2025" });
+      restrict([row]);
       commit(rows.filter((r) => r !== row));
       return { ...row };
     },
     deleteMany({ where }: { where: Where }) {
       const kept = rows.filter((r) => !matches(r, where));
+      restrict(rows.filter((r) => matches(r, where)));
       const count = rows.length - kept.length;
       commit(kept);
       return { count };

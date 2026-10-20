@@ -25,6 +25,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { installFakePrisma } from "../helpers/fake-prisma";
+import { installContentCache } from "../helpers/provenance";
 import { schemaErrors } from "../helpers/prisma-schema";
 import { quietly } from "../helpers/requests";
 import {
@@ -73,6 +74,8 @@ mock.module("@/app/api/auth/[...nextauth]/route", {
 });
 
 const db = installFakePrisma();
+// Étape 5 : les écritures revalident les fiches (lib/content-cache.ts).
+installContentCache();
 
 afterEach(() => {
   assert.deepEqual(schemaErrors(db.calls), []);

@@ -52,12 +52,18 @@
  * n'ouvre que `program.findUnique` et `program.update` sur cette seule
  * colonne, sans jamais l'effacer. Aucun `Program` ni `Campus` n'est créé par
  * cette route.
+ *
+ * Provenance (plan gestion-contenu, étape 5, D11) : chaque ligne et chaque
+ * note écrites ont pour auteur l'admin qui valide, origine `AI`. Après une
+ * écriture, les fiches sont revalidées (D26).
  */
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardAdmin } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
 import { STATUS_REJECTED, STATUS_VALIDATED } from "@/lib/contribution";
+import { provenance } from "@/lib/provenance";
 import { adminCorrections, readOptionalJsonObject } from "@/lib/request-body";
 import {
   applyAttachmentPlan,
@@ -77,7 +83,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAdmin();
+  const { session, error } = await guardAdmin();
   if (error) return error;
 
   const { id } = await params;
@@ -133,6 +139,7 @@ export async function PUT(
     // fusion des affirmations identiques. Et, pour les notes, lecture et fusion.
     const folded = foldAttachmentClaims(rawJson);
     const foldedNotes = foldPolicyNoteClaims(rawJson);
+    const stamp = provenance(session.user.id, "AI");
 
     const result = await prisma.$transaction(
       async (tx) => {
@@ -147,7 +154,7 @@ export async function PUT(
 
         const existing = await readExistingAttachments(db, resolved);
         const plan = planAttachmentWrites(resolved, existing);
-        const counts = await applyAttachmentPlan(db, plan);
+        const counts = await applyAttachmentPlan(db, plan, stamp);
 
         const { resolved: notes, conflicts: programConflicts } = await resolvePolicyNotePrograms(
           noteDb,
@@ -155,7 +162,7 @@ export async function PUT(
           ticket.schoolId
         );
         const notePlan = planPolicyNoteWrites(notes);
-        const noteCounts = await applyPolicyNotePlan(noteDb, notePlan);
+        const noteCounts = await applyPolicyNotePlan(noteDb, notePlan, stamp);
 
         // Ne clore le ticket QUE si une ligne ou une note a été résolue
         // (écrite, ou déjà en base à l'identique). Sinon il reste ouvert :
@@ -206,6 +213,7 @@ export async function PUT(
       );
     }
 
+    revalidateContent();
     return NextResponse.json({
       message:
         `${result.counts.created} ligne(s) créée(s), ${result.counts.updated} mise(s) à jour, ` +

@@ -11,6 +11,10 @@
  * (test/helpers/prisma-schema.ts) : c'est ce contrôle qui a révélé
  * `program.campus` dans `/rankings` et `/schools/[id]/pricing` (toujours 500
  * jusqu'au 14 octobre 2026, décision 8 du journal).
+ *
+ * Plan gestion-contenu, étape 5 : chaque donnée rendue porte la date de sa
+ * dernière modification, `updated_at` ; ni l'auteur ni l'origine (D25, revue
+ * le 20 octobre). Le détail, route par route : test/api/v1-provenance.test.ts.
  */
 
 import { before, test } from "node:test";
@@ -48,6 +52,14 @@ const PRICING = { id: "pr-1", programId: PROGRAM_ID, academic_year: 2026, curren
 const RANKING = { id: "rk-1", programId: PROGRAM_ID, academic_year: 2026, ranking_name: "Figaro", rank: 9 };
 const STATS = { id: "st-1", schoolId: SCHOOL_ID, academic_year: 2026, total_students: 8000 };
 const ACCREDITATION = { id: "ac-1", schoolId: SCHOOL_ID, accreditation_name: "EQUIS", is_active: true };
+
+// La date de la dernière modification, telle que la base la rend, puis telle que l'API la rend.
+const READ = { updated_at: new Date("2026-10-19T08:30:00Z") };
+const SHOWN = { updated_at: "2026-10-19T08:30:00.000Z" };
+const row = <T extends object>(data: T) => ({ ...data, ...READ });
+const shown = <T extends object>(data: T) => ({ ...data, ...SHOWN });
+// Une comparaison lit toujours les trois relations du programme.
+const COMPARED = { campuses: [], pricingRecords: [], rankingRecords: [] };
 
 const active = { school: { status: "ACTIVE" } };
 const inactive = { school: { status: "INACTIVE" } };
@@ -96,8 +108,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/schools/[id]/route",
     url: `/schools/${SCHOOL_ID}`,
     id: SCHOOL_ID,
-    nominal: { school: { findUnique: () => SCHOOL } },
-    shape: isObject(SCHOOL),
+    nominal: { school: { findUnique: () => row(SCHOOL) } },
+    shape: isObject(shown(SCHOOL)),
     notFound: schoolMissing,
   },
   {
@@ -105,9 +117,9 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/schools/[id]/stats/route",
     url: `/schools/${SCHOOL_ID}/stats`,
     id: SCHOOL_ID,
-    nominal: { school: { findUnique: () => SCHOOL }, schoolStatsRecord: { findFirst: () => STATS } },
+    nominal: { school: { findUnique: () => SCHOOL }, schoolStatsRecord: { findFirst: () => row(STATS) } },
     // Un objet (la dernière année), pas un tableau.
-    shape: isObject(STATS),
+    shape: isObject(shown(STATS)),
     notFound: [
       ...schoolMissing,
       ["aucune statistique", { school: { findUnique: () => SCHOOL }, schoolStatsRecord: { findFirst: () => null } }],
@@ -118,8 +130,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/schools/[id]/accreditations/route",
     url: `/schools/${SCHOOL_ID}/accreditations`,
     id: SCHOOL_ID,
-    nominal: { school: { findUnique: () => SCHOOL }, accreditationRecord: { findMany: () => [ACCREDITATION] } },
-    shape: isArrayOf(ACCREDITATION),
+    nominal: { school: { findUnique: () => SCHOOL }, accreditationRecord: { findMany: () => [row(ACCREDITATION)] } },
+    shape: isArrayOf(shown(ACCREDITATION)),
     notFound: schoolMissing,
   },
   {
@@ -127,8 +139,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/schools/[id]/campuses/route",
     url: `/schools/${SCHOOL_ID}/campuses`,
     id: SCHOOL_ID,
-    nominal: { school: { findUnique: () => SCHOOL }, campus: { findMany: () => [CAMPUS] } },
-    shape: isArrayOf(CAMPUS),
+    nominal: { school: { findUnique: () => SCHOOL }, campus: { findMany: () => [row(CAMPUS)] } },
+    shape: isArrayOf(shown(CAMPUS)),
     notFound: schoolMissing,
   },
   {
@@ -138,11 +150,11 @@ const ROUTES: RouteCase[] = [
     id: CAMPUS_ID,
     nominal: {
       campus: {
-        findUnique: () => ({ ...CAMPUS, schoolId: SCHOOL_ID, ...active, programCampuses: [{ id: "pc-1", program: PROGRAM }] }),
+        findUnique: () => ({ ...row(CAMPUS), schoolId: SCHOOL_ID, ...active, programCampuses: [{ id: "pc-1", program: PROGRAM }] }),
       },
     },
     // Le statut de l'école sert au contrôle, il ne sort pas.
-    shape: isObject({ ...CAMPUS, schoolId: SCHOOL_ID, programCampuses: [{ id: "pc-1", program: PROGRAM }] }),
+    shape: isObject({ ...shown(CAMPUS), schoolId: SCHOOL_ID, programCampuses: [{ id: "pc-1", program: PROGRAM }] }),
     notFound: [
       ["campus absent", { campus: { findUnique: () => null } }],
       ["école du campus non ACTIVE", { campus: { findUnique: () => ({ ...CAMPUS, ...inactive, programCampuses: [] }) } }],
@@ -153,8 +165,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/schools/[id]/programs/route",
     url: `/schools/${SCHOOL_ID}/programs`,
     id: SCHOOL_ID,
-    nominal: { school: { findUnique: () => SCHOOL }, program: { findMany: () => [PROGRAM] } },
-    shape: isArrayOf(PROGRAM),
+    nominal: { school: { findUnique: () => SCHOOL }, program: { findMany: () => [row(PROGRAM)] } },
+    shape: isArrayOf(shown(PROGRAM)),
     notFound: schoolMissing,
   },
   {
@@ -162,8 +174,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/programs/[id]/route",
     url: `/programs/${PROGRAM_ID}`,
     id: PROGRAM_ID,
-    nominal: { program: { findUnique: () => ({ ...PROGRAM, school: SCHOOL, campuses: [] }) } },
-    shape: isObject({ ...PROGRAM, school: SCHOOL, campuses: [] }),
+    nominal: { program: { findUnique: () => ({ ...row(PROGRAM), school: SCHOOL, campuses: [] }) } },
+    shape: isObject({ ...shown(PROGRAM), school: SCHOOL, campuses: [] }),
     notFound: programMissing,
   },
   {
@@ -178,8 +190,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/programs/[id]/pricing/route",
     url: `/programs/${PROGRAM_ID}/pricing`,
     id: PROGRAM_ID,
-    nominal: { program: { findUnique: () => active }, pricingRecord: { findMany: () => [PRICING] } },
-    shape: isArrayOf(PRICING),
+    nominal: { program: { findUnique: () => active }, pricingRecord: { findMany: () => [row(PRICING)] } },
+    shape: isArrayOf(shown(PRICING)),
     notFound: programMissing,
   },
   {
@@ -187,8 +199,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/schools/[id]/pricing/route",
     url: `/schools/${SCHOOL_ID}/pricing`,
     id: SCHOOL_ID,
-    nominal: { school: { findUnique: () => SCHOOL }, pricingRecord: { findMany: () => [PRICING] } },
-    shape: isArrayOf(PRICING),
+    nominal: { school: { findUnique: () => SCHOOL }, pricingRecord: { findMany: () => [row(PRICING)] } },
+    shape: isArrayOf(shown(PRICING)),
     notFound: schoolMissing,
   },
   {
@@ -196,8 +208,8 @@ const ROUTES: RouteCase[] = [
     module: "../../app/api/v1/programs/[id]/rankings/route",
     url: `/programs/${PROGRAM_ID}/rankings`,
     id: PROGRAM_ID,
-    nominal: { program: { findUnique: () => active }, rankingRecord: { findMany: () => [RANKING] } },
-    shape: isArrayOf(RANKING),
+    nominal: { program: { findUnique: () => active }, rankingRecord: { findMany: () => [row(RANKING)] } },
+    shape: isArrayOf(shown(RANKING)),
     notFound: programMissing,
   },
   {
@@ -214,17 +226,17 @@ const ROUTES: RouteCase[] = [
     id: PROGRAM_ID,
     nominal: {
       program: { findUnique: () => active },
-      programCampus: { findMany: () => [{ id: "pc-1", campus: CAMPUS, capacityRecords: [] }] },
+      programCampus: { findMany: () => [{ id: "pc-1", campus: CAMPUS, capacityRecords: [row({ id: "cap-1", academic_year: 2026, spots_available: 120 })] }] },
     },
-    shape: isArrayOf({ id: "pc-1", campus: CAMPUS, capacityRecords: [] }),
+    shape: isArrayOf({ id: "pc-1", campus: CAMPUS, capacityRecords: [shown({ id: "cap-1", academic_year: 2026, spots_available: 120 })] }),
     notFound: programMissing,
   },
   {
     path: "/compare/programs",
     module: "../../app/api/v1/compare/programs/route",
     url: `/compare/programs?ids=${PROGRAM_ID}`,
-    nominal: { program: { findMany: () => [PROGRAM] } },
-    shape: isArrayOf(PROGRAM),
+    nominal: { program: { findMany: () => [{ ...row(PROGRAM), ...COMPARED }] } },
+    shape: isArrayOf({ ...shown(PROGRAM), ...COMPARED }),
     notFound: [["programme absent ou inactif", { program: { findMany: () => [] } }]],
   },
 ];
@@ -557,8 +569,8 @@ test("/compare/programs : ids manquant, vide ou plus de 5 → 400, sans base", a
 
 test("/compare/programs : identifiants dédupliqués, ordre de la requête conservé", async () => {
   const route = routeOf("/compare/programs");
-  const other = { ...PROGRAM, id: OTHER_PROGRAM_ID, name: "MSc" };
-  db.use({ program: { findMany: () => [PROGRAM, other] } });
+  const other = { ...PROGRAM, id: OTHER_PROGRAM_ID, name: "MSc", ...COMPARED };
+  db.use({ program: { findMany: () => [{ ...PROGRAM, ...COMPARED }, other] } });
 
   const res = await call(route, `/compare/programs?ids=${OTHER_PROGRAM_ID},${PROGRAM_ID},${OTHER_PROGRAM_ID}`);
 

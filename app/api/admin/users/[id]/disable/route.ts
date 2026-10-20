@@ -7,8 +7,11 @@
  * reste pour l'historique des modifications (étape 5) et son adresse reste
  * réservée. Il se réactive par la remise en première connexion (D4).
  *
- * Refus : soi-même ; un invité, qui se retire de la liste au lieu d'être
- * désactivé ; un compte déjà désactivé ; le dernier admin actif
+ * Un invité se désactive aussi (étape 5, D24) : remis en première connexion,
+ * un compte qui a modifié des données ne peut plus être retiré de la liste ;
+ * le désactiver ferme sa première connexion et garde son nom.
+ *
+ * Refus : soi-même ; un compte déjà désactivé ; le dernier admin actif
  * (lib/account-admin.ts). Garde : `guardAdmin`.
  */
 
@@ -31,9 +34,6 @@ export async function POST(
   const response = await changeAccount(
     id,
     (target) => {
-      if (target.status === "INVITED") {
-        return { status: 409, error: "Un invité ne se désactive pas : retirez-le de la liste." };
-      }
       if (target.status === "DISABLED") {
         return { status: 409, error: "Ce compte est déjà désactivé." };
       }

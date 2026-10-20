@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import YearSelector from "../components/YearSelector";
+import LastEdit from "../../LastEdit";
 
 interface ProgramWithCampuses {
   id: string;
@@ -20,6 +21,8 @@ interface CapacityRecord {
   spots_available: number;
   academic_year: number;
   source_url: string | null;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit: string | null;
   programCampus: {
     id: string;
     program: { id: string; name: string };
@@ -264,7 +267,10 @@ export default function CapacitiesTab({ schoolId }: { schoolId: string }) {
             <tbody>
               {capacityRecords.map((c) => (
                 <tr key={c.id}>
-                  <td style={{ fontWeight: 600 }}>{c.programCampus?.program?.name || "—"}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {c.programCampus?.program?.name || "—"}
+                    <LastEdit text={c.last_edit} />
+                  </td>
                   <td>
                     {c.programCampus?.campus?.name}{" "}
                     {c.programCampus?.campus?.city && (

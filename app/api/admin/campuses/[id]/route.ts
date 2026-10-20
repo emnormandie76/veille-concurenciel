@@ -1,12 +1,14 @@
 import { guardManager } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance } from "@/lib/provenance";
 
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
@@ -66,9 +68,10 @@ export async function PUT(
 
     const updatedCampus = await prisma.campus.update({
       where: { id },
-      data,
+      data: { ...data, ...provenance(session.user.id, "MANUAL") },
     });
 
+    revalidateContent();
     return NextResponse.json(updatedCampus);
   } catch (error) {
     console.error(`PUT /api/admin/campuses/${id} error:`, error);
@@ -99,6 +102,7 @@ export async function DELETE(
       where: { id },
     });
 
+    revalidateContent();
     return NextResponse.json({ message: "Campus supprimé avec succès" });
   } catch (error) {
     console.error(`DELETE /api/admin/campuses/${id} error:`, error);

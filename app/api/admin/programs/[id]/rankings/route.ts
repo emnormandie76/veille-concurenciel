@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance, readSourceUrl } from "@/lib/provenance";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id: programId } = await params;
@@ -40,6 +42,12 @@ export async function POST(
       );
     }
 
+    // D27 : un lien source saisi est une adresse web, ou rien.
+    const source = readSourceUrl(source_url);
+    if (!source.ok) {
+      return NextResponse.json({ error: source.error }, { status: 400 });
+    }
+
     const program = await prisma.program.findUnique({ where: { id: programId } });
     if (!program) {
       return NextResponse.json({ error: "Programme introuvable" }, { status: 404 });
@@ -68,10 +76,12 @@ export async function POST(
         ranking_name: cleanRankingName,
         rank: rankNum,
         academic_year: yearNum,
-        source_url: source_url?.trim() || null,
+        source_url: source.value,
+        ...provenance(session.user.id, "MANUAL"),
       },
     });
 
+    revalidateContent();
     return NextResponse.json(record, { status: 201 });
   } catch (err) {
     console.error(`POST /api/admin/programs/${programId}/rankings error:`, err);

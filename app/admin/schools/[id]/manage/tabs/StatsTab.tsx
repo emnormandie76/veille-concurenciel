@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import YearSelector from "../components/YearSelector";
+import LastEdit from "../../LastEdit";
 
 interface StatsRecord {
   id?: string;
@@ -15,6 +16,10 @@ interface StatsRecord {
   permanent_professors: number | null;
   international_professors_pct: number | null;
   external_speakers_pct: number | null;
+  // Le lien source des chiffres de l'année (étape 5, D12).
+  source_url?: string | null;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit?: string | null;
 }
 
 export default function StatsTab({ schoolId }: { schoolId: string }) {
@@ -36,6 +41,7 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
   const [permanentProfessors, setPermanentProfessors] = useState<string>("");
   const [intlProfessorsPct, setIntlProfessorsPct] = useState<string>("");
   const [externalSpeakersPct, setExternalSpeakersPct] = useState<string>("");
+  const [sourceUrl, setSourceUrl] = useState<string>("");
 
   useEffect(() => {
     fetchStats();
@@ -75,6 +81,7 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
       setPermanentProfessors(rec.permanent_professors !== null ? String(rec.permanent_professors) : "");
       setIntlProfessorsPct(rec.international_professors_pct !== null ? String(rec.international_professors_pct) : "");
       setExternalSpeakersPct(rec.external_speakers_pct !== null ? String(rec.external_speakers_pct) : "");
+      setSourceUrl(rec.source_url || "");
     } else {
       setTotalStudents("");
       setTotalAlumni("");
@@ -85,6 +92,7 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
       setPermanentProfessors("");
       setIntlProfessorsPct("");
       setExternalSpeakersPct("");
+      setSourceUrl("");
     }
   };
 
@@ -116,6 +124,8 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
         permanent_professors: sourceRec.permanent_professors,
         international_professors_pct: sourceRec.international_professors_pct,
         external_speakers_pct: sourceRec.external_speakers_pct,
+        // Les chiffres copiés gardent la source d'où ils viennent.
+        source_url: sourceRec.source_url,
       };
 
       const resSave = await fetch(`/api/admin/schools/${schoolId}/stats`, {
@@ -154,6 +164,8 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
       permanent_professors: permanentProfessors,
       international_professors_pct: intlProfessorsPct,
       external_speakers_pct: externalSpeakersPct,
+      // Vide : pas de lien. Le serveur refuse ce qui n'est pas une adresse web (D27).
+      source_url: sourceUrl.trim(),
     };
 
     try {
@@ -218,6 +230,7 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
         <form onSubmit={handleSubmit} className="inline-form">
           <h3 className="tab-section-title" style={{ marginBottom: "20px" }}>
             Statistiques globales — Année {selectedYear}
+            <LastEdit text={record?.last_edit} />
           </h3>
 
           <div className="inline-form-grid">
@@ -326,7 +339,7 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
               <input
                 id="international_professors_pct"
                 type="number"
-                step="0.1"
+                step="any"
                 min="0"
                 max="100"
                 className="form-control"
@@ -343,7 +356,7 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
               <input
                 id="external_speakers_pct"
                 type="number"
-                step="0.1"
+                step="any"
                 min="0"
                 max="100"
                 className="form-control"
@@ -352,6 +365,20 @@ export default function StatsTab({ schoolId }: { schoolId: string }) {
                 placeholder="ex: 60"
               />
             </div>
+          </div>
+
+          <div className="form-group" style={{ margin: "20px 0" }}>
+            <label className="form-label" htmlFor="stats-source-url">
+              URL de la source des chiffres clés
+            </label>
+            <input
+              id="stats-source-url"
+              type="text"
+              className="form-control"
+              value={sourceUrl}
+              onChange={(e) => setSourceUrl(e.target.value)}
+              placeholder="https://ecole.fr/chiffres-cles"
+            />
           </div>
 
           <div

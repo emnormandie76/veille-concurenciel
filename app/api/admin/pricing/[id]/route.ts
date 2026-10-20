@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
 
 export async function DELETE(
   request: Request,
@@ -21,6 +22,7 @@ export async function DELETE(
     }
 
     await prisma.pricingRecord.delete({ where: { id } });
+    revalidateContent();
 
     return NextResponse.json({ message: "Tarif supprimé avec succès" });
   } catch (err) {

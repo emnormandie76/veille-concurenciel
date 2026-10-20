@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { sourceHref } from "@/lib/provenance";
+import LastEdit from "../../LastEdit";
 
 interface Accreditation {
   id: string;
@@ -11,6 +13,10 @@ interface Accreditation {
   // arriver sans année publiée).
   year_obtained: number | null;
   is_active: boolean;
+  // Le lien source de l'accréditation (étape 5, D12).
+  source_url: string | null;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit: string | null;
 }
 
 export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
@@ -24,6 +30,7 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
   const [formType, setFormType] = useState<"international" | "state" | "label">("international");
   const [formYear, setFormYear] = useState(new Date().getFullYear());
   const [formIsActive, setFormIsActive] = useState(true);
+  const [formSourceUrl, setFormSourceUrl] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -54,6 +61,7 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
     setFormType("international");
     setFormYear(new Date().getFullYear());
     setFormIsActive(true);
+    setFormSourceUrl("");
     setModalError(null);
     setIsModalOpen(true);
   };
@@ -64,6 +72,7 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
     setFormType(rec.accreditation_type);
     setFormYear(rec.year_obtained ?? new Date().getFullYear());
     setFormIsActive(rec.is_active);
+    setFormSourceUrl(rec.source_url || "");
     setModalError(null);
     setIsModalOpen(true);
   };
@@ -78,6 +87,8 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
       accreditation_type: formType,
       year_obtained: formYear,
       is_active: formIsActive,
+      // Vide : pas de lien. Le serveur refuse ce qui n'est pas une adresse web (D27).
+      source_url: formSourceUrl.trim(),
     };
 
     try {
@@ -182,7 +193,18 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
                     ? `Obtenue en ${acc.year_obtained}`
                     : "Année d'obtention inconnue"}
                 </span>
+                {sourceHref(acc.source_url) && (
+                  <a
+                    href={sourceHref(acc.source_url)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.85rem" }}
+                  >
+                    Source 🔗
+                  </a>
+                )}
               </div>
+              <LastEdit text={acc.last_edit} />
             </div>
           ))}
         </div>
@@ -248,6 +270,20 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
                   min={2000}
                   max={new Date().getFullYear() + 2}
                   required
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: "16px" }}>
+                <label className="form-label" htmlFor="acc-source-url">
+                  URL de la source
+                </label>
+                <input
+                  id="acc-source-url"
+                  type="text"
+                  className="form-control"
+                  value={formSourceUrl}
+                  onChange={(e) => setFormSourceUrl(e.target.value)}
+                  placeholder="https://ecole.fr/accreditations"
                 />
               </div>
 

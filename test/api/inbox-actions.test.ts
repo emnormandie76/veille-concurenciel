@@ -14,11 +14,14 @@
 import { afterEach, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { contentOf, installContentCache } from "../helpers/provenance";
 import { installFakePrisma } from "../helpers/fake-prisma";
 import { schemaErrors } from "../helpers/prisma-schema";
 import { installSession } from "../helpers/session";
 
 const db = installFakePrisma();
+// Étape 5 : les écritures revalident les fiches (lib/content-cache.ts).
+installContentCache();
 
 // Chaque requête reçue par le faux doit exister dans le vrai schéma Prisma
 // (test/helpers/prisma-schema.ts).
@@ -197,7 +200,8 @@ test("création de programmes : pour la seule école du ticket, et rattachés da
   assert.equal(res.status, 200);
   const upserts = db.writes().filter((c) => c.model === "program");
   assert.deepEqual(
-    upserts.map((c) => (c.args[0] as { create: unknown }).create),
+    // Étape 5 : l'auteur est l'admin, l'origine l'IA (contentOf le vérifie).
+    upserts.map((c) => contentOf((c.args[0] as { create: unknown }).create, "test-admin", "AI")),
     [
       { schoolId: "school-normandie", name: "MSc Data" },
       { schoolId: "school-normandie", name: "MBA" },

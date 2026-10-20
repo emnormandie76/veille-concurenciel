@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
+import { AUTHOR_SELECT, forManager, provenance, readSourceUrl } from "@/lib/provenance";
 import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
 
 export async function GET(
@@ -39,6 +41,7 @@ export async function GET(
               academic_year: year,
             },
           },
+          include: { updatedBy: AUTHOR_SELECT },
         });
       }
     } else if (availableYears.length > 0) {
@@ -49,12 +52,14 @@ export async function GET(
             academic_year: availableYears[0],
           },
         },
+        include: { updatedBy: AUTHOR_SELECT },
       });
     }
 
     return NextResponse.json({
       availableYears,
-      record,
+      // « Modifié par … le … » de chaque ligne : le nom et la date (étape 5, D29).
+      record: record ? forManager(record) : null,
     });
   } catch (err) {
     console.error(`GET /api/admin/schools/${id}/stats error:`, err);
@@ -66,7 +71,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
@@ -87,7 +92,7 @@ export async function PUT(
     // Une valeur illisible est refusée : NaN partirait vers Prisma, qui l'écrit
     // en NULL et efface la statistique existante (décision 13, plan
     // backend-local).
-    const { values: data, invalid } = readOptionalNumbers(body, {
+    const { values, invalid } = readOptionalNumbers(body, {
       total_students: "int",
       total_alumni: "int",
       partner_companies: "int",
@@ -101,6 +106,14 @@ export async function PUT(
     if (invalid.length > 0) {
       return NextResponse.json({ error: invalidNumbersMessage(invalid) }, { status: 400 });
     }
+
+    // Le lien source des chiffres clés (D12), contrôlé comme toute saisie
+    // (D27). Le formulaire enregistre l'année entière : absent, il s'efface.
+    const source = readSourceUrl(body.source_url);
+    if (!source.ok) {
+      return NextResponse.json({ error: source.error }, { status: 400 });
+    }
+    const data = { ...values, source_url: source.value, ...provenance(session.user.id, "MANUAL") };
 
     const school = await prisma.school.findUnique({ where: { id } });
     if (!school) {
@@ -122,6 +135,7 @@ export async function PUT(
       },
     });
 
+    revalidateContent();
     return NextResponse.json(record);
   } catch (err) {
     console.error(`PUT /api/admin/schools/${id}/stats error:`, err);

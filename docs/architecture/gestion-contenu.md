@@ -4,7 +4,8 @@
 > plan (liste blanche, première connexion, écran des rôles ; l'étape 1 a posé
 > les trois rôles, les gardes et la connexion obligatoire), **mis à jour le
 > 19 octobre** : site en ligne (étape 3), charte graphique et composants de
-> base (étape 4 : §3 et §6). Cette fiche décrit
+> base (étape 4 : §3 et §6), **et le 20 octobre** : sources et auteur de
+> chaque modification (étape 5 : §2.3, §3, §4, §5, §6, §7). Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
 > du plan la met à jour.
@@ -97,20 +98,26 @@ une adresse ; tout compte a une adresse ou un ancien identifiant ; l'adresse
 est en minuscules. Relevé après la migration, sur `dev` (16 octobre) comme
 sur `main` (19 octobre) : 1 `ADMIN` et 1 `GESTIONNAIRE`, actifs, sans adresse.
 
+Depuis l'étape 5, les neuf tables de données pointent vers `User` par
+`updated_by_id` (§5), en `ON DELETE RESTRICT` (D24) : la base refuse de
+supprimer un compte qui figure comme auteur.
+
 **Cycle de vie d'un compte** (G5, D4, D21) :
 
 | Action | Qui | De | Vers |
 |---|---|---|---|
 | ajouter une adresse à la liste | admin | — | `INVITED` (`USER`) |
 | première connexion | la personne | `INVITED` | `ACTIVE` |
-| retirer de la liste | admin | `INVITED` | supprimé |
+| retirer de la liste | admin | `INVITED` qui n'a modifié aucune donnée | supprimé |
 | remettre en première connexion | admin | `ACTIVE` | `INVITED` |
-| désactiver | admin | `ACTIVE` | `DISABLED` |
+| désactiver | admin | `ACTIVE` ou `INVITED` (D24) | `DISABLED` |
 | réactiver (remise en première connexion) | admin | `DISABLED` | `INVITED` |
 
 Le rôle se change dans tous les états. Une adresse ajoutée devient un invité
-`USER`. Un compte actif ou désactivé ne se supprime pas : son nom restera dans
-l'historique des modifications (étape 5).
+`USER`. Un compte actif ou désactivé ne se supprime pas (D21), ni un invité qui
+a déjà modifié une donnée (un compte remis en première connexion, D4) : la
+base le refuse et « Retirer » répond 409 ; il se désactive (D24). Son nom
+reste affiché dans « Modifié par », quel que soit son état (D25).
 
 ---
 
@@ -130,15 +137,40 @@ Les pages en cache ISR ne lisent pas la session : le proxy passe avant le
 cache, et le mur tient (plan, piège 4). `/contribute` est retirée (D2) ; le
 signalement de l'étape 6 la remplacera.
 
+**Provenance affichée** (étape 5) : une ligne « Source ↗ · Modifié par … le … »
+([`app/schools/SourceLine.tsx`](../../app/schools/SourceLine.tsx)) sous
+l'en-tête de l'école, ses chiffres clés et chacune de ses accréditations ; sous
+l'en-tête du programme, dans une colonne « Source » des tarifs, sous chaque
+classement et sur chaque carte de places. Le texte vient de
+`describeProvenance` ([`lib/provenance.ts`](../../lib/provenance.ts)) :
+« Modifié par X le 19 octobre 2026 », « Validé par X le …, depuis une
+recherche IA » (D11), « … après un signalement » (étape 6) ; rien pour une
+donnée non suivie. X est le nom affiché, sinon « Compte sans nom », jamais
+l'adresse ni l'identifiant (D25) : les pages ne lisent de l'auteur que
+`display_name`, et la fiche école, composant client, reçoit le texte déjà
+préparé (`forDisplay`). Seul un lien `http(s)` est cliquable (`sourceHref`,
+D27), en nouvel onglet (`noopener noreferrer`). La provenance d'un campus ne
+s'affiche pas sur le site (la fiche ne montre que son nom) : elle se lit dans
+le gestionnaire (§3.2) ; celle d'un rattachement reste en base (aucun écran
+ne les montre). L'API v1 ne rend que la date, ni l'auteur ni l'origine (D25,
+revue le 20 octobre).
+
+**Cache** (D26, piège 4) : après chaque écriture réussie du contenu, la route
+appelle `revalidateContent()` ([`lib/content-cache.ts`](../../lib/content-cache.ts)),
+qui invalide `/schools` et `/api/schools` en `layout` : toutes les fiches
+école et programme et les trois routes de l'accueil se régénèrent à la visite
+suivante, au lieu d'attendre l'heure de l'ISR. Un échec de la revalidation
+est journalisé (`[cache]`), il n'annule pas l'écriture.
+
 ### 3.2. Back-office
 
 | Chemin | Niveau | IA ? |
 |---|---|---|
 | `/admin/schools` | `manager` : liste, création et suppression des écoles | non |
-| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 7 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab` ; sélecteurs `ProgramSelector`, `YearSelector` | non |
-| `/admin/schools/[id]/campuses` | `manager` : les campus d'une école | non |
+| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 7 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab` ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source 🔗 » sur la carte d'une accréditation. Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux) | non |
+| `/admin/schools/[id]/campuses` | `manager` : les campus d'une école, avec « Modifié par … le … » (D29) | non |
 | `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter | **oui** |
-| `/admin/users` | `admin` : les comptes (« Comptes » dans le menu) : ajouter une adresse à la liste, retirer un invité, changer un rôle, remettre en première connexion (ou réactiver), désactiver, renseigner l'adresse d'un compte ancien. Aucun e-mail envoyé | non |
+| `/admin/users` | `admin` : les comptes (« Comptes » dans le menu) : ajouter une adresse à la liste, retirer un invité, changer un rôle, remettre en première connexion (ou réactiver), désactiver (un actif ou un invité, D24), renseigner l'adresse d'un compte ancien. Aucun e-mail envoyé | non |
 | `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs | **oui** |
 
 **Écrans à la charte graphique** (étape 4, §6) : la connexion et la première
@@ -150,10 +182,10 @@ l'étape 9.
 
 ## 4. Routes
 
-Garde de chaque méthode à la fin de l'étape 2 (16 octobre 2026). `Gest.` =
-`guardManager` (gestionnaire ou admin), `Admin` = `guardAdmin`, `Session` =
-`guardSignedIn` (toute session). 53 méthodes : 33 `Gest.`, 18 `Admin`,
-2 `Session`.
+Garde de chaque méthode à la fin de l'étape 2 (16 octobre 2026), inchangée à
+l'étape 5 (aucune route ajoutée). `Gest.` = `guardManager` (gestionnaire ou
+admin), `Admin` = `guardAdmin`, `Session` = `guardSignedIn` (toute session).
+53 méthodes : 33 `Gest.`, 18 `Admin`, 2 `Session`.
 
 La table de référence est [`test/helpers/access-policy.ts`](../../test/helpers/access-policy.ts) :
 `test/api/admin-guards.test.ts` vérifie que chaque handler attend la garde de
@@ -180,10 +212,10 @@ modification se reporte ici.
 | `schools/[id]/stats` · `schools/[id]/stats/[recordId]` | GET Gest. · PUT Gest. · DELETE Gest. |
 | `schools/[id]/accreditations` · `accreditations/[id]` | GET Gest. · POST Gest. · PUT Gest. · DELETE Gest. |
 | `users` | GET Admin (la liste, invités compris, sans empreinte) · POST Admin (ajoute une adresse à la liste : invité `USER`, sans mot de passe, aucun e-mail ; D5) |
-| `users/[id]` | DELETE Admin (retire un **invité** ; un compte qui a servi se désactive, D21 ; pas soi-même) |
+| `users/[id]` | DELETE Admin (retire un **invité** ; un compte qui a servi se désactive, D21 ; un invité qui figure comme auteur aussi : 409, D24 ; pas soi-même) |
 | `users/[id]/role` | PATCH Admin (`USER`, `GESTIONNAIRE`, `ADMIN` ; le dernier admin actif ne se rétrograde pas) |
 | `users/[id]/reset` | POST Admin (D4 : remise en première connexion, ou réactivation ; mot de passe effacé, sessions coupées ; pas soi-même, pas sans adresse) |
-| `users/[id]/disable` | POST Admin (D21 : un compte actif ; sessions coupées ; pas soi-même, pas un invité) |
+| `users/[id]/disable` | POST Admin (D21 : un compte actif, ou un invité (D24) ; sessions coupées ; pas soi-même, pas un compte déjà désactivé) |
 | `users/[id]/email` | PATCH Admin (D3 : l'adresse d'un compte qui n'en a pas ; l'ancien identifiant cesse alors de servir) |
 | `account` | PATCH Session (son nom affiché, D6) |
 | `account/password` | PATCH Session (son mot de passe, l'actuel exigé). Personne ne fixe plus le mot de passe d'un tiers (D4) : l'ancienne route `users/[id]/password` est retirée |
@@ -196,6 +228,25 @@ journal.
 Corps de requête : [`lib/request-body.ts`](../../lib/request-body.ts)
 (défaut connu : un JSON mal formé rend 500 sur ces routes).
 
+**Provenance des écritures** (étape 5, D10, D11) : chaque `POST`, `PUT` et
+`upsert` du contenu ajoute `...provenance(session.user.id, "MANUAL")`
+([`lib/provenance.ts`](../../lib/provenance.ts)) : l'auteur vient de la
+session que la garde a relue en base, **jamais du corps** de la requête ; la
+date est celle du serveur. Un `PUT` qui ne touche que les campus d'un
+programme le date aussi. Les routes de saisie lisent `source_url` par
+`readSourceUrl` (D27) : vide, pas de lien ; sinon une adresse `http(s)` de
+2 048 caractères au plus, sinon 400 « Rien n'a été écrit », avant toute
+écriture. Après une écriture réussie, suppressions comprises,
+`revalidateContent()` (§3.1).
+
+**Provenance lue** (D29) : les neuf routes de lecture qui nourrissent les
+écrans de gestion d'une école (`schools/[id]`, `manage`, `campuses`,
+`programs`, `pricing`, `capacities`, `rankings`, `stats`, `accreditations`)
+lisent l'auteur par son seul nom affiché (`AUTHOR_SELECT`) et rendent, sur
+chaque ligne, `last_edit` : « Modifié par X le … », ou `null` pour une ligne
+non suivie (`forManager`, `describeLastEdit`). Ni l'identifiant de l'auteur
+ni l'origine ne partent vers le navigateur.
+
 ### 4.2. Inbox et IA
 
 Tout est réservé à `ADMIN` : les tickets de l'inbox viennent tous du pipeline
@@ -204,10 +255,10 @@ IA ou passent par lui.
 | Route | Méthodes | Remarque |
 |---|---|---|
 | `inbox` · `inbox/[id]` | GET Admin | liste et détail des tickets ; sources plafonnées par [`lib/ticket-sources.ts`](../../lib/ticket-sources.ts) |
-| `inbox/[id]/validate` | PUT Admin | **écrit les données** (`Campus`, `Program`, `ProgramCampus`, `PricingRecord`, `RankingRecord`, `CapacityRecord`…) dans une transaction |
+| `inbox/[id]/validate` | PUT Admin | **écrit les données** (`Campus`, `Program`, `ProgramCampus`, `PricingRecord`, `RankingRecord`, `CapacityRecord`, `SchoolStatsRecord`, `AccreditationRecord`) dans une transaction, avec la provenance `AI` et l'admin qui valide pour auteur (D11) ; le `source_url` des tickets Chiffres clés et Accréditations est enfin écrit (D12). Un campus ou un programme déjà là n'est daté que si la validation lui écrit un champ (`stampUpdate`) |
 | `inbox/[id]/reject` | PUT Admin | |
-| `inbox/[id]/create-programs` | POST Admin | depuis un ticket `Program_Discovery` (Phase 1) |
-| `inbox/[id]/attachments` | PUT Admin | rattachement campus collecté par l'IA |
+| `inbox/[id]/create-programs` | POST Admin | depuis un ticket `Program_Discovery` (Phase 1) ; provenance `AI` sur les programmes créés, un programme déjà là garde son auteur |
+| `inbox/[id]/attachments` | PUT Admin | rattachement campus collecté par l'IA ; provenance `AI` sur les lignes et sur la note de campus du programme |
 | `inbox/purge` | DELETE Admin | |
 | `trigger-research` · `run-due-passes` | POST Admin | **appellent le backend** |
 | `pipeline-status` | GET Admin | **appelle le backend** |
@@ -220,7 +271,8 @@ ne lisent pas la session, ce qui garde leur cache ISR.
 
 - `app/api/schools/*` : 3 routes GET, ISR 1 h, utilisées par l'accueil.
 - `app/api/v1/*` : 15 routes GET, plafonnées à 60 requêtes par minute et par
-  IP. Référence : [`API-rest.md`](API-rest.md).
+  IP ; de la provenance, la date seule (`updated_at`, D25 revue le
+  20 octobre). Référence : [`API-rest.md`](API-rest.md).
 - `app/api/first-login` : POST, **sans session** (proxy), au plafond de la
   connexion ; la seule route hors de `/api/auth/*` ouverte sans session (§2.2).
 - `app/api/contribute` : **retirée** (D2). Aucun fichier de `app/` ni de `lib/`
@@ -237,22 +289,31 @@ sur les écoles » du propriétaire.
 
 | Table | Rattachée à | Lien source | Écrite par |
 |---|---|---|---|
-| `School` | — | non | Next.js |
+| `School` | — | non (le domaine officiel en tient lieu) | Next.js |
 | `Campus` | école | non | Next.js |
-| `Program` | école (pas un campus) | non | Next.js |
+| `Program` | école (pas un campus) | oui (étape 5, D12) | Next.js |
 | `ProgramCampus` | programme × campus | non | Next.js |
 | `ProgramCampusAttachment` | programme × campus × année d'études | oui | Next.js, depuis l'inbox seulement (`inbox/[id]/attachments`) |
 | `PricingRecord` | programme × année scolaire | oui | Next.js |
 | `CapacityRecord` | programme × campus × année scolaire | oui | Next.js |
 | `RankingRecord` | programme × année × média | oui | Next.js |
-| `SchoolStatsRecord` | école × année | **non** | Next.js |
-| `AccreditationRecord` | école | **non** | Next.js |
+| `SchoolStatsRecord` | école × année | oui (étape 5, D12) | Next.js |
+| `AccreditationRecord` | école | oui (étape 5, D12) | Next.js |
 | `ProgramPlacement` | programme | oui | aucun chemin d'écriture (abandonné, gardé) |
 | `User` | — | — | Next.js (§2.3) |
 | `ContributionInbox` | école, campus, programme (facultatifs) | `urls[]` | Next.js **et** backend Python |
 | `PipelineJob` | école | — | backend Python seulement |
 
-**Aucune table ne sait qui a modifié une donnée, ni quand.**
+**Provenance** (étape 5, migration `20261019120000_content_provenance`,
+appliquée sur `dev` le 20 octobre, pas encore sur `main`) : les neuf tables
+de données, de `School` à `ProgramCampusAttachment` (pas `ProgramCampus`, une
+arête sans contenu propre, ni `ProgramPlacement`, sans chemin d'écriture),
+portent la **dernière** modification : `updated_by_id` (clé vers `User`,
+`RESTRICT`, D24), `updated_at` et `updated_via` (`MANUAL`, `AI`, `REPORT` :
+contrainte `CHECK`). Les trois sont vides ensemble (ligne « non suivie »,
+écrite avant la migration et jamais modifiée depuis) ou pleines ensemble
+(contrainte `CHECK`). Une suppression ne laisse pas de trace ; il n'y a pas
+d'historique complet (D10).
 
 Le backend Python **lit** les tables de données (diff de la Phase 2) et
 **écrit** `ContributionInbox` et `PipelineJob`. Ajouter une colonne obligatoire
@@ -282,6 +343,12 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   de contenu d'un écran repris au fond de la charte.
 - Polices par `next/font` (`app/layout.tsx`) : Inter pour l'ancien style,
   IBM Plex Sans, Sans Condensed et Mono pour la charte.
+- Les ajouts de l'étape 5 aux anciens écrans (champs « URL de la source »,
+  ligne `SourceLine` des fiches, « Source 🔗 » des accréditations, ligne
+  `LastEdit` du gestionnaire) suivent
+  **l'ancien style** de chaque écran, avec ses `style` en ligne, sans règle
+  ajoutée à `globals.css` (D28) ; ils passeront à la charte avec leurs
+  écrans, à l'étape 9.
 - CSP posée par [`next.config.ts`](../../next.config.ts), inchangée :
   `style-src 'self' 'unsafe-inline'` ; aucune violation sur un build de
   production (19 octobre).
@@ -299,7 +366,11 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   (sessions simulées : aucune, `USER`, `GESTIONNAIRE`, `ADMIN`, règle et
   messages tirés de `lib/roles.ts` ; un profil inconnu lève), `access-policy.ts`
   (l'accès attendu de chaque route du back-office), `requests.ts`,
-  `fake-backend.ts`.
+  `fake-backend.ts`, `provenance.ts` (`contentOf` vérifie puis retire la
+  provenance d'une écriture, pour que l'attendu d'un test dise le contenu ;
+  `installContentCache` remplace `next/cache`, dont `revalidatePath` lève hors
+  de Next). `fake-users.ts` sait aussi qu'un compte est auteur : sa
+  suppression lève P2003, comme la clé `RESTRICT`.
 - **Accès** (étapes 1 et 2) : `test/auth.test.ts` (la vraie `lib/auth.ts` :
   trois gardes, rôle relu en base, compte supprimé, rôle inconnu, compte non
   actif et version de session (D20), `requirePage`),
@@ -322,6 +393,23 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
 - **Contenu** : `test/api/admin-schools`, `admin-programs`, `admin-records`
   (cas nominaux en `GESTIONNAIRE`, `USER` refusé), `public-schools`,
   `v1`, `inbox-*` (en `ADMIN`) ; `test/password.test.ts`.
+- **Provenance** (étape 5) : `test/provenance.test.ts` (`lib/provenance.ts` :
+  origines, lien source contrôlé et protégé, texte et date en français, nom
+  de l'auteur), `test/provenance-migration.test.ts` (la migration, additive,
+  ses clés et contraintes, `schema.prisma`, sans `@updatedAt`),
+  `test/api/provenance.test.ts` (chaque écriture des neuf tables, routes de
+  gestion et de l'inbox, porte l'auteur de la session et non celui du corps ;
+  les tables non suivies n'en reçoivent pas ; revalidation après une écriture
+  réussie seulement), `test/api/source-url.test.ts` (D27 sur chaque saisie,
+  D12), `test/api/v1-provenance.test.ts` (chaque route v1 et chaque
+  enregistrement imbriqué : la date, ni auteur ni origine, rien de l'auteur
+  lu), `test/api/manager-provenance.test.ts` (les neuf lectures du
+  gestionnaire : « Modifié par … le … », le nom seul, ni origine ni
+  identifiant ; chaque route d'une école qu'appellent ses écrans est
+  couverte), `test/manager-screens.test.ts` (`LastEdit` sur chaque écran de
+  gestion ; D30, les pourcentages en `step="any"`),
+  `test/provenance-pages.test.ts` (les fiches rendues : source, « Modifié
+  par », pas d'adresse ni de lien hors `http(s)`) ; dans `users.test.ts`, D24.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts`.
 - **Charte** (étape 4) : `test/ui-components.test.ts` (le HTML rendu par

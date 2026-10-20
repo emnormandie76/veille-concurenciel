@@ -1,6 +1,8 @@
 import { guardManager } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { revalidateContent } from "@/lib/content-cache";
+import { AUTHOR_SELECT, forManager, provenance } from "@/lib/provenance";
 
 export async function GET(
   request: Request,
@@ -23,8 +25,10 @@ export async function GET(
     const campuses = await prisma.campus.findMany({
       where: { schoolId },
       orderBy: { name: "asc" },
+      include: { updatedBy: AUTHOR_SELECT },
     });
-    return NextResponse.json(campuses);
+    // « Modifié par … le … » de chaque ligne : le nom et la date (étape 5, D29).
+    return NextResponse.json(campuses.map(forManager));
   } catch (error) {
     console.error(`GET /api/admin/schools/${schoolId}/campuses error:`, error);
     return NextResponse.json({ error: "Erreur serveur lors de la récupération des campus" }, { status: 500 });
@@ -35,7 +39,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id: schoolId } = await params;
@@ -84,9 +88,11 @@ export async function POST(
         schoolId,
         name: cleanName,
         city: cleanCity,
+        ...provenance(session.user.id, "MANUAL"),
       },
     });
 
+    revalidateContent();
     return NextResponse.json(campus, { status: 201 });
   } catch (error) {
     console.error(`POST /api/admin/schools/${schoolId}/campuses error:`, error);

@@ -243,6 +243,11 @@ build : **ne pas le faire.**
 propriétaire après une passe à blanc), et aucune n'est en attente. Le premier
 déploiement n'a donc aucune migration à appliquer.
 
+**20 octobre 2026** (étape 5 du plan gestion-contenu) : une treizième
+migration, `20261019120000_content_provenance` (additive), est appliquée sur
+`dev` et **attend `main`**. La prochaine mise en production suit le §3.2 :
+elle d'abord, puis le push sur `main`, dont le code la lit.
+
 ### 3.2. Une version qui apporte une migration
 
 1. `npm run db:status` : lecture seule, permis à l'agent ;

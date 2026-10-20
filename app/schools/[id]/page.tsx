@@ -5,12 +5,19 @@
  * - Navigation par onglets (Campus/Programmes, Stats, Accréditations)
  * - ISR 1h (revalidate)
  * - Filtre école ACTIVE obligatoire
+ * - Plan gestion-contenu, étape 5 : l'école, ses chiffres clés et ses
+ *   accréditations portent leur lien source et « Modifié par … le … »,
+ *   préparés ici (`forDisplay`) : le navigateur reçoit le texte et le lien
+ *   vérifié, jamais l'identifiant ni la relation de l'auteur (D25). Campus et
+ *   programmes sont lus champ par champ, pour la même raison. Le cache d'une
+ *   heure est levé à chaque écriture (lib/content-cache.ts).
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import SchoolDetailClient from "./SchoolDetailClient";
+import { AUTHOR_SELECT, forDisplay } from "@/lib/provenance";
 
 export const revalidate = 3600; // ISR 1h — Étape 8.3
 
@@ -26,13 +33,21 @@ async function getSchool(id: string) {
   const school = await prisma.school.findUnique({
     where: { id },
     include: {
+      updatedBy: AUTHOR_SELECT,
       campuses: {
+        select: { id: true, name: true, city: true },
         orderBy: { name: "asc" },
       },
       programs: {
-        include: {
+        select: {
+          id: true,
+          name: true,
+          admission_exam: true,
+          is_alternance_possible: true,
+          is_expatriation_mandatory: true,
           campuses: {
-            include: {
+            select: {
+              id: true,
               campus: {
                 select: {
                   id: true,
@@ -43,6 +58,7 @@ async function getSchool(id: string) {
             },
           },
           pricingRecords: {
+            select: { id: true, academic_year: true, year_1_fee: true, total_fee: true, currency: true },
             orderBy: { academic_year: "desc" },
             take: 3,
           },
@@ -52,14 +68,21 @@ async function getSchool(id: string) {
       statsRecords: {
         orderBy: { academic_year: "desc" },
         take: 3,
+        include: { updatedBy: AUTHOR_SELECT },
       },
       accreditations: {
         orderBy: { year_obtained: "desc" },
+        include: { updatedBy: AUTHOR_SELECT },
       },
     },
   });
 
-  return school;
+  if (!school) return null;
+  return {
+    ...forDisplay(school),
+    statsRecords: school.statsRecords.map(forDisplay),
+    accreditations: school.accreditations.map(forDisplay),
+  };
 }
 
 export async function generateMetadata({ params }: Props) {

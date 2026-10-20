@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import YearSelector from "../components/YearSelector";
 import ProgramSelector from "../components/ProgramSelector";
+import LastEdit from "../../LastEdit";
 
 interface ProgramOption {
   id: string;
@@ -25,6 +26,8 @@ interface PricingRecord {
   intl_currency: string | null;
   additional_fees_notes: string | null;
   source_url: string | null;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit: string | null;
   program: {
     id: string;
     name: string;
@@ -276,7 +279,10 @@ export default function PricingTab({ schoolId }: { schoolId: string }) {
                 const pRecord = pricingRecords.find((r) => r.programId === prog.id);
                 return (
                   <tr key={prog.id}>
-                    <td style={{ fontWeight: 600 }}>{prog.name}</td>
+                    <td style={{ fontWeight: 600 }}>
+                      {prog.name}
+                      <LastEdit text={pRecord?.last_edit} />
+                    </td>
                     <td style={{ color: "var(--accent)", fontWeight: 600 }}>
                       {pRecord?.total_fee ? pRecord.total_fee.toLocaleString() + " " + (pRecord.currency || "€") : "—"}
                     </td>

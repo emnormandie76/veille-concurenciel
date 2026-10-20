@@ -7,6 +7,11 @@
  * supprime plus : il se désactive (D21), pour que son nom reste dans
  * l'historique des modifications (étape 5).
  *
+ * Un invité peut avoir servi : remis en première connexion (D4), il est
+ * redevenu invité. S'il a modifié une donnée, la base refuse sa suppression
+ * (clé `ON DELETE RESTRICT` de `updated_by_id`, D24) : la route répond 409,
+ * et le compte se désactive au lieu d'être retiré.
+ *
  * On ne se retire pas soi-même. Garde : `guardAdmin`.
  */
 
@@ -55,6 +60,12 @@ export async function DELETE(
     console.log(`[audit] invité retiré de la liste : user=${id} par=${session.user.id}`);
     return NextResponse.json({ message: "Adresse retirée de la liste." });
   } catch (err) {
+    if ((err as { code?: unknown })?.code === "P2003") {
+      return NextResponse.json(
+        { error: "Ce compte a déjà modifié des données : désactivez-le au lieu de le retirer, son nom reste ainsi dans l'historique." },
+        { status: 409 }
+      );
+    }
     console.error(`DELETE /api/admin/users/${id} error:`, err);
     return NextResponse.json({ error: "Erreur serveur lors du retrait de l'adresse." }, { status: 500 });
   }

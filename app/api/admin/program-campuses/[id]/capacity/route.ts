@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance, readSourceUrl } from "@/lib/provenance";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id: programCampusId } = await params;
@@ -30,6 +32,12 @@ export async function POST(
         { error: `L'année académique doit être comprise entre 2000 et ${currentYear + 2}` },
         { status: 400 }
       );
+    }
+
+    // D27 : un lien source saisi est une adresse web, ou rien.
+    const source = readSourceUrl(source_url);
+    if (!source.ok) {
+      return NextResponse.json({ error: source.error }, { status: 400 });
     }
 
     const pc = await prisma.programCampus.findUnique({ where: { id: programCampusId } });
@@ -58,10 +66,12 @@ export async function POST(
         programCampusId,
         spots_available: spotsNum,
         academic_year: yearNum,
-        source_url: source_url?.trim() || null,
+        source_url: source.value,
+        ...provenance(session.user.id, "MANUAL"),
       },
     });
 
+    revalidateContent();
     return NextResponse.json(record, { status: 201 });
   } catch (err) {
     console.error(`POST /api/admin/program-campuses/${programCampusId}/capacity error:`, err);

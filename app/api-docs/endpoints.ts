@@ -9,6 +9,13 @@
  *
  * Les données des exemples sont fictives : une école inventée, des
  * identifiants au format des vrais (UUID).
+ *
+ * Plan gestion-contenu, étape 5 : chaque donnée porte la date de sa dernière
+ * modification (`updated_at`) et, pour les chiffres clés, les accréditations
+ * et les programmes, son lien source (`source_url`). Ni l'auteur ni l'origine :
+ * une donnée lue par l'API est tenue pour vérifiée (D25, revue le
+ * 20 octobre). Les simples renvois (l'école d'un programme, le programme d'un
+ * campus) n'en portent pas.
  */
 
 export interface EndpointParam {
@@ -46,6 +53,12 @@ const OTHER_PROGRAM_CAMPUS_ID = "1b3d5f7a-9c1e-4a3b-8d5f-6a7b8c9d0e1f";
 
 // ── Briques des exemples ────────────────────────────────────────────────
 
+// La date de la dernière modification d'une donnée ; `null` pour une donnée
+// d'avant le suivi.
+const EDITED = { updated_at: "2026-10-19T08:30:00.000Z" };
+const EDITED_EARLIER = { updated_at: "2026-10-12T14:05:00.000Z" };
+const UNTRACKED = { updated_at: null };
+
 const SCHOOL = {
   id: EXAMPLE_IDS.school,
   name: "École de Commerce Exemple",
@@ -76,11 +89,16 @@ const OTHER_PROGRAM = {
   max_internship_months: 6,
 };
 
+/** Un programme quand il est la donnée rendue, et non un simple renvoi. */
+const PROGRAM_DATA = { ...PROGRAM, source_url: "https://www.ecole-exemple.fr/programme-grande-ecole", ...EDITED_EARLIER };
+const OTHER_PROGRAM_DATA = { ...OTHER_PROGRAM, source_url: null, ...UNTRACKED };
+
 const CAPACITY = {
   id: "3f5a7c9e-1b3d-4f5a-8c7e-9b1d3f5a7c9e",
   academic_year: 2026,
   spots_available: 420,
   source_url: "https://www.ecole-exemple.fr/programme-grande-ecole/admissions",
+  ...EDITED,
 };
 
 // Tarifs et classements sans `programId` : la comparaison les lit sous leur
@@ -99,6 +117,7 @@ const PRICING_FIELDS = {
   intl_currency: "EUR",
   additional_fees_notes: "Frais de concours en sus.",
   source_url: "https://www.ecole-exemple.fr/programme-grande-ecole/frais-de-scolarite",
+  ...EDITED,
 };
 const PRICING_ID = "8d0f2b4c-6e8a-4c0e-9b2d-4f6a8c0e2b4d";
 const PRICING = { id: PRICING_ID, programId: EXAMPLE_IDS.program, ...PRICING_FIELDS };
@@ -108,6 +127,7 @@ const RANKING_FIELDS = {
   ranking_name: "Le Figaro Étudiant",
   rank: 14,
   source_url: "https://etudiant.lefigaro.fr/classement-ecoles-de-commerce",
+  ...EDITED_EARLIER,
 };
 const RANKING_ID = "5b7d9f1a-3c5e-4a7b-9d1f-3a5c7e9b1d3f";
 const RANKING = { id: RANKING_ID, programId: EXAMPLE_IDS.program, ...RANKING_FIELDS };
@@ -176,6 +196,8 @@ export const endpoints: Endpoint[] = [
       "Limite : 60 requêtes par minute et par adresse IP, au-delà la réponse est 429 avec un en-tête `Retry-After`. " +
       "Les listes paginées rendent `{ data, pagination }` ; les autres listes, un tableau. " +
       "Une erreur rend `{ \"error\": \"…\" }` : 401 sans session, 400 pour un paramètre invalide, 404 pour une ressource introuvable ou inactive, 500 pour une erreur interne. " +
+      "Chaque donnée dit d'où elle vient et de quand elle date : `source_url` (le lien de sa source, quand il est connu) et `updated_at` (sa dernière modification, " +
+      "`null` pour une donnée d'avant le suivi des modifications). Une donnée rendue par l'API a été vérifiée par l'équipe. " +
       "Exemple ci-contre : une école introuvable.",
     category: "introduction",
     params: [],
@@ -201,7 +223,7 @@ export const endpoints: Endpoint[] = [
       limit(20),
     ],
     mockResponse: {
-      data: [{ ...SCHOOL, status: "ACTIVE" }],
+      data: [{ ...SCHOOL, status: "ACTIVE", ...EDITED }],
       pagination: PAGINATION(20),
     },
   },
@@ -213,7 +235,7 @@ export const endpoints: Endpoint[] = [
     description: "Retourne une école active. Une école inconnue ou inactive donne 404.",
     category: "schools",
     params: [pathId("de l'école")],
-    mockResponse: { ...SCHOOL, status: "ACTIVE" },
+    mockResponse: { ...SCHOOL, status: "ACTIVE", ...EDITED },
   },
   {
     id: "get-school-stats",
@@ -238,6 +260,8 @@ export const endpoints: Endpoint[] = [
       permanent_professors: 140,
       international_professors_pct: 42.5,
       external_speakers_pct: 30,
+      source_url: "https://www.ecole-exemple.fr/l-ecole/chiffres-cles",
+      ...EDITED_EARLIER,
     },
   },
   {
@@ -259,6 +283,8 @@ export const endpoints: Endpoint[] = [
         accreditation_type: "international",
         year_obtained: 2021,
         is_active: true,
+        source_url: "https://www.ecole-exemple.fr/l-ecole/accreditations",
+        ...EDITED,
       },
       {
         id: "c3e5a7b9-1d3f-4b5c-9e7a-9c1d3e5f7a9b",
@@ -267,6 +293,8 @@ export const endpoints: Endpoint[] = [
         accreditation_type: "state",
         year_obtained: null,
         is_active: true,
+        source_url: null,
+        ...UNTRACKED,
       },
     ],
   },
@@ -279,8 +307,8 @@ export const endpoints: Endpoint[] = [
     category: "campuses",
     params: [pathId("de l'école")],
     mockResponse: [
-      { id: EXAMPLE_IDS.campus, schoolId: EXAMPLE_IDS.school, name: "Lyon", city: "Lyon" },
-      { id: "e5a7c9d1-3f5b-4d7e-8a9c-1e3f5a7b9c1d", schoolId: EXAMPLE_IDS.school, name: "Paris", city: "Paris" },
+      { id: EXAMPLE_IDS.campus, schoolId: EXAMPLE_IDS.school, name: "Lyon", city: "Lyon", ...EDITED },
+      { id: "e5a7c9d1-3f5b-4d7e-8a9c-1e3f5a7b9c1d", schoolId: EXAMPLE_IDS.school, name: "Paris", city: "Paris", ...UNTRACKED },
     ],
   },
   {
@@ -298,6 +326,7 @@ export const endpoints: Endpoint[] = [
       schoolId: EXAMPLE_IDS.school,
       name: CAMPUS.name,
       city: CAMPUS.city,
+      ...EDITED,
       programCampuses: [
         { id: PROGRAM_CAMPUS_ID, program: PROGRAM },
         { id: OTHER_PROGRAM_CAMPUS_ID, program: OTHER_PROGRAM },
@@ -324,7 +353,7 @@ export const endpoints: Endpoint[] = [
         example: EXAMPLE_IDS.campus,
       },
     ],
-    mockResponse: [{ ...PROGRAM, campuses: [PROGRAM_CAMPUS] }],
+    mockResponse: [{ ...PROGRAM_DATA, campuses: [PROGRAM_CAMPUS] }],
   },
   {
     id: "get-program-detail",
@@ -337,7 +366,7 @@ export const endpoints: Endpoint[] = [
     category: "programs",
     params: [pathId("du programme")],
     mockResponse: {
-      ...PROGRAM,
+      ...PROGRAM_DATA,
       school: { ...SCHOOL, status: "ACTIVE" },
       campuses: [{ ...PROGRAM_CAMPUS, capacityRecords: [CAPACITY] }],
     },
@@ -378,7 +407,7 @@ export const endpoints: Endpoint[] = [
       limit(20),
     ],
     mockResponse: {
-      data: [{ ...PROGRAM, school: SCHOOL, campuses: [PROGRAM_CAMPUS] }],
+      data: [{ ...PROGRAM_DATA, school: SCHOOL, campuses: [PROGRAM_CAMPUS] }],
       pagination: PAGINATION(20),
     },
   },
@@ -504,14 +533,14 @@ export const endpoints: Endpoint[] = [
     ],
     mockResponse: [
       {
-        ...PROGRAM,
+        ...PROGRAM_DATA,
         school: SCHOOL,
         campuses: [{ ...PROGRAM_CAMPUS, capacityRecords: [CAPACITY] }],
         pricingRecords: [{ id: PRICING_ID, ...PRICING_FIELDS }],
         rankingRecords: [{ id: RANKING_ID, ...RANKING_FIELDS }],
       },
       {
-        ...OTHER_PROGRAM,
+        ...OTHER_PROGRAM_DATA,
         school: SCHOOL,
         campuses: [{ id: OTHER_PROGRAM_CAMPUS_ID, campus: CAMPUS, capacityRecords: [] }],
         pricingRecords: [],

@@ -1,6 +1,8 @@
 import { guardManager } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance } from "@/lib/provenance";
 
 export async function GET() {
   const { error } = await guardManager();
@@ -23,7 +25,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   try {
@@ -60,10 +62,13 @@ export async function POST(request: Request) {
       data: {
         name: cleanName,
         official_domain: cleanDomain,
-        status: "ACTIVE"
+        status: "ACTIVE",
+        // L'auteur vient de la session, jamais du corps (étape 5, D10).
+        ...provenance(session.user.id, "MANUAL"),
       }
     });
 
+    revalidateContent();
     return NextResponse.json(school, { status: 201 });
   } catch (error) {
     console.error("POST /api/admin/schools error:", error);

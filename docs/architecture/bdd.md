@@ -15,6 +15,14 @@
 > l'adresse, le nom affiché, l'état, la date de première connexion et la
 > version de session ; `username` et `password_hash` deviennent facultatifs.
 > Appliquée sur `dev` le 16 octobre, sur `main` le 19 octobre (étape 3).
+> **20 octobre 2026** (étape 5) : 13e migration,
+> `20261019120000_content_provenance` : la **provenance** de chaque donnée.
+> Les neuf tables de données reçoivent `updated_at`, `updated_by_id` (clé vers
+> `User`, `ON DELETE RESTRICT`) et `updated_via` (D10, D11, D24) ;
+> `SchoolStatsRecord`, `AccreditationRecord` et `Program` reçoivent
+> `source_url` (D12). Appliquée sur `dev` le 20 octobre ; **pas encore sur
+> `main`** : elle y part à la prochaine mise en production demandée par le
+> propriétaire, avant le code qui la lit.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -80,6 +88,8 @@ model User {
   first_login_at  DateTime?
   session_version Int       @default(0)         // recopiée dans le jeton ; augmentée par une remise à zéro (D20)
   createdAt       DateTime  @default(now())
+  // relations inverses de la provenance (étape 5) : updatedSchools, updatedCampuses,
+  // updatedPrograms… une par table de données ; la clé RESTRICT garde le nom (D24)
 }
 
 // ── ENTITÉS PRINCIPALES ───────────────────────────────────────────
@@ -95,6 +105,14 @@ model School {
   pipelineJobs    PipelineJob[]
   programs        Program[]              // ← relation directe
   statsRecords    SchoolStatsRecord[]
+
+  // Provenance (étape 5, D10, D11) : la DERNIÈRE modification, posée par le code
+  // (lib/provenance.ts) avec l'auteur de la session ; vide pour une ligne d'avant
+  // la migration. Les trois colonnes sont vides ensemble ou pleines ensemble (CHECK).
+  updated_at      DateTime?
+  updated_by_id   String?
+  updated_via     String?                // CHECK : "MANUAL" | "AI" | "REPORT"
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 }
 
 model Campus {
@@ -105,6 +123,10 @@ model Campus {
   contributions   ContributionInbox[]
   school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   programCampuses ProgramCampus[]
+  updated_at      DateTime?                     // provenance (étape 5) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, name])
 }
@@ -119,12 +141,17 @@ model Program {
   min_expatriation_months   Int?
   max_internship_months     Int?
   campus_policy_note        String?            // contrainte de campus publiée en prose
+  source_url                String?            // lien source de la fiche (D12, étape 5)
   campuses                  ProgramCampus[]
   placements                ProgramPlacement[]
   contributions             ContributionInbox[]
   pricingRecords            PricingRecord[]
   rankingRecords            RankingRecord[]
   school                    School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  updated_at      DateTime?                     // provenance (étape 5) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, name])   // ← unicité PAR ÉCOLE
 }
@@ -152,6 +179,10 @@ model ProgramCampusAttachment {
   note            String?
   source_url      String?
   programCampus   ProgramCampus @relation(fields: [programCampusId], references: [id], onDelete: Cascade)
+  updated_at      DateTime?                     // provenance (étape 5) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([programCampusId, study_year, regime])
 }
@@ -190,6 +221,10 @@ model PricingRecord {
   additional_fees_notes String?
   source_url            String?
   program               Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  updated_at      DateTime?                     // provenance (étape 5) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([programId, academic_year])
 }
@@ -201,6 +236,10 @@ model CapacityRecord {
   spots_available Int
   source_url      String?
   programCampus   ProgramCampus @relation(fields: [programCampusId], references: [id], onDelete: Cascade)
+  updated_at      DateTime?                     // provenance (étape 5) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([programCampusId, academic_year])
 }
@@ -213,6 +252,10 @@ model RankingRecord {
   rank          Int
   source_url    String?
   program       Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  updated_at      DateTime?                     // provenance (étape 5) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([programId, academic_year, ranking_name])
 }
@@ -230,7 +273,12 @@ model SchoolStatsRecord {
   permanent_professors         Int?
   international_professors_pct Float?   // entier 0-100 (46 = 46 %)
   external_speakers_pct        Float?
+  source_url                   String?  // D12, étape 5
   school                       School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  updated_at      DateTime?                     // provenance (étape 5) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, academic_year])
 }
@@ -243,7 +291,12 @@ model AccreditationRecord {
   is_active          Boolean @default(true)
   // "international" = EQUIS, AACSB, AMBA, BSIS… | "label" = CGE, Qualiopi… | "state" = Grade Master, CTI…
   accreditation_type String  @default("international")
+  source_url         String? // D12, étape 5
   school             School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  updated_at      DateTime?                     // provenance (étape 5) : voir School
+  updated_by_id   String?
+  updated_via     String?
+  updatedBy       User?    @relation(fields: [updated_by_id], references: [id], onDelete: Restrict)
 
   @@unique([schoolId, accreditation_name])
 }
@@ -304,7 +357,8 @@ model ContributionInbox {
 > Les contraintes `CHECK` ne sont pas visibles dans `schema.prisma` : elles
 > vivent dans la migration `20260902120000_inbox_relations_and_enum_guards`,
 > posées `NOT VALID` (elles s'appliquent à toute écriture future sans exiger la
-> conformité de l'historique).
+> conformité de l'historique). Celles de `User` et de la provenance sont dans
+> leurs migrations (§4).
 
 > **La table `CronTarget` a été supprimée** (migration
 > `20260701100000_remove_cron_target`). Le pipeline n'entretient plus de liste
@@ -341,12 +395,15 @@ ContributionInbox ──→ School? · Campus? · Program? · ProgramCampus?   (
 
 ## 4. Migrations
 
-Douze migrations, à appliquer par `prisma migrate deploy` (ou
-`npm run db:migrate` par WebSocket). Les douze sont appliquées sur les
-branches Neon `main` et `dev`. La onzième, `20261016120000_three_roles`, et la
-douzième, `20261016150000_whitelist_accounts`, sont arrivées sur `dev` le
+Treize migrations, à appliquer par `prisma migrate deploy` (ou
+`npm run db:migrate` par WebSocket). La onzième, `20261016120000_three_roles`,
+et la douzième, `20261016150000_whitelist_accounts`, sont arrivées sur `dev` le
 16 octobre 2026 et sur `main` le 19 octobre (étape 3 du plan gestion-contenu,
-avant la fusion dans la branche Git `main`).
+avant la fusion dans la branche Git `main`). La treizième,
+`20261019120000_content_provenance` (étape 5), est sur `dev` depuis le
+20 octobre ; **`main` en a douze** : elle y part à la prochaine mise en
+production, avant le code (la CI de `gestion` la voit en attente sur `main`,
+étape non bloquante).
 
 | Migration | Contenu |
 |-----------|---------|
@@ -362,6 +419,7 @@ avant la fusion dans la branche Git `main`).
 | `20260904120000_program_campus_attachment` | `ProgramCampusAttachment`, `ProgramPlacement`, `Program.campus_policy_note` — **strictement additive** |
 | `20261016120000_three_roles` | **écrite à la main** : remplace `User_role_check` par les trois rôles (`USER`, `GESTIONNAIRE`, `ADMIN`, `NOT VALID`), convertit `MODERATOR` en `GESTIONNAIRE`, défaut `USER`. Ne touche que `User`, que le backend Python ne lit pas |
 | `20261016150000_whitelist_accounts` | **écrite à la main, additive** : `username` et `password_hash` facultatifs ; `email` (index unique `User_email_key`), `display_name`, `status` (les comptes existants `ACTIVE`, puis défaut `INVITED`), `first_login_at`, `session_version` (défaut 0) ; cinq contraintes `CHECK`, posées validées (les lignes existantes les tiennent) : `User_status_check`, `User_password_status_check` (actif ⇔ mot de passe), `User_invited_email_check`, `User_identity_check` (adresse ou identifiant), `User_email_lower_check`. Ne touche que `User` |
+| `20261019120000_content_provenance` | **écrite à la main, additive, colonnes facultatives seulement** : `source_url` sur `SchoolStatsRecord`, `AccreditationRecord` et `Program` (D12) ; sur les neuf tables de données (`School`, `Campus`, `Program`, `PricingRecord`, `CapacityRecord`, `RankingRecord`, `SchoolStatsRecord`, `AccreditationRecord`, `ProgramCampusAttachment`), `updated_at`, `updated_by_id` et `updated_via`, avec par table une clé `<Table>_updated_by_id_fkey` vers `User` (`ON DELETE RESTRICT`, D24) et deux contraintes `CHECK` : `<Table>_updated_via_check` (`MANUAL`, `AI`, `REPORT`) et `<Table>_provenance_check` (les trois colonnes vides ensemble ou pleines ensemble). Aucun index, aucune donnée réécrite : les lignes existantes restent « non suivies ». Le backend gelé lit ces tables (`SELECT *` dans le diff de la Phase 2) mais ne compare que ses propres colonnes : il n'est pas touché |
 
 ### Ce qu'il faut savoir sur la migration de rattrapage
 
@@ -534,6 +592,19 @@ une extraction réussie le supprime.
   `ACCOUNT_STATUSES` dans `lib/accounts.ts` (`test/accounts-migration.test.ts`).
   Seul un compte `ACTIVE` se connecte et a une session (`lib/sign-in.ts`,
   `lib/auth.ts`) ; la base garantit qu'il est le seul à avoir un mot de passe.
+- **Toute écriture d'une table de données pose sa provenance**
+  (migration `20261019120000_content_provenance`) : `updated_by_id` est le
+  compte de la **session** (jamais une valeur du corps de la requête),
+  `updated_at` la date du serveur, `updated_via` l'origine : `MANUAL` (saisie
+  dans le back-office), `AI` (validée depuis l'inbox ; l'auteur est l'admin qui
+  valide, D11), `REPORT` (signalement, étape 6). Le module de référence est
+  `lib/provenance.ts` (`UPDATE_ORIGINS`, `provenance()`), vérifié contre la
+  migration par `test/provenance-migration.test.ts`. Seule la **dernière**
+  modification est connue, et une suppression ne laisse pas de trace (D10).
+  Pas de `@updatedAt` de Prisma : il daterait aussi une écriture sans auteur.
+- **Un compte qui figure comme auteur ne se supprime pas** : la clé
+  `ON DELETE RESTRICT` le refuse (P2003), et la route répond 409 ; il se
+  désactive (D24).
 - **Ne jamais créer une arête `ProgramCampus` depuis le rattachement campus.**
   Une arête ouvre une option dans les menus de capacité et une tâche `Capacity`
   facturée à chaque passe de Phase 2 ; elle passe par la validation d'une

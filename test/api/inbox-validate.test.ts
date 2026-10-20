@@ -24,11 +24,14 @@
 import { afterEach, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { installContentCache } from "../helpers/provenance";
 import { installFakePrisma, type FakeModels } from "../helpers/fake-prisma";
 import { schemaErrors } from "../helpers/prisma-schema";
 import { installSession } from "../helpers/session";
 
 const db = installFakePrisma();
+// Étape 5 : les écritures revalident les fiches (lib/content-cache.ts).
+installContentCache();
 
 // Chaque requête reçue par le faux doit exister dans le vrai schéma Prisma
 // (test/helpers/prisma-schema.ts).

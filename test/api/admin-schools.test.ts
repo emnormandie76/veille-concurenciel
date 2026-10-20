@@ -16,12 +16,15 @@
 import { before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { contentOf, installContentCache } from "../helpers/provenance";
 import { installFakePrisma } from "../helpers/fake-prisma";
 import { schemaErrors } from "../helpers/prisma-schema";
 import { body, get, params, quietly } from "../helpers/requests";
 import { installSession } from "../helpers/session";
 
 const db = installFakePrisma();
+// Étape 5 : les écritures revalident les fiches (lib/content-cache.ts).
+installContentCache();
 const session = installSession();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -131,7 +134,8 @@ test("POST /schools : 201, nom nettoyé, domaine en minuscules, statut ACTIVE", 
   const res = await h.createSchool(body({ name: "  Em Lyon ", official_domain: " EM-Lyon.com " }), id(""));
 
   assert.equal(res.status, 201);
-  assert.deepEqual((db.writes()[0].args[0] as { data: object }).data, {
+  // Étape 5 : l'écriture porte aussi sa provenance (contentOf la vérifie).
+  assert.deepEqual(contentOf((db.writes()[0].args[0] as { data: object }).data, "test-gestionnaire"), {
     name: "Em Lyon",
     official_domain: "em-lyon.com",
     status: "ACTIVE",
@@ -148,7 +152,8 @@ test("GET /schools/[id] : 404 ; sinon l'école", async () => {
   db.use({ school: { findUnique: () => SCHOOL } });
   const res = await h.getSchool(get(), id(SCHOOL_ID));
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), SCHOOL);
+  // D29 : chaque ligne lue porte « Modifié par … le … », `null` sans provenance.
+  assert.deepEqual(await res.json(), { ...SCHOOL, last_edit: null });
   assertSchema();
 });
 
@@ -194,7 +199,7 @@ test("PUT /schools/[id] : 200, champs nettoyés, unicité cherchée hors de l'é
   assert.equal(res.status, 200);
   const findFirst = db.calls.find((c) => c.method === "findFirst")!.args[0] as { where: { id: unknown } };
   assert.deepEqual(findFirst.where.id, { not: SCHOOL_ID });
-  assert.deepEqual((db.writes()[0].args[0] as { data: object }).data, {
+  assert.deepEqual(contentOf((db.writes()[0].args[0] as { data: object }).data, "test-gestionnaire"), {
     name: "EM Normandie",
     official_domain: "www.em-normandie.com",
     status: "INACTIVE",
@@ -227,8 +232,11 @@ test("GET /schools/[id]/campuses : les campus de l'école, par nom", async () =>
   const res = await h.listCampuses(get(), id(SCHOOL_ID));
 
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), [CAMPUS]);
-  assert.deepEqual(db.calls[1].args, [{ where: { schoolId: SCHOOL_ID }, orderBy: { name: "asc" } }]);
+  // D29 : chaque ligne lue porte « Modifié par … le … », `null` sans provenance.
+  assert.deepEqual(await res.json(), [{ ...CAMPUS, last_edit: null }]);
+  assert.deepEqual(db.calls[1].args, [
+    { where: { schoolId: SCHOOL_ID }, orderBy: { name: "asc" }, include: { updatedBy: { select: { display_name: true } } } },
+  ]);
   assertSchema();
 });
 
@@ -268,7 +276,7 @@ test("POST /schools/[id]/campuses : 201, nom et ville nettoyés, ville vide → 
   const res = await h.createCampus(body({ name: " Le Havre ", city: "  " }), id(SCHOOL_ID));
 
   assert.equal(res.status, 201);
-  assert.deepEqual((db.writes()[0].args[0] as { data: object }).data, { schoolId: SCHOOL_ID, name: "Le Havre", city: null });
+  assert.deepEqual(contentOf((db.writes()[0].args[0] as { data: object }).data, "test-gestionnaire"), { schoolId: SCHOOL_ID, name: "Le Havre", city: null });
   assertSchema();
 });
 
@@ -311,7 +319,7 @@ test("PUT /campuses/[id] : 200, unicité cherchée dans l'école du campus, vill
 
   assert.equal(res.status, 200);
   assert.deepEqual(db.calls[1].args, [{ where: { schoolId_name: { schoolId: SCHOOL_ID, name: "Caen Centre" } } }]);
-  assert.deepEqual((db.writes()[0].args[0] as { data: object }).data, { name: "Caen Centre", city: null });
+  assert.deepEqual(contentOf((db.writes()[0].args[0] as { data: object }).data, "test-gestionnaire"), { name: "Caen Centre", city: null });
   assertSchema();
 });
 

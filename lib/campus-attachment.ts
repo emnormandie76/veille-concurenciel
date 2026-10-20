@@ -22,6 +22,11 @@
  * Le même fichier porte, depuis, l'écriture de `Program.campus_policy_note` —
  * voir la section « Les notes de politique de campus » en fin de fichier.
  *
+ * Chaque écriture porte la provenance que la route lui passe : l'admin qui
+ * valide le ticket, origine `AI` (plan gestion-contenu, étape 5, D11). Elle
+ * est obligatoire dans les deux types : une écriture sans auteur ne compile
+ * pas.
+ *
  * ## La règle qui commande tout le reste
  *
  * Une ligne n'est écrite que si l'arête `ProgramCampus` existe déjà. Ce module
@@ -91,6 +96,8 @@
  * arête que cette passe touche et que cette passe ne réaffirme pas ressort en
  * `stale`. L'admin la voit et la supprime à la main s'il en juge ainsi.
  */
+
+import type { Provenance } from "./provenance";
 
 /** Régimes admis. Miroir de `VALID_REGIMES` dans `backend/pipeline/campus_attachment.py`. */
 export const ATTACHMENT_REGIMES = ["ANY", "INITIAL", "ALTERNANCE"] as const;
@@ -601,8 +608,8 @@ export interface AttachmentTx {
         languages: string[];
         note: string | null;
         source_url: string | null;
-      };
-      update: { languages: string[]; note: string | null; source_url: string | null };
+      } & Provenance;
+      update: { languages: string[]; note: string | null; source_url: string | null } & Provenance;
     }): Promise<{ id: string }>;
   };
 }
@@ -691,7 +698,8 @@ export async function readExistingAttachments(
  */
 export async function applyAttachmentPlan(
   tx: AttachmentTx,
-  plan: AttachmentPlan
+  plan: AttachmentPlan,
+  stamp: Provenance
 ): Promise<{ created: number; updated: number; unchanged: number }> {
   for (const write of [...plan.create, ...plan.update]) {
     await tx.programCampusAttachment.upsert({
@@ -709,11 +717,13 @@ export async function applyAttachmentPlan(
         languages: write.languages,
         note: write.note,
         source_url: write.source_url,
+        ...stamp,
       },
       update: {
         languages: write.languages,
         note: write.note,
         source_url: write.source_url,
+        ...stamp,
       },
     });
   }
@@ -759,8 +769,9 @@ export function hasCampusAttachmentBlock(json: unknown): boolean {
 // Même discipline que les lignes-années, et plus serrée encore :
 //
 //   - le type ne connaît que `program.findUnique` et `program.update`, et
-//     `update` n'accepte que `{ campus_policy_note: string }` : ni `create`, ni
-//     `upsert`, ni `delete`, ni aucune autre colonne de `Program` ;
+//     `update` n'accepte que `{ campus_policy_note: string }` et la
+//     provenance (étape 5) : ni `create`, ni `upsert`, ni `delete`, ni aucune
+//     autre colonne de `Program` ;
 //   - `string` et non `string | null` : ce chemin ne peut pas EFFACER une note.
 //     Une fiche qui ne la publie plus ne touche à rien ;
 //   - le programme doit appartenir à l'école du ticket, vérifié ici : une note
@@ -907,7 +918,7 @@ export interface PolicyNoteTx {
     }): Promise<{ id: string; schoolId: string; campus_policy_note: string | null } | null>;
     update(args: {
       where: { id: string };
-      data: { campus_policy_note: string };
+      data: { campus_policy_note: string } & Provenance;
       select: { id: true };
     }): Promise<{ id: string }>;
   };
@@ -974,12 +985,13 @@ export function planPolicyNoteWrites(resolved: ResolvedPolicyNote[]): PolicyNote
 /** Un `update` par note à créer ou à changer. Rien pour les inchangées. */
 export async function applyPolicyNotePlan(
   tx: PolicyNoteTx,
-  plan: PolicyNotePlan
+  plan: PolicyNotePlan,
+  stamp: Provenance
 ): Promise<{ created: number; updated: number; unchanged: number }> {
   for (const write of [...plan.create, ...plan.update]) {
     await tx.program.update({
       where: { id: write.programId },
-      data: { campus_policy_note: write.note },
+      data: { campus_policy_note: write.note, ...stamp },
       select: { id: true },
     });
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import LastEdit from "../../LastEdit";
 
 interface SchoolInfoTabProps {
   schoolId: string;
@@ -8,6 +9,8 @@ interface SchoolInfoTabProps {
     name: string;
     official_domain: string;
     status: string;
+    // « Modifié par … le … » (étape 5, D29).
+    last_edit: string | null;
   };
   onSchoolUpdate: () => void;
 }
@@ -60,6 +63,7 @@ export default function SchoolInfoTab({
     <div className="inline-form">
       <h3 className="tab-section-title" style={{ marginBottom: "20px" }}>
         Informations générales de l'école
+        <LastEdit text={school.last_edit} />
       </h3>
 
       {error && <div className="alert alert-danger" style={{ marginBottom: "20px" }}>{error}</div>}

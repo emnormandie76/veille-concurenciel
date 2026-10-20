@@ -11,6 +11,7 @@
 
 import { corsResponse, corsErrorResponse } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { API_PROVENANCE_SELECT } from "@/lib/provenance";
 
 export const revalidate = 3600; // Cache 1h
 
@@ -58,6 +59,8 @@ export async function GET(
         is_expatriation_mandatory: true,
         min_expatriation_months: true,
         max_internship_months: true,
+        source_url: true,
+        ...API_PROVENANCE_SELECT,
         campuses: {
           select: {
             id: true,

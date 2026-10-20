@@ -17,12 +17,15 @@
 import { before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { contentOf, installContentCache } from "../helpers/provenance";
 import { installFakePrisma } from "../helpers/fake-prisma";
 import { schemaErrors } from "../helpers/prisma-schema";
 import { body, get, params, quietly } from "../helpers/requests";
 import { installSession } from "../helpers/session";
 
 const db = installFakePrisma();
+// Étape 5 : les écritures revalident les fiches (lib/content-cache.ts).
+installContentCache();
 const session = installSession();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -184,7 +187,8 @@ for (const [name, model, record] of [
     });
     const res = await h[name](get(`http://localhost/x?year=2025&programId=${PROGRAM.id}`), id(SCHOOL_ID));
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { availableYears: [2025], records: [record] });
+    // D29 : chaque ligne lue porte « Modifié par … le … », `null` sans provenance.
+    assert.deepEqual(await res.json(), { availableYears: [2025], records: [{ ...record, last_edit: null }] });
     assert.deepEqual((db.calls[1].args[0] as { where: object }).where, {
       program: { schoolId: SCHOOL_ID },
       academic_year: 2025,
@@ -221,7 +225,8 @@ test("POST /programs/[id]/rankings : 404 ; doublon (programme, année, nom) → 
 
   db.use({ program: { findUnique: () => PROGRAM }, rankingRecord: { findUnique: () => null, create: () => RANKING } });
   assert.equal((await h.createRanking(body(payload), id(PROGRAM.id))).status, 201);
-  assert.deepEqual(written("create").data, {
+  // Étape 5 : l'écriture porte aussi sa provenance (contentOf la vérifie).
+  assert.deepEqual(contentOf(written("create").data, "test-gestionnaire"), {
     programId: PROGRAM.id,
     ranking_name: "Figaro",
     rank: 9,
@@ -259,7 +264,7 @@ test("PUT /rankings/[id] : 200, doublon cherché sur la nouvelle clé, seuls les
       },
     },
   ]);
-  assert.deepEqual(written("update").data, { ranking_name: "Challenges", rank: 4 });
+  assert.deepEqual(contentOf(written("update").data, "test-gestionnaire"), { ranking_name: "Challenges", rank: 4 });
   assertSchema();
 });
 
@@ -280,7 +285,8 @@ test("GET /schools/[id]/accreditations : 404 ; sinon par nom", async () => {
 
   db.use({ school: { findUnique: () => SCHOOL }, accreditationRecord: { findMany: () => [ACCREDITATION] } });
   const res = await h.listAccreditations(get(), id(SCHOOL_ID));
-  assert.deepEqual(await res.json(), [ACCREDITATION]);
+  // D29 : chaque ligne lue porte « Modifié par … le … », `null` sans provenance.
+  assert.deepEqual(await res.json(), [{ ...ACCREDITATION, last_edit: null }]);
   assertSchema();
 });
 
@@ -308,12 +314,13 @@ test("POST /schools/[id]/accreditations : 404 ; doublon → 400 ; sinon 201, ann
 
   db.use({ school: { findUnique: () => SCHOOL }, accreditationRecord: { findUnique: () => null, create: () => ACCREDITATION } });
   assert.equal((await h.createAccreditation(body(payload), id(SCHOOL_ID))).status, 201);
-  assert.deepEqual(written("create").data, {
+  assert.deepEqual(contentOf(written("create").data, "test-gestionnaire"), {
     schoolId: SCHOOL_ID,
     accreditation_name: "AACSB",
     accreditation_type: "international",
     year_obtained: null,
     is_active: true,
+    source_url: null,
   });
   assertSchema();
 });
@@ -340,7 +347,7 @@ test("PUT /accreditations/[id] : 200, année vide → null, is_active booléen",
   const res = await h.updateAccreditation(body({ year_obtained: "", is_active: 0 }, "PUT"), id(ACCREDITATION.id));
 
   assert.equal(res.status, 200);
-  assert.deepEqual(written("update").data, { year_obtained: null, is_active: false });
+  assert.deepEqual(contentOf(written("update").data, "test-gestionnaire"), { year_obtained: null, is_active: false });
   assertSchema();
 });
 
@@ -363,7 +370,8 @@ test("GET /schools/[id]/stats : 404 ; sans année, la plus récente ; avec anné
     schoolStatsRecord: { findMany: () => [{ academic_year: 2025 }, { academic_year: 2024 }], findUnique: () => STATS },
   });
   const res = await h.getStats(get(), id(SCHOOL_ID));
-  assert.deepEqual(await res.json(), { availableYears: [2025, 2024], record: STATS });
+  // D29 : chaque ligne lue porte « Modifié par … le … », `null` sans provenance.
+  assert.deepEqual(await res.json(), { availableYears: [2025, 2024], record: { ...STATS, last_edit: null } });
   assert.deepEqual((db.calls[2].args[0] as { where: object }).where, {
     schoolId_academic_year: { schoolId: SCHOOL_ID, academic_year: 2025 },
   });

@@ -16,12 +16,22 @@
  * - SchoolStats      : SchoolStatsRecord upsert [schoolId, academic_year]
  * - Accreditation    : AccreditationRecord upsert [schoolId, accreditation_name]
  *
+ * Provenance (plan gestion-contenu, étape 5, D11) : chaque ligne écrite a
+ * pour auteur l'admin qui valide, relu en base par la garde, avec l'origine
+ * `AI` ; une mise à jour qui n'écrit rien garde l'auteur en place
+ * (`stampUpdate`). Les chiffres clés et les accréditations gardent le
+ * `source_url` du ticket (D12). Après une validation réussie, les fiches sont
+ * revalidées (D26).
+ *
  * Référence : task.md §3.2-3.3, bdd.md §4 (upserting), architecture.md §5.2
  */
 
 import { guardAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import type { ContributionInbox } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { revalidateContent } from "@/lib/content-cache";
+import { provenance, stampUpdate, type Provenance } from "@/lib/provenance";
 import { STATUS_REJECTED, STATUS_VALIDATED, isParkedResearchReport } from "@/lib/contribution";
 import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
 import { adminCorrections, readOptionalJsonObject } from "@/lib/request-body";
@@ -145,6 +155,7 @@ interface AccreditationJson {
   accreditation_type?: "international" | "label" | "state";
   year_obtained?: number | null;
   is_active?: boolean;
+  source_url?: string | null;
 }
 
 // Format multi-programme (nouveau — crowdsourcing avec matching IA)
@@ -181,7 +192,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardAdmin();
+  const { session, error } = await guardAdmin();
   if (error) return error;
 
   const { id } = await params;
@@ -256,40 +267,49 @@ export async function PUT(
       );
     }
 
-    const category = ticket.ai_category;
-
-    // ── Dispatch par catégorie ──────────────────
-    if (["Pricing", "Ranking", "Capacity"].includes(category) && isMultiProgramJson(rawJson)) {
-      return await validateMultiProgram(ticket, category, rawJson as MultiProgramJson);
-    }
-    switch (category) {
-      case "Program_Discovery":
-        return await validateProgramDiscovery(ticket, rawJson as unknown as ProgramDiscoveryJson);
-
-      case "Pricing":
-        return await validatePricing(ticket, rawJson as unknown as PricingJson);
-
-      case "Ranking":
-        return await validateRanking(ticket, rawJson as unknown as RankingJson);
-
-      case "Capacity":
-        return await validateCapacity(ticket, rawJson as unknown as CapacityJson);
-
-      case "SchoolStats":
-        return await validateSchoolStats(ticket, rawJson as unknown as SchoolStatsJson);
-
-      case "Accreditation":
-        return await validateAccreditation(ticket, rawJson as unknown as AccreditationJson);
-
-      default:
-        return NextResponse.json(
-          { error: `Catégorie inconnue: ${category}` },
-          { status: 400 }
-        );
-    }
+    // L'auteur de ce qui s'écrit est l'admin qui valide ; l'origine, l'IA
+    // (étape 5, D11).
+    const response = await writeTicket(ticket, rawJson, provenance(session.user.id, "AI"));
+    // Les fiches suivent l'écriture (D26) ; un refus n'a rien écrit.
+    if (response.ok) revalidateContent();
+    return response;
   } catch (error) {
     console.error(`PUT /api/admin/inbox/${id}/validate error:`, error);
     return NextResponse.json({ error: "Erreur serveur interne" }, { status: 500 });
+  }
+}
+
+// ── Dispatch par catégorie ──────────────────
+
+async function writeTicket(ticket: ContributionInbox, rawJson: unknown, stamp: Provenance): Promise<NextResponse> {
+  const category = ticket.ai_category;
+  if (["Pricing", "Ranking", "Capacity"].includes(category) && isMultiProgramJson(rawJson)) {
+    return await validateMultiProgram(ticket, category, rawJson as MultiProgramJson, stamp);
+  }
+  switch (category) {
+    case "Program_Discovery":
+      return await validateProgramDiscovery(ticket, rawJson as ProgramDiscoveryJson, stamp);
+
+    case "Pricing":
+      return await validatePricing(ticket, rawJson as PricingJson, stamp);
+
+    case "Ranking":
+      return await validateRanking(ticket, rawJson as RankingJson, stamp);
+
+    case "Capacity":
+      return await validateCapacity(ticket, rawJson as CapacityJson, stamp);
+
+    case "SchoolStats":
+      return await validateSchoolStats(ticket, rawJson as SchoolStatsJson, stamp);
+
+    case "Accreditation":
+      return await validateAccreditation(ticket, rawJson as AccreditationJson, stamp);
+
+    default:
+      return NextResponse.json(
+        { error: `Catégorie inconnue: ${category}` },
+        { status: 400 }
+      );
   }
 }
 
@@ -307,7 +327,8 @@ export async function PUT(
 
 async function validateProgramDiscovery(
   ticket: { id: string; schoolId: string | null },
-  data: ProgramDiscoveryJson
+  data: ProgramDiscoveryJson,
+  stamp: Provenance
 ) {
   if (!ticket.schoolId) {
     return NextResponse.json(
@@ -350,10 +371,9 @@ async function validateProgramDiscovery(
             schoolId: ticket.schoolId!,
             name: campusData.name,
             city: campusData.city ?? null,
+            ...stamp,
           },
-          update: {
-            city: campusData.city ?? undefined,
-          },
+          update: stampUpdate({ city: campusData.city ?? undefined }, stamp),
         });
 
         let programsLinked = 0;
@@ -380,12 +400,16 @@ async function validateProgramDiscovery(
                 is_expatriation_mandatory: prog.is_expatriation_mandatory ?? false,
                 min_expatriation_months: prog.min_expatriation_months ?? null,
                 max_internship_months: prog.max_internship_months ?? null,
+                ...stamp,
               },
-              update: {
-                admission_exam: prog.admission_exam ?? undefined,
-                is_alternance_possible: prog.is_alternance_possible ?? undefined,
-                is_expatriation_mandatory: prog.is_expatriation_mandatory ?? undefined,
-              },
+              update: stampUpdate(
+                {
+                  admission_exam: prog.admission_exam ?? undefined,
+                  is_alternance_possible: prog.is_alternance_possible ?? undefined,
+                  is_expatriation_mandatory: prog.is_expatriation_mandatory ?? undefined,
+                },
+                stamp
+              ),
             });
 
             // Upsert ProgramCampus : associe ce programme à ce campus
@@ -443,7 +467,8 @@ async function validateProgramDiscovery(
 
 async function validatePricing(
   ticket: { id: string; programId: string | null; year_assumed: boolean; data_conflict_warning: boolean },
-  data: PricingJson
+  data: PricingJson,
+  stamp: Provenance
 ) {
   if (!ticket.programId) {
     return NextResponse.json({ error: "programId manquant pour un ticket Pricing" }, { status: 400 });
@@ -478,6 +503,7 @@ async function validatePricing(
         intl_currency: data.intl_currency ?? null,
         additional_fees_notes: data.additional_fees_notes ?? null,
         source_url: data.source_url ?? null,
+        ...stamp,
       },
       update: {
         currency: data.currency ?? "EUR",
@@ -492,6 +518,7 @@ async function validatePricing(
         intl_currency: data.intl_currency ?? null,
         additional_fees_notes: data.additional_fees_notes ?? null,
         source_url: data.source_url ?? null,
+        ...stamp,
       },
     }),
     prisma.contributionInbox.update({
@@ -517,7 +544,8 @@ async function validatePricing(
 
 async function validateRanking(
   ticket: { id: string; programId: string | null },
-  data: RankingJson
+  data: RankingJson,
+  stamp: Provenance
 ) {
   const programId = ticket.programId;
   if (!programId) {
@@ -585,10 +613,12 @@ async function validateRanking(
           ranking_name: item.ranking_name,
           rank: item.rank,
           source_url: item.source_url ?? null,
+          ...stamp,
         },
         update: {
           rank: item.rank,
           source_url: item.source_url ?? null,
+          ...stamp,
         },
       })
     ),
@@ -689,7 +719,8 @@ function foldCapacities(items: CapacityItem[]): Array<{
 
 async function validateCapacity(
   ticket: { id: string; programId: string | null; programCampusId: string | null; campusId: string | null },
-  data: CapacityJson
+  data: CapacityJson,
+  stamp: Provenance
 ) {
   // Normaliser : construire une liste unifiée depuis les deux formats possibles.
   //
@@ -773,10 +804,12 @@ async function validateCapacity(
           academic_year: entry.academic_year,
           spots_available: entry.spots_available,
           source_url: entry.source_url,
+          ...stamp,
         },
         update: {
           spots_available: entry.spots_available,
           source_url: entry.source_url,
+          ...stamp,
         },
       })
     ),
@@ -812,7 +845,8 @@ async function validateCapacity(
 
 async function validateSchoolStats(
   ticket: { id: string; schoolId: string | null },
-  data: SchoolStatsJson
+  data: SchoolStatsJson,
+  stamp: Provenance
 ) {
   if (!ticket.schoolId) {
     return NextResponse.json({ error: "schoolId manquant pour un ticket SchoolStats" }, { status: 400 });
@@ -844,6 +878,9 @@ async function validateSchoolStats(
         permanent_professors: data.permanent_professors ?? null,
         international_professors_pct: data.international_professors_pct ?? null,
         external_speakers_pct: data.external_speakers_pct ?? null,
+        // Le lien du ticket, jeté jusqu'à l'étape 5 (D12).
+        source_url: data.source_url ?? null,
+        ...stamp,
       },
       update: {
         total_students: data.total_students ?? null,
@@ -855,6 +892,9 @@ async function validateSchoolStats(
         permanent_professors: data.permanent_professors ?? null,
         international_professors_pct: data.international_professors_pct ?? null,
         external_speakers_pct: data.external_speakers_pct ?? null,
+        // Le lien du ticket, jeté jusqu'à l'étape 5 (D12).
+        source_url: data.source_url ?? null,
+        ...stamp,
       },
     }),
     prisma.contributionInbox.update({
@@ -874,7 +914,8 @@ async function validateSchoolStats(
 
 async function validateAccreditation(
   ticket: { id: string; schoolId: string | null },
-  data: AccreditationJson
+  data: AccreditationJson,
+  stamp: Provenance
 ) {
   if (!ticket.schoolId) {
     return NextResponse.json({ error: "schoolId manquant pour un ticket Accreditation" }, { status: 400 });
@@ -918,6 +959,8 @@ async function validateAccreditation(
     // null et non 0 : l'année 0 entrait en production comme une donnée réelle.
     year_obtained: number | null;
     is_active: boolean;
+    // Le lien de chaque accréditation, jeté jusqu'à l'étape 5 (D12).
+    source_url: string | null;
   }>;
 
   if (data.accreditations && Array.isArray(data.accreditations) && data.accreditations.length > 0) {
@@ -929,6 +972,7 @@ async function validateAccreditation(
         accreditation_type: item.accreditation_type ?? inferType(item.accreditation_name),
         year_obtained: item.year_obtained ?? null,
         is_active: item.is_active ?? true,
+        source_url: item.source_url ?? null,
       }));
   } else if (data.accreditation_name) {
     // Ancien format : objet unique (rétrocompatibilité)
@@ -937,6 +981,7 @@ async function validateAccreditation(
       accreditation_type: data.accreditation_type ?? inferType(data.accreditation_name),
       year_obtained: data.year_obtained ?? null,
       is_active: data.is_active ?? true,
+      source_url: data.source_url ?? null,
     }];
   } else {
     return NextResponse.json(
@@ -966,11 +1011,15 @@ async function validateAccreditation(
           accreditation_type: item.accreditation_type,
           year_obtained: item.year_obtained,
           is_active: item.is_active,
+          source_url: item.source_url,
+          ...stamp,
         },
         update: {
           accreditation_type: item.accreditation_type,
           year_obtained: item.year_obtained,
           is_active: item.is_active,
+          source_url: item.source_url,
+          ...stamp,
         },
       })
     ),
@@ -998,7 +1047,8 @@ async function validateAccreditation(
 async function validateMultiProgram(
   ticket: { id: string; schoolId: string | null },
   category: string,
-  data: MultiProgramJson
+  data: MultiProgramJson,
+  stamp: Provenance
 ) {
   if (!data.programs || data.programs.length === 0) {
     return NextResponse.json(
@@ -1060,6 +1110,7 @@ async function validateMultiProgram(
               intl_currency: (d.intl_currency as string) ?? null,
               additional_fees_notes: (d.additional_fees_notes as string) ?? null,
               source_url: (d.source_url as string) ?? null,
+              ...stamp,
             },
             update: {
               currency: (d.currency as string) ?? "EUR",
@@ -1074,6 +1125,7 @@ async function validateMultiProgram(
               intl_currency: (d.intl_currency as string) ?? null,
               additional_fees_notes: (d.additional_fees_notes as string) ?? null,
               source_url: (d.source_url as string) ?? null,
+              ...stamp,
             },
           });
           records.push(record);
@@ -1104,10 +1156,12 @@ async function validateMultiProgram(
               ranking_name: rankingName,
               rank,
               source_url: (d.source_url as string) ?? null,
+              ...stamp,
             },
             update: {
               rank,
               source_url: (d.source_url as string) ?? null,
+              ...stamp,
             },
           });
           records.push(record);
@@ -1192,10 +1246,12 @@ async function validateMultiProgram(
               academic_year: academicYear,
               spots_available: spotsAvailable,
               source_url: (d.source_url as string) ?? null,
+              ...stamp,
             },
             update: {
               spots_available: spotsAvailable,
               source_url: (d.source_url as string) ?? null,
+              ...stamp,
             },
           });
           records.push(record);

@@ -11,6 +11,7 @@
 
 import { corsResponse, corsErrorResponse } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { API_PROVENANCE_SELECT } from "@/lib/provenance";
 
 export const revalidate = 3600; // Cache 1h
 
@@ -64,6 +65,8 @@ export async function GET(
           permanent_professors: true,
           international_professors_pct: true,
           external_speakers_pct: true,
+          source_url: true,
+          ...API_PROVENANCE_SELECT,
         },
       });
     } else {
@@ -83,6 +86,8 @@ export async function GET(
           permanent_professors: true,
           international_professors_pct: true,
           external_speakers_pct: true,
+          source_url: true,
+          ...API_PROVENANCE_SELECT,
         },
       });
     }

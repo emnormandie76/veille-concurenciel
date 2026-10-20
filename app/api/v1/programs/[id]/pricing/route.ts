@@ -10,6 +10,7 @@
 
 import { corsResponse, corsErrorResponse } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { API_PROVENANCE_SELECT } from "@/lib/provenance";
 
 export const revalidate = 3600; // Cache 1h
 
@@ -71,6 +72,7 @@ export async function GET(
         intl_currency: true,
         additional_fees_notes: true,
         source_url: true,
+        ...API_PROVENANCE_SELECT,
       },
       orderBy: { academic_year: "desc" },
       // Plafond de sécurité : cette collection n'est pas paginée. La valeur est

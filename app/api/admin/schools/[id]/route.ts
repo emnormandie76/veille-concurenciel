@@ -1,6 +1,8 @@
 import { guardManager } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { revalidateContent } from "@/lib/content-cache";
+import { AUTHOR_SELECT, forManager, provenance } from "@/lib/provenance";
 
 export async function GET(
   request: Request,
@@ -14,13 +16,15 @@ export async function GET(
   try {
     const school = await prisma.school.findUnique({
       where: { id },
+      include: { updatedBy: AUTHOR_SELECT },
     });
 
     if (!school) {
       return NextResponse.json({ error: "École introuvable" }, { status: 404 });
     }
 
-    return NextResponse.json(school);
+    // « Modifié par … le … » de chaque ligne : le nom et la date (étape 5, D29).
+    return NextResponse.json(forManager(school));
   } catch (error) {
     console.error(`GET /api/admin/schools/${id} error:`, error);
     return NextResponse.json({ error: "Erreur serveur lors de la récupération" }, { status: 500 });
@@ -31,7 +35,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await guardManager();
+  const { session, error } = await guardManager();
   if (error) return error;
 
   const { id } = await params;
@@ -101,9 +105,10 @@ export async function PUT(
 
     const updatedSchool = await prisma.school.update({
       where: { id },
-      data,
+      data: { ...data, ...provenance(session.user.id, "MANUAL") },
     });
 
+    revalidateContent();
     return NextResponse.json(updatedSchool);
   } catch (error) {
     console.error(`PUT /api/admin/schools/${id} error:`, error);
@@ -146,6 +151,7 @@ export async function DELETE(
       where: { id },
     });
 
+    revalidateContent();
     return NextResponse.json({ message: "École supprimée avec succès" });
   } catch (error) {
     console.error(`DELETE /api/admin/schools/${id} error:`, error);

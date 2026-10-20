@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import LastEdit from "../LastEdit";
 
 interface Campus {
   id: string;
   schoolId: string;
   name: string;
   city: string | null;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit: string | null;
 }
 
 interface School {
@@ -214,7 +217,10 @@ export default function CampusesPage() {
             <tbody>
               {campuses.map((campus) => (
                 <tr key={campus.id}>
-                  <td style={{ fontWeight: 600 }}>{campus.name}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {campus.name}
+                    <LastEdit text={campus.last_edit} />
+                  </td>
                   <td>
                     {campus.city ? (
                       <span className="city-tag">{campus.city}</span>

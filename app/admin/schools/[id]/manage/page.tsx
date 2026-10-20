@@ -17,6 +17,8 @@ interface SchoolManageData {
   name: string;
   official_domain: string;
   status: string;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit: string | null;
   _counts: {
     campuses: number;
     programs: number;

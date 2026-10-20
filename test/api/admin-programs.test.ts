@@ -16,12 +16,15 @@
 import { before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
+import { contentOf, installContentCache } from "../helpers/provenance";
 import { installFakePrisma } from "../helpers/fake-prisma";
 import { schemaErrors } from "../helpers/prisma-schema";
 import { body, get, params, quietly } from "../helpers/requests";
 import { installSession } from "../helpers/session";
 
 const db = installFakePrisma();
+// Étape 5 : les écritures revalident les fiches (lib/content-cache.ts).
+installContentCache();
 const session = installSession();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -161,7 +164,8 @@ test("POST /schools/[id]/programs : 201, un programme et un rattachement par cam
   );
 
   assert.equal(res.status, 201);
-  assert.deepEqual(dataOf("program", "create"), {
+  // Étape 5 : l'écriture porte aussi sa provenance (contentOf la vérifie).
+  assert.deepEqual(contentOf(dataOf("program", "create"), "test-gestionnaire"), {
     schoolId: SCHOOL_ID,
     name: "MSc Data",
     admission_exam: "Tremplin",
@@ -169,6 +173,7 @@ test("POST /schools/[id]/programs : 201, un programme et un rattachement par cam
     is_expatriation_mandatory: false,
     min_expatriation_months: null,
     max_internship_months: 12,
+    source_url: null,
   });
   assert.deepEqual(
     db.writes().filter((c) => c.model === "programCampus").map((c) => (c.args[0] as { data: object }).data),
@@ -271,7 +276,7 @@ test("PUT /programs/[id] : 200, champs nettoyés, campus retirés puis ajoutés"
   );
 
   assert.equal(res.status, 200);
-  assert.deepEqual(dataOf("program", "update"), { admission_exam: null, is_expatriation_mandatory: true });
+  assert.deepEqual(contentOf(dataOf("program", "update"), "test-gestionnaire"), { admission_exam: null, is_expatriation_mandatory: true });
   assert.deepEqual((db.writes().find((c) => c.method === "deleteMany")!.args[0] as { where: object }).where, {
     programId: PROGRAM.id,
     campusId: { in: ["campus-caen"] },
@@ -325,7 +330,7 @@ test("POST /program-campuses/[id]/capacity : 201, 0 place accepté, source netto
   const res = await h.createCapacity(body({ spots_available: "0", academic_year: "2026", source_url: "  " }), id(PC.id));
 
   assert.equal(res.status, 201);
-  assert.deepEqual(dataOf("capacityRecord", "create"), {
+  assert.deepEqual(contentOf(dataOf("capacityRecord", "create"), "test-gestionnaire"), {
     programCampusId: PC.id,
     spots_available: 0,
     academic_year: 2026,
@@ -365,7 +370,7 @@ test("PUT /capacities/[id] : 200, seuls les champs fournis sont écrits", async 
   const res = await h.updateCapacity(body({ spots_available: 90, academic_year: 2026 }, "PUT"), id(CAPACITY.id));
 
   assert.equal(res.status, 200);
-  assert.deepEqual(dataOf("capacityRecord", "update"), { spots_available: 90, academic_year: 2026 });
+  assert.deepEqual(contentOf(dataOf("capacityRecord", "update"), "test-gestionnaire"), { spots_available: 90, academic_year: 2026 });
   assertSchema();
 });
 
@@ -389,7 +394,8 @@ test("GET /schools/[id]/capacities : 404 ; sinon les capacités de l'école et s
   });
   const res = await h.listCapacities(get("http://localhost/x?year=2025"), id(SCHOOL_ID));
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { availableYears: [2025], records: [CAPACITY] });
+  // D29 : chaque ligne lue porte « Modifié par … le … », `null` sans provenance.
+  assert.deepEqual(await res.json(), { availableYears: [2025], records: [{ ...CAPACITY, last_edit: null }] });
   assert.deepEqual((db.calls[1].args[0] as { where: object }).where, {
     programCampus: { campus: { schoolId: SCHOOL_ID } },
     academic_year: 2025,

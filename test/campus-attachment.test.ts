@@ -40,6 +40,11 @@ import {
   type ExistingAttachment,
   type PolicyNoteTx,
 } from "../lib/campus-attachment";
+import { provenance } from "../lib/provenance";
+
+// Toute écriture porte la provenance de l'admin qui valide (plan
+// gestion-contenu, étape 5, D11) ; test/api/provenance.test.ts la vérifie.
+const STAMP = provenance("u-admin", "AI", new Date("2026-10-19T08:30:00Z"));
 
 // ── Identifiants réels, recopiés de la base (Em Normandie) ────────────────
 const P_BM = "38dd257f-e501-47d2-8e0b-71af000106cc"; // Bachelor Management
@@ -244,7 +249,7 @@ async function runPass(raw: unknown, existing: ExistingAttachment[] = []) {
   const { resolved, conflicts: edgeConflicts } = await resolveAttachmentEdges(rec.tx, folded.claims);
   const rowsBefore = await readExistingAttachments(rec.tx, resolved);
   const plan = planAttachmentWrites(resolved, rowsBefore);
-  const counts = await applyAttachmentPlan(rec.tx, plan);
+  const counts = await applyAttachmentPlan(rec.tx, plan, STAMP);
   return {
     plan,
     counts,
@@ -712,10 +717,11 @@ test("note de l'IBBA : un seul update, qui ne touche que campus_policy_note", as
     campus_policy_notes: [{ programId: P_IBBA, program: PROGRAM_LABEL[P_IBBA], fiche: F_IBBA, note: IBBA_NOTE }],
   };
   const { notePlan } = await runRoutePlan(ticket, EM_NORMANDIE_ID, rec);
-  const counts = await applyPolicyNotePlan(rec.tx, notePlan);
+  const counts = await applyPolicyNotePlan(rec.tx, notePlan, STAMP);
 
   assert.deepEqual(counts, { created: 1, updated: 0, unchanged: 0 });
-  assert.deepEqual(rec.calls, [`program.update ${P_IBBA} campus_policy_note`]);
+  // La note, et la provenance de l'écriture (plan gestion-contenu, étape 5, D11).
+  assert.deepEqual(rec.calls, [`program.update ${P_IBBA} campus_policy_note,updated_by_id,updated_at,updated_via`]);
   assert.equal(rec.byProgram.get(P_IBBA)?.campus_policy_note, IBBA_NOTE);
 });
 
@@ -733,10 +739,10 @@ test("une note mise à jour rend l'avant ; rejouée, elle n'émet plus aucun upd
 
   const first = await runRoutePlan(ticket, EM_NORMANDIE_ID, rec);
   assert.equal(first.notePlan.update[0].before, "Ancienne phrase.");
-  await applyPolicyNotePlan(rec.tx, first.notePlan);
+  await applyPolicyNotePlan(rec.tx, first.notePlan, STAMP);
 
   const second = await runRoutePlan(ticket, EM_NORMANDIE_ID, rec);
-  await applyPolicyNotePlan(rec.tx, second.notePlan);
+  await applyPolicyNotePlan(rec.tx, second.notePlan, STAMP);
   assert.equal(second.notePlan.unchanged.length, 1);
   assert.equal(rec.calls.filter((c) => c.startsWith("program.update")).length, 1);
 });
@@ -744,7 +750,7 @@ test("une note mise à jour rend l'avant ; rejouée, elle n'émet plus aucun upd
 test("ce chemin n'efface jamais une note : une fiche sans note ne touche à rien", async () => {
   const rec = notesTx(IBBA_NOTE);
   const { notePlan, summary } = await runRoutePlan({ campus_attachments: [] }, EM_NORMANDIE_ID, rec);
-  await applyPolicyNotePlan(rec.tx, notePlan);
+  await applyPolicyNotePlan(rec.tx, notePlan, STAMP);
 
   assert.equal(summary.writes, 0);
   assert.deepEqual(rec.calls, []);

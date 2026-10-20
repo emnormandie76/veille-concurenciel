@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import YearSelector from "../components/YearSelector";
 import ProgramSelector from "../components/ProgramSelector";
+import LastEdit from "../../LastEdit";
 
 interface ProgramOption {
   id: string;
@@ -16,6 +17,8 @@ interface RankingRecord {
   rank: number;
   academic_year: number;
   source_url: string | null;
+  // « Modifié par … le … » (étape 5, D29).
+  last_edit: string | null;
   program: {
     id: string;
     name: string;
@@ -250,7 +253,10 @@ export default function RankingsTab({ schoolId }: { schoolId: string }) {
             <tbody>
               {rankingRecords.map((r) => (
                 <tr key={r.id}>
-                  <td style={{ fontWeight: 600 }}>{r.program?.name || "—"}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {r.program?.name || "—"}
+                    <LastEdit text={r.last_edit} />
+                  </td>
                   <td>{r.ranking_name}</td>
                   <td>
                     <span className={`badge ${getRankBadgeClass(r.rank)}`}>

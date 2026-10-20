@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
+import { AUTHOR_SELECT, forManager } from "@/lib/provenance";
 
 export async function GET(
   request: Request,
@@ -15,6 +16,7 @@ export async function GET(
     const school = await prisma.school.findUnique({
       where: { id },
       include: {
+        updatedBy: AUTHOR_SELECT,
         _count: {
           select: {
             campuses: true,
@@ -44,8 +46,9 @@ export async function GET(
       orderBy: { academic_year: "desc" },
     });
 
+    // « Modifié par … le … » de chaque ligne : le nom et la date (étape 5, D29).
     return NextResponse.json({
-      ...school,
+      ...forManager(school),
       _counts: {
         campuses: school._count.campuses,
         programs: school._count.programs,

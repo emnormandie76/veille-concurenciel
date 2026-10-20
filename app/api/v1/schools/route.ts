@@ -11,6 +11,7 @@
 
 import { corsResponse, corsErrorResponse, parsePagination } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
+import { API_PROVENANCE_SELECT } from "@/lib/provenance";
 
 export const revalidate = 3600; // Cache 1h
 
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
           name: true,
           official_domain: true,
           status: true,
+          ...API_PROVENANCE_SELECT,
         },
         orderBy: { name: "asc" },
         skip,

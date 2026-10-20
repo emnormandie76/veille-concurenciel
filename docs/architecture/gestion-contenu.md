@@ -401,7 +401,7 @@ d'historique complet (D10). Depuis l'étape 8, `ProgramEntry` porte la même
 provenance (D49).
 
 **Admissions** (étape 8, migration `20261020180000_program_entries`,
-appliquée sur `dev` le 20 octobre ; `main` à la prochaine mise en
+appliquée sur `dev` puis sur `main` le 20 octobre, avant la mise en
 production) : `ProgramEntry` (D16) dit, pour un programme, en quelle année on
 entre (`entry_year`, 1 à 5), avec quel niveau (`required_level`, 0 pour le
 Bac à 5 pour Bac+5) et par quelle voie (`route`, cinq valeurs, `UNSPECIFIED`

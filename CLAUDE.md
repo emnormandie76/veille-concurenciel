@@ -148,8 +148,9 @@ branche `gestion` :
   lien source), D50 (onglet « Admissions », routes par entrée), D51 (ancien
   style), D52 (catégorie de signalement `ADMISSIONS`), D53 (admissions
   imbriquées dans l'API v1) ; migration `20261020180000_program_entries`
-  appliquée sur la branche Neon `dev` seulement (`main` à la prochaine mise
-  en production, avant le code) ; contrôle visuel de l'agent dans le Chrome
+  appliquée sur la branche Neon `dev` le 20 octobre, puis sur `main` le même
+  jour, avant l'avance de `main` sur `gestion` (mise en production) ;
+  contrôle visuel de l'agent dans le Chrome
   du propriétaire. Détail : journal du plan ;
 - prochaine : étape 9 (reprise graphique), en commençant par D17 ; D15
   reste ouverte.

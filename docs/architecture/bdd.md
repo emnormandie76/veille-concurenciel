@@ -39,8 +39,8 @@
 > `ProgramEntry` (D16), avec la provenance de l'étape 5 (D49) ; et une
 > 9e catégorie de signalement, `ADMISSIONS` (D52 : la contrainte de
 > `ContentReport` est remplacée). `Program` n'est pas touchée ;
-> `admission_exam` reste tel quel (D47). Appliquée sur la branche Neon `dev`
-> seulement ; `main` à la prochaine mise en production, avant le code qui la
+> `admission_exam` reste tel quel (D47). Appliquée sur la branche Neon `dev`,
+> puis sur `main` le 20 octobre, avant la mise en production du code qui la
 > lit (la fiche programme, l'onglet « Admissions », l'API v1).
 
 Référence du projet School Data Pipeline. La source de vérité reste
@@ -506,9 +506,9 @@ branches Neon. La quinzième, `20261020150000_research_launches` (étape 7),
 est arrivée sur `dev` puis sur `main` le 20 octobre, **avant** la fusion du
 code qui la lit (l'historique de `/admin/cron`). Les quinze sont appliquées
 sur les deux branches Neon. La seizième, `20261020180000_program_entries`
-(étape 8), est appliquée sur `dev` le 20 octobre ; elle part sur `main`
-**avant** le code qui la lit (la fiche programme, l'onglet « Admissions »,
-l'API v1), à la prochaine mise en production.
+(étape 8), est arrivée sur `dev` puis sur `main` le 20 octobre, **avant** la
+fusion du code qui la lit (la fiche programme, l'onglet « Admissions »,
+l'API v1). Les seize sont appliquées sur les deux branches Neon.
 
 | Migration | Contenu |
 |-----------|---------|

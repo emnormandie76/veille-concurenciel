@@ -11,6 +11,8 @@
  *   vérifié, jamais l'identifiant ni la relation de l'auteur (D25). Campus et
  *   programmes sont lus champ par champ, pour la même raison. Le cache d'une
  *   heure est levé à chaque écriture (lib/content-cache.ts).
+ * - Étape 9 (lot 1) : la fiche passe à la charte dans SchoolDetailClient,
+ *   qui pose le gabarit du site ; cette page ne lit toujours pas la session.
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 

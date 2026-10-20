@@ -8,6 +8,10 @@ import { cx } from "./cx";
  * (`success`, `warning`, `danger`) disent un état ; `accent` et `solid`
  * distinguent une catégorie (les rôles, par exemple) ; `neutral` ne dit rien
  * de plus que son texte.
+ *
+ * `wrap` laisse un texte long passer à la ligne (le concours d'un programme,
+ * étape 9) : la hauteur devient un minimum et l'arrondi celui d'un contrôle,
+ * pour qu'un badge de deux lignes ne devienne pas une pilule étirée.
  */
 
 export type BadgeTone = "neutral" | "accent" | "solid" | "success" | "warning" | "danger";
@@ -21,11 +25,20 @@ const TONES: Record<BadgeTone, string> = {
   danger: "bg-danger-soft text-danger",
 };
 
-export function Badge({ tone = "neutral", children, className }: { tone?: BadgeTone; children: ReactNode; className?: string }) {
+interface BadgeProps {
+  tone?: BadgeTone;
+  /** Un texte long, qui peut passer à la ligne. */
+  wrap?: boolean;
+  children: ReactNode;
+  className?: string;
+}
+
+export function Badge({ tone = "neutral", wrap = false, children, className }: BadgeProps) {
   return (
     <span
       className={cx(
-        "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 px-2 text-xs font-medium",
+        wrap ? "min-h-6 rounded-control py-0.5 leading-snug" : "h-6 rounded-full whitespace-nowrap",
         TONES[tone],
         className,
       )}

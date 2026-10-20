@@ -2,7 +2,9 @@
  * app/schools/[id]/SchoolDetailClient.tsx — Composant client fiche école (Étape 8.1)
  *
  * - Affichage avec onglets : Programmes, Statistiques, Accréditations
- * - Micro-animations, design premium dark
+ * - Étape 9 (lot 1) : dans la charte (onglets `Tabs`, badges, liste des
+ *   programmes, chiffres clés en grille) ; émojis retirés (D56). Textes,
+ *   identifiants de champ et filtres inchangés.
  * - Plan gestion-contenu, étape 5 : l'école, ses chiffres clés et ses
  *   accréditations montrent leur lien source et « Modifié par … le … »,
  *   préparés par la page serveur (`provenance`, `source_href`)
@@ -12,10 +14,20 @@
 
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
-import SignOutButton from "../../SignOutButton";
+import { SiteShell } from "@/components/layout/SiteShell";
+import { Badge } from "@/components/ui/Badge";
+import { buttonClasses } from "@/components/ui/Button";
+import { cx } from "@/components/ui/cx";
+import { Select } from "@/components/ui/Field";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
+import { TEXT_LINK } from "@/components/ui/text-link";
 import SourceLine from "../SourceLine";
+import { ExternalIcon, PinIcon } from "../icons";
+
+/** Un lien du fil d'Ariane : discret, souligné au survol. */
+const CRUMB_LINK = "hover:text-ink hover:underline underline-offset-2";
 
 interface PricingRecord {
   id: string;
@@ -138,6 +150,18 @@ function inferProgramLevel(name: string): string {
 
 type Tab = "programs" | "stats" | "accreditations";
 
+/** Un bouton de filtre (Diplôme, Niveau) : enfoncé quand il est choisi. */
+const FILTER_BUTTON =
+  "inline-flex h-8 items-center rounded-full border border-line-strong bg-surface px-3 text-compact text-ink-2 " +
+  "hover:text-ink aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-accent-ink " +
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
+
+/** Le titre d'un groupe de filtres ou de données. */
+const GROUP_LABEL = "text-xs font-semibold tracking-wider text-ink-2 uppercase";
+
+/** Une boîte qui dit qu'il n'y a rien à montrer. */
+const NO_DATA = "rounded-card border border-line bg-surface p-5 text-sm leading-relaxed text-ink-2";
+
 export default function SchoolDetailClient({ school }: { school: School }) {
   const [activeTab, setActiveTab] = useState<Tab>("programs");
   const [activeType, setActiveType] = useState<string>("all");
@@ -147,383 +171,317 @@ export default function SchoolDetailClient({ school }: { school: School }) {
   const totalPrograms = school.programs.length;
   const latestStats = school.statsRecords[0] ?? null;
 
+  const filteredPrograms = school.programs.filter((prog) => {
+    const type = inferProgramType(prog.name);
+    const level = inferProgramLevel(prog.name);
+    const typeMatch = activeType === "all" || type === activeType;
+    const levelMatch = activeLevel === "all" || level === activeLevel;
+    const campusMatch = activeCampus === "all" || prog.campuses.some((pc) => pc.campus.id === activeCampus);
+    return typeMatch && levelMatch && campusMatch;
+  });
+
+  // Les chiffres clés de la dernière année : libellé, valeur, identifiant gardé.
+  const rawStats: Array<{ label: string; raw: number | null; id?: string; pct?: boolean }> = latestStats
+    ? [
+        { label: "Étudiants", raw: latestStats.total_students, id: "stat-students" },
+        { label: "Alumni", raw: latestStats.total_alumni },
+        { label: "Entreprises partenaires", raw: latestStats.partner_companies },
+        { label: "Offres de stage/an", raw: latestStats.annual_internship_offers },
+        { label: "Campus à l'étranger", raw: latestStats.abroad_campuses },
+        { label: "Universités partenaires", raw: latestStats.partner_universities },
+        { label: "Professeurs permanents", raw: latestStats.permanent_professors },
+        { label: "Profs internationaux", raw: latestStats.international_professors_pct, pct: true },
+        { label: "Intervenants extérieurs", raw: latestStats.external_speakers_pct, pct: true },
+      ]
+    : [];
+  const statItems = rawStats
+    .filter((item) => item.raw !== null)
+    .map((item) => ({ label: item.label, id: item.id, value: item.pct ? formatPct(item.raw) : formatNum(item.raw) }));
+
+  const internationals = school.accreditations.filter((acc) => !acc.accreditation_type || acc.accreditation_type === "international");
+  const states = school.accreditations.filter((acc) => acc.accreditation_type === "state");
+  const labels = school.accreditations.filter((acc) => acc.accreditation_type === "label");
+
+  const renderBadge = (acc: AccreditationRecord) => (
+    <li
+      key={acc.id}
+      className="flex flex-col gap-1 rounded-control border border-line bg-surface px-3 py-2"
+      id={`accreditation-${acc.id}`}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink">
+        <span aria-hidden="true" className={cx("size-2 shrink-0 rounded-full", acc.is_active ? "bg-success" : "bg-ink-3")} />
+        {acc.accreditation_name}
+        {acc.year_obtained != null && <span className="text-xs text-ink-2">depuis {acc.year_obtained}</span>}
+        {!acc.is_active && <span className="text-xs text-ink-2">(expirée)</span>}
+      </div>
+      <SourceLine href={acc.source_href} provenance={acc.provenance} />
+    </li>
+  );
+
+  const accreditationGroups = [
+    { id: "international", title: "Accréditations Internationales", items: internationals },
+    { id: "state", title: "Reconnaissances de l'État français", items: states },
+    { id: "label", title: "Labels & Certifications", items: labels },
+  ].filter((group) => group.items.length > 0);
+
+  // Le gabarit du site, sans « Back-office » (D57) : la fiche ne lit pas la
+  // session, et garde son cache d'une heure.
   return (
-    <>
-      {/* Navbar */}
-      <nav className="public-nav" id="main-nav">
-        <Link href="/" className="public-nav-logo">
-          <span className="public-nav-logo-icon">🎓</span>
-          EduData France
-        </Link>
-        <div className="public-nav-links">
-          <Link href="/" className="public-nav-link">Écoles</Link>
-          <Link href="/api-docs" className="public-nav-link">API</Link>
-          <Link href="/account" className="public-nav-link">Mon compte</Link>
-          <SignOutButton className="public-nav-cta" />
-        </div>
-      </nav>
+    <SiteShell showBackOffice={false}>
+      <div className="flex flex-col gap-6">
+        {/* En-tête de l'école */}
+        <div className="flex flex-col gap-4" id="school-hero">
+          <nav aria-label="Fil d'Ariane" className="text-xs text-ink-2">
+            <ol className="flex flex-wrap items-center gap-1.5">
+              <li>
+                <Link href="/" className={CRUMB_LINK}>
+                  Accueil
+                </Link>
+              </li>
+              <li aria-hidden="true">›</li>
+              <li>
+                <Link href="/" className={CRUMB_LINK}>
+                  Écoles
+                </Link>
+              </li>
+              <li aria-hidden="true">›</li>
+              <li aria-current="page" className="text-ink">
+                {school.name}
+              </li>
+            </ol>
+          </nav>
 
-      {/* Hero école */}
-      <div className="school-detail-hero" id="school-hero">
-        {/* Breadcrumb */}
-        <nav className="breadcrumb" aria-label="Fil d'Ariane">
-          <Link href="/">Accueil</Link>
-          <span className="breadcrumb-sep">›</span>
-          <Link href="/">Écoles</Link>
-          <span className="breadcrumb-sep">›</span>
-          <span>{school.name}</span>
-        </nav>
-
-        <div className="school-detail-header">
-          <div className="school-detail-avatar">
-            {getInitials(school.name)}
-          </div>
-          <div className="school-detail-info">
-            <h1>{school.name}</h1>
-            <div className="school-detail-domain">
-              <span>🌐</span>
-              <a
-                href={`https://${school.official_domain}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {school.official_domain}
-              </a>
-              <span style={{ marginLeft: 12, color: "var(--text-secondary)" }}>
-                • {school.campuses.length} campus • {totalPrograms} programme{totalPrograms > 1 ? "s" : ""}
-              </span>
+          <div className="flex flex-wrap items-start gap-4">
+            <div
+              aria-hidden="true"
+              className="grid size-14 shrink-0 place-items-center rounded-card bg-accent font-display text-xl font-semibold text-accent-ink"
+            >
+              {getInitials(school.name)}
             </div>
-            <SourceLine href={null} provenance={school.provenance} />
-            {/* Étape 6 (D33) : le formulaire de signalement est une page de la
-                charte ; le lien garde l'ancien style de la fiche. */}
-            <Link href={`/schools/${school.id}/report`} className="btn btn-secondary" style={{ marginTop: 12 }}>
-              Signaler une information
-            </Link>
+            <div className="flex min-w-0 flex-col gap-2">
+              <h1 className="font-display text-2xl font-semibold tracking-tight text-balance text-ink">{school.name}</h1>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-2">
+                <a
+                  href={`https://${school.official_domain}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cx(TEXT_LINK, "inline-flex items-center gap-1")}
+                >
+                  {school.official_domain}
+                  <ExternalIcon />
+                </a>
+                <span aria-hidden="true">·</span>
+                <span>{school.campuses.length} campus</span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  {totalPrograms} programme{totalPrograms > 1 ? "s" : ""}
+                </span>
+              </div>
+              <SourceLine href={null} provenance={school.provenance} />
+              {/* Étape 6 (D33) : le formulaire de signalement ; un bouton
+                  secondaire de la charte depuis l'étape 9. */}
+              <div className="pt-1">
+                <Link href={`/schools/${school.id}/report`} className={buttonClasses({ variant: "secondary" })}>
+                  Signaler une information
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Tabs */}
-      <div className="tabs-nav" id="tabs-nav">
-        <button
-          id="tab-programs"
-          className={`tab-btn${activeTab === "programs" ? " active" : ""}`}
-          onClick={() => setActiveTab("programs")}
-        >
-          📚 Programmes ({totalPrograms})
-        </button>
-        <button
-          id="tab-stats"
-          className={`tab-btn${activeTab === "stats" ? " active" : ""}`}
-          onClick={() => setActiveTab("stats")}
-        >
-          📊 Statistiques
-        </button>
-        <button
-          id="tab-accreditations"
-          className={`tab-btn${activeTab === "accreditations" ? " active" : ""}`}
-          onClick={() => setActiveTab("accreditations")}
-        >
-          🏆 Accréditations ({school.accreditations.length})
-        </button>
-      </div>
+        {/* Onglets : le modèle ARIA de la charte (Tabs) */}
+        <div>
+          <Tabs
+            label="Sections de la fiche"
+            idPrefix="school"
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as Tab)}
+            items={[
+              { value: "programs", label: "Programmes", count: totalPrograms },
+              { value: "stats", label: "Statistiques" },
+              { value: "accreditations", label: "Accréditations", count: school.accreditations.length },
+            ]}
+          />
 
-      {/* Tab : Programmes */}
-      {activeTab === "programs" && (
-        <div className="tab-content" id="tab-content-programs">
-          {school.programs.length === 0 ? (
-            <div className="no-data">
-              Aucun programme validé pour cette école. Les données sont en cours d&apos;enrichissement.
-            </div>
-          ) : (
-            <>
-              {/* FILTRES CLIENT-SIDE */}
-              <div className="filter-panel" id="programs-filter-panel">
-                <div className="filter-section">
-                  <span className="filter-label">Diplôme</span>
-                  <div className="filter-options">
-                    {["all", "PGE", "Bachelor", "Master", "MSc"].map((t) => (
-                      <button
-                        key={t}
-                        className={`filter-btn${activeType === t ? " active" : ""}`}
-                        onClick={() => { setActiveType(t); }}
-                      >
-                        {t === "all" ? "Tous" : t === "MSc" ? "MSc / MS" : t}
-                      </button>
-                    ))}
+          {/* Onglet : Programmes */}
+          <TabPanel idPrefix="school" value="programs" selected={activeTab === "programs"} className="flex flex-col gap-4">
+            {school.programs.length === 0 ? (
+              <p className={NO_DATA}>Aucun programme validé pour cette école. Les données sont en cours d&apos;enrichissement.</p>
+            ) : (
+              <>
+                {/* FILTRES CLIENT-SIDE */}
+                <div
+                  className="flex flex-col gap-4 rounded-card border border-line bg-surface p-5 lg:flex-row lg:items-end lg:gap-8"
+                  id="programs-filter-panel"
+                >
+                  <div role="group" aria-labelledby="filter-type-label" className="flex flex-col gap-2">
+                    <span id="filter-type-label" className={GROUP_LABEL}>
+                      Diplôme
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {["all", "PGE", "Bachelor", "Master", "MSc"].map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          aria-pressed={activeType === t}
+                          className={FILTER_BUTTON}
+                          onClick={() => {
+                            setActiveType(t);
+                          }}
+                        >
+                          {t === "all" ? "Tous" : t === "MSc" ? "MSc / MS" : t}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="filter-section">
-                  <span className="filter-label">Niveau</span>
-                  <div className="filter-options">
-                    {["all", "Bac+3", "Bac+5", "Bac+6"].map((l) => (
-                      <button
-                        key={l}
-                        className={`filter-btn${activeLevel === l ? " active" : ""}`}
-                        onClick={() => { setActiveLevel(l); }}
-                      >
-                        {l === "all" ? "Tous" : l}
-                      </button>
-                    ))}
+                  <div role="group" aria-labelledby="filter-level-label" className="flex flex-col gap-2">
+                    <span id="filter-level-label" className={GROUP_LABEL}>
+                      Niveau
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {["all", "Bac+3", "Bac+5", "Bac+6"].map((l) => (
+                        <button
+                          key={l}
+                          type="button"
+                          aria-pressed={activeLevel === l}
+                          className={FILTER_BUTTON}
+                          onClick={() => {
+                            setActiveLevel(l);
+                          }}
+                        >
+                          {l === "all" ? "Tous" : l}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="filter-section">
-                  <span className="filter-label">Campus</span>
-                  <div className="filter-options" style={{ width: "100%", maxWidth: "340px" }}>
-                    <select
-                      id="select-campus"
-                      className="filter-btn"
-                      value={activeCampus}
-                      onChange={(e) => setActiveCampus(e.target.value)}
-                      style={{
-                        background: "var(--bg-tertiary)",
-                        border: "1px solid var(--border-color)",
-                        color: "var(--text-primary)",
-                        padding: "8px 12px",
-                        borderRadius: "var(--radius-sm)",
-                        width: "100%",
-                        cursor: "pointer",
-                        outline: "none"
-                      }}
-                    >
+                  <div className="flex flex-col gap-2 lg:ml-auto lg:w-72">
+                    <label htmlFor="select-campus" className={GROUP_LABEL}>
+                      Campus
+                    </label>
+                    <Select id="select-campus" value={activeCampus} onChange={(e) => setActiveCampus(e.target.value)}>
                       <option value="all">Tous les campus ({school.campuses.length})</option>
                       {school.campuses.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.city ? `${c.name} (${c.city})` : c.name}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
-              </div>
 
-              {/* LISTE PLATE DE PROGRAMMES */}
-              <div className="programs-list" id="programs-list">
-                {school.programs
-                  .filter((prog) => {
-                    const type = inferProgramType(prog.name);
-                    const level = inferProgramLevel(prog.name);
-                    const typeMatch = activeType === "all" || type === activeType;
-                    const levelMatch = activeLevel === "all" || level === activeLevel;
-                    const campusMatch = activeCampus === "all" || prog.campuses.some((pc) => pc.campus.id === activeCampus);
-                    return typeMatch && levelMatch && campusMatch;
-                  })
-                  .map((prog) => {
-                    const latestPrice = prog.pricingRecords[0] ?? null;
-                    const type = inferProgramType(prog.name);
-                    const level = inferProgramLevel(prog.name);
-
-                    return (
-                      <Link
-                        key={prog.id}
-                        href={`/schools/${school.id}/programs/${prog.id}`}
-                        className="program-card"
-                        id={`program-card-${prog.id}`}
-                      >
-                        <div className="program-card-left">
-                          <div className="program-card-name">{prog.name}</div>
-                          <div className="program-card-tags">
-                            <span className="program-tag tag-type">{type}</span>
-                            <span className="program-tag tag-level">{level}</span>
-                            {prog.admission_exam && (
-                              <span className="program-tag tag-exam">🎯 {prog.admission_exam}</span>
-                            )}
-                            {prog.is_alternance_possible && (
-                              <span className="program-tag tag-alternance">🔄 Alternance</span>
-                            )}
-                            {prog.is_expatriation_mandatory && (
-                              <span className="program-tag tag-expat">✈️ Expatriation</span>
-                            )}
-                          </div>
-                          {/* Badges campus disponibles */}
-                          {prog.campuses.length > 0 && (
-                            <div className="program-campus-badges">
-                              <span className="campus-badge-icon">📍</span>
-                              {prog.campuses.map((pc) => (
-                                <span key={pc.id} className="campus-badge">
-                                  {pc.campus.city ?? pc.campus.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        {latestPrice && (
-                          <div className="program-card-price">
-                            {(latestPrice.year_1_fee ?? latestPrice.total_fee)?.toLocaleString("fr-FR")} {latestPrice.currency}
-                            <div className="program-price-year">
-                              {latestPrice.year_1_fee ? "/an (1ère année)" : "total cursus"}
-                            </div>
-                          </div>
-                        )}
-                      </Link>
-                    );
-                  })}
-                {school.programs.filter((prog) => {
-                  const type = inferProgramType(prog.name);
-                  const level = inferProgramLevel(prog.name);
-                  const campusMatch = activeCampus === "all" || prog.campuses.some((pc) => pc.campus.id === activeCampus);
-                  return (activeType === "all" || type === activeType) && 
-                         (activeLevel === "all" || level === activeLevel) &&
-                         campusMatch;
-                }).length === 0 && (
-                  <div className="no-data">
+                {/* LISTE PLATE DE PROGRAMMES */}
+                {filteredPrograms.length === 0 ? (
+                  <p className={NO_DATA} id="programs-list">
                     Aucun programme ne correspond aux filtres sélectionnés.
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+                  </p>
+                ) : (
+                  <ul className="overflow-hidden rounded-card border border-line bg-surface" id="programs-list">
+                    {filteredPrograms.map((prog) => {
+                      const latestPrice = prog.pricingRecords[0] ?? null;
+                      const type = inferProgramType(prog.name);
+                      const level = inferProgramLevel(prog.name);
 
-      {/* Tab : Stats */}
-      {activeTab === "stats" && (
-        <div className="tab-content" id="tab-content-stats">
-          {!latestStats ? (
-            <div className="no-data">Aucune statistique disponible pour cette école.</div>
-          ) : (
-            <>
-              <div style={{ marginBottom: 24, color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                Données année {latestStats.academic_year}
-                <SourceLine href={latestStats.source_href} provenance={latestStats.provenance} />
-              </div>
-              <div className="stats-grid">
-                {latestStats.total_students !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value" id="stat-students">{formatNum(latestStats.total_students)}</div>
-                    <div className="stat-card-label">Étudiants</div>
-                  </div>
+                      return (
+                        <li key={prog.id} className="border-b border-line last:border-b-0">
+                          <Link
+                            href={`/schools/${school.id}/programs/${prog.id}`}
+                            className="group flex flex-col gap-3 px-5 py-3.5 hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus sm:flex-row sm:items-center sm:gap-6"
+                            id={`program-card-${prog.id}`}
+                          >
+                            <div className="flex min-w-0 flex-1 flex-col gap-2">
+                              <span className="text-sm leading-snug font-semibold text-ink group-hover:text-accent-strong">{prog.name}</span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Badge tone="accent">{type}</Badge>
+                                <Badge>{level}</Badge>
+                                {prog.admission_exam && <Badge wrap>{prog.admission_exam}</Badge>}
+                                {prog.is_alternance_possible && <Badge tone="success">Alternance</Badge>}
+                                {prog.is_expatriation_mandatory && <Badge>Expatriation</Badge>}
+                                {/* Campus disponibles */}
+                                {prog.campuses.length > 0 && (
+                                  <span className="ml-1 inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-2">
+                                    <PinIcon />
+                                    {prog.campuses.map((pc, index) => (
+                                      <Fragment key={pc.id}>
+                                        {index > 0 && (
+                                          <span aria-hidden="true" className="text-ink-3">
+                                            ·
+                                          </span>
+                                        )}
+                                        <span>{pc.campus.city ?? pc.campus.name}</span>
+                                      </Fragment>
+                                    ))}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {latestPrice && (
+                              <div className="shrink-0 sm:text-right">
+                                <div className="font-mono text-sm font-medium text-ink tabular-nums">
+                                  {(latestPrice.year_1_fee ?? latestPrice.total_fee)?.toLocaleString("fr-FR")} {latestPrice.currency}
+                                </div>
+                                <div className="text-xs text-ink-2">
+                                  {latestPrice.year_1_fee ? "/an (1ère année)" : "total cursus"}
+                                </div>
+                              </div>
+                            )}
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
-                {latestStats.total_alumni !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value">{formatNum(latestStats.total_alumni)}</div>
-                    <div className="stat-card-label">Alumni</div>
-                  </div>
-                )}
-                {latestStats.partner_companies !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value">{formatNum(latestStats.partner_companies)}</div>
-                    <div className="stat-card-label">Entreprises partenaires</div>
-                  </div>
-                )}
-                {latestStats.annual_internship_offers !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value">{formatNum(latestStats.annual_internship_offers)}</div>
-                    <div className="stat-card-label">Offres de stage/an</div>
-                  </div>
-                )}
-                {latestStats.abroad_campuses !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value">{formatNum(latestStats.abroad_campuses)}</div>
-                    <div className="stat-card-label">Campus à l&apos;étranger</div>
-                  </div>
-                )}
-                {latestStats.partner_universities !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value">{formatNum(latestStats.partner_universities)}</div>
-                    <div className="stat-card-label">Universités partenaires</div>
-                  </div>
-                )}
-                {latestStats.permanent_professors !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value">{formatNum(latestStats.permanent_professors)}</div>
-                    <div className="stat-card-label">Professeurs permanents</div>
-                  </div>
-                )}
-                {latestStats.international_professors_pct !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value">{formatPct(latestStats.international_professors_pct)}</div>
-                    <div className="stat-card-label">Profs internationaux</div>
-                  </div>
-                )}
-                {latestStats.external_speakers_pct !== null && (
-                  <div className="stat-card">
-                    <div className="stat-card-value">{formatPct(latestStats.external_speakers_pct)}</div>
-                    <div className="stat-card-label">Intervenants extérieurs</div>
-                  </div>
-                )}
-              </div>
-              {school.statsRecords.length > 1 && (
-                <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginTop: 8 }}>
-                  Données historiques disponibles : {school.statsRecords.map((r) => r.academic_year).join(", ")}
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Tab : Accréditations */}
-      {activeTab === "accreditations" && (() => {
-        const internationals = school.accreditations.filter(acc => !acc.accreditation_type || acc.accreditation_type === "international");
-        const states = school.accreditations.filter(acc => acc.accreditation_type === "state");
-        const labels = school.accreditations.filter(acc => acc.accreditation_type === "label");
-
-        const renderBadge = (acc: AccreditationRecord) => (
-          <div
-            key={acc.id}
-            className={`accreditation-badge${acc.is_active ? " active" : ""}`}
-            id={`accreditation-${acc.id}`}
-          >
-            <span className="accreditation-dot" style={{ background: acc.is_active ? "#34d399" : "#6b7280" }} />
-            {acc.accreditation_name}
-            {acc.year_obtained != null && (
-              <span style={{ fontSize: "0.78rem", fontWeight: 400, color: "var(--text-secondary)", marginLeft: 4 }}>
-                depuis {acc.year_obtained}
-              </span>
+              </>
             )}
-            {!acc.is_active && (
-              <span style={{ fontSize: "0.72rem", color: "#6b7280", marginLeft: 4 }}>(expirée)</span>
-            )}
-            <SourceLine href={acc.source_href} provenance={acc.provenance} />
-          </div>
-        );
+          </TabPanel>
 
-        return (
-          <div className="tab-content" id="tab-content-accreditations">
-            {school.accreditations.length === 0 ? (
-              <div className="no-data">Aucune accréditation enregistrée pour cette école.</div>
+          {/* Onglet : Stats */}
+          <TabPanel idPrefix="school" value="stats" selected={activeTab === "stats"} className="flex flex-col gap-3">
+            {!latestStats ? (
+              <p className={NO_DATA}>Aucune statistique disponible pour cette école.</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-                {internationals.length > 0 && (
-                  <div>
-                    <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-                      🌍 Accréditations Internationales
-                    </h3>
-                    <div className="accreditations-list">
-                      {internationals.map(renderBadge)}
+              <>
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm text-ink-2">Données année {latestStats.academic_year}</p>
+                  <SourceLine href={latestStats.source_href} provenance={latestStats.provenance} />
+                </div>
+                <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {statItems.map((item) => (
+                    <div key={item.label} className="flex flex-col-reverse gap-1 rounded-card border border-line bg-surface p-5">
+                      <dt className="text-sm text-ink-2">{item.label}</dt>
+                      <dd className="font-mono text-2xl font-medium text-ink tabular-nums" id={item.id}>
+                        {item.value}
+                      </dd>
                     </div>
-                  </div>
+                  ))}
+                </dl>
+                {school.statsRecords.length > 1 && (
+                  <p className="text-xs text-ink-2">
+                    Données historiques disponibles : {school.statsRecords.map((r) => r.academic_year).join(", ")}
+                  </p>
                 )}
-
-                {states.length > 0 && (
-                  <div>
-                    <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-                      🇫🇷 Reconnaissances de l&apos;État français
-                    </h3>
-                    <div className="accreditations-list">
-                      {states.map(renderBadge)}
-                    </div>
-                  </div>
-                )}
-
-                {labels.length > 0 && (
-                  <div>
-                    <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#fff", marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
-                      🏷️ Labels & Certifications
-                    </h3>
-                    <div className="accreditations-list">
-                      {labels.map(renderBadge)}
-                    </div>
-                  </div>
-                )}
-              </div>
+              </>
             )}
-          </div>
-        );
-      })()}
-    </>
+          </TabPanel>
+
+          {/* Onglet : Accréditations */}
+          <TabPanel idPrefix="school" value="accreditations" selected={activeTab === "accreditations"} className="flex flex-col gap-6">
+            {school.accreditations.length === 0 ? (
+              <p className={NO_DATA}>Aucune accréditation enregistrée pour cette école.</p>
+            ) : (
+              accreditationGroups.map((group) => (
+                <section key={group.id} aria-labelledby={`accreditations-${group.id}`} className="flex flex-col gap-3">
+                  <h2 id={`accreditations-${group.id}`} className="text-sm font-semibold text-ink">
+                    {group.title}
+                  </h2>
+                  <ul className="flex flex-wrap items-start gap-2">{group.items.map(renderBadge)}</ul>
+                </section>
+              ))
+            )}
+          </TabPanel>
+        </div>
+      </div>
+    </SiteShell>
   );
 }

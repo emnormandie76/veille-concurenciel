@@ -100,6 +100,9 @@ interface TabPanelProps {
 }
 
 export function TabPanel({ idPrefix, value, selected, children, className }: TabPanelProps) {
+  // Un panneau caché ne prend pas la mise en page de l'appelant : sans
+  // preflight (piège 10), `hidden` ne tient que par la feuille du navigateur,
+  // et un utilitaire `flex` l'emporterait (relevé à l'étape 9).
   return (
     <div
       role="tabpanel"
@@ -107,7 +110,7 @@ export function TabPanel({ idPrefix, value, selected, children, className }: Tab
       aria-labelledby={tabId(idPrefix, value)}
       hidden={!selected}
       tabIndex={0}
-      className={cx("pt-5", className)}
+      className={cx("pt-5", selected && className)}
     >
       {children}
     </div>

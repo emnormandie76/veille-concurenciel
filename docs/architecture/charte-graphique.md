@@ -14,6 +14,10 @@
 > [`test/charte.test.ts`](../../test/charte.test.ts) vérifie que ce document et
 > le code disent la même chose : chaque jeton et sa valeur, chaque contraste
 > du §3.
+>
+> **Étape 9, reprise des écrans restants** (D54 : six lots, une session par
+> lot) : le lot 1 (site public et `/api-docs`) est fait le 20 octobre ;
+> l'état de la reprise est au §9.
 
 ---
 
@@ -188,10 +192,10 @@ variantes (`cx` ne fusionne pas les classes contradictoires).
 | Bouton | `Button.tsx` | `primary` (une action principale par zone), `secondary` (par défaut), `danger` (confirme une suppression), `danger-soft` (ouvre une suppression depuis une ligne), `ghost` (action discrète, bouton d'icône) ; tailles `md`, `sm`, `icon`. `type="button"` par défaut. `buttonClasses()` habille un lien |
 | Champ | `Field.tsx` : `Field`, `Input`, `Textarea`, `Label` | `Field` relie libellé, aide (`<id>-hint`) et erreur (`<id>-error`) au contrôle : `htmlFor`, `aria-describedby`, `aria-invalid`. Un libellé visible, toujours ; le texte indicatif ne le remplace jamais |
 | Liste déroulante | `Field.tsx` : `Select` | `<select>` natif, avec une flèche ; se place dans un `Field` |
-| Tableau | `Table.tsx` : `Table`, `THead`, `TBody`, `Tr`, `Th`, `Td` | `caption` (lu, pas affiché) ; en-têtes `scope="col"` ; `numeric` aligne à droite en chiffres tabulaires ; défile en largeur dans son cadre |
+| Tableau | `Table.tsx` : `Table`, `THead`, `TBody`, `Tr`, `Th`, `Td` | `caption` (lu, pas affiché) ; en-têtes `scope="col"` ; `numeric` aligne à droite en chiffres tabulaires ; défile en largeur dans son cadre ; `id` va au `<table>` (un écran repris garde le sien : `pricing-table`, étape 9) |
 | Carte | `Card.tsx` : `Card`, `CardHeader` | un bloc détaché (formulaire, groupe de faits) ; `CardHeader` donne un titre `h2` et un `titleId` pour `aria-labelledby` |
-| Onglets | `Tabs.tsx` : `Tabs`, `TabPanel` ; `tabs-keys.ts` | modèle ARIA : flèches gauche et droite (en boucle), Début, Fin ; un seul onglet dans l'ordre de tabulation ; compteur facultatif. Le filet du bas est une ombre intérieure, que couvre le soulignement de l'onglet choisi : rien ne déborde de la liste, qui défile en largeur sans barre verticale (corrigé à l'étape 6) |
-| Badge | `Badge.tsx` | `neutral`, `accent`, `solid` (catégories : rôles) ; `success`, `warning`, `danger` (états) |
+| Onglets | `Tabs.tsx` : `Tabs`, `TabPanel` ; `tabs-keys.ts` | modèle ARIA : flèches gauche et droite (en boucle), Début, Fin ; un seul onglet dans l'ordre de tabulation ; compteur facultatif. Le filet du bas est une ombre intérieure, que couvre le soulignement de l'onglet choisi : rien ne déborde de la liste, qui défile en largeur sans barre verticale (corrigé à l'étape 6). Un `TabPanel` caché ne prend pas le `className` de l'appelant : sans preflight, un utilitaire d'affichage (`flex`) défaisait l'attribut `hidden` et montrait le panneau (corrigé à l'étape 9) |
+| Badge | `Badge.tsx` | `neutral`, `accent`, `solid` (catégories : rôles) ; `success`, `warning`, `danger` (états) ; `wrap` pour un texte long qui passe à la ligne (le concours d'un programme, étape 9) : hauteur minimale, arrondi d'un contrôle |
 | Dialogue | `Dialog.tsx` : `Dialog`, `DialogFooter` | `<dialog>` natif ouvert par `showModal()` : focus gardé dans le dialogue, page inerte, focus rendu à la fermeture ; Échap et « Fermer » passent par `onClose`, qui peut refuser ; `data-autofocus` désigne le premier champ. Remplace `confirm()`. Un événement `close` du navigateur arrivé quand le dialogue est de nouveau ouvert est ignoré : sous `next dev`, React rejoue les effets, et le dialogue se refermait aussitôt ouvert (corrigé à l'étape 6) |
 | Message | `Alert.tsx` | `danger` (`role="alert"`), `success` et `info` (`role="status"`) ; texte en encre, teinte portée par le fond et l'icône |
 | Lien dans un texte | `text-link.ts` : `TEXT_LINK` | souligné, en `accent-strong` |
@@ -200,6 +204,17 @@ Rôles et états des comptes : `Utilisateur` neutre, `Gestionnaire` accent,
 `Administrateur` plein ; `Invité` avertissement, `Actif` réussite,
 `Désactivé` danger.
 
+Sur les fiches (étape 9, lot 1, sur la maquette A) : le type de diplôme en
+`accent`, le niveau, le concours et l'expatriation en `neutral`,
+« Alternance » en `success` ; une école active en `success` sur l'accueil.
+
+**Pas d'émoji** (§1, D56) : les émojis décoratifs des anciens écrans partent
+à la reprise, leurs textes restent ; une icône SVG cachée aux lecteurs
+d'écran les remplace là où elle aide (le repère des campus, le lien
+externe : `app/schools/icons.tsx`). `test/charte.test.ts` refuse un émoji
+dans un écran de la charte ; les flèches de texte (« → », « ↗ ») n'en sont
+pas.
+
 ## 7. Gabarits
 
 Dans [`components/layout/`](../../components/layout/). Leur racine porte la
@@ -207,7 +222,7 @@ classe `charte` (§9).
 
 | Gabarit | Fichier | Emploi |
 |---|---|---|
-| Site | `SiteShell.tsx` | la barre du site (Écoles, API, Back-office pour qui y a droit, Mon compte, Se déconnecter), puis une colonne `narrow` (48 rem, formulaires) ou `wide` (72 rem) |
+| Site | `SiteShell.tsx` | la barre du site (Écoles, API, Back-office pour qui y a droit, Mon compte, Se déconnecter), puis une colonne `narrow` (48 rem, formulaires) ou `wide` (72 rem). « Back-office » suit la session relue en base : les pages qui ne la lisent pas (l'accueil, les fiches en cache, `/api-docs`) passent `showBackOffice={false}` (D57). `current` marque l'entrée qui mène à la page affichée (Écoles sur l'accueil, API sur `/api-docs`), aucune sur une fiche |
 | Connexion | `AuthShell.tsx` | une colonne de 24 rem au centre : titre, carte du formulaire, lien vers l'autre page ; sans barre. `AuthShellLoading` pendant la lecture de l'adresse |
 | Back-office | `AdminPage.tsx` | l'en-tête d'un écran (titre, explication, actions), puis son contenu ; se pose dans le cadre de `app/admin/layout.tsx`, dont le menu reste l'ancien jusqu'à l'étape 9 |
 
@@ -232,9 +247,19 @@ classe `charte` (§9).
   affichée ; tableaux avec `caption` et `scope`.
 - **Mouvement** : seules des transitions de couleur, brèves.
 
-## 9. Mise en œuvre, jusqu'à l'étape 9
+## 9. Mise en œuvre, jusqu'à la fin de l'étape 9
 
-L'ancien style et la charte cohabitent (plan, G7 et piège 10).
+L'ancien style et la charte cohabitent (plan, G7 et piège 10) jusqu'au lot 6
+de l'étape 9 (D54).
+
+| Lot (D54) | Écrans | État |
+|---|---|---|
+| 1 | accueil, fiche école, fiche programme, `/api-docs` (avec `SourceLine`) | **fait le 20 octobre** |
+| 2 | liste des écoles, cadre de la gestion, page des campus, onglets Infos, Accréditations, Chiffres clés, Admissions | à faire |
+| 3 | onglets Campus & Programmes, Tarifs, Classements, Capacités | à faire |
+| 4 | inbox | à faire |
+| 5 | `/admin/cron` | à faire |
+| 6 | menu latéral et cadre du back-office ; preflight, nettoyage de `globals.css`, Inter | à faire |
 
 - **Tailwind CSS v4** (`tailwindcss` et `@tailwindcss/postcss`, 4.3.3),
   branché par [`postcss.config.mjs`](../../postcss.config.mjs).
@@ -252,9 +277,12 @@ L'ancien style et la charte cohabitent (plan, G7 et piège 10).
   et pose le focus visible.
 - **Sources** : Tailwind ne lit que les dossiers nommés par `@source`
   (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
-  `app/account/`, et depuis l'étape 6 `app/schools/[id]/report/` et
-  `app/admin/reports/` : un chemin qui existe est lu à la lettre, crochets
-  compris), avec `source(none)` sur l'import des utilitaires : un ancien
+  `app/account/`, depuis l'étape 6 `app/admin/reports/`, et depuis le lot 1
+  de l'étape 9 `app/schools/` (les fiches, le formulaire de signalement),
+  `app/api-docs/` et le seul fichier `app/page.tsx` (l'accueil : lire tout
+  `app/` ferait générer les homonymes des classes des écrans pas encore
+  repris) ; un chemin qui existe est lu à la lettre, crochets compris), avec
+  `source(none)` sur l'import des utilitaires : un ancien
   nom de classe qui serait aussi un utilitaire n'en reçoit pas les règles.
   `block` et `fill-accent`, deux classes de `/admin/cron`, ne sont jamais
   générés (`@source not inline`) : un écran de la charte ne s'en sert pas
@@ -274,8 +302,19 @@ L'ancien style et la charte cohabitent (plan, G7 et piège 10).
 4. garder libellés, identifiants de champ et comportement ;
 5. regarder l'écran dans un navigateur, et un écran voisin non repris.
 
-**Restes pour l'étape 9** : le menu latéral et le cadre du back-office (jetons
-`side-*`), le preflight à la place de la base `.charte`, les classes mortes de
-l'ancien CSS (celles des écrans repris : `login-*`, `account-*`,
-`users-actions`, `badge-user`, `badge-invited`, `user-secondary`,
-`modal-text`…), la règle de transition `:has()`, Inter.
+**Restes pour l'étape 9** (lots 2 à 6) : les écrans de la gestion des écoles
+(lots 2 et 3), l'inbox (lot 4) et `/admin/cron` (lot 5) ; puis, au lot 6, le
+menu latéral et le cadre du back-office (jetons `side-*`), le preflight à la
+place de la base `.charte` (il pose aussi `[hidden] { display: none }`), la
+règle de transition `:has()`, les exclusions `block` et `fill-accent`, Inter,
+et les classes mortes de l'ancien CSS. Relevé à la fin du lot 1 : 142 des
+201 classes de la couche `legacy` ne servent plus à aucun écran, celles des
+écrans repris (`public-nav*`, `hero-*`, `search-*`, `stats-bar`,
+`school-card*`, `school-detail-*`, `program-card*`, `program-tag`, `tag-*`,
+`filter-*`, `docs-*`, `pricing-table*`, `ranking-*`, `stat-card*`,
+`accreditation-*`, `breadcrumb*`, `login-*`, `account-*`, `users-actions`,
+`badge-user`, `badge-invited`, `user-secondary`, `modal-text`…) et quelques
+autres déjà mortes avant l'étape 9 (`campus-accordion`, `forbidden-*`,
+`spinner`, `page-loading`…). Elles restent jusqu'au lot 6 : la couche
+`legacy` de `globals.css` ne change pas avant (seuls ses `@source`
+s'allongent, lot après lot).

@@ -109,6 +109,19 @@ test("Badge : le ton choisit les couleurs, le texte dit l'état", () => {
   assert.match(html(h(Badge, { children: "Utilisateur" })), /bg-surface-2/, "neutre par défaut");
 });
 
+test("Badge : un texte long passe à la ligne s'il le demande (étape 9, le concours d'un programme)", () => {
+  // Une classe entière : `h-6` ne doit pas se lire dans `min-h-6`.
+  const has = (out: string, name: string) => new RegExp(`class="(?:[^"]* )?${name}(?: [^"]*)?"`).test(out);
+  const short = html(h(Badge, { children: "Bac+5" }));
+  assert.ok(has(short, "h-6") && has(short, "whitespace-nowrap") && has(short, "rounded-full"));
+  const long = html(h(Badge, { wrap: true, children: "Admission par le concours SESAME ou une procédure propre aux candidats internationaux" }));
+  for (const name of ["whitespace-nowrap", "h-6", "rounded-full"]) {
+    assert.equal(has(long, name), false, `${name} : ni hauteur fixe, ni texte sur une ligne, ni pilule étirée`);
+  }
+  assert.match(long, /\bmin-h-6\b/);
+  assert.match(long, /\brounded-control\b/);
+});
+
 test("Card et CardHeader : un titre h2, relié par son identifiant", () => {
   const out = html(h(Card, { "aria-labelledby": "t" }, h(CardHeader, { title: "Mot de passe", titleId: "t" })));
   assert.match(out, /^<section[^>]*aria-labelledby="t"/);
@@ -133,6 +146,13 @@ test("Table : nommé pour les lecteurs d'écran, en-têtes de colonne, nombres a
   assert.match(out, /<td class="[^"]*font-mono tabular-nums text-right[^"]*">13 750 €<\/td>/);
   assert.match(out, /<td class="[^"]*font-mono tabular-nums text-left[^"]*">16\/10\/2026<\/td>/);
   assert.match(out, /^<div class="overflow-x-auto/, "le tableau défile dans son cadre, pas la page");
+  assert.doesNotMatch(out, /<table[^>]* id=/, "pas d'identifiant sans demande");
+});
+
+test("Table : l'identifiant demandé va au <table>, pas à son cadre (étape 9 : id=\"pricing-table\" gardé)", () => {
+  const out = html(h(Table, { id: "pricing-table", children: h(TBody, null, h(Tr, null, h(Td, null, "2026"))) }));
+  assert.match(out, /<table id="pricing-table"/);
+  assert.match(out, /^<div class="overflow-x-auto[^"]*">/);
 });
 
 // ─── Onglets ────────────────────────────────────────────────────────────────
@@ -178,6 +198,17 @@ test("Tabs et TabPanel : un seul onglet dans l'ordre de tabulation, chacun comma
   assert.match(out, />15<\/span>/, "le compteur s'affiche");
   assert.match(out, new RegExp(`<div role="tabpanel" id="${panelId("fiche", "programs")}" aria-labelledby="${tabId("fiche", "programs")}" tabindex="0"`));
   assert.match(out, new RegExp(`<div role="tabpanel" id="${panelId("fiche", "stats")}"[^>]*hidden=""`));
+});
+
+test("TabPanel : un panneau caché ne prend pas la mise en page de l'appelant, qui défairait `hidden`", () => {
+  // Sans preflight (piège 10), `hidden` ne tient que par la feuille du
+  // navigateur : un utilitaire `flex` l'emporte et montre le panneau (relevé à
+  // l'étape 9, sur la fiche école).
+  const shown = html(h(TabPanel, { idPrefix: "fiche", value: "stats", selected: true, className: "flex flex-col gap-3", children: "x" }));
+  assert.match(shown, /class="pt-5 flex flex-col gap-3"/);
+  const hidden = html(h(TabPanel, { idPrefix: "fiche", value: "stats", selected: false, className: "flex flex-col gap-3", children: "x" }));
+  assert.match(hidden, /hidden=""/);
+  assert.doesNotMatch(hidden, /\bflex\b/);
 });
 
 // ─── Dialogue ───────────────────────────────────────────────────────────────

@@ -4,6 +4,9 @@
  * - Affiche la documentation interactive des 15 endpoints de l'API v1, réservée
  *   aux personnes connectées comme tout le site (plan gestion-contenu, étape 1).
  * - Mise en page en 3 colonnes de style Stripe (navigation, détails, exemples de code).
+ * - Étape 9 (lot 1) : dans la charte (gabarit `SiteShell` sans « Back-office »,
+ *   D57) ; exemples de code en clair, onglets de la charte (D59) ; libellé
+ *   visible de la recherche (D58) ; émojis des catégories retirés (D56).
  * - Entièrement statique et sans requêtes à la base de données Neon.
  * - Contenu dans endpoints.ts, aligné sur les réponses réelles le 15 octobre
  *   2026 et tenu par test/api-docs.test.ts.
@@ -14,8 +17,12 @@
 "use client";
 
 import { useState, useMemo, useSyncExternalStore } from "react";
-import Link from "next/link";
-import SignOutButton from "../SignOutButton";
+import { SiteShell } from "@/components/layout/SiteShell";
+import { Button } from "@/components/ui/Button";
+import { cx } from "@/components/ui/cx";
+import { Field, Input } from "@/components/ui/Field";
+import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/Table";
+import { TabPanel, Tabs } from "@/components/ui/Tabs";
 import { buildSampleUrl, endpoints, Endpoint } from "./endpoints";
 
 // L'adresse du site ne change pas pendant la vie de la page.
@@ -44,18 +51,26 @@ const categoryLabels: Record<typeof categoryOrder[number], string> = {
   compare: "Comparateurs"
 };
 
-const categoryIcons: Record<typeof categoryOrder[number], string> = {
-  introduction: "⚡",
-  schools: "🏛️",
-  campuses: "🏢",
-  programs: "🎓",
-  pricing: "💰",
-  rankings: "🏆",
-  capacity: "👥",
-  compare: "⚖️"
-};
-
 type Language = "curl" | "javascript" | "python";
+
+/** Les onglets des exemples d'appel (D59). */
+const LANGUAGES: Array<{ value: Language; label: string }> = [
+  { value: "curl", label: "cURL" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "python", label: "Python" },
+];
+
+/** Une entrée de la navigation ; la route affichée porte `aria-current`. */
+const NAV_BUTTON =
+  "flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left text-compact text-ink-2 " +
+  "hover:bg-surface-2 hover:text-ink aria-[current=true]:bg-accent-soft aria-[current=true]:font-medium aria-[current=true]:text-accent-strong " +
+  "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus";
+
+/** L'étiquette de la méthode HTTP. */
+const METHOD = "shrink-0 rounded-control px-1.5 font-mono text-[11px] leading-5 font-medium";
+
+/** Un bloc de code : Plex Mono, sur fond `surface-2` (D59). */
+const CODE = "overflow-x-auto rounded-control bg-surface-2 p-4 font-mono text-xs leading-relaxed text-ink";
 
 export default function ApiDocsPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -142,213 +157,164 @@ export default function ApiDocsPage() {
   }, [filteredEndpoints]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      {/* Navbar publique */}
-      <nav className="public-nav" id="main-nav">
-        <Link href="/" className="public-nav-logo">
-          <span className="public-nav-logo-icon">🎓</span>
-          EduData France
-        </Link>
-        <div className="public-nav-links">
-          <Link href="/" className="public-nav-link">
-            Écoles
-          </Link>
-          <Link href="/api-docs" className="public-nav-link active">
-            API
-          </Link>
-          <Link href="/account" className="public-nav-link">Mon compte</Link>
-          <SignOutButton className="public-nav-cta" />
-        </div>
-      </nav>
+    <SiteShell current="api" showBackOffice={false}>
+      <div className="grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)] xl:grid-cols-[14rem_minmax(0,1fr)_minmax(0,26rem)]">
+        {/* Colonne 1 : navigation */}
+        <aside className="flex flex-col gap-5 lg:row-span-2 xl:row-span-1">
+          {/* Un libellé visible, tiré du texte indicatif (D58). */}
+          <Field id="docs-search" label="Rechercher un endpoint">
+            {(control) => (
+              <Input
+                {...control}
+                type="text"
+                placeholder="Rechercher un endpoint..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            )}
+          </Field>
 
-      {/* Grid de documentation en 3 colonnes */}
-      <div className="docs-layout">
-        {/* Colonne 1: Navigation Sidebar */}
-        <aside className="docs-sidebar">
-          <div className="docs-search-wrapper">
-            <input
-              type="text"
-              placeholder="Rechercher un endpoint..."
-              className="docs-search-input"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <nav>
+          <nav aria-label="Endpoints de l'API" className="flex flex-col gap-4">
             {categoryOrder.map((category) => {
               const endpointsInCat = groupedEndpoints[category] || [];
               if (endpointsInCat.length === 0) return null;
 
               return (
-                <div key={category} className="docs-nav-group">
-                  <div className="docs-nav-group-title">
-                    {categoryIcons[category]} {categoryLabels[category]}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <div key={category} className="flex flex-col gap-1">
+                  <div className="px-2 text-xs font-semibold tracking-wider text-ink-2 uppercase">{categoryLabels[category]}</div>
+                  <ul className="flex flex-col gap-0.5">
                     {endpointsInCat.map((ep) => {
                       const isActive = selectedEndpoint?.id === ep.id;
                       return (
-                        <button
-                          key={ep.id}
-                          className={`docs-nav-link ${isActive ? "active" : ""}`}
-                          onClick={() => setSelectedEndpointId(ep.id)}
-                          style={{
-                            width: "100%",
-                            textAlign: "left",
-                            background: "none",
-                            border: "none"
-                          }}
-                        >
-                          {ep.path ? (
-                            <span className="docs-method">{ep.method}</span>
-                          ) : (
-                            <span className="docs-method" style={{ color: "#3b82f6", background: "rgba(59, 130, 246, 0.1)" }}>INFO</span>
-                          )}
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {ep.title}
-                          </span>
-                        </button>
+                        <li key={ep.id}>
+                          <button
+                            type="button"
+                            aria-current={isActive ? "true" : undefined}
+                            className={NAV_BUTTON}
+                            onClick={() => setSelectedEndpointId(ep.id)}
+                          >
+                            {ep.path ? (
+                              <span className={cx(METHOD, "bg-surface-2 text-ink-2")}>{ep.method}</span>
+                            ) : (
+                              <span className={cx(METHOD, "bg-accent-soft text-accent-strong")}>INFO</span>
+                            )}
+                            <span className="truncate">{ep.title}</span>
+                          </button>
+                        </li>
                       );
                     })}
-                  </div>
+                  </ul>
                 </div>
               );
             })}
 
-            {filteredEndpoints.length === 0 && (
-              <div style={{ padding: "20px 0", textAlign: "center", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                Aucun endpoint trouvé
-              </div>
-            )}
+            {filteredEndpoints.length === 0 && <p className="px-2 py-4 text-center text-sm text-ink-2">Aucun endpoint trouvé</p>}
           </nav>
         </aside>
 
-        {/* Colonne 2: Contenu principal */}
-        <main className="docs-content">
-          {selectedEndpoint ? (
-            <div>
-              <h1 style={{ fontSize: "2rem", marginBottom: "8px", fontWeight: "700" }}>
-                {selectedEndpoint.title}
-              </h1>
-
-              {selectedEndpoint.path ? (
-                <div className="docs-endpoint-url">
-                  <span className="docs-url-method">{selectedEndpoint.method}</span>
-                  <span className="docs-url-path">{selectedEndpoint.path}</span>
-                </div>
-              ) : (
-                <div style={{ margin: "16px 0 24px" }} />
-              )}
-
-              <p className="docs-description">{selectedEndpoint.description}</p>
-
-              {/* Paramètres de requête */}
-              <h3 style={{ fontSize: "1.1rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px", marginBottom: "12px" }}>
-                Paramètres de requête
-              </h3>
-
-              {selectedEndpoint.params.length > 0 ? (
-                <div style={{ overflowX: "auto" }}>
-                  <table className="docs-params-table">
-                    <thead>
-                      <tr>
-                        <th>Nom</th>
-                        <th>Type</th>
-                        <th>Description</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedEndpoint.params.map((param) => (
-                        <tr key={param.name}>
-                          <td style={{ fontWeight: "600", whiteSpace: "nowrap" }}>
-                            <span className="docs-param-name">{param.name}</span>
-                            {param.required && (
-                              <span className="docs-param-required" title="Ce paramètre est obligatoire">*</span>
-                            )}
-                          </td>
-                          <td style={{ whiteSpace: "nowrap" }}>
-                            <span className="docs-param-type">{param.type}</span>
-                          </td>
-                          <td style={{ color: "var(--text-secondary)", lineHeight: "1.4" }}>
-                            {param.description}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p style={{ color: "var(--text-secondary)", fontSize: "0.88rem", fontStyle: "italic", margin: "12px 0 30px" }}>
-                  Cet endpoint ne requiert aucun paramètre.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: "80px 0" }}>
-              <h2 style={{ fontSize: "1.5rem", color: "var(--text-secondary)" }}>Sélectionnez un endpoint pour voir les détails</h2>
-            </div>
-          )}
-        </main>
-
-        {/* Colonne 3: Panneau d'exemples de code (Noir) */}
-        <section className="docs-code-panel">
+        {/* Colonne 2 : contenu principal */}
+        <div className="flex min-w-0 flex-col gap-4">
           {selectedEndpoint ? (
             <>
-              {/* Onglet de snippets de code client */}
-              <div className="docs-block-container">
-                <div className="docs-block-tabs">
-                  <button
-                    className={`docs-block-tab ${activeLang === "curl" ? "active" : ""}`}
-                    onClick={() => setActiveLang("curl")}
-                  >
-                    cURL
-                  </button>
-                  <button
-                    className={`docs-block-tab ${activeLang === "javascript" ? "active" : ""}`}
-                    onClick={() => setActiveLang("javascript")}
-                  >
-                    JavaScript
-                  </button>
-                  <button
-                    className={`docs-block-tab ${activeLang === "python" ? "active" : ""}`}
-                    onClick={() => setActiveLang("python")}
-                  >
-                    Python
-                  </button>
+              <h1 className="font-display text-2xl font-semibold tracking-tight text-balance text-ink">{selectedEndpoint.title}</h1>
+
+              {selectedEndpoint.path && (
+                <div className="flex items-center gap-3 overflow-x-auto rounded-control border border-line bg-surface px-3 py-2 font-mono text-compact">
+                  <span className="font-semibold text-accent-strong">{selectedEndpoint.method}</span>
+                  <span className="whitespace-nowrap text-ink">{selectedEndpoint.path}</span>
                 </div>
-                <div className="docs-code-body" style={{ minHeight: "150px" }}>
-                  <button className="docs-copy-btn" onClick={handleCopyCode}>
+              )}
+
+              <p className="max-w-[70ch] text-sm leading-relaxed text-ink-2">{selectedEndpoint.description}</p>
+
+              {/* Paramètres de requête */}
+              <h2 className="mt-2 border-b border-line pb-2 font-display text-lg font-semibold text-ink">Paramètres de requête</h2>
+
+              {selectedEndpoint.params.length > 0 ? (
+                <Table>
+                  <THead>
+                    <Tr>
+                      <Th>Nom</Th>
+                      <Th>Type</Th>
+                      <Th>Description</Th>
+                    </Tr>
+                  </THead>
+                  <TBody>
+                    {selectedEndpoint.params.map((param) => (
+                      <Tr key={param.name}>
+                        <Td className="whitespace-nowrap">
+                          <span className="font-mono font-semibold text-ink">{param.name}</span>
+                          {param.required && (
+                            <span className="ml-0.5 font-semibold text-danger" title="Ce paramètre est obligatoire">
+                              *
+                            </span>
+                          )}
+                        </Td>
+                        <Td className="whitespace-nowrap">
+                          <span className="rounded-control bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-ink-2">{param.type}</span>
+                        </Td>
+                        <Td className="leading-relaxed text-ink-2">{param.description}</Td>
+                      </Tr>
+                    ))}
+                  </TBody>
+                </Table>
+              ) : (
+                <p className="text-sm text-ink-2 italic">Cet endpoint ne requiert aucun paramètre.</p>
+              )}
+            </>
+          ) : (
+            <div className="py-20 text-center">
+              <h2 className="font-display text-lg font-semibold text-ink-2">Sélectionnez un endpoint pour voir les détails</h2>
+            </div>
+          )}
+        </div>
+
+        {/* Colonne 3 : exemples de code, en clair (D59) */}
+        <section aria-label="Exemples" className="flex min-w-0 flex-col gap-4 lg:col-start-2 xl:col-start-3">
+          {selectedEndpoint ? (
+            <>
+              {/* Onglets de snippets de code client */}
+              <div className="flex flex-col rounded-card border border-line bg-surface p-4">
+                <div className="flex items-end justify-between gap-3">
+                  <Tabs
+                    label="Exemples d'appel"
+                    idPrefix="docs-code"
+                    value={activeLang}
+                    onValueChange={(value) => setActiveLang(value as Language)}
+                    items={LANGUAGES}
+                    className="min-w-0 flex-1"
+                  />
+                  <Button size="sm" className="mb-1.5" onClick={handleCopyCode}>
                     {copiedCode ? "Copié !" : "Copier"}
-                  </button>
-                  <pre style={{ overflowX: "auto", margin: 0 }}>
-                    <code>{codeSnippets[activeLang]}</code>
-                  </pre>
+                  </Button>
                 </div>
+                {LANGUAGES.map((lang) => (
+                  <TabPanel key={lang.value} idPrefix="docs-code" value={lang.value} selected={activeLang === lang.value}>
+                    <pre className={cx(CODE, "min-h-36")}>
+                      <code>{codeSnippets[lang.value]}</code>
+                    </pre>
+                  </TabPanel>
+                ))}
               </div>
 
               {/* Exemple de réponse JSON */}
-              <div className="docs-block-container">
-                <div className="docs-block-tabs" style={{ padding: "12px 20px", fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: "600" }}>
-                  EXEMPLE DE RÉPONSE (JSON)
-                </div>
-                <div className="docs-code-body" style={{ maxHeight: "400px", overflowY: "auto" }}>
-                  <button className="docs-copy-btn" onClick={handleCopyResponse}>
+              <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-xs font-semibold tracking-wider text-ink-2">EXEMPLE DE RÉPONSE (JSON)</h2>
+                  <Button size="sm" onClick={handleCopyResponse}>
                     {copiedResponse ? "Copié !" : "Copier"}
-                  </button>
-                  <pre style={{ overflowX: "auto", margin: 0 }}>
-                    <code>{JSON.stringify(selectedEndpoint.mockResponse, null, 2)}</code>
-                  </pre>
+                  </Button>
                 </div>
+                <pre className={cx(CODE, "max-h-100 overflow-y-auto")}>
+                  <code>{JSON.stringify(selectedEndpoint.mockResponse, null, 2)}</code>
+                </pre>
               </div>
             </>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-secondary)" }}>
-              Exemples non disponibles
-            </div>
+            <p className="py-10 text-center text-sm text-ink-2">Exemples non disponibles</p>
           )}
         </section>
       </div>
-    </div>
+    </SiteShell>
   );
 }

@@ -8,7 +8,9 @@
 > chaque modification (étape 5 : §2.3, §3, §4, §5, §6, §7), puis le formulaire
 > de signalement (étape 6 : §2, §3, §4, §5, §6, §7), puis l'historique des
 > recherches IA (étape 7 : §2.3, §3.2, §4.2, §5, §7), puis les admissions
-> des programmes (étape 8 : §2, §3, §4, §5, §6, §7). Cette fiche décrit
+> des programmes (étape 8 : §2, §3, §4, §5, §6, §7), puis le lot 1 de la
+> reprise graphique (étape 9 : le site public et `/api-docs` dans la
+> charte ; §3, §6, §7). Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
 > du plan la met à jour.
@@ -147,9 +149,22 @@ Les pages en cache ISR ne lisent pas la session : le proxy passe avant le
 cache, et le mur tient (plan, piège 4). `/contribute` est retirée (D2) ; le
 signalement l'a remplacée (étape 6, ci-dessous).
 
+**Dans la charte depuis l'étape 9 (lot 1)** : toutes les pages du site, sur
+le gabarit `SiteShell`. L'accueil, les deux fiches et `/api-docs` ne lisent
+toujours pas la session : leur barre n'a pas le lien « Back-office »
+(`showBackOffice={false}`, D57), comme avant ; « Mon compte » et le
+formulaire de signalement l'ont, pour qui y a droit. La fiche école garde
+ses onglets (Programmes, Statistiques, Accréditations), désormais au modèle
+ARIA de la charte, et ses filtres (boutons enfoncés, `aria-pressed`) ;
+`/api-docs` garde ses trois colonnes (une seule sur un téléphone), son
+panneau d'exemples en clair (onglets cURL, JavaScript, Python, D59). Les
+deux champs de recherche ont un libellé visible (D58). Les émojis décoratifs
+sont partis, les textes restent (D56).
+
 **Signaler une information** (étape 6, G8, D33) : les fiches école et programme
-portent un lien « Signaler une information », à leur ancien style
-(`btn btn-secondary`), vers `/schools/[id]/report` (depuis une fiche
+portent un lien « Signaler une information », en bouton secondaire de la
+charte depuis l'étape 9 (`buttonClasses`, à l'ancien style `btn
+btn-secondary` avant), vers `/schools/[id]/report` (depuis une fiche
 programme : `?program=<id>`). Le formulaire est dans la charte ; les fiches
 ne lisent toujours pas la session et gardent leur cache. Aucune IA : le
 signalement va dans `ContentReport`, jamais dans l'inbox (D13, piège 6).
@@ -178,7 +193,8 @@ revue le 20 octobre).
 de l'année d'entrée puis du niveau (« Entrée en 3e année avec un Bac+2, sur
 concours », texte de `describeEntry`, [`lib/program-entries.ts`](../../lib/program-entries.ts)),
 sa note (le concours, les diplômes acceptés) et sa `SourceLine` ; « Aucune
-donnée d'admission disponible. » sinon. À l'ancien style de la fiche (D51).
+donnée d'admission disponible. » sinon. À l'ancien style de la fiche (D51)
+jusqu'à l'étape 9, dans la charte depuis le lot 1.
 L'étiquette du concours (`admission_exam`) reste dans l'en-tête, inchangée
 (D47).
 
@@ -205,7 +221,10 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
 (`AdminPage`, dialogues natifs) ; depuis l'étape 6, le formulaire de
 signalement (`SiteShell`) et « Signalements » (`AdminPage`, onglets et
-dialogue). Les autres gardent l'ancien style jusqu'à l'étape 9.
+dialogue) ; depuis l'étape 9 (lot 1), tout le site (§3.1). Les autres écrans
+du back-office gardent l'ancien style jusqu'à leur lot de l'étape 9 (D54 :
+gestion des écoles aux lots 2 et 3, inbox au lot 4, `/admin/cron` au lot 5,
+menu latéral et cadre au lot 6).
 
 ---
 
@@ -440,20 +459,22 @@ Le backend Python **lit** les tables de données (diff de la Phase 2) et
 
 ## 6. Styles
 
-Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
-[`charte-graphique.md`](charte-graphique.md).
+Deux mondes jusqu'au lot 6 de l'étape 9 du plan (G7, piège 10, D54).
+Référence : [`charte-graphique.md`](charte-graphique.md) (§9 : l'état de la
+reprise, lot par lot).
 
 | | Écrans | Où |
 |---|---|---|
-| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
-| **L'ancien style** | tous les autres : accueil, fiches, `/api-docs`, écoles et onglets de gestion, inbox, `/admin/cron`, menu latéral du back-office | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
+| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) ; étape 9, lot 1 : l'accueil, les fiches école et programme, `/api-docs` | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
+| **L'ancien style** | tous les autres : écoles, page des campus et onglets de gestion (lots 2 et 3), inbox (lot 4), `/admin/cron` (lot 5), menu latéral du back-office (lot 6) | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
 
 - [`app/globals.css`](../../app/globals.css) est le point d'entrée : ordre des
   couches `theme, legacy, base, components, utilities`, thème et utilitaires de
   Tailwind **sans preflight**, `@source` limités aux dossiers des écrans repris
   (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
-  `app/account/`, et depuis l'étape 6 `app/schools/[id]/report/` et
-  `app/admin/reports/` ; Tailwind lit `[id]` à la lettre, le dossier existant) ; `block` et `fill-accent`, homonymes de classes de
+  `app/account/`, depuis l'étape 6 `app/admin/reports/`, depuis le lot 1 de
+  l'étape 9 `app/schools/`, `app/api-docs/` et le seul fichier
+  `app/page.tsx`) ; `block` et `fill-accent`, homonymes de classes de
   `/admin/cron`, ne sont jamais générés.
 - La racine de chaque gabarit porte la classe `charte` : la base de la charte
   n'agit que dans ce sous-arbre. Le menu latéral du back-office reste l'ancien
@@ -462,16 +483,23 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
 - Polices par `next/font` (`app/layout.tsx`) : Inter pour l'ancien style,
   IBM Plex Sans, Sans Condensed et Mono pour la charte.
 - Les ajouts de l'étape 5 aux anciens écrans (champs « URL de la source »,
-  ligne `SourceLine` des fiches, « Source 🔗 » des accréditations, ligne
-  `LastEdit` du gestionnaire) suivent
-  **l'ancien style** de chaque écran, avec ses `style` en ligne, sans règle
-  ajoutée à `globals.css` (D28) ; ils passeront à la charte avec leurs
-  écrans, à l'étape 9. De même le lien « Signaler une information » des
-  fiches (étape 6, D33), en `btn btn-secondary`, et, à l'étape 8 (D51),
-  l'onglet « Admissions » (`AdmissionsTab`, sur les motifs de l'onglet
-  Accréditations : cartes, fenêtre) et la section « Admissions » de la fiche
-  programme (`ranking-item` et `SourceLine`) ; leur texte vient de
-  `lib/program-entries.ts`, sans style.
+  « Source 🔗 » des accréditations, ligne `LastEdit` du gestionnaire)
+  suivent **l'ancien style** de chaque écran, avec ses `style` en ligne,
+  sans règle ajoutée à `globals.css` (D28) ; ils passent à la charte avec
+  leurs écrans, à l'étape 9. De même, à l'étape 8 (D51), l'onglet
+  « Admissions » (`AdmissionsTab`, sur les motifs de l'onglet
+  Accréditations : cartes, fenêtre), au lot 2. **Déjà repris au lot 1** :
+  la ligne `SourceLine` des fiches (petit texte, lien `TEXT_LINK`), le lien
+  « Signaler une information » (étape 6, D33 ; bouton secondaire de la
+  charte) et la section « Admissions » de la fiche programme (une liste
+  dans un cadre).
+- Étape 9, lot 1 (D56 à D59) : aucun émoji dans un écran de la charte (les
+  icônes des fiches dans `app/schools/icons.tsx`, SVG cachées aux lecteurs
+  d'écran) ; trois retouches de composants : `Badge` `wrap` (un texte long,
+  le concours d'un programme), `Table` `id` (`pricing-table` gardé), et
+  `TabPanel`, dont un panneau caché ne prend plus la mise en page de
+  l'appelant (sans preflight, `flex` défaisait `hidden` : défaut vu au
+  contrôle visuel du lot 1, sur la fiche école).
 - Deux défauts des composants de l'étape 4, vus au contrôle visuel de
   l'étape 6 et corrigés : les onglets (`Tabs`) montraient une barre de
   défilement verticale (le filet du bas est désormais une ombre intérieure) ;
@@ -480,7 +508,8 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
   dialogue est resté fermé).
 - CSP posée par [`next.config.ts`](../../next.config.ts), inchangée :
   `style-src 'self' 'unsafe-inline'` ; aucune violation sur un build de
-  production (19 octobre).
+  production (19 octobre ; et le 20 octobre au lot 1 de l'étape 9, dans
+  Chromium, sur une base Postgres jetable du conteneur, D55).
 
 ---
 
@@ -584,12 +613,19 @@ Deux mondes jusqu'à l'étape 9 du plan (G7, piège 10). Référence :
 - **Charte** (étape 4) : `test/ui-components.test.ts` (le HTML rendu par
   React côté serveur : libellés, aides et erreurs reliés, rôles des messages,
   onglets au modèle ARIA et leur clavier, dialogue nommé, boutons qui
-  n'envoient pas un formulaire par défaut, racine `charte` des gabarits),
+  n'envoient pas un formulaire par défaut, racine `charte` des gabarits ;
+  depuis l'étape 9, `Badge` `wrap`, `Table` `id`, et un `TabPanel` caché
+  sans la mise en page de l'appelant),
   `test/charte.test.ts` (compilation de `app/globals.css` par PostCSS et
   Tailwind : pas de preflight, aucune règle hors couche, aucun utilitaire
   homonyme d'une ancienne classe, chaque fichier qui emploie la charte lu par
-  `@source` ; les écrans repris sans ancienne classe ni `style` en ligne ;
-  jetons et contrastes identiques à `charte-graphique.md` §2 et §3).
+  `@source`, qui peut être un fichier (l'accueil) ; les écrans repris sans
+  ancienne classe, ni `style` en ligne, ni émoji (D56) ; jetons et contrastes
+  identiques à `charte-graphique.md` §2 et §3). Étape 9, lot 1 :
+  `SCREENS` compte l'accueil, les deux fiches et `/api-docs` ;
+  `reports-pages.test.ts` attend le lien « Signaler une information » en
+  bouton secondaire de la charte, et des fiches qui posent `SiteShell` sans
+  « Back-office » (D57), toujours sans lire la session.
 - `npm run smoke` : contre `npm run dev`, d'abord **le mur** sans session
   (connexion et première connexion 200, chaque page renvoyée vers la
   connexion, `/account` et le formulaire de signalement compris, `/api/schools` et les 15 `GET /api/v1/*` en

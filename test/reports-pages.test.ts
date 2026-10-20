@@ -5,9 +5,12 @@
  *
  * Plan gestion-contenu, étape 6 :
  * - D33 : les fiches école et programme portent un lien « Signaler une
- *   information », à leur ancien style, vers la page du formulaire, dans la
- *   charte (`/schools/[id]/report`) ; depuis une fiche programme, le programme
- *   est choisi d'avance. Les fiches ne lisent pas la session (cache ISR) ;
+ *   information » vers la page du formulaire, dans la charte
+ *   (`/schools/[id]/report`) ; depuis une fiche programme, le programme est
+ *   choisi d'avance. Les fiches ne lisent pas la session (cache ISR). Le lien
+ *   était à l'ancien style des fiches jusqu'à l'étape 9 ; depuis le lot 1
+ *   (D54), les fiches sont dans la charte et le lien a l'air d'un bouton
+ *   secondaire (`buttonClasses`) ;
  * - la page du formulaire : toute session (`requirePage("signedIn")`), une
  *   école active seulement, ses campus et programmes pour cible ;
  * - D36 : « Mon compte » montre ses seuls signalements, avec leur état et la
@@ -27,6 +30,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
+
+import { buttonClasses } from "../components/ui/Button";
 
 import { installFakePrisma } from "./helpers/fake-prisma";
 import { schemaErrors } from "./helpers/prisma-schema";
@@ -69,13 +74,15 @@ const read = (file: string) => readFileSync(file, "utf8").replace(/\r/g, "");
 const UNTRACKED = { updated_at: null, updated_via: null, updated_by_id: null, updatedBy: null, source_url: null };
 const SCHOOL = { id: "school-1", name: "Em Normandie", official_domain: "em-normandie.com", status: "ACTIVE", ...UNTRACKED };
 
-// ─── Les fiches : un lien, à l'ancien style (D33) ───────────────────────────
+// ─── Les fiches : un lien, en bouton secondaire de la charte (D33, étape 9) ──
 
 /** Les attributs du lien « Signaler une information », quel que soit leur ordre. */
 function reportLink(out: string): string {
   const links = [...out.matchAll(/<a ([^>]*)>Signaler une information<\/a>/g)].map((m) => m[1]);
   assert.equal(links.length, 1, "un seul lien");
-  assert.match(links[0], /class="btn btn-secondary"/, "les classes de l'ancien style");
+  // Étape 9, lot 1 : l'attendu change avec la règle (G7) ; c'était
+  // `class="btn btn-secondary"`, les classes de l'ancien style (D33).
+  assert.ok(links[0].includes(`class="${buttonClasses({ variant: "secondary" })}"`), "un bouton secondaire de la charte");
   return links[0];
 }
 
@@ -110,9 +117,18 @@ test("fiche programme : le lien choisit le programme d'avance", async () => {
 });
 
 test("les fiches ne lisent pas la session et gardent leur cache d'une heure", () => {
-  for (const file of ["app/schools/[id]/page.tsx", "app/schools/[id]/SchoolDetailClient.tsx", "app/schools/[id]/programs/[pid]/page.tsx"]) {
-    const source = read(file);
-    assert.equal(/requirePage|getSession|getServerSession|useSession|@\/components\//.test(source), false, file);
+  // Étape 9, lot 1 : l'attendu change avec la règle (G7). Jusque-là, les
+  // fiches n'importaient rien de `@/components/` (l'ancien style, D33) ;
+  // désormais dans la charte, elles posent le gabarit du site sans le lien
+  // « Back-office », qui demanderait la session (D57).
+  // Le code seul : le commentaire de SiteShell nomme `requirePage`.
+  const SESSION = /requirePage|getSession|getServerSession|useSession/;
+  const code = (file: string) => read(file).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+  for (const file of ["app/schools/[id]/page.tsx", "app/schools/[id]/SchoolDetailClient.tsx", "app/schools/[id]/programs/[pid]/page.tsx", "components/layout/SiteShell.tsx"]) {
+    assert.equal(SESSION.test(code(file)), false, file);
+  }
+  for (const file of ["app/schools/[id]/SchoolDetailClient.tsx", "app/schools/[id]/programs/[pid]/page.tsx"]) {
+    assert.match(read(file), /<SiteShell showBackOffice=\{false\}>/, `${file} : gabarit sans « Back-office » (D57)`);
   }
   for (const file of ["app/schools/[id]/page.tsx", "app/schools/[id]/programs/[pid]/page.tsx"]) assert.match(read(file), /export const revalidate = 3600;/, file);
 });

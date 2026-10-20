@@ -12,14 +12,16 @@ import { cx } from "./cx";
 
 interface TableProps {
   caption?: ReactNode;
+  /** L'identifiant du `<table>` (un écran repris garde le sien). */
+  id?: string;
   className?: string;
   children: ReactNode;
 }
 
-export function Table({ caption, className, children }: TableProps) {
+export function Table({ caption, id, className, children }: TableProps) {
   return (
     <div className={cx("overflow-x-auto rounded-card border border-line bg-surface", className)}>
-      <table className="w-full text-compact">
+      <table id={id} className="w-full text-compact">
         {caption && <caption className="sr-only">{caption}</caption>}
         {children}
       </table>

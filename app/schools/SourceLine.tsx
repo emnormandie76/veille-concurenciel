@@ -6,9 +6,12 @@
  * classements le faisait déjà. Le texte vient de lib/provenance.ts
  * (`describeProvenance`, `sourceHref`) : ce composant ne fait que le poser.
  *
- * À l'ancien style, sur le motif du lien des classements (décision D28) : les
- * fiches passent à la charte à l'étape 9, et ce composant avec elles.
+ * Dans la charte depuis l'étape 9 (lot 1), avec les fiches : petit texte
+ * secondaire, le lien souligné (`TEXT_LINK`). Il était à l'ancien style
+ * jusque-là (décision D28).
  */
+
+import { TEXT_LINK } from "@/components/ui/text-link";
 
 interface Props {
   /** Un lien déjà vérifié (`sourceHref`) : seul un lien http(s) arrive ici. */
@@ -20,9 +23,9 @@ interface Props {
 export default function SourceLine({ href, provenance }: Props) {
   if (!href && !provenance) return null;
   return (
-    <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: 4 }}>
+    <div className="text-xs leading-relaxed text-ink-2">
       {href && (
-        <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+        <a href={href} target="_blank" rel="noopener noreferrer" className={TEXT_LINK}>
           Source ↗
         </a>
       )}

@@ -13,13 +13,22 @@
  * - Étape 8 (D16, D51) : une section « Admissions », une ligne par entrée
  *   (« Entrée en 1re année avec le Bac, par Parcoursup », lib/program-entries.ts),
  *   avec sa note, son lien source et « Modifié par … le … », à l'ancien style.
+ * - Étape 9 (lot 1) : dans la charte (gabarit `SiteShell` sans « Back-office »,
+ *   D57 ; tableau des tarifs `Table`, badges, listes) ; émojis retirés (D56).
+ *   Textes, identifiants et données inchangés.
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
+import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import SignOutButton from "../../../../SignOutButton";
+import { SiteShell } from "@/components/layout/SiteShell";
+import { Badge } from "@/components/ui/Badge";
+import { buttonClasses } from "@/components/ui/Button";
+import { cx } from "@/components/ui/cx";
+import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/Table";
 import SourceLine from "../../../SourceLine";
+import { PinIcon } from "../../../icons";
 import { ENTRY_ORDER_BY, describeEntry } from "@/lib/program-entries";
 import { AUTHOR_SELECT, describeProvenance, sourceHref } from "@/lib/provenance";
 
@@ -87,6 +96,25 @@ function formatFee(amount: number | null, currency: string): string {
   return `${amount.toLocaleString("fr-FR")} ${currency}`;
 }
 
+/** Un montant de la grille : chiffres alignés, « — » discret s'il manque. */
+function Fee({ amount, currency }: { amount: number | null; currency: string }) {
+  return (
+    <Td numeric className={cx("whitespace-nowrap", amount === null ? "text-ink-3" : "text-ink")}>
+      {formatFee(amount, currency)}
+    </Td>
+  );
+}
+
+/** Un lien du fil d'Ariane : discret, souligné au survol. */
+const CRUMB_LINK = "hover:text-ink hover:underline underline-offset-2";
+/** Le titre d'une section de la fiche. */
+const SECTION_TITLE = "font-display text-lg font-semibold text-ink";
+/** Une boîte qui dit qu'il n'y a rien à montrer. */
+const NO_DATA = "rounded-card border border-line bg-surface p-5 text-sm leading-relaxed text-ink-2";
+/** Une liste de lignes dans un cadre (admissions, classements). */
+const LIST = "overflow-hidden rounded-card border border-line bg-surface";
+const LIST_ITEM = "flex flex-col gap-1 border-b border-line px-5 py-3 last:border-b-0";
+
 export default async function ProgramDetailPage({ params }: Props) {
   const { id, pid } = await params;
   const program = await getProgram(id, pid);
@@ -101,226 +129,212 @@ export default async function ProgramDetailPage({ params }: Props) {
   );
 
   return (
-    <>
-      {/* Navbar */}
-      <nav className="public-nav" id="main-nav">
-        <Link href="/" className="public-nav-logo">
-          <span className="public-nav-logo-icon">🎓</span>
-          EduData France
-        </Link>
-        <div className="public-nav-links">
-          <Link href="/" className="public-nav-link">Écoles</Link>
-          <Link href="/api-docs" className="public-nav-link">API</Link>
-          <Link href="/account" className="public-nav-link">Mon compte</Link>
-          <SignOutButton className="public-nav-cta" />
+    <SiteShell showBackOffice={false}>
+      <div className="flex flex-col gap-10">
+        {/* En-tête du programme */}
+        <div className="flex flex-col gap-3" id="program-hero">
+          <nav aria-label="Fil d'Ariane" className="text-xs text-ink-2">
+            <ol className="flex flex-wrap items-center gap-1.5">
+              <li>
+                <Link href="/" className={CRUMB_LINK}>
+                  Accueil
+                </Link>
+              </li>
+              <li aria-hidden="true">›</li>
+              <li>
+                <Link href={`/schools/${school.id}`} className={CRUMB_LINK}>
+                  {school.name}
+                </Link>
+              </li>
+              <li aria-hidden="true">›</li>
+              <li aria-current="page" className="text-ink">
+                {program.name}
+              </li>
+            </ol>
+          </nav>
+
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-balance text-ink" id="program-title">
+            {program.name}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-2">
+            <span>{school.name}</span>
+            {/* Campus disponibles */}
+            {program.campuses.length > 0 && (
+              <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+                <PinIcon />
+                {program.campuses.map((pc, index) => (
+                  <Fragment key={pc.id}>
+                    {index > 0 && (
+                      <span aria-hidden="true" className="text-ink-3">
+                        ·
+                      </span>
+                    )}
+                    <span>{pc.campus.city ?? pc.campus.name}</span>
+                  </Fragment>
+                ))}
+              </span>
+            )}
+            {(program.admission_exam || program.is_alternance_possible || program.is_expatriation_mandatory) && (
+              <span className="inline-flex flex-wrap items-center gap-1.5">
+                {program.admission_exam && <Badge wrap>{program.admission_exam}</Badge>}
+                {program.is_alternance_possible && <Badge tone="success">Alternance possible</Badge>}
+                {program.is_expatriation_mandatory && <Badge>Expatriation obligatoire</Badge>}
+              </span>
+            )}
+          </div>
+          <SourceLine href={sourceHref(program.source_url)} provenance={describeProvenance(program)} />
+          {/* Étape 6 (D33) : le formulaire, le programme choisi d'avance ; un
+              bouton secondaire de la charte depuis l'étape 9. */}
+          <div className="pt-1">
+            <Link href={`/schools/${school.id}/report?program=${program.id}`} className={buttonClasses({ variant: "secondary" })}>
+              Signaler une information
+            </Link>
+          </div>
         </div>
-      </nav>
-
-      {/* Hero programme */}
-      <div className="program-detail-hero" id="program-hero">
-        {/* Breadcrumb */}
-        <nav className="breadcrumb" aria-label="Fil d'Ariane">
-          <Link href="/">Accueil</Link>
-          <span className="breadcrumb-sep">›</span>
-          <Link href={`/schools/${school.id}`}>{school.name}</Link>
-          <span className="breadcrumb-sep">›</span>
-          <span>{program.name}</span>
-        </nav>
-
-        <h1 className="program-detail-title" id="program-title">{program.name}</h1>
-
-        <div className="program-detail-meta">
-          <span className="school-meta-item">
-            <span className="school-meta-icon">🏛️</span>
-            {school.name}
-          </span>
-          {/* Campus disponibles */}
-          {program.campuses.length > 0 && (
-            <span className="school-meta-item">
-              <span className="school-meta-icon">📍</span>
-              {program.campuses.map((pc) => (
-                <span key={pc.id} className="campus-badge" style={{ marginRight: 4 }}>
-                  {pc.campus.city ?? pc.campus.name}
-                </span>
-              ))}
-            </span>
-          )}
-          {program.admission_exam && (
-            <span className="program-tag tag-exam">🎯 {program.admission_exam}</span>
-          )}
-          {program.is_alternance_possible && (
-            <span className="program-tag tag-alternance">🔄 Alternance possible</span>
-          )}
-          {program.is_expatriation_mandatory && (
-            <span className="program-tag tag-expat">✈️ Expatriation obligatoire</span>
-          )}
-        </div>
-        <SourceLine href={sourceHref(program.source_url)} provenance={describeProvenance(program)} />
-        {/* Étape 6 (D33) : le formulaire, le programme choisi d'avance ; le
-            lien garde l'ancien style de la fiche. */}
-        <Link
-          href={`/schools/${school.id}/report?program=${program.id}`}
-          className="btn btn-secondary"
-          style={{ marginTop: 16 }}
-        >
-          Signaler une information
-        </Link>
-      </div>
-
-      {/* Content */}
-      <div className="tab-content" style={{ maxWidth: 1200, margin: "0 auto" }}>
 
         {/* Section Admissions — étape 8 (D16, D51) */}
-        <section id="section-admissions" style={{ marginBottom: 48 }}>
-          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 20, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-            🎓 Admissions
+        <section id="section-admissions" aria-labelledby="section-admissions-title" className="flex flex-col gap-3">
+          <h2 id="section-admissions-title" className={SECTION_TITLE}>
+            Admissions
           </h2>
 
           {program.entries.length === 0 ? (
-            <div className="no-data" id="no-admissions-data">
+            <p className={NO_DATA} id="no-admissions-data">
               Aucune donnée d&apos;admission disponible.
-            </div>
+            </p>
           ) : (
-            <div className="rankings-list" id="admissions-list">
+            <ul className={LIST} id="admissions-list">
               {program.entries.map((entry) => (
-                <div key={entry.id} className="ranking-item" id={`admission-${entry.id}`}>
-                  <div>
-                    <div className="ranking-name">{describeEntry(entry)}</div>
-                    {entry.note && (
-                      <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: 4 }}>{entry.note}</div>
-                    )}
-                    {/* Le lien n'est cliquable qu'en http(s) (D27). */}
-                    <SourceLine href={sourceHref(entry.source_url)} provenance={describeProvenance(entry)} />
-                  </div>
-                </div>
+                <li key={entry.id} className={LIST_ITEM} id={`admission-${entry.id}`}>
+                  <span className="text-sm font-medium text-ink">{describeEntry(entry)}</span>
+                  {entry.note && <p className="text-sm leading-relaxed text-ink-2">{entry.note}</p>}
+                  {/* Le lien n'est cliquable qu'en http(s) (D27). */}
+                  <SourceLine href={sourceHref(entry.source_url)} provenance={describeProvenance(entry)} />
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </section>
 
         {/* Section Tarifs */}
-        <section id="section-pricing" style={{ marginBottom: 48 }}>
-          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 20, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-            💰 Tarifs de scolarité
+        <section id="section-pricing" aria-labelledby="section-pricing-title" className="flex flex-col gap-3">
+          <h2 id="section-pricing-title" className={SECTION_TITLE}>
+            Tarifs de scolarité
           </h2>
 
           {program.pricingRecords.length === 0 ? (
-            <div className="no-data" id="no-pricing-data">
+            <p className={NO_DATA} id="no-pricing-data">
               Aucune donnée tarifaire disponible.
-            </div>
+            </p>
           ) : (
-            <div className="pricing-table-wrapper">
-              <table className="pricing-table" id="pricing-table">
-                <thead>
-                  <tr>
-                    <th>Année académique</th>
-                    <th>Année 1</th>
-                    <th>Année 2</th>
-                    <th>Année 3</th>
-                    <th>Année 4</th>
-                    <th>Année 5</th>
-                    <th>Total cursus</th>
-                    <th>Tarif intl.</th>
-                    <th>Notes</th>
-                    <th>Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {program.pricingRecords.map((pr) => (
-                    <tr key={pr.id} id={`pricing-row-${pr.id}`}>
-                      <td><strong>{pr.academic_year}</strong></td>
-                      <td className={pr.year_1_fee !== null ? "price-val" : "price-null"}>{formatFee(pr.year_1_fee, pr.currency)}</td>
-                      <td className={pr.year_2_fee !== null ? "price-val" : "price-null"}>{formatFee(pr.year_2_fee ?? null, pr.currency)}</td>
-                      <td className={pr.year_3_fee !== null ? "price-val" : "price-null"}>{formatFee(pr.year_3_fee ?? null, pr.currency)}</td>
-                      <td className={pr.year_4_fee !== null ? "price-val" : "price-null"}>{formatFee(pr.year_4_fee ?? null, pr.currency)}</td>
-                      <td className={pr.year_5_fee !== null ? "price-val" : "price-null"}>{formatFee(pr.year_5_fee ?? null, pr.currency)}</td>
-                      <td className={pr.total_fee !== null ? "price-val" : "price-null"}>{formatFee(pr.total_fee, pr.currency)}</td>
-                      <td className={pr.intl_year_1_fee !== null || pr.intl_total_fee !== null ? "price-val" : "price-null"}>
-                        {pr.intl_year_1_fee !== null
-                          ? formatFee(pr.intl_year_1_fee, pr.intl_currency ?? pr.currency)
-                          : pr.intl_total_fee !== null
-                          ? formatFee(pr.intl_total_fee, pr.intl_currency ?? pr.currency)
-                          : "—"}
-                      </td>
-                      <td style={{ fontSize: "0.8rem", color: "var(--text-secondary)", maxWidth: 200 }}>
-                        {pr.additional_fees_notes ?? "—"}
-                      </td>
-                      <td style={{ maxWidth: 220 }}>
-                        {sourceHref(pr.source_url) || describeProvenance(pr) ? (
-                          <SourceLine href={sourceHref(pr.source_url)} provenance={describeProvenance(pr)} />
-                        ) : (
-                          <span className="price-null">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table id="pricing-table">
+              <THead>
+                <Tr>
+                  <Th>Année académique</Th>
+                  <Th align="right">Année 1</Th>
+                  <Th align="right">Année 2</Th>
+                  <Th align="right">Année 3</Th>
+                  <Th align="right">Année 4</Th>
+                  <Th align="right">Année 5</Th>
+                  <Th align="right">Total cursus</Th>
+                  <Th align="right">Tarif intl.</Th>
+                  <Th>Notes</Th>
+                  <Th>Source</Th>
+                </Tr>
+              </THead>
+              <TBody>
+                {program.pricingRecords.map((pr) => (
+                  <Tr key={pr.id} id={`pricing-row-${pr.id}`}>
+                    <Td numeric align="left" className="font-medium text-ink">
+                      {pr.academic_year}
+                    </Td>
+                    <Fee amount={pr.year_1_fee} currency={pr.currency} />
+                    <Fee amount={pr.year_2_fee ?? null} currency={pr.currency} />
+                    <Fee amount={pr.year_3_fee ?? null} currency={pr.currency} />
+                    <Fee amount={pr.year_4_fee ?? null} currency={pr.currency} />
+                    <Fee amount={pr.year_5_fee ?? null} currency={pr.currency} />
+                    <Fee amount={pr.total_fee} currency={pr.currency} />
+                    <Fee
+                      amount={pr.intl_year_1_fee ?? pr.intl_total_fee ?? null}
+                      currency={pr.intl_currency ?? pr.currency}
+                    />
+                    <Td className="max-w-52 min-w-40 text-xs leading-relaxed text-ink-2">{pr.additional_fees_notes ?? "—"}</Td>
+                    <Td className="max-w-56 min-w-36">
+                      {sourceHref(pr.source_url) || describeProvenance(pr) ? (
+                        <SourceLine href={sourceHref(pr.source_url)} provenance={describeProvenance(pr)} />
+                      ) : (
+                        <span className="text-ink-3">—</span>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </TBody>
+            </Table>
           )}
         </section>
 
         {/* Section Classements */}
-        <section id="section-rankings" style={{ marginBottom: 48 }}>
-          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 20, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-            🏆 Classements
+        <section id="section-rankings" aria-labelledby="section-rankings-title" className="flex flex-col gap-3">
+          <h2 id="section-rankings-title" className={SECTION_TITLE}>
+            Classements
           </h2>
 
           {program.rankingRecords.length === 0 ? (
-            <div className="no-data" id="no-rankings-data">
+            <p className={NO_DATA} id="no-rankings-data">
               Aucune donnée de classement disponible.
-            </div>
+            </p>
           ) : (
-            <div className="rankings-list" id="rankings-list">
+            <ul className={LIST} id="rankings-list">
               {program.rankingRecords.map((rk) => (
-                <div key={rk.id} className="ranking-item" id={`ranking-${rk.id}`}>
-                  <div className="ranking-position">#{rk.rank}</div>
-                  <div>
-                    <div className="ranking-name">{rk.ranking_name}</div>
+                <li key={rk.id} className="flex items-start gap-4 border-b border-line px-5 py-3 last:border-b-0" id={`ranking-${rk.id}`}>
+                  <span className="w-12 shrink-0 font-mono text-lg font-medium text-accent-strong tabular-nums">#{rk.rank}</span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="text-sm font-medium text-ink">{rk.ranking_name}</span>
                     {/* Le lien n'est cliquable qu'en http(s) (D27). */}
                     <SourceLine href={sourceHref(rk.source_url)} provenance={describeProvenance(rk)} />
                   </div>
-                  <div className="ranking-year">{rk.academic_year}</div>
-                </div>
+                  <span className="shrink-0 font-mono text-xs text-ink-2 tabular-nums">{rk.academic_year}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </section>
 
         {/* Section Capacité — par campus */}
-        <section id="section-capacity" style={{ marginBottom: 48 }}>
-          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: 20, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-            👥 Places disponibles
+        <section id="section-capacity" aria-labelledby="section-capacity-title" className="flex flex-col gap-3">
+          <h2 id="section-capacity-title" className={SECTION_TITLE}>
+            Places disponibles
           </h2>
 
           {campusesWithCapacity.length === 0 ? (
-            <div className="no-data" id="no-capacity-data">
+            <p className={NO_DATA} id="no-capacity-data">
               Aucune donnée de capacité disponible.
-            </div>
+            </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            <div className="flex flex-col gap-6">
               {campusesWithCapacity.map((pc) => (
-                <div key={pc.id}>
-                  <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>📍</span>
+                <div key={pc.id} className="flex flex-col gap-2">
+                  <h3 className="flex items-center gap-1.5 text-sm font-semibold text-ink-2">
+                    <PinIcon />
                     {pc.campus.name}
-                    {pc.campus.city && <span style={{ fontWeight: 400 }}>— {pc.campus.city}</span>}
-                  </div>
-                  <div className="stats-grid" style={{ maxWidth: 600 }}>
+                    {pc.campus.city && <span className="font-normal">— {pc.campus.city}</span>}
+                  </h3>
+                  <ul className="grid max-w-2xl grid-cols-2 gap-3 sm:grid-cols-3">
                     {pc.capacityRecords.map((cap) => (
-                      <div key={cap.id} className="stat-card" id={`capacity-${cap.id}`}>
-                        <div className="stat-card-value">{cap.spots_available.toLocaleString("fr-FR")}</div>
-                        <div className="stat-card-label">Places — {cap.academic_year}</div>
+                      <li key={cap.id} className="flex flex-col gap-1 rounded-card border border-line bg-surface p-4" id={`capacity-${cap.id}`}>
+                        <span className="font-mono text-2xl font-medium text-ink tabular-nums">{cap.spots_available.toLocaleString("fr-FR")}</span>
+                        <span className="text-sm text-ink-2">Places — {cap.academic_year}</span>
                         <SourceLine href={sourceHref(cap.source_url)} provenance={describeProvenance(cap)} />
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               ))}
             </div>
           )}
         </section>
       </div>
-    </>
+    </SiteShell>
   );
 }

@@ -32,11 +32,15 @@
 @source "./(admin-auth)/admin";
 @source "./admin/users";
 @source "./account";
-/* Étape 6 : le formulaire de signalement (le seul dossier de la fiche école
- * lu par Tailwind, les fiches gardant l'ancien style) et la vue des
- * gestionnaires. */
-@source "./schools/[id]/report";
+/* Étape 6 : la vue des gestionnaires des signalements. */
 @source "./admin/reports";
+/* Étape 9, lot 1 : le site public (les fiches école et programme, le
+ * formulaire de signalement de l'étape 6) et /api-docs ; l'accueil, seul
+ * fichier lu à la racine de app/ (le dossier entier contient les écrans pas
+ * encore repris). */
+@source "./schools";
+@source "./api-docs";
+@source "./page.tsx";
 /* Homonymes de classes de /admin/cron (RotationPanel, CronMonitoringClient) :
  * jamais générés, même si un fichier lu les contient. */
 @source not inline("block fill-accent");

@@ -152,8 +152,18 @@ branche `gestion` :
   jour, avant l'avance de `main` sur `gestion` (mise en production) ;
   contrôle visuel de l'agent dans le Chrome
   du propriétaire. Détail : journal du plan ;
-- prochaine : étape 9 (reprise graphique), en commençant par D17 ; D15
-  reste ouverte.
+- étape 9 (reprise graphique des écrans restants) **en cours, en six lots**,
+  une session et une validation par lot (D54, écart au « une étape par
+  session » du plan, décidé par le propriétaire) : D17 (extra high pour toute
+  l'étape), D55 (contrôle visuel en deux temps quand la session tourne dans un
+  conteneur cloud : Chromium sur une base Postgres jetable, puis le Chrome du
+  propriétaire), D56 à D59 (émojis retirés, pas de « Back-office » sur les
+  pages en cache, libellés visibles des recherches, exemples de code de
+  `/api-docs` en clair) ; **lot 1** (site public et `/api-docs`) fait et
+  validé le 20 octobre. Détail : journal du plan ;
+- prochaine : le lot 2 (liste des écoles, cadre de la gestion, campus,
+  onglets Infos, Accréditations, Chiffres clés, Admissions) dans une nouvelle
+  session ; D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -252,9 +262,9 @@ L'étape en cours se lit dans le journal du plan (§9).
 
 Tout le projet se fait avec **Opus 5.5 en effort extra high** : réflexion,
 architecture, code et revue. Si la session tourne sur un autre modèle ou un autre
-niveau d'effort, le signaler à l'utilisateur en début de session. Une exception
-pour la reprise graphique mécanique (étape 9) reste à décider par le
-propriétaire (plan, D17).
+niveau d'effort, le signaler à l'utilisateur en début de session. Pas
+d'exception pour la reprise graphique (étape 9) : D17, tranchée par le
+propriétaire le 20 octobre.
 
 ## Conventions
 
@@ -277,13 +287,18 @@ propriétaire (plan, D17).
   (voir le bloc en fin de fichier). `proxy.ts` tient lieu de middleware.
 - Styles : la charte graphique
   ([`docs/architecture/charte-graphique.md`](docs/architecture/charte-graphique.md)),
-  en Tailwind CSS v4 **sans preflight** jusqu'à l'étape 9 (plan, piège 10) :
+  en Tailwind CSS v4 **sans preflight** jusqu'au lot 6 de l'étape 9 (plan,
+  piège 10, D54) :
   jetons dans `app/charte.css`, composants dans `components/ui/`, gabarits
   dans `components/layout/`. Tout écran nouveau ou repris s'y construit, et
   son dossier rejoint les `@source` de `app/globals.css` (test). L'ancien
   `app/globals.css` reste, inchangé, dans la couche `legacy` ; ne pas y
-  ajouter de règle. Pas de couleur littérale ni de `style` en ligne dans un
-  écran de la charte.
+  ajouter de règle. Pas de couleur littérale, ni de `style` en ligne, ni
+  d'émoji (D56) dans un écran de la charte. Sans preflight, un utilitaire
+  d'affichage défait l'attribut `hidden` : ne pas en poser sur un élément
+  qui se cache par `hidden` (`TabPanel` s'en garde). Depuis le lot 1, le
+  site public et `/api-docs` sont dans la charte ; reste le back-office
+  (lots 2 à 6, `docs/architecture/charte-graphique.md` §9).
 
 ## Réseau du poste
 

@@ -9,11 +9,12 @@
  * - **les couches** : aucun style hors couche dans app/globals.css ni dans
  *   app/charte.css ; l'ancien CSS dans `legacy`, sous `base` et `utilities` ;
  *   pas de preflight, même par l'import complet de Tailwind ;
- * - **les sources** : Tailwind ne lit que les dossiers des écrans repris, et
- *   chaque fichier qui emploie la charte est dans l'un d'eux ; aucun
- *   utilitaire généré ne porte le nom d'une classe des anciens écrans ;
+ * - **les sources** : Tailwind ne lit que les dossiers (ou les fichiers) des
+ *   écrans repris, et chaque fichier qui emploie la charte est dans l'un
+ *   d'eux ; aucun utilitaire généré ne porte le nom d'une classe des anciens
+ *   écrans ;
  * - **les écrans repris** : aucune classe de l'ancien CSS, aucun `style` en
- *   ligne, un gabarit ;
+ *   ligne, un gabarit, aucun émoji (étape 9, D56) ;
  * - **la référence** : les jetons de app/charte.css et leurs valeurs sont ceux
  *   du §2 de la charte, et chaque contraste du §3 est juste et tient son seuil.
  *
@@ -38,6 +39,7 @@ const read = (path: string) => readFileSync(path, "utf8").replace(/\r/g, "");
 const posix = (path: string) => path.split(sep).join("/");
 
 function filesUnder(dir: string, pattern: RegExp): string[] {
+  if (statSync(dir).isFile()) return pattern.test(dir) ? [posix(dir)] : [];
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
@@ -49,7 +51,8 @@ function filesUnder(dir: string, pattern: RegExp): string[] {
 
 // ─── Les sources déclarées ──────────────────────────────────────────────────
 
-/** Les dossiers lus par Tailwind, relatifs à la racine du dépôt. */
+/** Les dossiers lus par Tailwind, relatifs à la racine du dépôt ; un fichier
+ * seul pour l'accueil (`app/page.tsx`, étape 9), dont le dossier est `app/`. */
 const sourceDirs = [...read(GLOBALS).matchAll(/^@source "([^"]+)";/gm)].map((m) => posix(join(dirname(GLOBALS), m[1])));
 const inSources = (file: string) => sourceDirs.some((dir) => file === dir || file.startsWith(`${dir}/`));
 
@@ -171,9 +174,14 @@ test("le CSS compilé : pas de preflight, l'ordre des couches posé avant tout b
 
 // ─── Sources ────────────────────────────────────────────────────────────────
 
-test("@source : chaque dossier déclaré existe, et components/ en fait partie", () => {
+test("@source : chaque source déclarée existe, et components/ en fait partie", () => {
   assert.ok(sourceDirs.includes("components"));
-  for (const dir of sourceDirs) assert.ok(existsSync(dir) && statSync(dir).isDirectory(), dir);
+  // Un dossier, ou un fichier .tsx (l'accueil, étape 9 : lire tout app/ ferait
+  // générer les homonymes des classes des écrans pas encore repris).
+  for (const dir of sourceDirs) {
+    assert.ok(existsSync(dir), dir);
+    assert.ok(statSync(dir).isDirectory() || (statSync(dir).isFile() && dir.endsWith(".tsx")), dir);
+  }
   assert.match(read(GLOBALS), /^@source not inline\("block fill-accent"\);/m);
 });
 
@@ -202,9 +210,18 @@ const SCREENS = [
   // Étape 6 (D33) : le formulaire de signalement et la vue des gestionnaires.
   "app/schools/[id]/report/page.tsx",
   "app/admin/reports/ReportsManagerClient.tsx",
+  // Étape 9, lot 1 (D54) : le site public et /api-docs.
+  "app/page.tsx",
+  "app/schools/[id]/SchoolDetailClient.tsx",
+  "app/schools/[id]/programs/[pid]/page.tsx",
+  "app/api-docs/page.tsx",
 ];
 
-test("les écrans repris : un gabarit, aucune classe de l'ancien CSS, aucun style en ligne", () => {
+/** Un émoji (présentation émoji, ou sélecteur de variante U+FE0F) ; les flèches
+ * de texte (« → », « ↗ ») n'en sont pas. */
+const EMOJI = /\p{Emoji_Presentation}|\uFE0F/u;
+
+test("les écrans repris : un gabarit, aucune classe de l'ancien CSS, aucun style en ligne, aucun émoji", () => {
   const legacy = legacyCssClasses();
   const files = sourceDirs.filter((dir) => dir.startsWith("app/")).flatMap((dir) => filesUnder(dir, /\.tsx$/));
   for (const screen of SCREENS) assert.ok(files.includes(screen), screen);
@@ -213,6 +230,8 @@ test("les écrans repris : un gabarit, aucune classe de l'ancien CSS, aucun styl
     const old = [...classTokens(source)].filter((token) => legacy.has(token));
     assert.deepEqual(old, [], `${file} : classes de l'ancien CSS`);
     assert.doesNotMatch(source, /style=\{\{/, `${file} : style en ligne`);
+    // D56 : les émojis décoratifs partent avec l'ancien style, les textes restent.
+    assert.doesNotMatch(source, EMOJI, `${file} : émoji`);
   }
   for (const screen of SCREENS) assert.match(read(screen), /from "@\/components\/layout\/(AuthShell|AdminPage|SiteShell)"/, screen);
 });

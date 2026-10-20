@@ -394,8 +394,8 @@ laisse le sien à l'école, avec son nom (D37). Contraintes et clés : `bdd.md`
 §4.
 
 **Journal des lancements** (étape 7, migration
-`20261020150000_research_launches`, appliquée sur `dev` le 20 octobre ;
-`main` à la prochaine mise en production, avant le code qui la lit) :
+`20261020150000_research_launches`, appliquée sur `dev` et sur `main` le
+20 octobre) :
 `ResearchLaunch` (D14) garde qui a lancé quoi (le corps envoyé au backend),
 quand (l'heure de la base, `CURRENT_TIMESTAMP`, comme `PipelineJob.started_at`
 que le backend écrit : la fenêtre de D40 compare les deux), l'issue (D41), le

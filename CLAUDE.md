@@ -135,9 +135,10 @@ branche `gestion` :
   ne part sans trace), D42 (clé `RESTRICT`), D43 (une colonne « Lancé par »
   dans l'historique, rien d'autre), D44 (« non suivi »), D45 (ancien style),
   D46 (messages IA : rien à l'étape 7, liste consignée) ; migration
-  `20261020150000_research_launches` appliquée sur la branche Neon `dev`
-  (`main` avant l'avance de `main` sur `gestion`, le code la lit) ; contrôle
-  visuel de l'agent dans le Chrome du propriétaire. Détail : journal du plan ;
+  `20261020150000_research_launches` appliquée sur la branche Neon `dev` le
+  20 octobre, puis sur `main` le même jour, avant l'avance de `main` sur
+  `gestion` (mise en production) ; contrôle visuel de l'agent dans le Chrome
+  du propriétaire. Détail : journal du plan ;
 - prochaine : étape 8 (événements, année d'entrée), en commençant par D15 et
   D16.
 

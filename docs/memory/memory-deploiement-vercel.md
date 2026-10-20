@@ -257,6 +257,14 @@ blanc, puis réelle, avec l'accord du propriétaire), **avant** le push sur
 le push sur `main` (« Mon compte » lit la nouvelle table : sans elle, la
 page tomberait en erreur). Quatorze migrations sur les deux branches.
 
+**20 octobre 2026** (étape 7) : une quinzième migration,
+`20261020150000_research_launches` (une table neuve, additive : le journal
+des lancements de l'IA), appliquée sur `dev`, puis sur `main` le même jour en
+suivant le §3.2 (relevé MCP, `db:status`, à blanc, puis réelle, avec l'accord
+du propriétaire), **avant** le push sur `main` (l'historique de `/admin/cron`
+lit la nouvelle table : sans elle, il tomberait en erreur). Quinze migrations
+sur les deux branches.
+
 ### 3.2. Une version qui apporte une migration
 
 1. `npm run db:status` : lecture seule, permis à l'agent ;

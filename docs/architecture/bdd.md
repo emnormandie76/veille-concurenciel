@@ -31,8 +31,8 @@
 > `20261020150000_research_launches` : le **journal des lancements de l'IA**,
 > dans une table neuve, `ResearchLaunch` (D14), tenue par Next.js seul ;
 > `PipelineJob`, que le backend gelé écrit, n'est pas touchée. Appliquée sur
-> la branche Neon `dev` le 20 octobre ; `main` à la prochaine mise en
-> production, avant le code qui la lit.
+> la branche Neon `dev`, puis sur `main` le 20 octobre, avant la mise en
+> production du code qui la lit.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -472,8 +472,9 @@ sur `main` le 20 octobre, avant la fusion de l'étape 5 dans la branche Git
 arrivée sur `dev` puis sur `main` le 20 octobre, avant la fusion du code qui
 la lit (« Mon compte » la lit). Les quatorze sont appliquées sur les deux
 branches Neon. La quinzième, `20261020150000_research_launches` (étape 7),
-est appliquée sur `dev` le 20 octobre ; `main` la recevra à la prochaine mise
-en production, **avant** le code qui la lit (l'historique de `/admin/cron`).
+est arrivée sur `dev` puis sur `main` le 20 octobre, **avant** la fusion du
+code qui la lit (l'historique de `/admin/cron`). Les quinze sont appliquées
+sur les deux branches Neon.
 
 | Migration | Contenu |
 |-----------|---------|

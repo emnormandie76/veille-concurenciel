@@ -124,8 +124,8 @@ branche `gestion` :
   signalements supprimés ; campus ou programme : détachés), D38 (clés
   `RESTRICT` sur l'auteur et le traitant), D39 (le nom affiché seul) ;
   migration `20261020120000_content_reports` appliquée sur la branche Neon
-  `dev` le 20 octobre, `main` à la prochaine mise en production (avant le
-  code : « Mon compte » lit la table) ; contrôle visuel de l'agent dans le
+  `dev` le 20 octobre, puis sur `main` le même jour, avant l'avance de
+  `main` sur `gestion` (mise en production) ; contrôle visuel de l'agent dans le
   Chrome du propriétaire. Détail : journal du plan ;
 - prochaine : étape 7 (historique des recherches IA), en commençant par D14.
 

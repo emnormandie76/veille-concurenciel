@@ -347,7 +347,7 @@ contrainte `CHECK`). Les trois sont vides ensemble (ligne « non suivie »,
 d'historique complet (D10).
 
 **Signalements** (étape 6, migration `20261020120000_content_reports`,
-appliquée sur `dev` le 20 octobre) : `ContentReport` (D13) garde l'auteur,
+appliquée sur `dev` et sur `main` le 20 octobre) : `ContentReport` (D13) garde l'auteur,
 l'école, la cible (`target_type`, le nom à l'envoi `target_label`, la clé du
 campus ou du programme), la catégorie, le message, le lien, l'état (`OPEN`,
 `RESOLVED`, `REJECTED`), la réponse, qui l'a traité et quand. Une école

@@ -25,8 +25,8 @@
 > **20 octobre 2026** (étape 6) : 14e migration,
 > `20261020120000_content_reports` : les **signalements**, dans une table
 > neuve, `ContentReport` (D13), jamais dans `ContributionInbox` (piège 6).
-> Appliquée sur la branche Neon `dev` le 20 octobre ; `main` à la prochaine
-> mise en production.
+> Appliquée sur la branche Neon `dev`, puis sur `main` le 20 octobre, avant
+> la mise en production du code qui la lit.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -442,8 +442,9 @@ avant la fusion dans la branche Git `main`). La treizième,
 `20261019120000_content_provenance` (étape 5), est arrivée sur `dev` puis
 sur `main` le 20 octobre, avant la fusion de l'étape 5 dans la branche Git
 `main`. La quatorzième, `20261020120000_content_reports` (étape 6), est
-arrivée sur `dev` le 20 octobre ; `main` la recevra à la prochaine mise en
-production, avant la fusion du code qui la lit (« Mon compte » la lit).
+arrivée sur `dev` puis sur `main` le 20 octobre, avant la fusion du code qui
+la lit (« Mon compte » la lit). Les quatorze sont appliquées sur les deux
+branches Neon.
 
 | Migration | Contenu |
 |-----------|---------|

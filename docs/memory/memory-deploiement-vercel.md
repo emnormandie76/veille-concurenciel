@@ -252,12 +252,10 @@ blanc, puis réelle, avec l'accord du propriétaire), **avant** le push sur
 
 **20 octobre 2026** (étape 6) : une quatorzième migration,
 `20261020120000_content_reports` (une table neuve, additive), appliquée sur
-`dev` seulement. **Elle attend `main`** : à la prochaine mise en production,
-elle part sur la branche Neon `main` en suivant le §3.2, **avant** le push
-sur `main` (« Mon compte » lit la nouvelle table : sans elle, la page
-tomberait en erreur). D'ici là, l'étape « statut des migrations » de la CI
-de `gestion` voit une migration en attente sur `main` (non bloquante sur
-`gestion`, bloquante sur `main`).
+`dev`, puis sur `main` le même jour en suivant le §3.2 (relevé MCP,
+`db:status`, à blanc, puis réelle, avec l'accord du propriétaire), **avant**
+le push sur `main` (« Mon compte » lit la nouvelle table : sans elle, la
+page tomberait en erreur). Quatorze migrations sur les deux branches.
 
 ### 3.2. Une version qui apporte une migration
 

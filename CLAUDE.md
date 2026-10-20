@@ -108,7 +108,8 @@ branche `gestion` :
   nom et la date de chaque modification), D30 (pourcentages des chiffres clés
   à toutes décimales) ; migration
   `20261019120000_content_provenance` appliquée sur la branche Neon `dev` le
-  20 octobre ; elle part sur `main` avant le code, à la fusion ; contrôles
+  20 octobre, puis sur `main` le même jour, avant la fusion de `gestion`
+  dans `main` (mise en production) ; contrôles
   visuels de l'agent et du propriétaire. Détail : journal du plan ;
 - prochaine : étape 6 (formulaire de signalement), en commençant par D13.
 

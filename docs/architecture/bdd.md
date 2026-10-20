@@ -20,9 +20,8 @@
 > Les neuf tables de données reçoivent `updated_at`, `updated_by_id` (clé vers
 > `User`, `ON DELETE RESTRICT`) et `updated_via` (D10, D11, D24) ;
 > `SchoolStatsRecord`, `AccreditationRecord` et `Program` reçoivent
-> `source_url` (D12). Appliquée sur `dev` le 20 octobre ; **pas encore sur
-> `main`** : elle y part à la prochaine mise en production demandée par le
-> propriétaire, avant le code qui la lit.
+> `source_url` (D12). Appliquée sur `dev`, puis sur `main` le 20 octobre,
+> avant la mise en production du code qui la lit.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
@@ -400,10 +399,9 @@ Treize migrations, à appliquer par `prisma migrate deploy` (ou
 et la douzième, `20261016150000_whitelist_accounts`, sont arrivées sur `dev` le
 16 octobre 2026 et sur `main` le 19 octobre (étape 3 du plan gestion-contenu,
 avant la fusion dans la branche Git `main`). La treizième,
-`20261019120000_content_provenance` (étape 5), est sur `dev` depuis le
-20 octobre ; **`main` en a douze** : elle y part à la prochaine mise en
-production, avant le code (la CI de `gestion` la voit en attente sur `main`,
-étape non bloquante).
+`20261019120000_content_provenance` (étape 5), est arrivée sur `dev` puis
+sur `main` le 20 octobre, avant la fusion de l'étape 5 dans la branche Git
+`main`. Les treize sont appliquées sur les deux branches Neon.
 
 | Migration | Contenu |
 |-----------|---------|

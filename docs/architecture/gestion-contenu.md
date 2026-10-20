@@ -305,7 +305,7 @@ sur les écoles » du propriétaire.
 | `PipelineJob` | école | — | backend Python seulement |
 
 **Provenance** (étape 5, migration `20261019120000_content_provenance`,
-appliquée sur `dev` le 20 octobre, pas encore sur `main`) : les neuf tables
+appliquée sur `dev` et sur `main` le 20 octobre) : les neuf tables
 de données, de `School` à `ProgramCampusAttachment` (pas `ProgramCampus`, une
 arête sans contenu propre, ni `ProgramPlacement`, sans chemin d'écriture),
 portent la **dernière** modification : `updated_by_id` (clé vers `User`,

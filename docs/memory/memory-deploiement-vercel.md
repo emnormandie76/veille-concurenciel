@@ -244,9 +244,10 @@ propriétaire après une passe à blanc), et aucune n'est en attente. Le premier
 déploiement n'a donc aucune migration à appliquer.
 
 **20 octobre 2026** (étape 5 du plan gestion-contenu) : une treizième
-migration, `20261019120000_content_provenance` (additive), est appliquée sur
-`dev` et **attend `main`**. La prochaine mise en production suit le §3.2 :
-elle d'abord, puis le push sur `main`, dont le code la lit.
+migration, `20261019120000_content_provenance` (additive), appliquée sur
+`dev`, puis sur `main` le même jour en suivant le §3.2 (`db:status`, à
+blanc, puis réelle, avec l'accord du propriétaire), **avant** le push sur
+`main` dont le code la lit. Treize migrations sur les deux branches.
 
 ### 3.2. Une version qui apporte une migration
 

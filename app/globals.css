@@ -47,8 +47,11 @@
 @source "./admin/schools";
 /* Étape 9, lot 4 : l'inbox (partie IA gelée, le style seulement). */
 @source "./admin/inbox";
-/* Homonymes de classes de /admin/cron (RotationPanel, CronMonitoringClient) :
- * jamais générés, même si un fichier lu les contient. */
+/* Étape 9, lot 5 : /admin/cron (partie IA gelée, le style seulement). */
+@source "./admin/cron";
+/* Homonymes de classes de l'ancien /admin/cron (RotationPanel,
+ * CronMonitoringClient) : jamais générés, même si un fichier lu les contient.
+ * L'écran est repris au lot 5 ; l'exclusion part au nettoyage du lot 6. */
 @source not inline("block fill-accent");
 
 /* ─── L'ancien style (étape 2.1 du chantier d'origine), inchangé ─────────── */

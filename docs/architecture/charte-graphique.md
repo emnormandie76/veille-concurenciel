@@ -19,8 +19,9 @@
 > lot) : le lot 1 (site public et `/api-docs`) et le lot 2 (liste des
 > écoles, cadre de la gestion, campus, onglets Infos, Accréditations,
 > Chiffres clés, Admissions) sont faits le 20 octobre, le lot 3 (onglets
-> Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot retiré) et
-> le lot 4 (l'inbox) le 21 octobre ; l'état de la reprise est au §9.
+> Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot retiré), le
+> lot 4 (l'inbox) et le lot 5 (`/admin/cron`) le 21 octobre ; l'état de la
+> reprise est au §9.
 
 ---
 
@@ -201,6 +202,7 @@ variantes (`cx` ne fusionne pas les classes contradictoires).
 | Badge | `Badge.tsx` | `neutral`, `accent`, `solid` (catégories : rôles) ; `success`, `warning`, `danger` (états) ; `wrap` pour un texte long qui passe à la ligne (le concours d'un programme, étape 9) : hauteur minimale, arrondi d'un contrôle |
 | Dialogue | `Dialog.tsx` : `Dialog`, `DialogFooter` | `<dialog>` natif ouvert par `showModal()` : focus gardé dans le dialogue, page inerte, focus rendu à la fermeture ; Échap et « Fermer » passent par `onClose`, qui peut refuser ; `data-autofocus` désigne le premier champ. Remplace `confirm()`. Un événement `close` du navigateur arrivé quand le dialogue est de nouveau ouvert est ignoré : sous `next dev`, React rejoue les effets, et le dialogue se refermait aussitôt ouvert (corrigé à l'étape 6). Deux options depuis l'étape 9 (lot 4, D76) : `placement="side"`, un panneau collé au bord droit, pleine hauteur, `min(37.5rem, 95vw)`, filet à gauche, sans arrondi (le détail d'un ticket de l'inbox) ; `closeOnBackdrop`, un clic sur le fond voilé, hors du cadre du dialogue, appelle `onClose` (un clic au clavier vise un bouton, jamais le fond) |
 | Message | `Alert.tsx` | `danger` (`role="alert"`), `success` et `info` (`role="status"`) ; texte en encre, teinte portée par le fond et l'icône |
+| Barre de progression | `ProgressBar.tsx` | l'élément natif `<progress>` (étape 9, lot 5, D86) : valeur et maximum, nommée par l'appelant (`aria-label` ou `aria-labelledby`) ; ton de la valeur `accent` (une avancée : la progression d'une tâche), `success`, `warning`, `danger` (un usage : un quota) ; piste en `line`, visible sur `surface` comme sur `surface-2` ; 6 px, sans animation ; les chiffres restent écrits à côté. Jamais de largeur posée par un `style` en ligne |
 | Lien dans un texte | `text-link.ts` : `TEXT_LINK` | souligné, en `accent-strong` |
 
 Rôles et états des comptes : `Utilisateur` neutre, `Gestionnaire` accent,
@@ -247,6 +249,26 @@ comme les émojis (D78) ; un « ✕ » seul devient un bouton d'icône
 ticket n'est cliquable qu'en `http(s)` (D79) ; l'icône de lien externe ne
 suit qu'un texte court (« source ») : à côté d'un intitulé sur plusieurs
 lignes, elle restait centrée à droite du bloc.
+
+Dans `/admin/cron` (lot 5, `app/admin/cron/cron-tones.ts`) : un ton par
+état (D87) : un job terminé en `success`, en échec en `danger`, en file ou
+en cours en `neutral` (rien à faire) ; les passes dues « sur demande » en
+`neutral`, « plafond à 0 » et « hors plafond » en `warning`, « N
+épuisée(s) » en `danger` ; l'usage d'un quota garde ses seuils (épuisé
+`danger`, 75 % ou plus `warning`, sinon `success`), sur sa barre et ses
+chiffres ; le titre du bloc des contributions au ton de son dernier
+passage. Les pastilles colorées, dont deux pulsaient, sont parties : l'état
+est écrit. Les bandeaux de l'état du backend en `Alert` (D85) : le poste
+local et « non lancé » en `info`, l'injoignable et les erreurs du démarrage
+en `danger`. La confirmation d'une passe réelle (qui paie) est un dialogue
+de la charte, focus sur « Annuler », son texte figé à l'ouverture (D84). Un
+en-tête qui replie une liste est un bouton natif (`aria-expanded`,
+`aria-controls`), le corps caché par `hidden` sans utilitaire d'affichage,
+sans animation de hauteur (D88 : les quotas Tavily). Un choix entre deux
+segments dit lequel est choisi par `aria-pressed`, le choisi en
+`accent-soft` souligné d'accent (D89 : la phase). Le détail d'un job (une
+erreur de 300 caractères) passe sous sa ligne, comme la note d'un tarif
+(D90, D74).
 
 Une carte du gestionnaire dont le titre partage sa ligne avec des boutons
 (accréditation, admission, campus) a un en-tête qui passe à la ligne
@@ -306,7 +328,7 @@ de l'étape 9 (D54).
 | 2 | liste des écoles, cadre de la gestion, page des campus, onglets Infos, Accréditations, Chiffres clés, Admissions (avec `LastEdit` et les sélecteurs de programme et d'année) | **fait le 20 octobre** |
 | 3 | onglets Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot et `manage/legacy/` retirés | **fait le 21 octobre** (validé) |
 | 4 | inbox (le style seulement, IA gelée ; D76 à D80) | **fait le 21 octobre** (validé) |
-| 5 | `/admin/cron` | à faire |
+| 5 | `/admin/cron` (le style seulement, IA gelée ; D81 à D91) | **fait le 21 octobre** (validé) |
 | 6 | menu latéral et cadre du back-office ; preflight, nettoyage de `globals.css`, Inter | à faire |
 
 - **Tailwind CSS v4** (`tailwindcss` et `@tailwindcss/postcss`, 4.3.3),
@@ -331,13 +353,15 @@ de l'étape 9 (D54).
   `app/` ferait générer les homonymes des classes des écrans pas encore
   repris), et depuis le lot 3 toute la gestion des écoles en une source,
   `app/admin/schools/` (au lot 2, fichier par fichier, sans les onglets du
-  lot 3 ; aucun fichier de l'ancien style n'y reste), et depuis le lot 4
-  l'inbox, `app/admin/inbox/`), avec
+  lot 3 ; aucun fichier de l'ancien style n'y reste), depuis le lot 4
+  l'inbox, `app/admin/inbox/`, et depuis le lot 5 `app/admin/cron/`), avec
   `source(none)` sur l'import des utilitaires : un ancien
   nom de classe qui serait aussi un utilitaire n'en reçoit pas les règles.
-  `block` et `fill-accent`, deux classes de `/admin/cron`, ne sont jamais
-  générés (`@source not inline`) : un écran de la charte ne s'en sert pas
-  (une colonne flex à la place de `block`).
+  `block` et `fill-accent`, deux classes de l'ancien `/admin/cron`, ne sont
+  jamais générés (`@source not inline`) : un écran de la charte ne s'en sert
+  pas (une colonne flex à la place de `block` ; la barre de progression
+  reste `inline-block`, sur toute la largeur). L'écran est repris au lot 5,
+  l'exclusion part au nettoyage du lot 6.
 - **Transition du back-office** : `.admin-content-area:has(.charte)` peint
   toute la zone de contenu au fond de la charte quand l'écran est repris.
 - **L'îlot sombre des onglets du lot 3** (lot 2, D60, D61), **retiré au
@@ -360,8 +384,7 @@ de l'étape 9 (D54).
 4. garder libellés, identifiants de champ et comportement ;
 5. regarder l'écran dans un navigateur, et un écran voisin non repris.
 
-**Restes pour l'étape 9** (lots 5 et 6) : `/admin/cron` (lot 5) ; puis,
-au lot 6, le
+**Restes pour l'étape 9** (lot 6) : le
 menu latéral et le cadre du back-office (jetons `side-*`), le preflight à la
 place de la base `.charte` (il pose aussi `[hidden] { display: none }`), la
 règle de transition `:has()`, les exclusions `block` et `fill-accent`, Inter,
@@ -395,6 +418,20 @@ classes mortes sur 201 au départ, 176 à la fin** ; les 5 de plus, qui ne
 servaient qu'à l'inbox : `alert-danger`, `alert-success`, `btn-danger`,
 `empty-state`, `table-container`. Les classes que l'inbox se donnait dans
 son propre bloc `<style>` (`panel`, `flag-badge`, `badge-info`…) n'étaient
-pas dans `globals.css` : elles disparaissent avec lui. Les classes mortes
-de `globals.css` restent jusqu'au lot 6 : sa couche `legacy` ne change pas
-avant (seuls ses `@source` changent, lot après lot).
+pas dans `globals.css` : elles disparaissent avec lui. Au lot 5, le script
+est réécrit (celui du lot 4 n'a pas survécu à sa session ; le nouveau, dans
+le scratchpad de la session, est appliqué de la même façon au début et à
+la fin) : il lit les mots de toutes les chaînes des fichiers de `app/` et
+`components/`, y compris ceux d'une condition dans un gabarit (`active`,
+`badge-admin`, `badge-moderator` du menu latéral, que celui du lot 4
+manquait), et ignore le CSS des blocs `styled-jsx` (où `:checked` n'est pas
+la classe `checked`). Il compte **173 classes mortes sur 201 au départ, 184
+à la fin** (les 176 du lot 4 viennent de l'autre méthode) ; les 11 de plus,
+qui ne servaient qu'à `/admin/cron` : `admin-table`, `badge-active`,
+`btn-primary`, `form-control`, `form-group`, `form-hint`, `form-label`,
+`no-data`, `page-header`, `page-title-desc`, `section-title`. Les classes
+que l'écran se donnait dans ses quatre blocs `styled-jsx` (`task-card`,
+`fill-accent`, `block`…) disparaissent avec eux : il ne reste qu'un bloc
+`styled-jsx`, celui du menu latéral. Les classes mortes de `globals.css`
+restent jusqu'au lot 6 : sa couche `legacy` ne change pas avant (seuls ses
+`@source` changent, lot après lot).

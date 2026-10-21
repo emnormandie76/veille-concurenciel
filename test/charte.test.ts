@@ -194,7 +194,14 @@ test("@source : tout fichier de app/ qui emploie la charte est lu par Tailwind",
 test("aucun utilitaire généré ne porte le nom d'une classe des anciens écrans", () => {
   const legacy = legacyCssClasses();
   for (const file of filesUnder("app", /\.tsx$/).filter((f) => !inSources(f))) for (const token of classTokens(read(file))) legacy.add(token);
-  assert.ok(legacy.has("btn") && legacy.has("block") && legacy.has("fill-accent"), "le relevé voit les anciennes classes");
+  // Le relevé lit les trois sources de l'ancien style : globals.css (`btn`),
+  // les classes d'un écran hors des @source (`nav-link`, le menu latéral) et
+  // ses blocs styled-jsx (`sidebar-brand`). Jusqu'au lot 5, il le montrait sur
+  // `block` et `fill-accent`, classes de /admin/cron, qui n'en a plus.
+  assert.ok(
+    legacy.has("btn") && legacy.has("nav-link") && legacy.has("sidebar-brand"),
+    "le relevé voit les anciennes classes",
+  );
   assert.ok(generatedClasses.has("flex") && generatedClasses.has("bg-surface"), "le relevé voit les utilitaires");
   const collisions = [...generatedClasses].filter((name) => legacy.has(name));
   assert.deepEqual(collisions, [], "à exclure par @source not inline(…) dans app/globals.css");
@@ -225,6 +232,9 @@ const SCREENS = [
   // Étape 9, lot 4 (D54) : l'inbox, le style seulement (IA gelée, règle 10 ;
   // test/inbox-screen.test.ts).
   "app/admin/inbox/page.tsx",
+  // Étape 9, lot 5 (D54) : /admin/cron, le style seulement (IA gelée, règle 10 ;
+  // test/cron-screen.test.ts). Ses trois panneaux sont lus avec leur dossier.
+  "app/admin/cron/CronMonitoringClient.tsx",
 ];
 
 /** Un émoji (présentation émoji, ou sélecteur de variante U+FE0F) ; les flèches

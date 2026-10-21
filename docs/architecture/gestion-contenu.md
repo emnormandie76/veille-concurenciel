@@ -16,7 +16,9 @@
 > l'îlot retiré ; §3.2, §6, §7), puis les corrections du contrôle du
 > propriétaire (D73 à D75 : cartes du gestionnaire, notes des tarifs,
 > nombre de programmes de l'accueil ; §3.1, §4.3, §6, §7), puis le lot 4
-> (l'inbox dans la charte, le style seulement ; D76 à D80 ; §3.2, §6, §7).
+> (l'inbox dans la charte, le style seulement ; D76 à D80 ; §3.2, §6, §7),
+> puis le lot 5 (`/admin/cron` dans la charte, le style seulement ; D46
+> posée, D81 à D91 ; §3.2, §6, §7).
 > Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
@@ -222,7 +224,7 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 | `/admin/reports` | `manager` (étape 6, D31) : « Signalements », en attente (les plus anciens d'abord) et fermés (les 100 derniers). Pour chacun : l'école, la cible (« supprimé » si le campus ou le programme n'existe plus, D37), la catégorie, le message, le lien (`sourceHref`), le nom affiché de l'auteur (D39) ; « Ouvrir l'onglet de gestion » (l'onglet de la catégorie), « Traiter » et « Rejeter » (dialogue, réponse facultative pour l'auteur). Fermer un signalement ne date aucune donnée (D32) | non |
 | `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter. Dans la charte depuis l'étape 9 (lot 4), le style seulement (règle 10 : requêtes, textes et identifiants gardés, `test/inbox-screen.test.ts`) : `AdminPage`, filtres libellés « Statut » et « Catégorie » (D58, D65), un tableau ; le détail d'un ticket dans un dialogue natif collé à droite, 600 px, fermé par Échap, « Fermer » ou un clic à côté (D76, `Dialog` `placement="side"`) ; un ton de badge par état (D77, `inbox/ticket-tones.ts`) ; ni émoji ni ✓, ✕, ⚠ en tête des textes, les « ✕ » seuls devenus des boutons d'icône nommés (D78) ; un lien d'un ticket cliquable en `http(s)` seulement, sinon du texte (D79, `sourceHref`) ; le bandeau des contributions `Pending_AI` au ton « info » (D80) ; la purge confirmée dans un dialogue, son erreur dans la fenêtre (D67). Le contenu venu de l'IA et du web s'affiche en texte (aucun `dangerouslySetInnerHTML`) | **oui** |
 | `/admin/users` | `admin` : les comptes (« Comptes » dans le menu) : ajouter une adresse à la liste, retirer un invité, changer un rôle, remettre en première connexion (ou réactiver), désactiver (un actif ou un invité, D24), renseigner l'adresse d'un compte ancien. Aucun e-mail envoyé | non |
-| `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs. Depuis l'étape 7, l'historique a une colonne « Lancé par » : le nom affiché du lanceur (D25), ou « non suivi », avec sa raison au survol (D44) ; à l'ancien style de l'écran (D45) | **oui** |
+| `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs. Depuis l'étape 7, l'historique a une colonne « Lancé par » : le nom affiché du lanceur (D25), ou « non suivi », avec sa raison au survol (D44). Dans la charte depuis l'étape 9 (lot 5), le style seulement (règle 10 : les cinq requêtes, les rafraîchissements et l'identifiant du bloc des contributions gardés, `test/cron-screen.test.ts` ; D45 gardait l'ancien style jusque-là) : `AdminPage` ; les bandeaux de l'état du backend en `Alert`, « non lancé » et le poste local en « info », l'injoignable et les erreurs du démarrage en « danger » (D85) ; un ton par état (D87, `cron/cron-tones.ts`), sans pastille ; les barres en `<progress>` natif (D86, `ProgressBar`) ; l'en-tête des quotas Tavily en bouton natif (D88) ; la phase en `aria-pressed` (D89) ; l'école, le programme et les catégories libellés et reliés (D58, D65) ; le détail d'un job sous sa ligne (D90). D46 posée : « Réservé aux ADMIN », branche morte, retiré, la prop `isAdmin` et ses contrôles gardés (D81) ; « Job #<id> » retiré du message de lancement et des cartes (D82) ; le bloc « Contributions du public » et la ligne des contributions en attente gardés, seuls signaux de ce que le backend gelé paie au démarrage (D83, l'inbox suit). Le lancement réel des passes dues se confirme dans le dialogue de la charte, texte figé à l'ouverture, focus sur « Annuler » (D84) ; la requête ne part que de son bouton. Aucun lien ; le contenu de l'IA (erreurs des jobs, actions) s'affiche en texte | **oui** |
 
 **Écrans à la charte graphique** (étape 4, §6) : la connexion et la première
 connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
@@ -230,9 +232,9 @@ connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
 signalement (`SiteShell`) et « Signalements » (`AdminPage`, onglets et
 dialogue) ; depuis l'étape 9 (lot 1), tout le site (§3.1) ; depuis le
 lot 2, la liste des écoles, la page des campus et la gestion d'une école,
-sauf quatre onglets (D60), repris au lot 3 ; depuis le lot 4, l'inbox. Les
-autres écrans du back-office gardent l'ancien style jusqu'à leur lot de
-l'étape 9 (D54 : `/admin/cron` au lot 5, menu latéral et cadre au lot 6).
+sauf quatre onglets (D60), repris au lot 3 ; depuis le lot 4, l'inbox ;
+depuis le lot 5, `/admin/cron`. Reste à l'ancien style le menu latéral et
+le cadre du back-office, jusqu'au lot 6 de l'étape 9 (D54).
 
 ---
 
@@ -475,8 +477,8 @@ reprise, lot par lot).
 
 | | Écrans | Où |
 |---|---|---|
-| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) ; étape 9, lot 1 : l'accueil, les fiches école et programme, `/api-docs` ; lot 2 : la liste des écoles, la page des campus, le cadre de la gestion d'une école et ses onglets Infos, Accréditations, Statistiques (chiffres clés) et Admissions ; lot 3 : ses onglets Campus & Programmes, Tarifs, Classements et Capacités ; lot 4 : l'inbox | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
-| **L'ancien style** | tous les autres : `/admin/cron` (lot 5), menu latéral du back-office (lot 6) | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
+| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) ; étape 9, lot 1 : l'accueil, les fiches école et programme, `/api-docs` ; lot 2 : la liste des écoles, la page des campus, le cadre de la gestion d'une école et ses onglets Infos, Accréditations, Statistiques (chiffres clés) et Admissions ; lot 3 : ses onglets Campus & Programmes, Tarifs, Classements et Capacités ; lot 4 : l'inbox ; lot 5 : `/admin/cron` | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
+| **L'ancien style** | le menu latéral et le cadre du back-office (lot 6) | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; un bloc `styled-jsx`, celui du menu latéral |
 
 - [`app/globals.css`](../../app/globals.css) est le point d'entrée : ordre des
   couches `theme, legacy, base, components, utilities`, thème et utilitaires de
@@ -486,8 +488,9 @@ reprise, lot par lot).
   l'étape 9 `app/schools/`, `app/api-docs/` et le seul fichier
   `app/page.tsx`, depuis le lot 3 toute la gestion des écoles en une source,
   `app/admin/schools/` ; au lot 2, fichier par fichier ; depuis le lot 4
-  `app/admin/inbox/`) ; `block` et `fill-accent`,
-  homonymes de classes de `/admin/cron`, ne sont jamais générés.
+  `app/admin/inbox/`, depuis le lot 5 `app/admin/cron/`) ; `block` et
+  `fill-accent`, homonymes de classes de l'ancien `/admin/cron`, ne sont
+  jamais générés (l'exclusion part au lot 6).
 - La racine de chaque gabarit porte la classe `charte` : la base de la charte
   n'agit que dans ce sous-arbre. Le menu latéral du back-office reste l'ancien
   (décision du 19 octobre) ; `.admin-content-area:has(.charte)` peint la zone
@@ -540,6 +543,15 @@ reprise, lot par lot).
   est retiré. Le CSS compilé avant et après le lot a été comparé règle à
   règle : aucune règle d'avant perdue ni déplacée, trois variables de thème
   et 26 utilitaires ajoutés.
+- Étape 9, lot 5 (D81 à D91) : `/admin/cron`, le style seulement. Un
+  composant nouveau, `ProgressBar` (`components/ui/`, D86 : `<progress>`
+  natif, ton de la valeur, piste en `line`, sans largeur en ligne) ; les
+  tons de l'écran dans `app/admin/cron/cron-tones.ts` (D87) ; les quatre
+  blocs `styled-jsx` de l'écran retirés (il ne reste que celui du menu
+  latéral). Le CSS compilé avant et après le lot a été comparé règle à
+  règle : aucune règle d'avant perdue ni déplacée, une variable de thème
+  (`--color-accent`) et 29 utilitaires ajoutés, tous de l'écran ou de la
+  barre.
 - Contrôle du propriétaire, 21 octobre (D73, D74) : sur les cartes des
   onglets Accréditations, Admissions et Campus & Programmes, l'en-tête passe
   à la ligne (`flex-wrap`) : un titre long garde la largeur, « Modifier » et
@@ -559,7 +571,10 @@ reprise, lot par lot).
   Lot 4, sur le poste : build de production vert, puis aucune violation ni
   erreur de console sous `next dev` dans le Chrome du propriétaire (inbox,
   `/admin/cron`, « Signalements ») ; la CSP de développement ne diffère que
-  par `'unsafe-eval'` dans `script-src`, `style-src` est le même.
+  par `'unsafe-eval'` dans `script-src`, `style-src` est le même. Lot 5, de
+  même : build de production vert, puis `/admin/cron` sous `next dev` dans
+  le Chrome du propriétaire, quatre états du backend, aucune erreur ni
+  violation en console.
 
 ---
 
@@ -678,6 +693,19 @@ reprise, lot par lot).
   la purge dans sa fenêtre) ; `silent-pages` (F6) et `ticket-sources` (le
   bloc « Sources ») lisent la page, inchangés ; `test/api/inbox-*`
   inchangés (aucune route ne bouge).
+- **`/admin/cron`** (étape 9, lot 5) : `test/cron-screen.test.ts` (les cinq
+  requêtes inchangées, adresse, méthode, en-tête, cache et corps ; le corps
+  d'une recherche ciblée, les rafraîchissements et `data-testid` gardés ;
+  D81 à D91 : la source du composant principal, et les trois panneaux
+  rendus côté serveur : l'historique et son détail sous la ligne, les
+  passes dues et leur barre nommée, les quotas et leur bouton natif ;
+  `cron-tones.ts` ; ni ✓, ✕, ⚠, ⏱, ni `styled-jsx`, style en ligne, lien ou
+  `dangerouslySetInnerHTML`) ; `pipeline-history.test.ts` voit la colonne
+  « Lancé par » dans le tableau de la charte (l'attendu « ancien style » de
+  D45 change avec le lot) ; `admin-pages`, `backend-state`,
+  `crowdsourcing-status`, `rotation-status` (et `test_rotation_status.py`),
+  `test/api/pipeline-jobs`, `run-due-passes` et `trigger-research`
+  inchangés et verts.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts` (dont D75 : les
   programmes de chaque école, et non la somme par campus ; la liste
@@ -700,6 +728,11 @@ reprise, lot par lot).
   `app/admin/schools/` en une seule source, aucun de ses fichiers à
   l'ancien style ; au lot 4, l'inbox (`ui-components` : la variante `side`
   de `Dialog`, le centre inchangé, et le point hors du cadre qui ferme) ;
+  au lot 5, `/admin/cron` (`ui-components` : `ProgressBar`, un `<progress>`
+  natif nommé, sans `style` ni `block`, piste en `line`) ; le contrôle du
+  relevé des anciennes classes se fait sur `btn`, `nav-link` et
+  `sidebar-brand` (il se faisait sur `block` et `fill-accent`, que
+  `/admin/cron` n'a plus : attendu changé avec le lot) ;
   `reports-pages.test.ts` attend le lien « Signaler une information » en
   bouton secondaire de la charte, et des fiches qui posent `SiteShell` sans
   « Back-office » (D57), toujours sans lire la session.

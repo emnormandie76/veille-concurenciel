@@ -193,8 +193,23 @@ branche `gestion` :
   contrôle dans le Chrome du propriétaire sur `dev`, en lecture seule,
   avec des tickets fictifs injectés dans l'onglet. Détail : journal du
   plan ;
-- prochaine : le lot 5 (`/admin/cron`, IA gelée : le style seulement ;
-  D46 à poser) dans une nouvelle session ; D15 reste ouverte.
+  **lot 5** (`/admin/cron`, IA gelée : le style seulement) fait et validé
+  le 21 octobre, sur le poste (le propriétaire demande le commit et le push
+  sur `gestion`, pas de mise en production) : D46
+  posée, D81 (« Réservé aux ADMIN » retiré, `isAdmin` gardé), D82
+  (« Job #<id> » retiré), D83 (contributions gardées, l'inbox suit), D84
+  (passe réelle confirmée dans le dialogue de la charte, texte figé, focus
+  sur « Annuler »), D85 (bandeaux du backend : info et danger), D86
+  (barres natives, `components/ui/ProgressBar.tsx`), D87 (un ton par état,
+  `cron/cron-tones.ts`), D88 (quotas Tavily : bouton natif), D89 (phase en
+  `aria-pressed`), D90 (détail d'un job sous sa ligne), D91 (école tronquée
+  gardée) ; requêtes, textes et identifiants gardés
+  (`test/cron-screen.test.ts`) ; contrôle dans le Chrome du propriétaire
+  sur `dev`, en lecture seule, l'état du backend injecté dans l'onglet,
+  tout POST bloqué. Détail : journal du plan ;
+- prochaine : le lot 6 (menu latéral et cadre du
+  back-office ; preflight, nettoyage de `globals.css`, Inter) dans une
+  nouvelle session ; D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -330,9 +345,10 @@ propriétaire le 20 octobre.
   qui se cache par `hidden` (`TabPanel` s'en garde). Depuis le lot 1, le
   site public et `/api-docs` sont dans la charte ; depuis le lot 3, toute
   la gestion des écoles aussi (`app/admin/schools/`, une seule source ;
-  plus d'îlot) ; depuis le lot 4, l'inbox (`app/admin/inbox/`) ; reste le
-  back-office : `/admin/cron`, menu latéral (lots 5 et 6,
-  `docs/architecture/charte-graphique.md` §9).
+  plus d'îlot) ; depuis le lot 4, l'inbox (`app/admin/inbox/`) ; depuis le
+  lot 5, `/admin/cron` (`app/admin/cron/`) ; reste le menu latéral et le
+  cadre du back-office (lot 6, `docs/architecture/charte-graphique.md`
+  §9). `block` et `fill-accent` restent exclus de Tailwind jusqu'au lot 6.
 
 ## Réseau du poste
 

@@ -105,11 +105,14 @@ test("D44 : le lanceur, ou « non suivi » avec la raison au survol ; jamais de 
   assert.match(untracked.hint ?? "", /hors de cet écran/);
 });
 
-test("D43, D45 : l'historique de /admin/cron montre la colonne « Lancé par », à l'ancien style de l'écran", () => {
+test("D43, D45 : l'historique de /admin/cron montre la colonne « Lancé par », dans la charte depuis l'étape 9 (lot 5)", () => {
   const screen = fs.readFileSync(path.join(process.cwd(), "app", "admin", "cron", "JobHistory.tsx"), "utf-8");
-  assert.match(screen, /<th>Origine<\/th>\s*<th>Lancé par<\/th>/);
+  assert.match(screen, /<Th>Origine<\/Th>\s*<Th>Lancé par<\/Th>/);
   assert.match(screen, /launcherLabel\(job\)/);
-  // La bulle de « non suivi » ; aucune classe de la charte dans cet écran resté sombre.
+  // La bulle de « non suivi ».
   assert.match(screen, /title=\{launcher\.hint \?\? undefined\}/);
-  assert.equal(/className="[^"]*\b(text-ink|bg-surface|charte)\b/.test(screen), false);
+  // L'attendu change avec la règle : D45 gardait l'ancien style de l'écran
+  // jusqu'à l'étape 9 ; au lot 5 (D54), le tableau est celui de la charte.
+  assert.match(screen, /from "@\/components\/ui\/Table"/);
+  assert.doesNotMatch(screen, /<style jsx>|className="admin-table/);
 });

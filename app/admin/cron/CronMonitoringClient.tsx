@@ -1,6 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { cx } from "@/components/ui/cx";
+import { Field, Select } from "@/components/ui/Field";
+import { ProgressBar } from "@/components/ui/ProgressBar";
+import { CROWDSOURCING_TEXT_TONES } from "./cron-tones";
 import JobHistory from "./JobHistory";
 import QuotaTavilyPanel from "./QuotaTavilyPanel";
 import RotationPanel from "./RotationPanel";
@@ -105,14 +114,26 @@ function parseProgress(progress?: string): { done: number; total: number } | nul
   return { done: parseInt(match[1]), total: parseInt(match[2]) };
 }
 
+// ── Un segment du choix de la phase (D89) : le choisi en accent ─
+
+function phaseButtonClasses(selected: boolean): string {
+  return cx(
+    "flex-1 px-4 py-2 text-compact transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
+    selected
+      ? "bg-accent-soft font-semibold text-accent-strong shadow-[inset_0_-2px_0_var(--color-accent)]"
+      : "bg-surface font-medium text-ink-2 hover:bg-surface-2 hover:text-ink",
+  );
+}
+
 // ── Category labels in French ──────────────────────────────────
+// Sans leurs émojis depuis l'étape 9, lot 5 (D56) : les textes restent.
 
 const CATEGORY_LABELS: Record<string, string> = {
-  Pricing: "💰 Tarifs",
-  Ranking: "🏆 Classements",
-  Capacity: "🎓 Places",
-  SchoolStats: "📊 Statistiques école",
-  Accreditation: "🏅 Accréditations",
+  Pricing: "Tarifs",
+  Ranking: "Classements",
+  Capacity: "Places",
+  SchoolStats: "Statistiques école",
+  Accreditation: "Accréditations",
 };
 
 // Ranking est collecte au niveau ecole : un seul appel Research couvre tous les
@@ -134,7 +155,11 @@ const BACKEND_LABELS: Record<BackendState["kind"], string> = {
 };
 
 export interface CronMonitoringClientProps {
-  /** Lu côté serveur (page.tsx) : seuls les ADMIN voient les lancements. */
+  /**
+   * Lu côté serveur (page.tsx) : seuls les ADMIN lancent. La page exige déjà
+   * le rôle : le texte « Réservé aux ADMIN », qui ne s'affichait jamais, est
+   * retiré (étape 9, lot 5, D81) ; les contrôles restent.
+   */
   isAdmin: boolean;
 }
 
@@ -317,18 +342,21 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
         throw new Error(describeBackendError(res.status, data));
       }
 
+      // Étape 9, lot 5 : plus de symbole de réussite ou d'avertissement en tête
+      // (D78 : le ton du message le dit), ni « Job #<id> », que rien à l'écran
+      // ne rapproche (D82, D46).
       if (selectedPhase === "1") {
         const confirmed = typeof data.collect_campus_attachments === "boolean";
         setLaunchMessage({
           type: confirmed ? "success" : "error",
-          text: `${confirmed ? "✅" : "⚠️"} ${data.message} — Job #${data.job_id} · ${describeCampusCollection(data.collect_campus_attachments)}`,
+          text: `${data.message} · ${describeCampusCollection(data.collect_campus_attachments)}`,
         });
         setCollectCampusAttachments(false);
         setTimeout(refreshAll, 1000);
       } else {
         setLaunchMessage({
           type: "success",
-          text: `✅ ${data.message} — Job #${data.job_id}`,
+          text: `${data.message}`,
         });
         // Rafraîchir pour montrer le nouveau job
         setTimeout(refreshAll, 1000);
@@ -380,222 +408,206 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
   const startupErrors = pipelineStatus?.startup_errors ?? [];
 
   return (
-    <div className="monitoring-container">
-      <div className="page-header">
-        <div>
-          <h1>⚙️ Pipeline de recherche</h1>
-          <p className="page-title-desc">
-            Passes dues, recherches ciblées et historique des jobs. Les recherches se lancent depuis le poste
-            local, backend lancé ; l&apos;historique se lit partout.
-          </p>
-        </div>
-        <button
-          className="btn btn-secondary"
-          onClick={refreshAll}
-          disabled={loadingStatus}
-        >
-          🔄 Rafraîchir
-        </button>
-      </div>
-
-      {/* État du backend local (plan backend-local, étape 5) */}
+    <AdminPage
+      title="Pipeline de recherche"
+      description="Passes dues, recherches ciblées et historique des jobs. Les recherches se lancent depuis le poste local, backend lancé ; l'historique se lit partout."
+      actions={
+        <Button onClick={refreshAll} disabled={loadingStatus}>
+          Rafraîchir
+        </Button>
+      }
+    >
+      {/* État du backend local (plan backend-local, étape 5) ; tons : D85 */}
       {backend?.kind === "local_only" && (
-        <div className="backend-banner banner-info">
-          <strong>🖥️ Pilotage depuis le poste local.</strong>
-          <p>
+        <Alert tone="info">
+          <strong className="font-semibold">Pilotage depuis le poste local.</strong>
+          <p className="mt-1 text-ink-2">
             Ce site n&apos;a pas de backend : les passes dues et les recherches ciblées se lancent depuis
             le Next.js du poste de l&apos;admin, backend lancé. Ici : l&apos;historique des jobs et les
             contributions en attente, lus en base.
           </p>
-        </div>
+        </Alert>
       )}
 
       {backend?.kind === "not_running" && (
-        <div className="backend-banner banner-warning">
-          <strong>⏸️ Backend local non lancé.</strong>
-          <p>
-            Lancez-le depuis la racine du dépôt : <code>{LOCAL_BACKEND_COMMAND}</code>. Il s&apos;ouvre
+        <Alert tone="info">
+          <strong className="font-semibold">Backend local non lancé.</strong>
+          <p className="mt-1 text-ink-2">
+            Lancez-le depuis la racine du dépôt :{" "}
+            <code className="font-mono text-xs break-all text-ink">{LOCAL_BACKEND_COMMAND}</code>. Il s&apos;ouvre
             dans sa propre fenêtre, et Next.js n&apos;est pas relancé. L&apos;écran le détecte tout seul
             (nouvel essai toutes les {STATUS_POLL_MS / 1000} s).
           </p>
-        </div>
+        </Alert>
       )}
 
       {backend?.kind === "error" && (
-        <div className="backend-banner banner-danger">
-          <strong>⚠️ Backend injoignable.</strong>
-          <p>{backend.message}</p>
-        </div>
+        <Alert tone="danger">
+          <strong className="font-semibold">Backend injoignable.</strong>
+          <p className="mt-1 text-ink-2">{backend.message}</p>
+        </Alert>
       )}
 
       {backendReady && startupErrors.length > 0 && (
-        <div className="backend-banner banner-danger">
-          <strong>❌ Le backend a démarré avec des erreurs.</strong>
-          <ul className="startup-errors">
+        <Alert tone="danger">
+          <strong className="font-semibold">Le backend a démarré avec des erreurs.</strong>
+          <ul className="mt-1 list-disc pl-5">
             {startupErrors.map((message, index) => (
               <li key={index}>{message}</li>
             ))}
           </ul>
-        </div>
+        </Alert>
       )}
 
       {/* Tâches actives vues par le backend : seulement s'il répond. Sinon,
           l'historique (plus bas, lu en base) montre aussi les jobs en cours. */}
       {backendReady && (
-      <div className="tasks-columns-grid">
-        {/* ── Section Tâches en cours (manuelles) ─────────────────── */}
-        <div className="card active-tasks-card">
-          <h2 className="section-title">⚡ Tâches manuelles en cours ({pipelineStatus?.pipeline_jobs?.length || 0})</h2>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* ── Tâches en cours (manuelles) ─────────────────────────── */}
+          <Card aria-labelledby="cron-manual-tasks-title" className="flex flex-col gap-4">
+            <CardHeader
+              titleId="cron-manual-tasks-title"
+              title={`Tâches manuelles en cours (${pipelineStatus?.pipeline_jobs?.length || 0})`}
+            />
 
-          {pipelineStatus?.pipeline_jobs && pipelineStatus.pipeline_jobs.length > 0 ? (
-            <div className="tasks-grid">
-              {pipelineStatus.pipeline_jobs.map((job) => {
-                const elapsed = job.created_at
-                  ? Math.floor(now / 1000 - job.created_at)
-                  : 0;
-                const progress = parseProgress(job.progress_details?.progress);
-                const progressPct = progress
-                  ? Math.min(100, (progress.done / progress.total) * 100)
-                  : 0;
+            {pipelineStatus?.pipeline_jobs && pipelineStatus.pipeline_jobs.length > 0 ? (
+              <ul className="flex flex-col gap-3">
+                {pipelineStatus.pipeline_jobs.map((job) => {
+                  const elapsed = job.created_at
+                    ? Math.floor(now / 1000 - job.created_at)
+                    : 0;
+                  const progress = parseProgress(job.progress_details?.progress);
 
-                return (
-                  <div key={job.job_id} className="task-card">
-                    <div className="task-card-header">
-                      <div className="task-card-title">
-                        <span className={`status-dot-sm ${job.status === "running" ? "dot-running" : "dot-queued"}`}></span>
-                        <span className="task-phase">{job.phase}</span>
-                        {job.progress_details?.school && (
-                          <span className="task-school">— {job.progress_details.school}</span>
-                        )}
+                  return (
+                    <li key={job.job_id} className="flex flex-col gap-3 rounded-control border border-line bg-surface-2 p-4">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="font-semibold text-ink">
+                          {job.phase}
+                          {job.progress_details?.school && (
+                            <span className="font-medium"> — {job.progress_details.school}</span>
+                          )}
+                        </p>
+                        <span className="font-mono text-xs tabular-nums text-ink-2">{formatElapsed(elapsed)}</span>
                       </div>
-                      <span className="task-timer">⏱ {formatElapsed(elapsed)}</span>
-                    </div>
 
-                    {/* Détail de l'action en cours */}
-                    {job.progress_details && (
-                      <div className="task-progress-details">
-                        <p className="task-action">
-                          🔍 {job.progress_details.current_action}
+                      {/* Détail de l'action en cours */}
+                      {job.progress_details && (
+                        <p className="text-sm leading-snug text-ink">
+                          {job.progress_details.current_action}
                           {job.progress_details.program && (
                             <> sur <strong>&quot;{job.progress_details.program}&quot;</strong></>
                           )}
                         </p>
-                      </div>
-                    )}
+                      )}
 
-                    {/* Barre de progression */}
-                    {progress && (
-                      <div className="task-progress-bar-container">
-                        <div className="progress-bar-bg">
-                          <div
-                            className="progress-bar-fill fill-accent"
-                            style={{ width: `${progressPct}%` }}
-                          ></div>
+                      {/* Barre de progression (D86) */}
+                      {progress && (
+                        <div className="flex items-center gap-3">
+                          <ProgressBar
+                            value={progress.done}
+                            max={progress.total}
+                            aria-label={`${progress.done}/${progress.total} catégories`}
+                            className="flex-1"
+                          />
+                          <span className="font-mono text-xs whitespace-nowrap tabular-nums text-ink-2">
+                            {progress.done}/{progress.total} catégories
+                          </span>
                         </div>
-                        <span className="task-progress-text">
-                          {progress.done}/{progress.total} catégories
-                        </span>
+                      )}
+
+                      <div>
+                        <Badge tone="neutral">{job.status === "running" ? "En cours" : "En file"}</Badge>
                       </div>
-                    )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="py-6 text-center text-sm text-ink-2">Aucune tâche manuelle en cours d&apos;exécution.</p>
+            )}
+          </Card>
 
-                    <div className="task-card-footer">
-                      <span className={`badge ${job.status === "running" ? "badge-active" : "badge-queued"}`}>
-                        {job.status === "running" ? "En cours" : "En file"}
-                      </span>
-                      <span className="job-id">Job #{job.job_id}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="empty-state-inline">
-              <span>💤</span> Aucune tâche manuelle en cours d&apos;exécution.
-            </div>
-          )}
-        </div>
+          {/* ── Passes dues en cours (clé historique `cron_jobs`) ──── */}
+          <Card aria-labelledby="cron-due-tasks-title" className="flex flex-col gap-4">
+            <CardHeader
+              titleId="cron-due-tasks-title"
+              title={`Passes dues en cours (${pipelineStatus?.cron_jobs?.length || 0})`}
+            />
 
-        {/* ── Section Passes dues en cours (clé historique `cron_jobs`) ── */}
-        <div className="card active-tasks-card">
-          <h2 className="section-title">🔄 Passes dues en cours ({pipelineStatus?.cron_jobs?.length || 0})</h2>
+            {pipelineStatus?.cron_jobs && pipelineStatus.cron_jobs.length > 0 ? (
+              <ul className="flex flex-col gap-3">
+                {pipelineStatus.cron_jobs.map((job) => {
+                  const elapsed = job.created_at
+                    ? Math.floor(now / 1000 - job.created_at)
+                    : 0;
 
-          {pipelineStatus?.cron_jobs && pipelineStatus.cron_jobs.length > 0 ? (
-            <div className="tasks-grid">
-              {pipelineStatus.cron_jobs.map((job) => {
-                const elapsed = job.created_at
-                  ? Math.floor(now / 1000 - job.created_at)
-                  : 0;
-
-                return (
-                  <div key={job.job_id} className="task-card task-card-cron">
-                    <div className="task-card-header">
-                      <div className="task-card-title">
-                        <span className="status-dot-sm dot-running"></span>
-                        <span className="task-phase" style={{ color: "var(--success)" }}>{job.phase}</span>
-                        {job.school_id && job.school_id !== "N/A" && (
-                          <span className="task-school">— École {job.school_id.substring(0, 8)}...</span>
-                        )}
+                  return (
+                    <li key={job.job_id} className="flex flex-col gap-3 rounded-control border border-line bg-surface-2 p-4">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="font-semibold text-ink">
+                          {job.phase}
+                          {job.school_id && job.school_id !== "N/A" && (
+                            <span className="font-medium"> — École {job.school_id.substring(0, 8)}...</span>
+                          )}
+                        </p>
+                        <span className="font-mono text-xs tabular-nums text-ink-2">{formatElapsed(elapsed)}</span>
                       </div>
-                      <span className="task-timer">⏱ {formatElapsed(elapsed)}</span>
-                    </div>
 
-                    <div className="task-card-footer" style={{ marginTop: "8px" }}>
-                      <span className="badge badge-active" style={{ color: "var(--success)", borderColor: "rgba(16, 185, 129, 0.25)", backgroundColor: "rgba(16, 185, 129, 0.12)" }}>
-                        En cours
-                      </span>
-                      <span className="job-id">Job #{job.job_id}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="empty-state-inline">
-              <span>💤</span> Aucune passe due en cours d&apos;exécution.
-            </div>
-          )}
+                      <div>
+                        <Badge tone="neutral">En cours</Badge>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="py-6 text-center text-sm text-ink-2">Aucune passe due en cours d&apos;exécution.</p>
+            )}
+          </Card>
         </div>
-      </div>
       )}
 
-      <div className="dashboard-grid">
-        {/* ── Section Pipeline & Tavily ─────────────────────────── */}
-        <div className="grid-col card">
-          <h2 className="section-title">📊 État du Pipeline IA</h2>
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[4fr_6fr]">
+        {/* ── Pipeline & Tavily ───────────────────────────────────── */}
+        <Card aria-labelledby="cron-pipeline-title" className="flex flex-col gap-5">
+          <CardHeader titleId="cron-pipeline-title" title="État du Pipeline IA" />
 
           {loadingStatus && !backend ? (
-            <div className="loading-placeholder">Chargement des données du pipeline...</div>
+            <p className="py-10 text-center text-sm text-ink-2">Chargement des données du pipeline...</p>
           ) : (
-            <div className="pipeline-details">
-              <div className="status-indicator">
-                <span className={`status-dot ${backendReady && pipelineStatus?.status === "ok" ? "dot-green" : "dot-red"}`}></span>
-                <span>Backend local : <strong>{BACKEND_LABELS[backend?.kind ?? "error"]}</strong>
-                  {backendReady && pipelineStatus?.status === "degraded" && <> (dégradé)</>}
-                  {backendReady && pipelineStatus?.database === "disconnected" && <> · base injoignable</>}
-                </span>
-              </div>
+            <div className="flex flex-col gap-5">
+              <p className="text-sm text-ink">
+                Backend local : <strong className="font-semibold">{BACKEND_LABELS[backend?.kind ?? "error"]}</strong>
+                {backendReady && pipelineStatus?.status === "degraded" && <> (dégradé)</>}
+                {backendReady && pipelineStatus?.database === "disconnected" && <> · base injoignable</>}
+              </p>
 
               {pipelineStatus && (
                 <>
                   {aiModels && (
-                    <div className="metric-box">
-                      <p className="metric-label">Modèles IA</p>
-                      <p className="metric-value">{aiModels.headline}</p>
-                      <p className="metric-detail">Cascade (du plus fort au plus faible) : {aiModels.cascade}</p>
-                      <p className="metric-detail">Dernier recours : {aiModels.lastResort}</p>
+                    <div className="rounded-control border border-line bg-surface-2 px-4 py-3">
+                      <p className="text-xs text-ink-2">Modèles IA</p>
+                      <p className="mt-1 font-semibold text-ink">{aiModels.headline}</p>
+                      <p className="mt-1 text-xs text-ink-2">Cascade (du plus fort au plus faible) : {aiModels.cascade}</p>
+                      <p className="mt-1 text-xs text-ink-2">Dernier recours : {aiModels.lastResort}</p>
                     </div>
                   )}
 
-                  <div className="metric-box" data-testid="crowdsourcing-status">
-                    <p className="metric-label">Contributions du public</p>
-                    <p className={`metric-value crowdsourcing-${crowdsourcing.tone}`}>{crowdsourcing.headline}</p>
+                  {/* D83 : gardé, seul signal de ce que le backend gelé traite (et paie) au démarrage. */}
+                  <div className="rounded-control border border-line bg-surface-2 px-4 py-3" data-testid="crowdsourcing-status">
+                    <p className="text-xs text-ink-2">Contributions du public</p>
+                    <p className={cx("mt-1 font-semibold", CROWDSOURCING_TEXT_TONES[crowdsourcing.tone])}>
+                      {crowdsourcing.headline}
+                    </p>
                     {crowdsourcing.lines.map((line) => (
-                      <p key={line} className="metric-detail">{line}</p>
+                      <p key={line} className="mt-1 text-xs text-ink-2">
+                        {line}
+                      </p>
                     ))}
                   </div>
 
-                  <div className="tavily-quotas-section">
-                    <h3>🔑 Quotas Tavily restants</h3>
+                  <div className="flex flex-col gap-3">
+                    <h3 className="text-sm font-semibold text-ink">Quotas Tavily restants</h3>
                     {Array.isArray(pipelineStatus.tavily) && pipelineStatus.tavily.length > 0 ? (
                       <QuotaTavilyPanel
                         keys={pipelineStatus.tavily.map((key) => ({
@@ -605,7 +617,7 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
                         }))}
                       />
                     ) : (
-                      <p className="no-data">Aucune clé Tavily active détectée par le backend.</p>
+                      <p className="text-sm text-ink-2 italic">Aucune clé Tavily active détectée par le backend.</p>
                     )}
                   </div>
 
@@ -618,75 +630,80 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
               )}
             </div>
           )}
-        </div>
+        </Card>
 
-        {/* ── Section Recherche Manuelle ──────────────────────────── */}
-        <div className="grid-col card">
-          <h2 className="section-title">🚀 Lancer une Recherche Manuelle</h2>
+        {/* ── Recherche manuelle ──────────────────────────────────── */}
+        <Card aria-labelledby="cron-research-title" className="flex flex-col gap-4">
+          <CardHeader titleId="cron-research-title" title="Lancer une Recherche Manuelle" />
 
-          {!isAdmin ? (
-            <p className="launch-note">Réservé aux ADMIN : une recherche paie Research (crédits Tavily).</p>
-          ) : !backendReady ? (
-            <p className="launch-note">
+          {!backendReady ? (
+            <p className="text-sm text-ink-2">
               Une recherche ciblée se lance depuis le poste local, quand le backend répond.
             </p>
           ) : (
           <>
-          {/* Phase toggle */}
-          <div className="phase-toggle">
+          {/* Phase : deux boutons qui disent lequel est choisi (D89) */}
+          <div className="flex overflow-hidden rounded-control border border-line-strong">
             <button
-              className={`phase-btn ${selectedPhase === "1" ? "phase-active" : ""}`}
+              type="button"
+              aria-pressed={selectedPhase === "1"}
+              className={phaseButtonClasses(selectedPhase === "1")}
               onClick={() => setSelectedPhase("1")}
             >
               Phase 1 — Cartographie
             </button>
             <button
-              className={`phase-btn ${selectedPhase === "2" ? "phase-active" : ""}`}
+              type="button"
+              aria-pressed={selectedPhase === "2"}
+              className={cx(phaseButtonClasses(selectedPhase === "2"), "border-l border-line-strong")}
               onClick={() => setSelectedPhase("2")}
             >
               Phase 2 — Enrichissement
             </button>
           </div>
 
-          <p className="phase-desc">
+          <p className="text-compact leading-relaxed text-ink-2">
             {selectedPhase === "1"
               ? "Découvre les campus et programmes d'une école via Tavily Research."
               : "Enrichit les données (tarifs, classements, places...) d'un programme ou de toute l'école."}
           </p>
 
           {/* School selector */}
-          <div className="form-group">
-            <label className="form-label">École</label>
-            <select
-              className="form-control"
-              value={selectedSchoolId}
-              onChange={(e) => setSelectedSchoolId(e.target.value)}
-              disabled={loadingSchools}
-            >
-              <option value="">— Sélectionner une école —</option>
-              {schools.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.official_domain})
-                </option>
-              ))}
-            </select>
-          </div>
+          <Field id="research-school" label="École">
+            {(control) => (
+              <Select
+                {...control}
+                value={selectedSchoolId}
+                onChange={(e) => setSelectedSchoolId(e.target.value)}
+                disabled={loadingSchools}
+              >
+                <option value="">— Sélectionner une école —</option>
+                {schools.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.official_domain})
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
 
           {/* Phase 1: collecte du rattachement campus, décochée par défaut */}
           {selectedPhase === "1" && selectedSchoolId && (
-            <div className="form-group">
-              <label className="checkbox-label">
+            <div className="flex flex-col gap-1.5">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-ink">
                 <input
                   type="checkbox"
+                  className="size-4 cursor-pointer accent-accent"
                   checked={collectCampusAttachments}
                   onChange={(e) => setCollectCampusAttachments(e.target.checked)}
+                  aria-describedby="research-collect-hint"
                 />
-                <span className="checkbox-text">Collecter aussi le rattachement campus</span>
+                Collecter aussi le rattachement campus
               </label>
-              <p className="form-hint collect-hint">
+              <p id="research-collect-hint" className="text-xs leading-relaxed text-ink-2">
                 Pour cette passe seulement. Environ 15 à 17 crédits Tavily et 9 appels Gemini de
                 plus, même si l&apos;école ne publie aucun lieu. Décochée, la collecte n&apos;émet
-                aucun appel et le résultat du job porte <code>status: disabled</code>.
+                aucun appel et le résultat du job porte <code className="font-mono">status: disabled</code>.
               </p>
             </div>
           )}
@@ -694,69 +711,74 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
           {/* Phase 2: Program selector */}
           {selectedPhase === "2" && selectedSchoolId && (
             <>
-              <div className="form-group">
-                <label className="form-label">
-                  Programme <span className="form-hint">(optionnel — laisser vide pour toute l&apos;école)</span>
-                </label>
-                <select
-                  className="form-control"
-                  value={selectedProgramId}
-                  onChange={(e) => setSelectedProgramId(e.target.value)}
-                >
-                  <option value="">— Tous les programmes —</option>
-                  {selectedSchool?.campuses.map((campus) => (
-                    <optgroup key={campus.id} label={`📍 ${campus.name}`}>
-                      {campus.programs.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
+              <Field
+                id="research-program"
+                label={
+                  <>
+                    Programme{" "}
+                    <span className="text-xs font-normal text-ink-2">
+                      (optionnel — laisser vide pour toute l&apos;école)
+                    </span>
+                  </>
+                }
+              >
+                {(control) => (
+                  <Select {...control} value={selectedProgramId} onChange={(e) => setSelectedProgramId(e.target.value)}>
+                    <option value="">— Tous les programmes —</option>
+                    {selectedSchool?.campuses.map((campus) => (
+                      <optgroup key={campus.id} label={campus.name}>
+                        {campus.programs.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </Select>
+                )}
+              </Field>
 
               {/* Category checkboxes */}
-              <div className="form-group">
-                <label className="form-label">
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="mb-1.5 text-sm font-medium text-ink">
                   Catégories à rechercher
                   {!selectedProgramId && (
-                    <span className="form-hint"> (optionnel — laisser vide pour toutes)</span>
+                    <span className="text-xs font-normal text-ink-2"> (optionnel — laisser vide pour toutes)</span>
                   )}
-                </label>
-                <div className="category-checkboxes">
+                </legend>
+                <div className="flex flex-wrap gap-2">
                   {availableCategories.map((cat) => (
-                    <label key={cat} className="checkbox-label">
+                    <label
+                      key={cat}
+                      className="inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-control border border-line-strong bg-surface px-3 py-1 text-sm text-ink has-checked:border-accent has-checked:bg-accent-soft"
+                    >
                       <input
                         type="checkbox"
+                        className="size-4 cursor-pointer accent-accent"
                         checked={selectedCategories.includes(cat)}
                         onChange={() => handleCategoryToggle(cat)}
                       />
-                      <span className="checkbox-text">{CATEGORY_LABELS[cat] || cat}</span>
+                      {CATEGORY_LABELS[cat] || cat}
                     </label>
                   ))}
                 </div>
-              </div>
+              </fieldset>
             </>
           )}
 
           {/* Launch button */}
-          <div className="launch-section">
-            <button
-              className="btn btn-primary btn-launch"
-              onClick={handleLaunchResearch}
-              disabled={!canLaunch}
-            >
+          <div className="flex flex-col gap-2 pt-1">
+            <Button variant="primary" className="w-full" onClick={handleLaunchResearch} disabled={!canLaunch}>
               {launchingResearch
-                ? "⏳ Lancement en cours..."
+                ? "Lancement en cours..."
                 : selectedPhase === "1"
-                ? "🔍 Lancer la cartographie"
-                : "🚀 Lancer la recherche"}
-            </button>
+                ? "Lancer la cartographie"
+                : "Lancer la recherche"}
+            </Button>
 
             {schoolHasActiveJob && (
-              <p className="launch-warning">
-                ⚠️ Une tâche est déjà en cours pour cette école. Attendez qu&apos;elle se termine.
+              <p className="text-xs text-warning">
+                Une tâche est déjà en cours pour cette école. Attendez qu&apos;elle se termine.
               </p>
             )}
           </div>
@@ -765,645 +787,12 @@ export default function CronMonitoringClient({ isAdmin }: CronMonitoringClientPr
 
           {/* Launch message */}
           {launchMessage && (
-            <div className={`launch-message ${launchMessage.type === "success" ? "msg-success" : "msg-error"}`}>
-              {launchMessage.text}
-            </div>
+            <Alert tone={launchMessage.type === "success" ? "success" : "danger"}>{launchMessage.text}</Alert>
           )}
-        </div>
+        </Card>
       </div>
 
       <JobHistory history={history} error={historyError} now={now} />
-
-      <style jsx>{`
-        .monitoring-container {
-          padding-bottom: 40px;
-        }
-
-        /* ── Active Tasks Section ─────────────────────────────── */
-
-        .active-tasks-card {
-          margin-top: 24px;
-          margin-bottom: 24px;
-        }
-
-        .tasks-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-          gap: 16px;
-        }
-
-        .task-card {
-          background: linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%);
-          border: 1px solid rgba(59, 130, 246, 0.2);
-          border-radius: var(--radius-lg);
-          padding: 16px 20px;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .task-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 3px;
-          background: linear-gradient(90deg, var(--accent), rgba(139, 92, 246, 0.8));
-          animation: shimmer 2s ease-in-out infinite;
-        }
-
-        @keyframes shimmer {
-          0%, 100% { opacity: 0.6; }
-          50% { opacity: 1; }
-        }
-
-        .task-card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 12px;
-        }
-
-        .task-card-title {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-weight: 600;
-          font-size: 0.95rem;
-        }
-
-        .status-dot-sm {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          flex-shrink: 0;
-        }
-
-        .dot-running {
-          background-color: var(--success);
-          box-shadow: 0 0 8px var(--success);
-          animation: pulse-dot 1.5s ease-in-out infinite;
-        }
-
-        .dot-queued {
-          background-color: var(--warning);
-          box-shadow: 0 0 6px var(--warning);
-        }
-
-        @keyframes pulse-dot {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.3); }
-        }
-
-        .task-phase {
-          color: var(--accent);
-        }
-
-        .task-school {
-          color: var(--text-primary);
-          font-weight: 500;
-        }
-
-        .task-timer {
-          font-size: 0.85rem;
-          color: var(--text-secondary);
-          font-variant-numeric: tabular-nums;
-          background: rgba(255, 255, 255, 0.05);
-          padding: 4px 10px;
-          border-radius: var(--radius-md);
-        }
-
-        .task-progress-details {
-          margin-bottom: 12px;
-        }
-
-        .task-action {
-          font-size: 0.85rem;
-          color: var(--text-primary);
-          margin: 0;
-          line-height: 1.4;
-        }
-
-        .task-progress-bar-container {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 12px;
-        }
-
-        .task-progress-bar-container .progress-bar-bg {
-          flex: 1;
-        }
-
-        .task-progress-text {
-          font-size: 0.8rem;
-          color: var(--text-secondary);
-          white-space: nowrap;
-          font-variant-numeric: tabular-nums;
-        }
-
-        .fill-accent {
-          background: linear-gradient(90deg, var(--accent), rgba(139, 92, 246, 0.8));
-          transition: width 0.6s ease;
-        }
-
-        .task-card-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .badge-queued {
-          background-color: rgba(245, 158, 11, 0.12);
-          color: var(--warning);
-          border: 1px solid rgba(245, 158, 11, 0.25);
-        }
-
-        .empty-state-inline {
-          text-align: center;
-          padding: 24px;
-          color: var(--text-secondary);
-          font-size: 0.9rem;
-        }
-
-        /* ── Dashboard Grid ──────────────────────────────────── */
-
-        .dashboard-grid {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 24px;
-        }
-
-        @media (min-width: 1024px) {
-          .dashboard-grid {
-            grid-template-columns: 4fr 6fr;
-          }
-        }
-
-        .section-title {
-          font-size: 1.25rem;
-          font-weight: 700;
-          color: var(--text-primary);
-          margin-bottom: 20px;
-          border-bottom: 1px solid var(--border-color);
-          padding-bottom: 10px;
-        }
-
-        .pipeline-details {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-
-        .status-indicator {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          font-size: 0.95rem;
-        }
-
-        .status-dot {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          display: inline-block;
-        }
-
-        .dot-green {
-          background-color: var(--success);
-          box-shadow: 0 0 8px var(--success);
-        }
-
-        .dot-red {
-          background-color: var(--danger);
-          box-shadow: 0 0 8px var(--danger);
-        }
-
-        .metric-box {
-          background-color: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-md);
-          padding: 12px 16px;
-        }
-
-        .metric-label {
-          font-size: 0.8rem;
-          color: var(--text-secondary);
-          margin: 0 0 4px 0;
-        }
-
-        .metric-value {
-          font-size: 1rem;
-          font-weight: 600;
-          color: var(--accent);
-          margin: 0;
-        }
-
-        .metric-detail {
-          font-size: 0.8rem;
-          color: var(--text-secondary);
-          margin: 4px 0 0 0;
-        }
-
-        .crowdsourcing-muted {
-          color: var(--text-secondary);
-        }
-
-        .crowdsourcing-ok {
-          color: var(--success);
-        }
-
-        .crowdsourcing-warning {
-          color: var(--warning, #f59e0b);
-        }
-
-        .crowdsourcing-error {
-          color: var(--danger);
-        }
-
-        .tavily-quotas-section h3 {
-          font-size: 0.95rem;
-          font-weight: 600;
-          margin-bottom: 12px;
-          color: var(--text-primary);
-        }
-
-
-
-        .no-data {
-          font-size: 0.85rem;
-          color: var(--text-secondary);
-          font-style: italic;
-        }
-
-        /* ── Recherche Manuelle ────────────────────────────────── */
-
-        .phase-toggle {
-          display: flex;
-          gap: 0;
-          margin-bottom: 16px;
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-md);
-          overflow: hidden;
-        }
-
-        .phase-btn {
-          flex: 1;
-          padding: 10px 16px;
-          background: transparent;
-          border: none;
-          color: var(--text-secondary);
-          font-size: 0.85rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .phase-btn:hover {
-          background: rgba(59, 130, 246, 0.05);
-          color: var(--text-primary);
-        }
-
-        .phase-btn.phase-active {
-          background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.08) 100%);
-          color: var(--accent);
-          font-weight: 600;
-          box-shadow: inset 0 -2px 0 var(--accent);
-        }
-
-        .phase-desc {
-          font-size: 0.82rem;
-          color: var(--text-secondary);
-          margin: 0 0 20px 0;
-          line-height: 1.4;
-        }
-
-        .form-group {
-          margin-bottom: 16px;
-        }
-
-        .form-label {
-          display: block;
-          font-size: 0.85rem;
-          font-weight: 600;
-          color: var(--text-primary);
-          margin-bottom: 6px;
-        }
-
-        .form-hint {
-          font-weight: 400;
-          color: var(--text-secondary);
-          font-size: 0.78rem;
-        }
-
-        .form-control {
-          width: 100%;
-          padding: 10px 14px;
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-md);
-          color: var(--text-primary);
-          font-size: 0.9rem;
-          transition: border-color 0.2s ease;
-        }
-
-        .form-control:focus {
-          outline: none;
-          border-color: var(--accent);
-          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-
-        select.form-control {
-          cursor: pointer;
-        }
-
-        select.form-control optgroup {
-          font-weight: 600;
-          font-style: normal;
-          background-color: var(--bg-secondary, #161f30);
-          color: var(--text-primary, #f3f4f6);
-        }
-
-        select.form-control option {
-          background-color: var(--bg-secondary, #161f30);
-          color: var(--text-primary, #f3f4f6);
-        }
-
-        .category-checkboxes {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-
-        .checkbox-label {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 12px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-md);
-          cursor: pointer;
-          transition: all 0.2s ease;
-          font-size: 0.82rem;
-        }
-
-        .checkbox-label:hover {
-          background: rgba(59, 130, 246, 0.06);
-          border-color: rgba(59, 130, 246, 0.3);
-        }
-
-        .checkbox-label input[type="checkbox"] {
-          accent-color: var(--accent);
-          width: 14px;
-          height: 14px;
-        }
-
-        .checkbox-label input[type="checkbox"]:checked + .checkbox-text {
-          color: var(--accent);
-          font-weight: 500;
-        }
-
-        .checkbox-text {
-          color: var(--text-primary);
-        }
-
-        .collect-hint {
-          display: block;
-          margin: 6px 0 0;
-          line-height: 1.4;
-        }
-
-        .launch-section {
-          margin-top: 20px;
-        }
-
-        .btn-launch {
-          width: 100%;
-          padding: 12px 20px;
-          font-size: 0.95rem;
-          font-weight: 600;
-          background: linear-gradient(135deg, var(--accent) 0%, rgba(139, 92, 246, 0.9) 100%);
-          border: none;
-          border-radius: var(--radius-md);
-          color: white;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .btn-launch:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 16px rgba(59, 130, 246, 0.3);
-        }
-
-        .btn-launch:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-          transform: none;
-          box-shadow: none;
-        }
-
-        .launch-warning {
-          font-size: 0.8rem;
-          color: var(--warning);
-          margin: 8px 0 0;
-        }
-
-        .launch-message {
-          margin-top: 12px;
-          padding: 10px 14px;
-          border-radius: var(--radius-md);
-          font-size: 0.85rem;
-          animation: fadeIn 0.3s ease;
-        }
-
-        .msg-success {
-          background: rgba(16, 185, 129, 0.1);
-          border: 1px solid rgba(16, 185, 129, 0.25);
-          color: var(--success);
-        }
-
-        .msg-error {
-          background: rgba(239, 68, 68, 0.1);
-          border: 1px solid rgba(239, 68, 68, 0.25);
-          color: var(--danger);
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* ── Cron Targets Table ────────────────────────────────── */
-
-        .loading-placeholder {
-          text-align: center;
-          padding: 40px;
-          color: var(--text-secondary);
-          font-size: 0.9rem;
-        }
-
-        .school-prog-cell {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-
-        .school-name {
-          font-weight: 600;
-          color: var(--text-primary);
-        }
-
-        .program-name {
-          font-size: 0.75rem;
-          color: var(--text-secondary);
-        }
-
-        .global-badge {
-          font-size: 0.7rem;
-          background-color: rgba(255, 255, 255, 0.05);
-          color: var(--text-secondary);
-          padding: 2px 6px;
-          border-radius: 4px;
-          width: fit-content;
-        }
-
-        .category-code {
-          color: var(--accent);
-          background: rgba(59, 130, 246, 0.08);
-          padding: 2px 6px;
-          border-radius: 4px;
-          font-size: 0.8rem;
-        }
-
-        .failed-count {
-          font-weight: 600;
-          font-size: 0.9rem;
-        }
-
-        .count-red {
-          color: var(--danger);
-        }
-
-        .count-orange {
-          color: var(--warning);
-        }
-
-        .count-green {
-          color: var(--success);
-        }
-
-        .badge-blacklisted {
-          background-color: rgba(239, 68, 68, 0.15);
-          color: var(--danger);
-          border: 1px solid rgba(239, 68, 68, 0.25);
-        }
-
-        .scrollable-table {
-          max-height: 500px;
-          overflow-y: auto;
-        }
-
-        .backend-banner {
-          margin: 0 0 20px;
-          padding: 14px 18px;
-          border-radius: var(--radius-md);
-          border: 1px solid transparent;
-          border-left-width: 4px;
-          font-size: 0.9rem;
-        }
-
-        .backend-banner p {
-          margin: 6px 0 0;
-          color: var(--text-secondary);
-        }
-
-        .backend-banner code {
-          font-size: 0.82rem;
-          padding: 1px 6px;
-          border-radius: 4px;
-          background-color: rgba(255, 255, 255, 0.06);
-          color: var(--text-primary);
-          word-break: break-all;
-        }
-
-        .banner-info {
-          background-color: rgba(59, 130, 246, 0.08);
-          border-color: rgba(59, 130, 246, 0.3);
-          color: #60a5fa;
-        }
-
-        .banner-warning {
-          background-color: rgba(245, 158, 11, 0.08);
-          border-color: rgba(245, 158, 11, 0.3);
-          color: var(--warning, #f59e0b);
-        }
-
-        .banner-danger {
-          background-color: rgba(239, 68, 68, 0.08);
-          border-color: rgba(239, 68, 68, 0.3);
-          color: var(--danger, #ef4444);
-        }
-
-        .startup-errors {
-          margin: 6px 0 0;
-          padding-left: 20px;
-        }
-
-        .launch-note {
-          margin: 0;
-          font-size: 0.85rem;
-          color: var(--text-secondary);
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 40px;
-          background-color: rgba(255, 255, 255, 0.01);
-          border: 1px dashed var(--border-color);
-          border-radius: var(--radius-lg);
-          color: var(--text-secondary);
-        }
-
-        .empty-state span {
-          font-size: 2.5rem;
-          display: block;
-          margin-bottom: 12px;
-        }
-
-        .text-muted {
-          color: var(--text-secondary);
-          opacity: 0.5;
-        }
-
-        .task-card-cron {
-          background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(139, 92, 246, 0.04) 100%) !important;
-          border: 1px solid rgba(16, 185, 129, 0.20) !important;
-        }
-
-        .task-card-cron::before {
-          background: linear-gradient(90deg, var(--success), rgba(139, 92, 246, 0.8)) !important;
-        }
-
-        .tasks-columns-grid {
-          display: grid;
-          grid-template-columns: 1fr;
-          gap: 24px;
-          margin-top: 24px;
-          margin-bottom: 24px;
-        }
-
-        @media (min-width: 1024px) {
-          .tasks-columns-grid {
-            grid-template-columns: 1fr 1fr;
-          }
-        }
-
-        .tasks-columns-grid .active-tasks-card {
-          margin: 0 !important;
-          height: 100%;
-        }
-      `}</style>
-    </div>
+    </AdminPage>
   );
 }

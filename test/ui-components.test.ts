@@ -26,6 +26,7 @@ import { Card, CardHeader } from "../components/ui/Card";
 import { cx } from "../components/ui/cx";
 import { Dialog, DialogFooter, isBackdropPoint } from "../components/ui/Dialog";
 import { Field, Input, Select, type ControlProps } from "../components/ui/Field";
+import { ProgressBar } from "../components/ui/ProgressBar";
 import { TBody, THead, Table, Td, Th, Tr } from "../components/ui/Table";
 import { TabPanel, Tabs } from "../components/ui/Tabs";
 import { nextTabIndex, panelId, tabId } from "../components/ui/tabs-keys";
@@ -260,6 +261,34 @@ test("Dialog : closeOnBackdrop, seul un clic hors du cadre du dialogue (sur le f
   // la source le dit.
   const source = readFileSync("components/ui/Dialog.tsx", "utf8");
   assert.match(source, /closeOnBackdrop &&\s*event\.target === event\.currentTarget/);
+});
+
+// ─── Barre de progression ───────────────────────────────────────────────────
+
+/** Les classes du `<progress>` rendu. */
+const progressClasses = (out: string) =>
+  (out.match(/^<progress[^>]* class="([^"]*)"/)?.[1] ?? "").replace(/&amp;/g, "&").split(" ");
+
+test("ProgressBar : un <progress> natif, valeur, maximum et nom ; le ton sur la valeur, sans style en ligne (étape 9, D86)", () => {
+  const out = html(h(ProgressBar, { value: 800, max: 1000, tone: "warning", "aria-labelledby": "credits-title" }));
+  assert.match(out, /^<progress [^>]*value="800"/);
+  assert.match(out, /^<progress [^>]*max="1000"/);
+  assert.match(out, /^<progress [^>]*aria-labelledby="credits-title"/);
+  assert.doesNotMatch(out, /style=/);
+  const classes = progressClasses(out);
+  for (const name of ["[&::-webkit-progress-value]:bg-warning", "[&::-moz-progress-bar]:bg-warning", "appearance-none", "w-full"]) {
+    assert.ok(classes.includes(name), name);
+  }
+  // La piste en `line`, visible sur le blanc comme sur une carte `surface-2`
+  // (contrôle visuel du lot 5 : en `surface-2`, elle disparaissait).
+  assert.ok(classes.includes("bg-line") && classes.includes("[&::-webkit-progress-bar]:bg-line"), "piste en line");
+  assert.ok(!classes.some((name) => name.endsWith("bg-surface-2")), "pas de piste en surface-2");
+  // `block` n'est jamais généré (homonyme d'une ancienne classe) : la barre n'en dépend pas.
+  assert.ok(!classes.includes("block"), "sans block");
+  // Le ton par défaut : l'accent (la progression d'une tâche).
+  const accent = progressClasses(html(h(ProgressBar, { value: 2, max: 5, "aria-label": "2/5 catégories" })));
+  assert.ok(accent.includes("[&::-webkit-progress-value]:bg-accent"));
+  assert.ok(!accent.some((name) => /bg-(success|warning|danger)$/.test(name)));
 });
 
 // ─── Gabarits ───────────────────────────────────────────────────────────────

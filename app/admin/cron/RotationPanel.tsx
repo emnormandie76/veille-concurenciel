@@ -1,7 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Select } from "@/components/ui/Field";
+import { ProgressBar } from "@/components/ui/ProgressBar";
 import { describeBackendError } from "@/lib/backend-state";
 import {
   MAX_PASSES_PER_RUN,
@@ -21,6 +27,7 @@ import {
   type RotationMode,
   type RotationStatus,
 } from "@/lib/rotation-status";
+import { ROTATION_MODE_TONES, usageTone } from "./cron-tones";
 
 export interface RotationPanelProps {
   rotation?: RotationBlock;
@@ -30,9 +37,9 @@ export interface RotationPanelProps {
   onRunFinished?: () => void;
 }
 
-const MODE_BADGES: Record<RotationMode, { label: string; className: string }> = {
-  on_demand: { label: "sur demande", className: "badge-on" },
-  ceiling_zero: { label: "plafond à 0", className: "badge-dry" },
+const MODE_LABELS: Record<RotationMode, string> = {
+  on_demand: "sur demande",
+  ceiling_zero: "plafond à 0",
 };
 
 type RunMessage = { tone: "success" | "info" | "error"; text: string };
@@ -65,16 +72,34 @@ function confirmText(status: RotationStatus, maxPasses: number): string {
   return lines.join("\n");
 }
 
+/** Le titre d'un bloc du panneau, et ses chiffres à droite. */
+function BlockTitle({ id, title, figures }: { id?: string; title: string; figures?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs font-semibold text-ink-2">
+      <span id={id}>{title}</span>
+      {figures}
+    </div>
+  );
+}
+
 /**
  * Les passes dues : ce qui est dû, ce que le mois a coûté, la dernière
  * exécution, et — pour un ADMIN, backend prêt — la simulation et le
  * lancement. Le bloc vient de pipeline-status (`scheduler.rotation`) ; voir
  * lib/rotation-status.ts. Il n'y a plus de cron : rien ne part sans un clic.
+ *
+ * Dans la charte depuis l'étape 9, lot 5 (le style seulement, règle 10) : la
+ * confirmation d'une passe réelle passe par le dialogue de la charte (D84),
+ * son texte figé à l'ouverture, focus sur « Annuler » ; les crédits du mois en
+ * barre native (D86) ; un ton par état (D87).
  */
 export default function RotationPanel({ rotation, canRun = false, onRunFinished }: RotationPanelProps) {
   const [maxPasses, setMaxPasses] = useState(1);
   const [running, setRunning] = useState<"dry" | "real" | null>(null);
   const [message, setMessage] = useState<RunMessage | null>(null);
+  // Le texte de la confirmation, pris au clic : l'écran se rafraîchit toutes
+  // les 5 s, et ce qu'on confirme doit être ce qu'on a lu.
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const status = rotation && !isRotationError(rotation) ? rotation : null;
   const mode = status ? rotationMode(status) : null;
@@ -84,10 +109,10 @@ export default function RotationPanel({ rotation, canRun = false, onRunFinished 
   // sur chaque ligne.
   const ceilingHints = status !== null && status.monthly_ceiling > 0;
 
+  // Une passe réelle paie : elle ne part que du bouton du dialogue de
+  // confirmation (D84) ; la simulation part directement.
   async function runDuePasses(dryRun: boolean) {
     if (!status) return;
-    // Une passe réelle paie : jamais sans confirmation explicite.
-    if (!dryRun && !window.confirm(confirmText(status, maxPasses))) return;
 
     setRunning(dryRun ? "dry" : "real");
     setMessage(null);
@@ -112,78 +137,94 @@ export default function RotationPanel({ rotation, canRun = false, onRunFinished 
     }
   }
 
+  function openConfirm() {
+    if (!status) return;
+    setConfirming(confirmText(status, maxPasses));
+  }
+
+  function closeConfirm() {
+    setConfirming(null);
+  }
+
+  const confirmLines = confirming ? confirming.split("\n") : [];
+  const runLabel = `Lancer ${maxPasses} passe${maxPasses > 1 ? "s" : ""} due${maxPasses > 1 ? "s" : ""}`;
+
   return (
-    <div className="rotation-panel">
-      <div className="rotation-header">
-        <span className="header-title">🔄 Passes dues</span>
-        {mode && <span className={`mode-badge ${MODE_BADGES[mode].className}`}>{MODE_BADGES[mode].label}</span>}
+    <section aria-labelledby="rotation-title" className="overflow-hidden rounded-control border border-line bg-surface">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-3">
+        <h3 id="rotation-title" className="text-sm font-semibold text-ink">
+          Passes dues
+        </h3>
+        {mode && <Badge tone={ROTATION_MODE_TONES[mode]}>{MODE_LABELS[mode]}</Badge>}
       </div>
 
-      <div className="rotation-body">
-        {!rotation && <p className="muted">Le backend ne remonte pas l&apos;état des passes dues.</p>}
+      <div className="flex flex-col gap-4 px-4 py-3">
+        {!rotation && <p className="text-xs text-ink-2">Le backend ne remonte pas l&apos;état des passes dues.</p>}
 
         {rotation && isRotationError(rotation) && (
-          <p className="error-line">⚠️ État des passes dues illisible : {rotation.error}</p>
+          <p className="text-sm text-danger">État des passes dues illisible : {rotation.error}</p>
         )}
 
         {status && (
           <>
-            <p className="state-line">{describeRotation(status)}</p>
+            <p className="text-sm text-ink">{describeRotation(status)}</p>
 
-            <div className="block">
-              <div className="block-title">
-                <span>Crédits du mois (estimés)</span>
-                {usage ? (
-                  <span className="figures">
-                    <strong>{usage.used}</strong> / {usage.ceiling} du plafond
-                  </span>
-                ) : (
-                  <span className="muted">inconnus — aucune clé Tavily chargée</span>
-                )}
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <BlockTitle
+                id="rotation-credits-title"
+                title="Crédits du mois (estimés)"
+                figures={
+                  usage ? (
+                    <span className="font-normal tabular-nums">
+                      <strong className="font-semibold text-ink">{usage.used}</strong> / {usage.ceiling} du plafond
+                    </span>
+                  ) : (
+                    <span className="font-normal">inconnus — aucune clé Tavily chargée</span>
+                  )
+                }
+              />
               {usage && ceilingHints && (
-                <div className="progress-bg">
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${usage.pct}%`,
-                      backgroundColor:
-                        usage.pct >= 100
-                          ? "var(--danger, #ef4444)"
-                          : usage.pct >= 75
-                            ? "var(--warning, #f59e0b)"
-                            : "var(--success, #10b981)",
-                    }}
-                  ></div>
-                </div>
+                <ProgressBar
+                  value={usage.used}
+                  max={usage.ceiling}
+                  tone={usageTone(usage.used, usage.ceiling)}
+                  aria-labelledby="rotation-credits-title"
+                />
               )}
-              {sync && <p className={sync.tone === "ok" ? "muted" : "warning-line"}>{sync.text}</p>}
+              {sync && <p className={sync.tone === "ok" ? "text-xs text-ink-2" : "text-xs text-warning"}>{sync.text}</p>}
             </div>
 
-            <div className="block">
-              <div className="block-title">
-                <span>Prochaines passes</span>
-                <span className="figures">{status.due_count} due{status.due_count > 1 ? "s" : ""}</span>
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <BlockTitle
+                title="Prochaines passes"
+                figures={
+                  <span className="font-normal tabular-nums">
+                    {status.due_count} due{status.due_count > 1 ? "s" : ""}
+                  </span>
+                }
+              />
               {status.next.length === 0 ? (
-                <p className="muted">Aucune passe due.</p>
+                <p className="text-xs text-ink-2">Aucune passe due.</p>
               ) : (
-                <ul className="pass-list">
+                <ul className="flex flex-col">
                   {status.next.map((candidate) => {
                     const fits = fitsUnderCeiling(candidate, status);
                     return (
-                      <li key={`${candidate.school_name}-${candidate.phase}`} className="pass-row">
-                        <div className="pass-main">
-                          <span className="pass-school">
+                      <li
+                        key={`${candidate.school_name}-${candidate.phase}`}
+                        className="flex flex-col gap-0.5 border-b border-line py-1.5 text-xs last:border-b-0"
+                      >
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                          <span className="min-w-0 font-semibold text-ink">
                             {candidate.school_name}
-                            <span className="pass-phase"> · Phase {candidate.phase}</span>
+                            <span className="font-normal text-ink-2"> · Phase {candidate.phase}</span>
                           </span>
-                          <span className="pass-cost">
+                          <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums text-ink">
                             ~{candidate.estimated_credits} crédits
-                            {ceilingHints && fits === false && <span className="over-badge">hors plafond</span>}
+                            {ceilingHints && fits === false && <Badge tone="warning">hors plafond</Badge>}
                           </span>
                         </div>
-                        <div className="pass-reason">
+                        <div className="text-ink-2">
                           {REASON_LABELS[candidate.reason]}
                           {candidate.last_pass_at && <> · dernier passage {formatPassDate(candidate.last_pass_at)}</>}
                         </div>
@@ -194,321 +235,83 @@ export default function RotationPanel({ rotation, canRun = false, onRunFinished 
               )}
             </div>
 
-            <div className="block">
-              <div className="block-title">
-                <span>Dernière exécution</span>
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <BlockTitle title="Dernière exécution" />
               {status.last_run ? (
-                <p className={status.last_run.status === "failed" ? "error-line" : "last-line"}>
-                  {status.last_run.status === "failed" ? "❌" : "✅"} {status.last_run.detail || "—"}
-                  <span className="muted"> — {formatDateTime(status.last_run.finished_at)}</span>
+                <p className={status.last_run.status === "failed" ? "text-sm text-danger" : "text-sm text-ink"}>
+                  {status.last_run.detail || "—"}
+                  <span className="text-xs text-ink-2"> — {formatDateTime(status.last_run.finished_at)}</span>
                 </p>
               ) : (
-                <p className="muted">Aucune exécution réelle depuis le démarrage du backend.</p>
+                <p className="text-xs text-ink-2">Aucune exécution réelle depuis le démarrage du backend.</p>
               )}
             </div>
 
             {canRun && (
-              <div className="block run-block">
-                <div className="run-controls">
-                  <label className="run-label">
+              <div className="flex flex-col gap-2 border-t border-line pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label htmlFor="rotation-max-passes" className="text-xs text-ink-2">
                     Au plus
-                    <select
-                      className="run-select"
-                      value={maxPasses}
-                      onChange={(e) => setMaxPasses(Number(e.target.value))}
-                      disabled={running !== null}
-                    >
-                      {Array.from({ length: MAX_PASSES_PER_RUN }, (_, i) => i + 1).map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                    passe{maxPasses > 1 ? "s" : ""}
                   </label>
-                  <button
-                    type="button"
-                    className="run-btn run-dry"
-                    onClick={() => runDuePasses(true)}
+                  <Select
+                    id="rotation-max-passes"
+                    value={maxPasses}
+                    onChange={(e) => setMaxPasses(Number(e.target.value))}
                     disabled={running !== null}
                   >
-                    {running === "dry" ? "⏳ Simulation…" : "🧪 Simuler"}
-                  </button>
-                  <button
-                    type="button"
-                    className="run-btn run-real"
-                    onClick={() => runDuePasses(false)}
+                    {Array.from({ length: MAX_PASSES_PER_RUN }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </Select>
+                  <span className="text-xs text-ink-2">passe{maxPasses > 1 ? "s" : ""}</span>
+                  <Button size="sm" onClick={() => runDuePasses(true)} disabled={running !== null}>
+                    {running === "dry" ? "Simulation…" : "Simuler"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={openConfirm}
                     disabled={running !== null || status.due_count === 0}
                   >
-                    {running === "real"
-                      ? "⏳ Synchro /usage, puis départ…"
-                      : `🚀 Lancer ${maxPasses} passe${maxPasses > 1 ? "s" : ""} due${maxPasses > 1 ? "s" : ""}`}
-                  </button>
+                    {running === "real" ? "Synchro /usage, puis départ…" : runLabel}
+                  </Button>
                 </div>
-                <p className="muted">
+                <p className="text-xs leading-relaxed text-ink-2">
                   La simulation ne paie rien et ne crée aucun job. Le lancement paie Research ; il attend
                   d&apos;abord la synchro /usage des crédits (jusqu&apos;à 20 s).
                 </p>
-                {message && <p className={`run-message tone-${message.tone}`}>{message.text}</p>}
+                {message && (
+                  <Alert tone={message.tone === "error" ? "danger" : message.tone}>{message.text}</Alert>
+                )}
               </div>
+            )}
+
+            {confirming && (
+              <Dialog title={confirmLines[0]} titleId="rotation-confirm-title" onClose={closeConfirm}>
+                <div className="flex flex-col gap-2 text-sm leading-relaxed text-ink">
+                  {confirmLines.slice(1).map((line, index) => (line ? <p key={index}>{line}</p> : null))}
+                </div>
+                <DialogFooter>
+                  <Button data-autofocus onClick={closeConfirm}>
+                    Annuler
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      setConfirming(null);
+                      runDuePasses(false);
+                    }}
+                  >
+                    {runLabel}
+                  </Button>
+                </DialogFooter>
+              </Dialog>
             )}
           </>
         )}
       </div>
-
-      <style jsx>{`
-        .rotation-panel {
-          border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-          border-radius: var(--radius-md, 8px);
-          background-color: rgba(255, 255, 255, 0.01);
-          overflow: hidden;
-          margin-top: 12px;
-        }
-
-        .rotation-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 16px;
-          background-color: rgba(255, 255, 255, 0.02);
-          border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-        }
-
-        .header-title {
-          font-size: 0.9rem;
-          font-weight: 600;
-          color: var(--text-primary, #ffffff);
-        }
-
-        .mode-badge {
-          font-size: 0.75rem;
-          font-weight: 600;
-          padding: 2px 8px;
-          border-radius: 9999px;
-          border: 1px solid transparent;
-        }
-
-        .badge-on {
-          color: var(--success, #10b981);
-          background-color: rgba(16, 185, 129, 0.12);
-          border-color: rgba(16, 185, 129, 0.25);
-        }
-
-        .badge-dry {
-          color: var(--warning, #f59e0b);
-          background-color: rgba(245, 158, 11, 0.12);
-          border-color: rgba(245, 158, 11, 0.3);
-        }
-
-        .badge-off {
-          color: var(--text-secondary, #94a3b8);
-          background-color: rgba(148, 163, 184, 0.12);
-          border-color: rgba(148, 163, 184, 0.25);
-        }
-
-        .rotation-body {
-          padding: 12px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-
-        .state-line,
-        .last-line {
-          margin: 0;
-          font-size: 0.85rem;
-          color: var(--text-primary, #ffffff);
-        }
-
-        .error-line {
-          margin: 0;
-          font-size: 0.85rem;
-          color: var(--danger, #ef4444);
-        }
-
-        .muted {
-          margin: 0;
-          font-size: 0.8rem;
-          color: var(--text-secondary, #94a3b8);
-        }
-
-        .block {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .block-title {
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-          font-size: 0.8rem;
-          font-weight: 600;
-          color: var(--text-secondary, #94a3b8);
-        }
-
-        .figures {
-          font-weight: 400;
-          font-variant-numeric: tabular-nums;
-        }
-
-        .figures strong {
-          color: var(--text-primary, #ffffff);
-        }
-
-        .progress-bg {
-          width: 100%;
-          height: 4px;
-          background-color: rgba(255, 255, 255, 0.08);
-          border-radius: 2px;
-          overflow: hidden;
-        }
-
-        .progress-fill {
-          height: 100%;
-          border-radius: 2px;
-          transition: width 0.3s ease;
-        }
-
-        .pass-list {
-          list-style: none;
-          margin: 0;
-          padding: 0;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .pass-row {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          padding: 6px 0;
-          font-size: 0.8rem;
-        }
-
-        .pass-row:not(:last-child) {
-          border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-        }
-
-        .pass-main {
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-          gap: 12px;
-        }
-
-        .pass-school {
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          color: var(--text-primary, #ffffff);
-          font-weight: 600;
-        }
-
-        .pass-phase {
-          font-weight: 400;
-          color: var(--text-secondary, #94a3b8);
-        }
-
-        .pass-reason {
-          font-size: 0.75rem;
-          color: var(--text-secondary, #94a3b8);
-        }
-
-        .pass-cost {
-          font-variant-numeric: tabular-nums;
-          color: var(--text-primary, #ffffff);
-          text-align: right;
-          white-space: nowrap;
-        }
-
-        .warning-line {
-          margin: 0;
-          font-size: 0.8rem;
-          color: var(--warning, #f59e0b);
-        }
-
-        .run-block {
-          border-top: 1px solid rgba(255, 255, 255, 0.06);
-          padding-top: 12px;
-        }
-
-        .run-controls {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .run-label {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 0.8rem;
-          color: var(--text-secondary, #94a3b8);
-        }
-
-        .run-select {
-          background-color: rgba(255, 255, 255, 0.04);
-          color: var(--text-primary, #ffffff);
-          border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-          border-radius: 6px;
-          padding: 2px 6px;
-        }
-
-        .run-btn {
-          font-size: 0.8rem;
-          font-weight: 600;
-          padding: 6px 12px;
-          border-radius: 6px;
-          border: 1px solid transparent;
-          cursor: pointer;
-        }
-
-        .run-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .run-dry {
-          color: var(--text-primary, #ffffff);
-          background-color: rgba(255, 255, 255, 0.05);
-          border-color: var(--border-color, rgba(255, 255, 255, 0.15));
-        }
-
-        .run-real {
-          color: #ffffff;
-          background-color: var(--accent, #3b82f6);
-        }
-
-        .run-message {
-          margin: 0;
-          font-size: 0.82rem;
-        }
-
-        .tone-success {
-          color: var(--success, #10b981);
-        }
-
-        .tone-info {
-          color: var(--text-primary, #ffffff);
-        }
-
-        .tone-error {
-          color: var(--danger, #ef4444);
-        }
-
-        .over-badge {
-          margin-left: 6px;
-          font-size: 0.7rem;
-          color: var(--warning, #f59e0b);
-          border: 1px solid rgba(245, 158, 11, 0.3);
-          border-radius: 9999px;
-          padding: 1px 6px;
-        }
-      `}</style>
-    </div>
+    </section>
   );
 }

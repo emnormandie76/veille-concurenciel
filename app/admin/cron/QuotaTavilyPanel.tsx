@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
+
+import { Badge } from "@/components/ui/Badge";
+import { cx } from "@/components/ui/cx";
+import { ProgressBar } from "@/components/ui/ProgressBar";
+import { USAGE_TEXT_TONES, usageTone } from "./cron-tones";
 
 export interface TavilyKeyItem {
   id: string;
@@ -12,8 +17,16 @@ export interface QuotaTavilyPanelProps {
   keys: TavilyKeyItem[];
 }
 
+/**
+ * Les quotas des clés Tavily, repliés derrière leur total. Dans la charte
+ * depuis l'étape 9, lot 5 (le style seulement, règle 10) : l'en-tête est un
+ * bouton natif qui commande le corps (D88 : il était une `div` hors du
+ * clavier), caché par `hidden`, sans animation ; l'usage de chaque clé en
+ * barre native (D86), au ton de son usage (D87).
+ */
 export default function QuotaTavilyPanel({ keys }: QuotaTavilyPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const bodyId = useId();
 
   // 1. Calculs globaux
   const activeKeysCount = keys.length;
@@ -35,243 +48,65 @@ export default function QuotaTavilyPanel({ keys }: QuotaTavilyPanelProps) {
   });
 
   return (
-    <div className="tavily-accordion-container">
+    <div className="overflow-hidden rounded-control border border-line bg-surface">
       {/* En-tête */}
-      <div
-        className={`accordion-header ${isOpen ? "active" : ""}`}
-        onClick={() => setIsOpen(!isOpen)}
-        role="button"
+      <button
+        type="button"
         aria-expanded={isOpen}
+        aria-controls={bodyId}
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 bg-surface-2 px-4 py-3 text-left transition-colors hover:bg-line/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
       >
-        <div className="header-left">
-          <span className="key-icon">🔑</span>
-          <span className="header-title">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-ink">
             Quotas Tavily — {activeKeysCount} clé{activeKeysCount > 1 ? "s" : ""} active{activeKeysCount > 1 ? "s" : ""}
           </span>
           {exhaustedKeysCount > 0 && (
-            <span className="exhausted-badge">
+            <Badge tone="danger">
               {exhaustedKeysCount} épuisée{exhaustedKeysCount > 1 ? "s" : ""}
-            </span>
+            </Badge>
           )}
-        </div>
-        <div className="header-right">
-          <span className="credits-summary">
-            <strong>{totalRestant}</strong> / {totalPossible} restants
+        </span>
+        <span className="flex items-center gap-3">
+          <span className="text-sm tabular-nums text-ink-2">
+            <strong className="font-semibold text-ink">{totalRestant}</strong> / {totalPossible} restants
           </span>
-          <span className={`chevron-icon ${isOpen ? "rotated" : ""}`}>
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </span>
-        </div>
-      </div>
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={cx("size-4 text-ink-2", isOpen && "rotate-180")}
+          >
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </span>
+      </button>
 
-      {/* Corps déroulable */}
-      <div className={`accordion-body ${isOpen ? "open" : ""}`}>
-        <div className="accordion-content">
+      {/* Corps déroulable : `hidden` seul, sans utilitaire d'affichage qui le déferait. */}
+      <div id={bodyId} hidden={!isOpen} className="max-h-[21.875rem] overflow-y-auto border-t border-line">
+        <ul className="flex flex-col px-4 py-2">
           {sortedKeys.map((key) => {
-            const usagePct = key.total > 0 ? (key.used / key.total) * 100 : 0;
             const remaining = Math.max(0, key.total - key.used);
-            const isExhausted = key.used >= key.total;
-
-            let usageColor = "var(--success, #10b981)";
-            let textColor = "text-green";
-            if (isExhausted) {
-              usageColor = "var(--danger, #ef4444)";
-              textColor = "text-red";
-            } else if (usagePct >= 75) {
-              usageColor = "var(--warning, #f59e0b)";
-              textColor = "text-orange";
-            }
+            const tone = usageTone(key.used, key.total);
 
             return (
-              <div key={key.id} className="key-row">
-                <span className="key-id">{key.id}</span>
-                <div className="progress-wrapper">
-                  <div className="progress-bg">
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${Math.min(100, usagePct)}%`,
-                        backgroundColor: usageColor,
-                      }}
-                    ></div>
-                  </div>
-                </div>
-                <span className={`key-credits ${textColor}`}>
+              <li key={key.id} className="flex items-center gap-3 border-b border-line py-2 last:border-b-0">
+                <span className="min-w-20 font-mono text-xs text-ink">{key.id}</span>
+                <span className="flex flex-1 items-center">
+                  <ProgressBar value={key.used} max={key.total} tone={tone} aria-label={key.id} />
+                </span>
+                <span className={cx("min-w-30 text-right font-mono text-xs tabular-nums", USAGE_TEXT_TONES[tone])}>
                   {remaining} / {key.total} restants
                 </span>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       </div>
-
-      <style jsx>{`
-        .tavily-accordion-container {
-          border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-          border-radius: var(--radius-md, 8px);
-          background-color: rgba(255, 255, 255, 0.01);
-          overflow: hidden;
-          margin-top: 12px;
-        }
-
-        .accordion-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 16px;
-          cursor: pointer;
-          user-select: none;
-          background-color: rgba(255, 255, 255, 0.02);
-          transition: background-color 0.2s ease;
-        }
-
-        .accordion-header:hover {
-          background-color: rgba(255, 255, 255, 0.05);
-        }
-
-        .accordion-header.active {
-          border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
-        }
-
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .key-icon {
-          font-size: 1.1rem;
-        }
-
-        .header-title {
-          font-size: 0.9rem;
-          font-weight: 600;
-          color: var(--text-primary, #ffffff);
-        }
-
-        .exhausted-badge {
-          background-color: rgba(239, 68, 68, 0.15);
-          border: 1px solid rgba(239, 68, 68, 0.3);
-          color: var(--danger, #ef4444);
-          font-size: 0.75rem;
-          font-weight: 600;
-          padding: 2px 8px;
-          border-radius: 9999px;
-          margin-left: 4px;
-        }
-
-        .header-right {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .credits-summary {
-          font-size: 0.85rem;
-          color: var(--text-secondary, #94a3b8);
-        }
-
-        .credits-summary strong {
-          color: var(--text-primary, #ffffff);
-        }
-
-        .chevron-icon {
-          display: flex;
-          align-items: center;
-          color: var(--text-secondary, #94a3b8);
-          transition: transform 0.2s ease;
-        }
-
-        .chevron-icon.rotated {
-          transform: rotate(180deg);
-        }
-
-        .accordion-body {
-          max-height: 0;
-          overflow: hidden;
-          transition: max-height 200ms cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .accordion-body.open {
-          max-height: 350px;
-          overflow-y: auto;
-        }
-
-        .accordion-content {
-          padding: 8px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .key-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 6px 0;
-        }
-
-        .key-row:not(:last-child) {
-          border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-        }
-
-        .key-id {
-          font-family: monospace;
-          font-size: 0.8rem;
-          color: var(--text-primary, #ffffff);
-          min-width: 80px;
-        }
-
-        .progress-wrapper {
-          flex-grow: 1;
-          display: flex;
-          align-items: center;
-        }
-
-        .progress-bg {
-          width: 100%;
-          height: 4px;
-          background-color: rgba(255, 255, 255, 0.08);
-          border-radius: 2px;
-          overflow: hidden;
-        }
-
-        .progress-fill {
-          height: 100%;
-          border-radius: 2px;
-          transition: width 0.3s ease;
-        }
-
-        .key-credits {
-          font-size: 0.8rem;
-          font-variant-numeric: tabular-nums;
-          min-width: 120px;
-          text-align: right;
-        }
-
-        .text-green {
-          color: var(--success, #10b981);
-        }
-
-        .text-orange {
-          color: var(--warning, #f59e0b);
-        }
-
-        .text-red {
-          color: var(--danger, #ef4444);
-        }
-      `}</style>
     </div>
   );
 }

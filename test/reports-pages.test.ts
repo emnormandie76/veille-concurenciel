@@ -155,7 +155,9 @@ function reportPage(searchParams: Record<string, string> = {}, school: unknown =
 test("formulaire : toute session, dans la charte ; l'école, ses campus et ses programmes pour cible", async () => {
   const out = html(await reportPage());
   assert.deepEqual(levels, ["signedIn"]);
-  assert.match(out, /class="charte /, "le gabarit de la charte");
+  // Le gabarit du site, reconnu à sa barre : l'attendu change avec la règle
+  // (étape 9, lot 6, D96) ; jusque-là, à la classe `charte` de sa racine.
+  assert.match(out, /^<div class="min-h-screen"><header [^>]*>[\s\S]*<nav aria-label="Navigation du site"/, "le gabarit de la charte");
   assert.match(out, /<h1[^>]*>Signaler une information<\/h1>/);
   assert.match(out, /Em Normandie/);
   assert.match(out, /<option value="school" selected="">L&#x27;école en général<\/option>/);

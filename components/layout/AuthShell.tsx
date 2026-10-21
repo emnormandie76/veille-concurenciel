@@ -18,7 +18,7 @@ interface AuthShellProps {
 
 export function AuthShell({ title, subtitle, footer, children }: AuthShellProps) {
   return (
-    <main className="charte grid min-h-screen place-items-center px-4 py-12 sm:py-16">
+    <main className="grid min-h-screen place-items-center px-4 py-12 sm:py-16">
       <div className="flex w-full max-w-sm flex-col gap-6">
         <div className="flex flex-col gap-1.5 text-center">
           <h1 className="font-display text-2xl font-semibold tracking-tight text-balance text-ink">{title}</h1>
@@ -34,7 +34,7 @@ export function AuthShell({ title, subtitle, footer, children }: AuthShellProps)
 /** Ce qui s'affiche pendant que la page lit son adresse (Suspense). */
 export function AuthShellLoading() {
   return (
-    <main className="charte grid min-h-screen place-items-center px-4 text-sm text-ink-2" aria-busy="true">
+    <main className="grid min-h-screen place-items-center px-4 text-sm text-ink-2" aria-busy="true">
       Chargement...
     </main>
   );

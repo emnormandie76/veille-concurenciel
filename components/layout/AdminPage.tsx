@@ -6,10 +6,8 @@ import type { ReactNode } from "react";
  * (charte, étape 4)
  *
  * L'en-tête de l'écran (titre, phrase d'explication, actions), puis son
- * contenu. Il se pose dans le cadre du back-office (app/admin/layout.tsx),
- * dont le menu latéral reste l'ancien jusqu'à l'étape 9 (décision du
- * 19 octobre) ; la zone de contenu prend le fond de la charte
- * (app/charte.css, « Transition »).
+ * contenu. Il se pose dans le cadre du back-office (app/admin/layout.tsx :
+ * le menu latéral et le `main`, dans la charte depuis l'étape 9, lot 6).
  *
  * Deux emplacements facultatifs (étape 9, lot 2, sur la maquette A) : un
  * lien de retour au-dessus du titre (`back`), et un badge à côté du titre,
@@ -48,7 +46,7 @@ export function AdminPage({ title, description, actions, back, badge, children }
   );
 
   return (
-    <div className="charte flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       {back ? (
         <div className="flex flex-col gap-3">
           <Link

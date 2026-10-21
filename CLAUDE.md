@@ -32,7 +32,7 @@ parties : gestion de contenu, IA gelée.
 |---|---|
 | [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan en cours** : décisions (§2), pièges (§4), étapes (§5), journal (§9) |
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** du gestionnaire de contenu : rôles, gardes, écrans, routes, tables, styles, tests |
-| [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** (étape 4) : jetons, contrastes, polices, composants, gabarits, accessibilité, cohabitation avec l'ancien style |
+| [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** (étape 4) : jetons, contrastes, polices, composants, gabarits, accessibilité, mise en œuvre (un seul monde depuis l'étape 9, lot 6) et historique de la reprise |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
 | [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (16 migrations, dont la provenance de chaque donnée, les signalements, le journal des lancements de l'IA et les admissions des programmes) · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | mise en ligne sur Vercel |
@@ -152,7 +152,7 @@ branche `gestion` :
   jour, avant l'avance de `main` sur `gestion` (mise en production) ;
   contrôle visuel de l'agent dans le Chrome
   du propriétaire. Détail : journal du plan ;
-- étape 9 (reprise graphique des écrans restants) **en cours, en six lots**,
+- étape 9 (reprise graphique des écrans restants) **faite et validée, en six lots**,
   une session et une validation par lot (D54, écart au « une étape par
   session » du plan, décidé par le propriétaire) : D17 (extra high pour toute
   l'étape), D55 (contrôle visuel en deux temps quand la session tourne dans un
@@ -207,9 +207,22 @@ branche `gestion` :
   (`test/cron-screen.test.ts`) ; contrôle dans le Chrome du propriétaire
   sur `dev`, en lecture seule, l'état du backend injecté dans l'onglet,
   tout POST bloqué. Détail : journal du plan ;
-- prochaine : le lot 6 (menu latéral et cadre du
-  back-office ; preflight, nettoyage de `globals.css`, Inter) dans une
-  nouvelle session ; D15 reste ouverte.
+  **lot 6** (menu latéral et cadre du back-office ; preflight, nettoyage de
+  `globals.css`, Inter) fait et validé le 21 octobre, sur le poste (le
+  propriétaire demande le commit, le push et la mise en production :
+  `main` avancée sur `gestion`, **les lots 1 à 6 en production**, aucune
+  migration) : D92 (menu sombre sur `side-*`, filet
+  de l'entrée choisie, focus en `side-ink`), D93 (texte seul, plus de
+  champ `icon`), D94 (repliable sous 1 024 px, bouton « Menu »), D95 (le
+  rôle en texte), D96 (la base sur le document, plus de classe `charte`),
+  D97 (la couche `legacy` supprimée entière), D98 (contrôle dans une
+  fenêtre Edge pilotée, profil temporaire, puis le Chrome du
+  propriétaire) ; **un seul monde** : Tailwind entier, preflight compris,
+  Inter retirée ; styles calculés des 15 écrans repris comparés avant et
+  après, à 1 440 et 390 px ; les trois cases de l'étape 9 cochées, **étape 9
+  validée**. Détail : journal du plan ;
+- prochaine : l'étape 10 (guide utilisateur) dans une nouvelle session ;
+  D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -333,22 +346,16 @@ propriétaire le 20 octobre.
   (voir le bloc en fin de fichier). `proxy.ts` tient lieu de middleware.
 - Styles : la charte graphique
   ([`docs/architecture/charte-graphique.md`](docs/architecture/charte-graphique.md)),
-  en Tailwind CSS v4 **sans preflight** jusqu'au lot 6 de l'étape 9 (plan,
-  piège 10, D54) :
-  jetons dans `app/charte.css`, composants dans `components/ui/`, gabarits
-  dans `components/layout/`. Tout écran nouveau ou repris s'y construit, et
-  son dossier rejoint les `@source` de `app/globals.css` (test). L'ancien
-  `app/globals.css` reste, inchangé, dans la couche `legacy` ; ne pas y
-  ajouter de règle. Pas de couleur littérale, ni de `style` en ligne, ni
-  d'émoji (D56) dans un écran de la charte. Sans preflight, un utilitaire
-  d'affichage défait l'attribut `hidden` : ne pas en poser sur un élément
-  qui se cache par `hidden` (`TabPanel` s'en garde). Depuis le lot 1, le
-  site public et `/api-docs` sont dans la charte ; depuis le lot 3, toute
-  la gestion des écoles aussi (`app/admin/schools/`, une seule source ;
-  plus d'îlot) ; depuis le lot 4, l'inbox (`app/admin/inbox/`) ; depuis le
-  lot 5, `/admin/cron` (`app/admin/cron/`) ; reste le menu latéral et le
-  cadre du back-office (lot 6, `docs/architecture/charte-graphique.md`
-  §9). `block` et `fill-accent` restent exclus de Tailwind jusqu'au lot 6.
+  seule, depuis le lot 6 de l'étape 9 (D96, D97) : Tailwind CSS v4 entier,
+  preflight compris (`app/globals.css` : l'import de Tailwind, la charte,
+  et les `@source` `app/` et `components/`, rien d'autre) ; jetons et base
+  du document dans `app/charte.css`, composants dans `components/ui/`,
+  gabarits dans `components/layout/`, cadre du back-office dans
+  `app/admin/layout.tsx` et `SidebarClient.tsx`. Tout écran s'y construit,
+  dans son gabarit. Pas d'autre feuille de style, ni de bloc `styled-jsx`
+  ou `<style>`, ni de couleur littérale, ni de `style` en ligne, ni d'émoji
+  (D56) ; une classe écrite en clair est un utilitaire de la charte (test).
+  Regarder un écran nouveau à 1 440 et à 390 px.
 
 ## Réseau du poste
 

@@ -3,18 +3,18 @@
  *
  *     npm run test:ts
  *
- * Jusqu'à l'étape 9, l'ancien style et la charte cohabitent (plan, G7 et
- * piège 10 ; docs/architecture/charte-graphique.md §9). Ce que ce test garde :
+ * De l'étape 4 au lot 5 de l'étape 9, l'ancien style et la charte cohabitaient
+ * (plan, G7 et piège 10). Depuis le lot 6 (D96, D97), un seul monde : Tailwind
+ * entier, preflight compris, et la charte ; l'ancien CSS est supprimé
+ * (docs/architecture/charte-graphique.md §9). Ce que ce test garde :
  *
  * - **les couches** : aucun style hors couche dans app/globals.css ni dans
- *   app/charte.css ; l'ancien CSS dans `legacy`, sous `base` et `utilities` ;
- *   pas de preflight, même par l'import complet de Tailwind ;
- * - **les sources** : Tailwind ne lit que les dossiers (ou les fichiers) des
- *   écrans repris, et chaque fichier qui emploie la charte est dans l'un
- *   d'eux ; aucun utilitaire généré ne porte le nom d'une classe des anciens
- *   écrans ;
- * - **les écrans repris** : aucune classe de l'ancien CSS, aucun `style` en
- *   ligne, un gabarit, aucun émoji (étape 9, D56) ;
+ *   app/charte.css ; plus de couche `legacy` ; le preflight présent, sous la
+ *   base de la charte, qui pose la page sur le document (D96) ;
+ * - **les sources** : Tailwind ne lit que app/ et components/, sans exclusion ;
+ *   aucune autre feuille de style, aucun bloc styled-jsx ni `<style>` ;
+ * - **les écrans** : aucun `style` en ligne, aucun émoji (étape 9, D56) dans
+ *   app/, un gabarit pour chaque écran repris, plus de classe `charte` ;
  * - **la référence** : les jetons de app/charte.css et leurs valeurs sont ceux
  *   du §2 de la charte, et chaque contraste du §3 est juste et tient son seuil.
  *
@@ -33,7 +33,8 @@ import tailwind from "@tailwindcss/postcss";
 const GLOBALS = "app/globals.css";
 const CHARTE = "app/charte.css";
 const DOC = "docs/architecture/charte-graphique.md";
-const LAYER_ORDER = "theme, legacy, base, components, utilities";
+// Le lot 6 de l'étape 9 retire la couche `legacy` (D97) : l'ordre est celui de Tailwind.
+const LAYER_ORDER = "theme, base, components, utilities";
 
 const read = (path: string) => readFileSync(path, "utf8").replace(/\r/g, "");
 const posix = (path: string) => path.split(sep).join("/");
@@ -51,8 +52,7 @@ function filesUnder(dir: string, pattern: RegExp): string[] {
 
 // ─── Les sources déclarées ──────────────────────────────────────────────────
 
-/** Les dossiers lus par Tailwind, relatifs à la racine du dépôt ; un fichier
- * seul pour l'accueil (`app/page.tsx`, étape 9), dont le dossier est `app/`. */
+/** Les dossiers lus par Tailwind, relatifs à la racine du dépôt. */
 const sourceDirs = [...read(GLOBALS).matchAll(/^@source "([^"]+)";/gm)].map((m) => posix(join(dirname(GLOBALS), m[1])));
 const inSources = (file: string) => sourceDirs.some((dir) => file === dir || file.startsWith(`${dir}/`));
 
@@ -92,17 +92,6 @@ function classTokens(source: string): Set<string> {
   return tokens;
 }
 
-/** Les classes que l'ancien CSS nomme : globals.css (couche legacy) et les blocs styled-jsx. */
-function legacyCssClasses(): Set<string> {
-  const css = [read(GLOBALS).split("@layer legacy {")[1] ?? ""];
-  for (const file of filesUnder("app", /\.tsx$/)) {
-    for (const block of read(file).matchAll(/<style jsx>\{`([\s\S]*?)`\}<\/style>/g)) css.push(block[1]);
-  }
-  const classes = new Set<string>();
-  for (const text of css) for (const m of text.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/\.([a-zA-Z][\w-]*)/g)) classes.add(m[1]);
-  return classes;
-}
-
 // ─── La compilation ─────────────────────────────────────────────────────────
 
 let compiled = "";
@@ -120,6 +109,19 @@ function utilityClasses(css: string): Set<string> {
   return classes;
 }
 
+/** Les déclarations des règles de la couche `base` dont le sélecteur est exactement `selector`. */
+function baseDeclarations(css: string, selector: string): Map<string, string> {
+  const out = new Map<string, string>();
+  postcss.parse(css).walkAtRules("layer", (layer) => {
+    if (layer.params !== "base") return;
+    layer.walkRules((rule) => {
+      if (rule.selector.replace(/\s+/g, " ").trim() !== selector) return;
+      rule.walkDecls((decl) => void out.set(decl.prop, decl.value));
+    });
+  });
+  return out;
+}
+
 before(async () => {
   const result = await postcss([tailwind()]).process(read(GLOBALS), { from: GLOBALS });
   compiled = result.css;
@@ -133,24 +135,21 @@ function unlayeredRules(root: Root): string[] {
   return root.nodes.filter((node) => node.type === "rule").map((node) => (node as { selector: string }).selector);
 }
 
-test("app/globals.css : l'ordre des couches d'abord, le thème et les utilitaires seulement, l'ancien CSS dans legacy", () => {
+test("app/globals.css : Tailwind entier et la charte, rien d'autre (étape 9, lot 6, D97)", () => {
+  // L'attendu change avec la règle : jusqu'au lot 5, l'ordre des couches posé
+  // à la main (avec `legacy`), le thème et les utilitaires seuls (pas de
+  // preflight, piège 10), et un bloc, l'ancien CSS. Le lot 6 l'a supprimé.
   const root = postcss.parse(read(GLOBALS));
   assert.deepEqual(unlayeredRules(root), [], "aucune règle hors couche");
   const atRules = root.nodes.filter((node): node is AtRule => node.type === "atrule");
-  assert.equal(atRules[0].name, "layer");
-  assert.equal(atRules[0].params, LAYER_ORDER);
-  assert.equal(atRules[0].nodes, undefined, "une déclaration d'ordre, pas un bloc");
-
   const imports = atRules.filter((rule) => rule.name === "import").map((rule) => rule.params);
-  assert.deepEqual(imports, [
-    '"tailwindcss/theme.css" layer(theme)',
-    '"tailwindcss/utilities.css" layer(utilities) source(none)',
-    '"./charte.css"',
-  ]);
-
-  const blocks = atRules.filter((rule) => rule.nodes !== undefined);
-  assert.deepEqual(blocks.map((rule) => `${rule.name} ${rule.params}`), ["layer legacy"], "un seul bloc : l'ancien CSS");
-  assert.match(blocks[0].toString(), /globals\.css — Design System & Dark Theme \(Étape 2\.1\)/, "l'ancien en-tête est dans la couche");
+  assert.deepEqual(imports, ['"tailwindcss" source(none)', '"./charte.css"']);
+  assert.deepEqual(
+    atRules.filter((rule) => rule.name !== "import" && rule.name !== "source").map((rule) => `@${rule.name} ${rule.params}`),
+    [],
+    "ni bloc, ni ordre de couches posé à la main",
+  );
+  assert.doesNotMatch(read(GLOBALS).replace(/\/\*[\s\S]*?\*\//g, ""), /legacy|Design System & Dark Theme/, "plus d'ancien CSS");
 });
 
 test("app/charte.css : tout est dans une couche ou dans @theme", () => {
@@ -160,29 +159,50 @@ test("app/charte.css : tout est dans une couche ou dans @theme", () => {
   for (const rule of atRules) assert.ok(rule.name === "theme" || (rule.name === "layer" && rule.params === "base"), `@${rule.name} ${rule.params}`);
 });
 
-test("le CSS compilé : pas de preflight, l'ordre des couches posé avant tout bloc", () => {
+test("le CSS compilé : le preflight, l'ordre des couches posé avant tout bloc, plus d'ancien CSS", () => {
   assert.ok(compiled.length > 0);
-  assert.doesNotMatch(compiled, /::file-selector-button/, "la remise à zéro de Tailwind (preflight) n'est pas là");
+  // Piège 10 : le preflight s'active à l'étape 9, quand l'ancien CSS disparaît (lot 6).
+  assert.match(compiled, /::file-selector-button/, "la remise à zéro de Tailwind (preflight) est là");
+  // `hidden` tient désormais face à un utilitaire d'affichage (leçon des lots 1 à 5).
+  assert.match(compiled, /\[hidden\]:where\(:not\(\[hidden="until-found"\]\)\)\s*\{\s*display: none !important;/);
   const order = compiled.indexOf(`@layer ${LAYER_ORDER};`);
   assert.ok(order >= 0, "ordre des couches présent");
   const firstBlock = compiled.search(/@layer [\w-]+\s*\{/);
   assert.ok(order < firstBlock, "l'ordre précède le premier bloc");
   const properties = compiled.indexOf("@layer properties;");
   if (properties >= 0) assert.ok(properties < order, "la couche properties de Tailwind passe en premier, donc en dessous de tout");
-  assert.match(compiled, /@layer legacy\s*\{[\s\S]*\.admin-layout-wrapper/);
+  assert.doesNotMatch(compiled, /@layer legacy|\.admin-layout-wrapper|--bg-primary|\.admin-content-area/, "plus d'ancien CSS");
+});
+
+test("D96 : la base de la charte pose la page sur le document, plus de classe charte", () => {
+  const body = baseDeclarations(compiled, "body");
+  assert.equal(body.get("background-color"), "var(--color-page)");
+  assert.equal(body.get("color"), "var(--color-ink)");
+  assert.equal(body.get("font-size"), "var(--text-sm)");
+  assert.equal(baseDeclarations(compiled, "html").get("color-scheme"), "light");
+  // La police du document : celle de la charte, par le preflight (Inter est partie, D54).
+  assert.match(compiled, /--default-font-family: var\(--font-plex-sans\)/);
+  assert.match(baseDeclarations(compiled, "html, :host").get("font-family") ?? "", /^var\(--default-font-family,/);
+  assert.match(compiled, /--default-mono-font-family: var\(--font-plex-mono\)/);
+  assert.doesNotMatch(read("app/layout.tsx").replace(/^\s*\/\/.*$/gm, ""), /\bInter\b|--font-inter/, "Inter partie (D54)");
+  // Ce que la base posait dans le seul sous-arbre `.charte` vaut pour tout le document.
+  assert.equal(baseDeclarations(compiled, "*, ::before, ::after, ::backdrop, ::file-selector-button").get("border-color"), "var(--color-line)");
+  assert.match(baseDeclarations(compiled, ":focus-visible").get("outline") ?? "", /var\(--color-focus\)/);
+  assert.doesNotMatch(read(CHARTE), /\.charte\b|admin-content-area/, "ni base limitée à .charte, ni règle de transition");
+  for (const file of [...filesUnder("app", /\.tsx$/), ...filesUnder("components", /\.tsx$/)]) {
+    assert.ok(!classTokens(read(file)).has("charte"), `${file} : classe charte`);
+  }
 });
 
 // ─── Sources ────────────────────────────────────────────────────────────────
 
-test("@source : chaque source déclarée existe, et components/ en fait partie", () => {
-  assert.ok(sourceDirs.includes("components"));
-  // Un dossier, ou un fichier .tsx (l'accueil, étape 9 : lire tout app/ ferait
-  // générer les homonymes des classes des écrans pas encore repris).
-  for (const dir of sourceDirs) {
-    assert.ok(existsSync(dir), dir);
-    assert.ok(statSync(dir).isDirectory() || (statSync(dir).isFile() && dir.endsWith(".tsx")), dir);
-  }
-  assert.match(read(GLOBALS), /^@source not inline\("block fill-accent"\);/m);
+test("@source : app/ et components/, sans exclusion", () => {
+  // L'attendu change avec la règle : jusqu'au lot 5, les dossiers des seuls
+  // écrans repris, et l'exclusion des homonymes `block` et `fill-accent`.
+  assert.deepEqual([...sourceDirs].sort(), ["app", "components"]);
+  for (const dir of sourceDirs) assert.ok(existsSync(dir) && statSync(dir).isDirectory(), dir);
+  assert.doesNotMatch(read(GLOBALS), /@source not/);
+  assert.ok(generatedClasses.has("flex") && generatedClasses.has("bg-surface") && generatedClasses.has("bg-side"), "les utilitaires des écrans et du menu");
 });
 
 test("@source : tout fichier de app/ qui emploie la charte est lu par Tailwind", () => {
@@ -191,20 +211,27 @@ test("@source : tout fichier de app/ qui emploie la charte est lu par Tailwind",
   for (const file of users) assert.ok(inSources(file), `${file} emploie la charte hors des @source de ${GLOBALS}`);
 });
 
-test("aucun utilitaire généré ne porte le nom d'une classe des anciens écrans", () => {
-  const legacy = legacyCssClasses();
-  for (const file of filesUnder("app", /\.tsx$/).filter((f) => !inSources(f))) for (const token of classTokens(read(file))) legacy.add(token);
-  // Le relevé lit les trois sources de l'ancien style : globals.css (`btn`),
-  // les classes d'un écran hors des @source (`nav-link`, le menu latéral) et
-  // ses blocs styled-jsx (`sidebar-brand`). Jusqu'au lot 5, il le montrait sur
-  // `block` et `fill-accent`, classes de /admin/cron, qui n'en a plus.
-  assert.ok(
-    legacy.has("btn") && legacy.has("nav-link") && legacy.has("sidebar-brand"),
-    "le relevé voit les anciennes classes",
-  );
-  assert.ok(generatedClasses.has("flex") && generatedClasses.has("bg-surface"), "le relevé voit les utilitaires");
-  const collisions = [...generatedClasses].filter((name) => legacy.has(name));
-  assert.deepEqual(collisions, [], "à exclure par @source not inline(…) dans app/globals.css");
+test("un seul monde : aucune autre feuille de style, ni bloc styled-jsx, ni <style> (D97)", () => {
+  assert.deepEqual(filesUnder("app", /\.css$/).sort(), [CHARTE, GLOBALS].sort());
+  assert.deepEqual(filesUnder("components", /\.css$/), []);
+  for (const file of [...filesUnder("app", /\.(tsx|ts)$/), ...filesUnder("components", /\.(tsx|ts)$/)]) {
+    const source = read(file);
+    assert.doesNotMatch(source, /<style\b/, `${file} : <style>`);
+    const sheets = [...source.matchAll(/^import\s+["']([^"']+\.css)["'];/gm)].map((m) => m[1]);
+    assert.deepEqual(sheets, file === "app/layout.tsx" ? ["./globals.css"] : [], `${file} : feuilles importées`);
+  }
+});
+
+test("un seul monde : chaque classe écrite en clair (className=\"…\") est un utilitaire de la charte", () => {
+  // Il n'y a plus d'ancien CSS : une classe qui n'est pas un utilitaire généré
+  // ne s'applique à rien (une ancienne classe recopiée, une faute de frappe).
+  const strays = new Map<string, string>();
+  for (const file of [...filesUnder("app", /\.tsx$/), ...filesUnder("components", /\.tsx$/)]) {
+    for (const m of read(file).matchAll(/className="([^"]*)"/g)) {
+      for (const token of m[1].split(/\s+/)) if (token && !generatedClasses.has(token)) strays.set(token, file);
+    }
+  }
+  assert.deepEqual([...strays.entries()], []);
 });
 
 // ─── Écrans repris ──────────────────────────────────────────────────────────
@@ -224,8 +251,7 @@ const SCREENS = [
   "app/api-docs/page.tsx",
   // Étape 9, lot 2 (D54) : la liste des écoles, le cadre de la gestion d'une
   // école et la page des campus. Leurs onglets n'ont pas de gabarit à eux (ils
-  // se posent dans celui de la gestion) : ils sont lus avec leur dossier, et
-  // depuis le lot 3 tout app/admin/schools/ est une seule source.
+  // se posent dans celui de la gestion).
   "app/admin/schools/page.tsx",
   "app/admin/schools/[id]/manage/page.tsx",
   "app/admin/schools/[id]/campuses/page.tsx",
@@ -241,41 +267,18 @@ const SCREENS = [
  * de texte (« → », « ↗ ») n'en sont pas. */
 const EMOJI = /\p{Emoji_Presentation}|\uFE0F/u;
 
-test("les écrans repris : un gabarit, aucune classe de l'ancien CSS, aucun style en ligne, aucun émoji", () => {
-  const legacy = legacyCssClasses();
-  const files = sourceDirs.filter((dir) => dir.startsWith("app/")).flatMap((dir) => filesUnder(dir, /\.tsx$/));
+test("app/ : aucun style en ligne, aucun émoji ; chaque écran repris dans son gabarit", () => {
+  // Depuis le lot 6, tout app/ est dans la charte : le cadre du back-office,
+  // son menu (D93) et le layout racine (plus de police posée en ligne) compris.
+  const files = filesUnder("app", /\.tsx$/);
   for (const screen of SCREENS) assert.ok(files.includes(screen), screen);
-  for (const file of files) {
+  for (const file of [...files, "app/admin/nav.ts"]) {
     const source = read(file);
-    const old = [...classTokens(source)].filter((token) => legacy.has(token));
-    assert.deepEqual(old, [], `${file} : classes de l'ancien CSS`);
     assert.doesNotMatch(source, /style=\{\{/, `${file} : style en ligne`);
     // D56 : les émojis décoratifs partent avec l'ancien style, les textes restent.
     assert.doesNotMatch(source, EMOJI, `${file} : émoji`);
   }
   for (const screen of SCREENS) assert.match(read(screen), /from "@\/components\/layout\/(AuthShell|AdminPage|SiteShell)"/, screen);
-});
-
-test("étape 9, lot 3 : toute la gestion des écoles est une seule source, et chacun de ses fichiers est dans la charte", () => {
-  // L'attendu change avec la règle : les sources du lot 2, fichier par
-  // fichier, laissaient dehors les onglets du lot 3 et leur îlot (D60, D61).
-  assert.ok(sourceDirs.includes("app/admin/schools"), "app/admin/schools en une source");
-  assert.deepEqual(sourceDirs.filter((dir) => dir.startsWith("app/admin/schools/")), [], "plus de source fichier par fichier");
-  const legacy = legacyCssClasses();
-  const files = filesUnder("app/admin/schools", /\.tsx$/);
-  assert.ok(files.length >= 14, files.join(", "));
-  for (const file of files) {
-    const old = [...classTokens(read(file))].filter((token) => legacy.has(token));
-    assert.deepEqual(old, [], `${file} : classes de l'ancien CSS`);
-  }
-});
-
-test("les gabarits : leur racine porte la classe charte", () => {
-  for (const file of filesUnder("components/layout", /\.tsx$/)) {
-    const roots = [...read(file).matchAll(/return \(\s*<(\w+) className="([^"]*)"/g)];
-    assert.ok(roots.length > 0, file);
-    for (const [, , classes] of roots) assert.match(classes, /^charte /, file);
-  }
 });
 
 // ─── Jetons et contrastes : la référence dit vrai ──────────────────────────

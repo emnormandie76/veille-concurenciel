@@ -9,9 +9,8 @@ import { cx } from "@/components/ui/cx";
  * étape 4)
  *
  * La barre du site (écoles, API, back-office pour qui y a droit, « Mon
- * compte », déconnexion), puis une colonne de contenu. Les autres pages du
- * site gardent leur ancienne barre jusqu'à l'étape 9 ; les liens et leurs
- * libellés sont les mêmes.
+ * compte », déconnexion), puis une colonne de contenu. Toutes les pages du
+ * site s'y posent depuis l'étape 9 (lot 1).
  *
  * `showBackOffice` vient de la session relue en base (`requirePage`, D1) : le
  * lien n'est qu'une commodité, le layout /admin contrôle l'accès.
@@ -44,7 +43,7 @@ function NavLink({ href, current, children }: { href: string; current: boolean; 
 
 export function SiteShell({ current, showBackOffice, width = "wide", children }: SiteShellProps) {
   return (
-    <div className="charte min-h-screen">
+    <div className="min-h-screen">
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-2.5">
           <Link href="/" className="font-display text-lg font-semibold tracking-tight text-ink">

@@ -2,7 +2,8 @@
  * app/charte.css — la charte graphique (plan gestion-contenu, étape 4)
  *
  * Maquette A « Registre », retenue par le propriétaire le 19 octobre 2026 :
- * clair (D9), dense, composants maison (D8). Importé par app/globals.css.
+ * clair (D9), dense, composants maison (D8). Importé par app/globals.css,
+ * après Tailwind et son preflight (étape 9, lot 6).
  * Référence et règles d'emploi : docs/architecture/charte-graphique.md ;
  * test/charte.test.ts vérifie que la référence et ce fichier disent la même
  * chose, et que chaque couple texte / fond tient son contraste.
@@ -90,82 +91,62 @@
   --radius-card: 6px;
 }
 
-/* ─── Base des écrans de la charte ──────────────────────────────────────────
- * Pas de preflight global avant l'étape 9 (piège 10). La racine de chaque
- * gabarit porte la classe `charte` : ces règles n'agissent que dans ce
- * sous-arbre, et l'emportent sur l'ancien CSS, rangé dans une couche plus
- * basse (`legacy`). Elles défont ce que l'ancien CSS impose à tous les
- * éléments (titres blancs, polices des champs, bordures natives). */
+/* ─── Base du document ──────────────────────────────────────────────────────
+ * Depuis le lot 6 de l'étape 9 (D96), le preflight de Tailwind remet les
+ * éléments à zéro (marges, bordures, titres, listes, champs, `[hidden]`), et
+ * pose la police du document : `--font-sans`, Plex Sans (Inter est partie).
+ * Cette base y ajoute la page de la charte, sur tout le document : jusqu'au
+ * lot 5, elle n'agissait que sous la classe `charte` de chaque gabarit, sans
+ * preflight, à côté de l'ancien CSS. Elle vient après le preflight, dans la
+ * même couche : à sélecteur égal, elle l'emporte. */
 @layer base {
-  .charte {
+  html {
+    color-scheme: light;
+  }
+
+  body {
     background-color: var(--color-page);
     color: var(--color-ink);
-    font-family: var(--font-sans);
     font-size: var(--text-sm);
-    line-height: 1.5;
-    color-scheme: light;
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Pas de :where() ici : un pseudo-élément n'y est pas admis, et la règle
-   * entière serait ignorée. */
-  .charte *,
-  .charte ::before,
-  .charte ::after {
-    border-width: 0;
-    border-style: solid;
+  /* Le preflight met les bordures à la couleur du texte ; la charte, au filet. */
+  *,
+  ::before,
+  ::after,
+  ::backdrop,
+  ::file-selector-button {
     border-color: var(--color-line);
   }
 
-  .charte :where(h1, h2, h3, h4, h5, h6) {
-    font-size: inherit;
-    font-weight: inherit;
-    letter-spacing: inherit;
-    color: inherit;
-  }
-
-  .charte :where(button, input, select, textarea) {
-    font: inherit;
-    letter-spacing: inherit;
-    color: inherit;
-    background-color: transparent;
-  }
-
-  .charte :where(button, [role="button"]) {
+  :where(button, [role="button"]) {
     cursor: pointer;
   }
 
-  .charte :where(button:disabled) {
+  :where(button:disabled) {
     cursor: not-allowed;
   }
 
-  .charte :where(ol, ul) {
-    list-style: none;
-  }
-
-  .charte :where(table) {
-    border-collapse: collapse;
-  }
-
-  .charte :where(svg) {
-    display: block;
+  :where(svg) {
     flex-shrink: 0;
   }
 
-  /* Focus visible partout, même sur un élément qu'un composant aurait oublié. */
-  .charte :where(:focus-visible) {
+  /* Le preflight fait hériter la graisse aux intitulés de groupe d'une liste
+   * déroulante (« Un campus », « Un programme » du signalement) : ils
+   * reprennent celle du navigateur, et se distinguent de leurs options. */
+  optgroup {
+    font-weight: bolder;
+  }
+
+  /* Focus visible partout, même sur un élément qu'un composant aurait oublié ;
+   * sans :where(), pour l'emporter sur le `:-moz-focusring` du preflight. */
+  :focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
   }
 
-  .charte :where(dialog)::backdrop {
+  dialog::backdrop {
     background-color: rgb(14 26 43 / 0.45);
-  }
-
-  /* Transition, jusqu'à l'étape 9 : le menu latéral du back-office reste
-   * l'ancien (décision du 19 octobre) ; un écran de la charte posé dans ce
-   * cadre peint toute la zone de contenu, pas seulement sa colonne. */
-  .admin-content-area:has(.charte) {
-    background-color: var(--color-page);
   }
 }

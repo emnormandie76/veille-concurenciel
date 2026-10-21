@@ -18,7 +18,9 @@
 > nombre de programmes de l'accueil ; §3.1, §4.3, §6, §7), puis le lot 4
 > (l'inbox dans la charte, le style seulement ; D76 à D80 ; §3.2, §6, §7),
 > puis le lot 5 (`/admin/cron` dans la charte, le style seulement ; D46
-> posée, D81 à D91 ; §3.2, §6, §7).
+> posée, D81 à D91 ; §3.2, §6, §7), puis le lot 6 (le menu latéral et le
+> cadre du back-office dans la charte, le preflight, l'ancien CSS supprimé,
+> Inter retirée : un seul monde ; D92 à D97 ; §2.2, §3.2, §6, §7).
 > Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
@@ -75,7 +77,7 @@ Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 | Layout admin | [`app/admin/layout.tsx`](../../app/admin/layout.tsx) | `requirePage("manager")` : un `USER` est renvoyé vers le site (piège 2) |
 | Écrans IA et comptes | `app/admin/inbox/layout.tsx`, `app/admin/cron/page.tsx`, `app/admin/users/page.tsx` | `requirePage("admin")` |
 | « Mon compte » | [`app/account/page.tsx`](../../app/account/page.tsx) | `requirePage("signedIn")` : toute session, hors du back-office. Nom affiché et mot de passe, par `PATCH /api/admin/account` et `PATCH /api/admin/account/password`, qui ne prennent aucun identifiant. « Vos signalements » (étape 6, D36) : la page lit en base les signalements **de la session**, et eux seuls |
-| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » (étape 6) ; un admin voit aussi l'inbox, le cron et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Mon compte » est au pied du menu, hors de `navFor` |
+| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » (étape 6) ; un admin voit aussi l'inbox, le cron et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Mon compte » est au pied du menu, hors de `navFor`. Depuis l'étape 9 (lot 6) : dans la charte, texte seul (D93, plus de champ `icon`), `aria-current="page"` sur l'entrée de l'écran affiché ; sous 1 024 px, replié derrière un bouton « Menu » (D94). `AdminMenu`, sa partie sans état, se rend côté serveur (`test/admin-frame.test.ts`) |
 | Déconnexion | `app/admin/SidebarClient.tsx`, [`app/SignOutButton.tsx`](../../app/SignOutButton.tsx) | dans le menu du back-office, et dans la barre du site (le bouton « Se déconnecter » a pris la place du lien « Contribuer » ; « Mon compte » le précède) |
 | Mots de passe | [`lib/password.ts`](../../lib/password.ts) | politique unique (longueurs, borne bcrypt de 72 octets) |
 | Adresses, noms, états | [`lib/accounts.ts`](../../lib/accounts.ts) | module sans dépendance : domaine imposé `WORK_EMAIL_DOMAIN` = `em-normandie.fr` (D5), adresses rangées en minuscules, nom affiché déduit de l'adresse et borné (2 à 80 caractères, D6), états `INVITED`, `ACTIVE`, `DISABLED` |
@@ -233,8 +235,12 @@ signalement (`SiteShell`) et « Signalements » (`AdminPage`, onglets et
 dialogue) ; depuis l'étape 9 (lot 1), tout le site (§3.1) ; depuis le
 lot 2, la liste des écoles, la page des campus et la gestion d'une école,
 sauf quatre onglets (D60), repris au lot 3 ; depuis le lot 4, l'inbox ;
-depuis le lot 5, `/admin/cron`. Reste à l'ancien style le menu latéral et
-le cadre du back-office, jusqu'au lot 6 de l'étape 9 (D54).
+depuis le lot 5, `/admin/cron` ; depuis le lot 6, le menu latéral et le
+cadre du back-office (`app/admin/layout.tsx` : le menu, puis un `main`) :
+**plus aucun écran à l'ancien style**. Le menu est sombre (D92), son entrée
+choisie en `aria-current="page"` ; sous 1 024 px, une barre et un bouton
+« Menu » le replient (D94) ; le rôle sous le nom en texte (D95). Le
+contrôle d'accès du layout (`requirePage("manager")`) ne change pas.
 
 ---
 
@@ -471,32 +477,24 @@ Le backend Python **lit** les tables de données (diff de la Phase 2) et
 
 ## 6. Styles
 
-Deux mondes jusqu'au lot 6 de l'étape 9 du plan (G7, piège 10, D54).
-Référence : [`charte-graphique.md`](charte-graphique.md) (§9 : l'état de la
-reprise, lot par lot).
+**Un seul monde depuis le lot 6 de l'étape 9** (21 octobre ; G7, piège 10,
+D54, D96, D97) : tout le site est dans la charte graphique (étape 4 :
+maquette A « Registre », D8 composants maison, D9 clair). Référence :
+[`charte-graphique.md`](charte-graphique.md) (§9 : la mise en œuvre, et
+l'historique de la reprise lot par lot).
 
-| | Écrans | Où |
-|---|---|---|
-| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) ; étape 9, lot 1 : l'accueil, les fiches école et programme, `/api-docs` ; lot 2 : la liste des écoles, la page des campus, le cadre de la gestion d'une école et ses onglets Infos, Accréditations, Statistiques (chiffres clés) et Admissions ; lot 3 : ses onglets Campus & Programmes, Tarifs, Classements et Capacités ; lot 4 : l'inbox ; lot 5 : `/admin/cron` | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
-| **L'ancien style** | le menu latéral et le cadre du back-office (lot 6) | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; un bloc `styled-jsx`, celui du menu latéral |
+| | Où |
+|---|---|
+| Point d'entrée | [`app/globals.css`](../../app/globals.css) : Tailwind CSS v4 **entier** (thème, preflight, utilitaires ; `@import "tailwindcss" source(none)`), puis la charte ; `@source` : `app/` et `components/` seulement ; couches de Tailwind (`theme, base, components, utilities`) |
+| Jetons et base | [`app/charte.css`](../../app/charte.css) : les jetons (`--charte-*`, `@theme inline`), puis, après le preflight, la base **du document** (D96) : fond `page`, encre, 14 px et lissage sur `body`, `color-scheme` clair, bordures au filet, curseur des boutons, focus visible, fond voilé des dialogues, gras des `optgroup` |
+| Composants et gabarits | [`components/ui/`](../../components/ui/) ; [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`, sans classe `charte` depuis le lot 6) ; le cadre du back-office dans `app/admin/layout.tsx` et `SidebarClient.tsx` |
+| Polices | `next/font` (`app/layout.tsx`) : IBM Plex Sans, Sans Condensed et Mono ; le preflight fait de Plex Sans la police du document et de Plex Mono celle des `<code>`. Inter est retirée (D54) |
 
-- [`app/globals.css`](../../app/globals.css) est le point d'entrée : ordre des
-  couches `theme, legacy, base, components, utilities`, thème et utilitaires de
-  Tailwind **sans preflight**, `@source` limités aux dossiers des écrans repris
-  (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
-  `app/account/`, depuis l'étape 6 `app/admin/reports/`, depuis le lot 1 de
-  l'étape 9 `app/schools/`, `app/api-docs/` et le seul fichier
-  `app/page.tsx`, depuis le lot 3 toute la gestion des écoles en une source,
-  `app/admin/schools/` ; au lot 2, fichier par fichier ; depuis le lot 4
-  `app/admin/inbox/`, depuis le lot 5 `app/admin/cron/`) ; `block` et
-  `fill-accent`, homonymes de classes de l'ancien `/admin/cron`, ne sont
-  jamais générés (l'exclusion part au lot 6).
-- La racine de chaque gabarit porte la classe `charte` : la base de la charte
-  n'agit que dans ce sous-arbre. Le menu latéral du back-office reste l'ancien
-  (décision du 19 octobre) ; `.admin-content-area:has(.charte)` peint la zone
-  de contenu d'un écran repris au fond de la charte.
-- Polices par `next/font` (`app/layout.tsx`) : Inter pour l'ancien style,
-  IBM Plex Sans, Sans Condensed et Mono pour la charte.
+- L'ancien style (l'ancien `globals.css`, thème sombre, 21 variables, 201
+  classes, dans une couche `legacy`, et le bloc `styled-jsx` du menu) est
+  **supprimé** au lot 6 (D97), avec la base limitée à `.charte`, la règle de
+  transition `.admin-content-area:has(.charte)` et l'exclusion `block
+  fill-accent`.
 - Les ajouts de l'étape 5 aux anciens écrans (champs « URL de la source »,
   « Source 🔗 » des accréditations, ligne `LastEdit` du gestionnaire)
   suivent **l'ancien style** de chaque écran, avec ses `style` en ligne,
@@ -552,6 +550,25 @@ reprise, lot par lot).
   règle : aucune règle d'avant perdue ni déplacée, une variable de thème
   (`--color-accent`) et 29 utilitaires ajoutés, tous de l'écran ou de la
   barre.
+- Étape 9, lot 6 (D92 à D97) : le menu et le cadre du back-office, le
+  preflight, la base sur le document, l'ancien CSS supprimé, Inter retirée ;
+  `handleToggleProgramCampus`, jamais appelée (avec un `alert()`), retirée
+  de l'onglet Campus & Programmes. Le CSS compilé, comparé règle à règle :
+  634 règles avant, 414 après ; parties : les 282 de la couche `legacy`, les
+  12 de la base `.charte` (transition comprise), une `@keyframes spin` que
+  seule l'ancienne `.spinner` citait ; ajoutées : 36 du preflight, 9 de la
+  base, 30 utilitaires (27 du cadre et du menu ; `block`, `table`, `filter`,
+  tirés de mots du code, sans élément qui les porte). Les styles calculés
+  des 15 écrans repris (22 adresses, à 1 440 et 390 px) relevés avant et
+  après : le site et la connexion n'ont aucune taille changée, leurs
+  captures sont identiques octet pour octet, sauf `/api-docs`, dont les
+  `<code>` sans classe passent du `monospace` du navigateur à Plex Mono ;
+  partout, sans effet visible : `tab-size` 4, `appearance: button` sur les
+  boutons (leur fond, posé par la base, ôte déjà l'aspect natif),
+  `vertical-align: middle`
+  sur des SVG déjà en `block` ; les zones de texte ne s'étirent plus qu'en
+  hauteur ; le back-office prend la largeur du nouveau cadre (240 px de menu
+  au lieu de 260 ; tout l'écran sur un téléphone).
 - Contrôle du propriétaire, 21 octobre (D73, D74) : sur les cartes des
   onglets Accréditations, Admissions et Campus & Programmes, l'en-tête passe
   à la ligne (`flex-wrap`) : un titre long garde la largeur, « Modifier » et
@@ -574,7 +591,10 @@ reprise, lot par lot).
   par `'unsafe-eval'` dans `script-src`, `style-src` est le même. Lot 5, de
   même : build de production vert, puis `/admin/cron` sous `next dev` dans
   le Chrome du propriétaire, quatre états du backend, aucune erreur ni
-  violation en console.
+  violation en console. Lot 6 : build de production vert ; sous `next dev`,
+  les 22 adresses relevées à 1 440 et 390 px dans une fenêtre Edge pilotée
+  (D98), aucune violation CSP ; puis l'inbox et `/admin/cron` dans le Chrome
+  du propriétaire, console vide.
 
 ---
 
@@ -706,6 +726,20 @@ reprise, lot par lot).
   `crowdsourcing-status`, `rotation-status` (et `test_rotation_status.py`),
   `test/api/pipeline-jobs`, `run-due-passes` et `trigger-research`
   inchangés et verts.
+- **Cadre et menu du back-office** (étape 9, lot 6) :
+  `test/admin-frame.test.ts` (le layout : `requirePage("manager")` d'abord,
+  le menu, un `main` qui peut rétrécir, plus d'ancienne classe ; le menu
+  rendu côté serveur par `AdminMenu` : les entrées de `navFor` dans l'ordre,
+  leurs textes et leurs liens, « School Data Pipeline », le nom, « Mon
+  compte » et « Déconnexion » gardés, aucun titre, `aria-current="page"` sur
+  la seule entrée de l'écran affiché, sous-pages comprises ; D92 les jetons
+  `side-*`, le filet de l'entrée choisie, le focus en `side-ink` ; D93 ni
+  émoji ni champ `icon` ; D94 le bouton « Menu » (`aria-expanded`,
+  `aria-controls`), le menu caché puis affiché sous 1 024 px, la colonne
+  au-delà, ni calque ni position fixe, refermé quand la page change, sans
+  effet ; D95 le rôle en texte, l'avatar en `aria-hidden`, les initiales
+  inchangées ; ni `styled-jsx`, ni `style` en ligne, ni couleur littérale) ;
+  `admin-pages` (menu par rôle, `navFor`) inchangé et vert.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts` (dont D75 : les
   programmes de chaque école, et non la somme par campus ; la liste
@@ -717,11 +751,25 @@ reprise, lot par lot).
   depuis l'étape 9, `Badge` `wrap`, `Table` `id`, et un `TabPanel` caché
   sans la mise en page de l'appelant),
   `test/charte.test.ts` (compilation de `app/globals.css` par PostCSS et
-  Tailwind : pas de preflight, aucune règle hors couche, aucun utilitaire
-  homonyme d'une ancienne classe, chaque fichier qui emploie la charte lu par
-  `@source`, qui peut être un fichier (l'accueil) ; les écrans repris sans
-  ancienne classe, ni `style` en ligne, ni émoji (D56) ; jetons et contrastes
-  identiques à `charte-graphique.md` §2 et §3). Étape 9, lot 1 :
+  Tailwind ; jetons et contrastes identiques à `charte-graphique.md` §2 et
+  §3 ; depuis le lot 6 de l'étape 9 : Tailwind entier et la charte, rien
+  d'autre ; le preflight présent, `[hidden]` compris ; plus de couche
+  `legacy` ni d'ancien CSS ; la base sur le document (fond, encre, taille,
+  `color-scheme`, polices Plex par le preflight, bordures, focus), plus de
+  classe `charte` ni d'Inter ; `@source` : `app/` et `components/`, sans
+  exclusion ; aucune autre feuille de style, ni `styled-jsx` ni `<style>` ;
+  chaque classe écrite en clair est un utilitaire généré ; dans tout `app/`,
+  ni `style` en ligne ni émoji (D56), chaque écran repris dans son gabarit.
+  **Attendus changés avec la règle au lot 6** (D96, D97, piège 10) : « un
+  seul bloc, l'ancien CSS » et « l'ancien en-tête est dans la couche », « pas
+  de preflight », l'exclusion `block fill-accent`, le contrôle du relevé des
+  anciennes classes et l'absence de collision (plus d'ancienne classe :
+  remplacés par « chaque classe écrite en clair est un utilitaire »), les
+  sources des écrans repris (« une seule source pour la gestion des écoles »
+  devient `app/` entier), « la racine des gabarits porte la classe charte »).
+  Jusqu'au lot 5 : pas de preflight, aucune règle hors couche, aucun
+  utilitaire homonyme d'une ancienne classe, chaque fichier qui emploie la
+  charte lu par `@source`, qui pouvait être un fichier (l'accueil). Étape 9, lot 1 :
   `SCREENS` compte l'accueil, les deux fiches et `/api-docs`, puis, au
   lot 2, la liste des écoles, la gestion d'une école et la page des campus
   (`ui-components` : les deux emplacements d'`AdminPage`) ; au lot 3,
@@ -732,7 +780,11 @@ reprise, lot par lot).
   natif nommé, sans `style` ni `block`, piste en `line`) ; le contrôle du
   relevé des anciennes classes se fait sur `btn`, `nav-link` et
   `sidebar-brand` (il se faisait sur `block` et `fill-accent`, que
-  `/admin/cron` n'a plus : attendu changé avec le lot) ;
+  `/admin/cron` n'a plus : attendu changé avec le lot) ; au lot 6,
+  `ui-components` attend des gabarits sans classe `charte` (un seul `h1`
+  toujours), et `reports-pages` reconnaît le gabarit du formulaire de
+  signalement à sa barre « Navigation du site » et non plus à cette classe
+  (attendus changés avec D96) ;
   `reports-pages.test.ts` attend le lien « Signaler une information » en
   bouton secondaire de la charte, et des fiches qui posent `SiteShell` sans
   « Back-office » (D57), toujours sans lire la session.

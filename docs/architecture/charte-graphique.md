@@ -20,8 +20,10 @@
 > écoles, cadre de la gestion, campus, onglets Infos, Accréditations,
 > Chiffres clés, Admissions) sont faits le 20 octobre, le lot 3 (onglets
 > Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot retiré), le
-> lot 4 (l'inbox) et le lot 5 (`/admin/cron`) le 21 octobre ; l'état de la
-> reprise est au §9.
+> lot 4 (l'inbox), le lot 5 (`/admin/cron`) et le lot 6 (le menu latéral et
+> le cadre du back-office ; le preflight, l'ancien CSS supprimé, Inter
+> retirée) le 21 octobre. **Un seul monde depuis le lot 6** : tout le site
+> est dans la charte ; l'historique de la reprise est au §9.
 
 ---
 
@@ -73,8 +75,10 @@ ces noms existent. Un nom décrit un rôle, jamais une teinte.
 | `side-active` | `#22375a` | entrée choisie ou survolée du menu latéral |
 | `side-line` | `#22324d` | filets du menu latéral |
 
-Les jetons `side-*` attendent l'étape 9 : le menu latéral actuel reste
-l'ancien d'ici là (décision du 19 octobre).
+Les jetons `side-*` servent le menu latéral du back-office, sombre, depuis
+le lot 6 de l'étape 9 (D92 ; jusque-là, l'ancien menu restait, décision du
+19 octobre) : fond `side`, texte `side-ink`, secondaire `side-ink-2`, entrée
+choisie ou survolée `side-active`, filets `side-line`.
 
 **Écarts à la maquette A**, pour l'accessibilité : `line-strong` passe de
 `#b4bdcc` (1,9:1 sur blanc, sous le seuil d'un contour de champ) à `#7d8aa0` ;
@@ -127,10 +131,18 @@ valeurs du §2 (`test/charte.test.ts` les recalcule).
 `line` (1,4:1 sur `surface`) ne délimite jamais seul un élément qu'on manipule : il sépare
 des blocs que leur contenu identifie déjà.
 
+Sur le fond sombre du menu (`side`), `focus` ne tiendrait que 2,0:1 : le
+focus du menu prend `side-ink` (13,7:1, la ligne `side-ink` sur `side`),
+et sur l'entrée choisie 10,1:1 (`side-ink` sur `side-active`) ; D92.
+
 ## 4. Typographie
 
 Trois familles IBM Plex, servies par `next/font` depuis le site (aucune
-requête vers Google au chargement : la CSP `font-src 'self'` tient).
+requête vers Google au chargement : la CSP `font-src 'self'` tient). Depuis
+le lot 6 de l'étape 9, le preflight en fait les polices du document
+(`--default-font-family` : Plex Sans ; `--default-mono-font-family` : Plex
+Mono, pour un `<code>` ou un `<pre>` sans classe) ; Inter, la police de
+l'ancien style, est retirée.
 
 | Rôle | Famille | Utilitaire | Emploi |
 |---|---|---|---|
@@ -198,7 +210,7 @@ variantes (`cx` ne fusionne pas les classes contradictoires).
 | Liste déroulante | `Field.tsx` : `Select` | `<select>` natif, avec une flèche ; se place dans un `Field` |
 | Tableau | `Table.tsx` : `Table`, `THead`, `TBody`, `Tr`, `Th`, `Td` | `caption` (lu, pas affiché) ; en-têtes `scope="col"` ; `numeric` aligne à droite en chiffres tabulaires ; défile en largeur dans son cadre ; `id` va au `<table>` (un écran repris garde le sien : `pricing-table`, étape 9). Un texte long ne prend pas une colonne : il passe sur sa propre ligne, sous celle qu'il complète (`colSpan`), les deux dans un `TBody` qui porte le filet (D74 : la note d'un tarif) |
 | Carte | `Card.tsx` : `Card`, `CardHeader` | un bloc détaché (formulaire, groupe de faits) ; `CardHeader` donne un titre `h2` et un `titleId` pour `aria-labelledby` |
-| Onglets | `Tabs.tsx` : `Tabs`, `TabPanel` ; `tabs-keys.ts` | modèle ARIA : flèches gauche et droite (en boucle), Début, Fin ; un seul onglet dans l'ordre de tabulation ; compteur facultatif. Le filet du bas est une ombre intérieure, que couvre le soulignement de l'onglet choisi : rien ne déborde de la liste, qui défile en largeur sans barre verticale (corrigé à l'étape 6). Un `TabPanel` caché ne prend pas le `className` de l'appelant : sans preflight, un utilitaire d'affichage (`flex`) défaisait l'attribut `hidden` et montrait le panneau (corrigé à l'étape 9) |
+| Onglets | `Tabs.tsx` : `Tabs`, `TabPanel` ; `tabs-keys.ts` | modèle ARIA : flèches gauche et droite (en boucle), Début, Fin ; un seul onglet dans l'ordre de tabulation ; compteur facultatif. Le filet du bas est une ombre intérieure, que couvre le soulignement de l'onglet choisi : rien ne déborde de la liste, qui défile en largeur sans barre verticale (corrigé à l'étape 6). Un `TabPanel` caché ne prend pas le `className` de l'appelant : sans preflight, un utilitaire d'affichage (`flex`) défaisait l'attribut `hidden` et montrait le panneau (corrigé à l'étape 9 ; depuis le lot 6, le preflight tient aussi `[hidden]`) |
 | Badge | `Badge.tsx` | `neutral`, `accent`, `solid` (catégories : rôles) ; `success`, `warning`, `danger` (états) ; `wrap` pour un texte long qui passe à la ligne (le concours d'un programme, étape 9) : hauteur minimale, arrondi d'un contrôle |
 | Dialogue | `Dialog.tsx` : `Dialog`, `DialogFooter` | `<dialog>` natif ouvert par `showModal()` : focus gardé dans le dialogue, page inerte, focus rendu à la fermeture ; Échap et « Fermer » passent par `onClose`, qui peut refuser ; `data-autofocus` désigne le premier champ. Remplace `confirm()`. Un événement `close` du navigateur arrivé quand le dialogue est de nouveau ouvert est ignoré : sous `next dev`, React rejoue les effets, et le dialogue se refermait aussitôt ouvert (corrigé à l'étape 6). Deux options depuis l'étape 9 (lot 4, D76) : `placement="side"`, un panneau collé au bord droit, pleine hauteur, `min(37.5rem, 95vw)`, filet à gauche, sans arrondi (le détail d'un ticket de l'inbox) ; `closeOnBackdrop`, un clic sur le fond voilé, hors du cadre du dialogue, appelle `onClose` (un clic au clavier vise un bouton, jamais le fond) |
 | Message | `Alert.tsx` | `danger` (`role="alert"`), `success` et `info` (`role="status"`) ; texte en encre, teinte portée par le fond et l'icône |
@@ -270,6 +282,16 @@ segments dit lequel est choisi par `aria-pressed`, le choisi en
 erreur de 300 caractères) passe sous sa ligne, comme la note d'un tarif
 (D90, D74).
 
+Le menu du back-office (lot 6, `app/admin/SidebarClient.tsx`) : sombre sur
+les jetons `side-*` (D92), texte seul (D93) ; une entrée en `side-ink-2`,
+survolée en `side-active` ; l'entrée choisie en `side-active`, `side-ink`,
+graisse moyenne et un filet de 3 px à gauche (une ombre intérieure : rien ne
+bouge), `aria-current="page"` ; le focus en `side-ink` (§3) ; sous le nom,
+le rôle en texte `side-ink-2` (D95), les initiales de l'avatar cachées aux
+lecteurs d'écran. Sous 1 024 px, une barre sombre et un bouton « Menu »
+(`aria-expanded`, `aria-controls`) qui ouvre le menu sous elle, dans le
+flux, sans calque (D94).
+
 Une carte du gestionnaire dont le titre partage sa ligne avec des boutons
 (accréditation, admission, campus) a un en-tête qui passe à la ligne
 (`flex flex-wrap`, D73, contrôle du 21 octobre) : un titre court garde ses
@@ -287,14 +309,17 @@ pas.
 
 ## 7. Gabarits
 
-Dans [`components/layout/`](../../components/layout/). Leur racine porte la
-classe `charte` (§9).
+Dans [`components/layout/`](../../components/layout/). Jusqu'au lot 5 de
+l'étape 9, leur racine portait la classe `charte`, seule à recevoir la base
+de la charte ; depuis le lot 6, la base est posée sur le document (§9, D96)
+et la classe n'existe plus.
 
 | Gabarit | Fichier | Emploi |
 |---|---|---|
 | Site | `SiteShell.tsx` | la barre du site (Écoles, API, Back-office pour qui y a droit, Mon compte, Se déconnecter), puis une colonne `narrow` (48 rem, formulaires) ou `wide` (72 rem). « Back-office » suit la session relue en base : les pages qui ne la lisent pas (l'accueil, les fiches en cache, `/api-docs`) passent `showBackOffice={false}` (D57). `current` marque l'entrée qui mène à la page affichée (Écoles sur l'accueil, API sur `/api-docs`), aucune sur une fiche |
 | Connexion | `AuthShell.tsx` | une colonne de 24 rem au centre : titre, carte du formulaire, lien vers l'autre page ; sans barre. `AuthShellLoading` pendant la lecture de l'adresse |
-| Back-office | `AdminPage.tsx` | l'en-tête d'un écran (titre, explication, actions), puis son contenu ; se pose dans le cadre de `app/admin/layout.tsx`, dont le menu reste l'ancien jusqu'à l'étape 9. Deux emplacements facultatifs depuis le lot 2 de l'étape 9, sur la maquette A : `back`, le lien de retour au-dessus du titre (« ← Retour à la liste des écoles »), et `badge`, à côté du titre et hors du `h1` (le statut d'une école) ; sans eux, le rendu est celui de l'étape 4 |
+| Back-office | `AdminPage.tsx` | l'en-tête d'un écran (titre, explication, actions), puis son contenu ; se pose dans le cadre de `app/admin/layout.tsx` (ligne suivante). Deux emplacements facultatifs depuis le lot 2 de l'étape 9, sur la maquette A : `back`, le lien de retour au-dessus du titre (« ← Retour à la liste des écoles »), et `badge`, à côté du titre et hors du `h1` (le statut d'une école) ; sans eux, le rendu est celui de l'étape 4 |
+| Cadre du back-office | `app/admin/layout.tsx`, `app/admin/SidebarClient.tsx` | depuis le lot 6 de l'étape 9 : le menu (§6), puis un `main` (`min-w-0` : un tableau large défile dans son cadre) ; sur grand écran, les marges d'avant (40 px, 1 200 px au plus) à côté d'une colonne de 240 px collée en haut de la fenêtre ; sous 1 024 px, la barre et le menu repliable au-dessus, 16 px de gouttière (24 px dès 640 px). `requirePage("manager")` y reste |
 
 ## 8. Accessibilité
 
@@ -313,125 +338,97 @@ classe `charte` (§9).
 - **Clavier** : onglets aux flèches, dialogue fermé par Échap, focus rendu à
   l'élément d'origine.
 - **Structure** : un `h1` par écran ; `main` et une `nav` nommée dans les
-  gabarits ; `aria-current="page"` sur l'entrée de la barre qui mène à la page
-  affichée ; tableaux avec `caption` et `scope`.
+  gabarits et le cadre du back-office (« Navigation du site », « Navigation
+  du back-office ») ; `aria-current="page"` sur l'entrée de la barre ou du
+  menu qui mène à la page affichée ; aucun titre dans le menu (le nom de
+  l'application n'y est plus un `h2` avant le `h1` de l'écran) ; tableaux
+  avec `caption` et `scope`.
+- **Menu replié** (sous 1 024 px) : un bouton natif « Menu » qui dit son état
+  (`aria-expanded`) et ce qu'il commande (`aria-controls`) ; le menu s'ouvre
+  juste après lui dans l'ordre du clavier, sans calque ni piège à focus, et
+  se referme quand la page change.
 - **Mouvement** : seules des transitions de couleur, brèves.
 
-## 9. Mise en œuvre, jusqu'à la fin de l'étape 9
+## 9. Mise en œuvre
 
-L'ancien style et la charte cohabitent (plan, G7 et piège 10) jusqu'au lot 6
-de l'étape 9 (D54).
-
-| Lot (D54) | Écrans | État |
-|---|---|---|
-| 1 | accueil, fiche école, fiche programme, `/api-docs` (avec `SourceLine`) | **fait le 20 octobre** |
-| 2 | liste des écoles, cadre de la gestion, page des campus, onglets Infos, Accréditations, Chiffres clés, Admissions (avec `LastEdit` et les sélecteurs de programme et d'année) | **fait le 20 octobre** |
-| 3 | onglets Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot et `manage/legacy/` retirés | **fait le 21 octobre** (validé) |
-| 4 | inbox (le style seulement, IA gelée ; D76 à D80) | **fait le 21 octobre** (validé) |
-| 5 | `/admin/cron` (le style seulement, IA gelée ; D81 à D91) | **fait le 21 octobre** (validé) |
-| 6 | menu latéral et cadre du back-office ; preflight, nettoyage de `globals.css`, Inter | à faire |
+**Un seul monde depuis le lot 6 de l'étape 9** (21 octobre, D96, D97) : tout
+le site est dans la charte, l'ancien style est supprimé.
 
 - **Tailwind CSS v4** (`tailwindcss` et `@tailwindcss/postcss`, 4.3.3),
-  branché par [`postcss.config.mjs`](../../postcss.config.mjs).
-- **Couches** ([`app/globals.css`](../../app/globals.css)) :
-  `theme, legacy, base, components, utilities`. L'ancien CSS, inchangé, est
-  rangé dans `legacy` : laissé hors couche, il l'emporterait sur toute couche,
-  et son `* { margin: 0; padding: 0 }` annulerait les utilitaires d'espacement.
-  Les anciens écrans n'ont aucune classe Tailwind et ne changent pas. Les
-  styles `styled-jsx` des anciens écrans restent hors couche, donc au-dessus de
-  tout.
-- **Pas de preflight** : seuls `tailwindcss/theme.css` et
-  `tailwindcss/utilities.css` sont importés. À la place, une base limitée au
-  sous-arbre `.charte` ([`app/charte.css`](../../app/charte.css)) défait ce que
-  l'ancien CSS impose (titres blancs, bordures et polices natives des champs)
-  et pose le focus visible.
-- **Sources** : Tailwind ne lit que les dossiers nommés par `@source`
-  (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
-  `app/account/`, depuis l'étape 6 `app/admin/reports/`, depuis le lot 1
-  de l'étape 9 `app/schools/` (les fiches, le formulaire de signalement),
-  `app/api-docs/` et le seul fichier `app/page.tsx` (l'accueil : lire tout
-  `app/` ferait générer les homonymes des classes des écrans pas encore
-  repris), et depuis le lot 3 toute la gestion des écoles en une source,
-  `app/admin/schools/` (au lot 2, fichier par fichier, sans les onglets du
-  lot 3 ; aucun fichier de l'ancien style n'y reste), depuis le lot 4
-  l'inbox, `app/admin/inbox/`, et depuis le lot 5 `app/admin/cron/`), avec
-  `source(none)` sur l'import des utilitaires : un ancien
-  nom de classe qui serait aussi un utilitaire n'en reçoit pas les règles.
-  `block` et `fill-accent`, deux classes de l'ancien `/admin/cron`, ne sont
-  jamais générés (`@source not inline`) : un écran de la charte ne s'en sert
-  pas (une colonne flex à la place de `block` ; la barre de progression
-  reste `inline-block`, sur toute la largeur). L'écran est repris au lot 5,
-  l'exclusion part au nettoyage du lot 6.
-- **Transition du back-office** : `.admin-content-area:has(.charte)` peint
-  toute la zone de contenu au fond de la charte quand l'écran est repris.
-- **L'îlot sombre des onglets du lot 3** (lot 2, D60, D61), **retiré au
-  lot 3** : entre les deux lots, quatre onglets de la gestion d'une école
-  gardaient l'ancien style, posés après le gabarit, hors du sous-arbre
-  `.charte`, dans `manage/legacy/TabFrame.tsx`, avec des copies à l'ancien
-  style de `LastEdit`, `ProgramSelector` et `YearSelector`. Depuis le
-  lot 3, les huit onglets sont dans le gabarit et dans la charte ; le
-  dossier `manage/legacy/` est supprimé.
-- **Polices** : Inter reste pour les anciens écrans (`--font-inter`) ; les
-  trois Plex s'y ajoutent (`app/layout.tsx`).
+  branché par [`postcss.config.mjs`](../../postcss.config.mjs), importé
+  **entier** par [`app/globals.css`](../../app/globals.css) : thème,
+  **preflight** et utilitaires (`@import "tailwindcss" source(none)`), puis
+  [`app/charte.css`](../../app/charte.css). Couches : `theme, base,
+  components, utilities`, celles de Tailwind ; aucune règle hors couche.
+- **La base** (`app/charte.css`, couche `base`, après le preflight) : la
+  page sur le document (`body` : fond `page`, encre, 14 px, lissage ;
+  `html` : `color-scheme: light`), les bordures au filet, le curseur des
+  boutons, le focus visible, le fond voilé des dialogues, le gras des
+  intitulés de groupe d'une liste (`optgroup`, que le preflight faisait
+  hériter). Le preflight pose la police du document (Plex Sans) et celle des
+  `<code>` (Plex Mono), et tient `[hidden]` face à un utilitaire
+  d'affichage.
+- **Sources** : `app/` et `components/` seulement (`@source`) ; ni `docs/`,
+  ni `test/`, ni `backend/`. Plus d'exclusion : `block`, `table` et `filter`
+  sont générés depuis le lot 6, tirés de mots du code (un commentaire de
+  `ProgressBar`, des routes de `app/api/`) ; aucun élément ne les porte, et
+  le test « chaque classe écrite en clair est un utilitaire » l'assure.
+- **Polices** : les trois Plex par `next/font` (`app/layout.tsx`) ; Inter,
+  celle de l'ancien style, est retirée, et le `body` n'a plus de `style` en
+  ligne.
+- **Ce qui garde la règle** (`test/charte.test.ts`) : aucune autre feuille de
+  style dans `app/` ni `components/`, aucun bloc `styled-jsx` ni `<style>`,
+  aucun `style` en ligne ni émoji dans `app/`, chaque écran repris dans son
+  gabarit, chaque classe écrite en clair (`className="…"`) qui soit un
+  utilitaire généré ; les jetons et les contrastes du §2 et du §3.
 
-**Reprendre un écran** (étape 9, ou un écran nouveau des étapes 5 à 8) :
+**Ajouter un écran** : le poser dans son gabarit (`SiteShell`, `AuthShell`,
+`AdminPage`) ; n'utiliser que les composants et les utilitaires de la charte,
+sans `style` en ligne, sans couleur littérale, sans émoji ; regarder l'écran
+à 1 440 et à 390 px.
 
-1. le poser dans son gabarit (`SiteShell`, `AuthShell`, `AdminPage`) ;
-2. n'utiliser que les composants et les utilitaires de la charte, sans
-   classe de l'ancien CSS ni `style` en ligne ;
-3. ajouter son dossier aux `@source` de `app/globals.css` (un test le
-   vérifie) ;
-4. garder libellés, identifiants de champ et comportement ;
-5. regarder l'écran dans un navigateur, et un écran voisin non repris.
+### Historique de la reprise (étape 9, D54 : six lots, une session par lot)
 
-**Restes pour l'étape 9** (lot 6) : le
-menu latéral et le cadre du back-office (jetons `side-*`), le preflight à la
-place de la base `.charte` (il pose aussi `[hidden] { display: none }`), la
-règle de transition `:has()`, les exclusions `block` et `fill-accent`, Inter,
-et les classes mortes de l'ancien CSS. Relevé à la fin du lot 1 : 142 des
-201 classes de la couche `legacy` ne servent plus à aucun écran, celles des
-écrans repris (`public-nav*`, `hero-*`, `search-*`, `stats-bar`,
-`school-card*`, `school-detail-*`, `program-card*`, `program-tag`, `tag-*`,
-`filter-*`, `docs-*`, `pricing-table*`, `ranking-*`, `stat-card*`,
-`accreditation-*`, `breadcrumb*`, `login-*`, `account-*`, `users-actions`,
-`badge-user`, `badge-invited`, `user-secondary`, `modal-text`…) et quelques
-autres déjà mortes avant l'étape 9 (`campus-accordion`, `forbidden-*`,
-`spinner`, `page-loading`…). Le lot 2 en ajoute douze : `manage-header`,
-`manage-header-top`, `manage-school-name`, `manage-school-meta`, `tabs-nav`,
-`tab-button`, `tab-count`, `tab-content`, `badge-type-international`,
-`badge-type-state`, `badge-type-label`, `modal-footer` (relevé par le même
-script au début et à la fin du lot). Au lot 3, un script écrit pour le lot
-(celui du lot 2 n'est pas conservé), qui lit aussi les chaînes des
-expressions conditionnelles (`active`, `checked`, `open`, `badge-inactive`,
-`badge-moderator` servaient encore au départ), compte **151 classes mortes
-sur 201 au départ, 174 à la fin** ; les 23 de plus : `modal-overlay`,
-`modal`, `modal-header`, `modal-title`, `modal-close`, `data-card`,
-`data-card-header`, `data-card-title`, `data-card-actions`,
-`data-card-meta`, `cards-grid`, `inline-form`, `inline-form-grid`,
-`inline-form-actions`, `tab-section-header`, `tab-section-title`,
-`toggle-container`, `toggle-switch`, `campus-checkbox`,
-`campus-checkbox-group`, `checked`, `badge-inactive`, `year-selector`. Au
-lot 4, un autre script écrit pour le lot (gardé dans le scratchpad de la
-session), qui lit toutes les chaînes des fichiers de `app/` et
-`components/`, et non les seules expressions `className`, compte **171
-classes mortes sur 201 au départ, 176 à la fin** ; les 5 de plus, qui ne
-servaient qu'à l'inbox : `alert-danger`, `alert-success`, `btn-danger`,
-`empty-state`, `table-container`. Les classes que l'inbox se donnait dans
-son propre bloc `<style>` (`panel`, `flag-badge`, `badge-info`…) n'étaient
-pas dans `globals.css` : elles disparaissent avec lui. Au lot 5, le script
-est réécrit (celui du lot 4 n'a pas survécu à sa session ; le nouveau, dans
-le scratchpad de la session, est appliqué de la même façon au début et à
-la fin) : il lit les mots de toutes les chaînes des fichiers de `app/` et
-`components/`, y compris ceux d'une condition dans un gabarit (`active`,
-`badge-admin`, `badge-moderator` du menu latéral, que celui du lot 4
-manquait), et ignore le CSS des blocs `styled-jsx` (où `:checked` n'est pas
-la classe `checked`). Il compte **173 classes mortes sur 201 au départ, 184
-à la fin** (les 176 du lot 4 viennent de l'autre méthode) ; les 11 de plus,
-qui ne servaient qu'à `/admin/cron` : `admin-table`, `badge-active`,
-`btn-primary`, `form-control`, `form-group`, `form-hint`, `form-label`,
-`no-data`, `page-header`, `page-title-desc`, `section-title`. Les classes
-que l'écran se donnait dans ses quatre blocs `styled-jsx` (`task-card`,
-`fill-accent`, `block`…) disparaissent avec eux : il ne reste qu'un bloc
-`styled-jsx`, celui du menu latéral. Les classes mortes de `globals.css`
-restent jusqu'au lot 6 : sa couche `legacy` ne change pas avant (seuls ses
-`@source` changent, lot après lot).
+| Lot | Écrans | Fait |
+|---|---|---|
+| 1 | accueil, fiche école, fiche programme, `/api-docs` (avec `SourceLine`) | 20 octobre |
+| 2 | liste des écoles, cadre de la gestion, page des campus, onglets Infos, Accréditations, Chiffres clés, Admissions (avec `LastEdit` et les sélecteurs de programme et d'année) | 20 octobre |
+| 3 | onglets Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot et `manage/legacy/` retirés | 21 octobre |
+| 4 | inbox (le style seulement, IA gelée ; D76 à D80) | 21 octobre |
+| 5 | `/admin/cron` (le style seulement, IA gelée ; D81 à D91) | 21 octobre |
+| 6 | menu latéral et cadre du back-office (D92 à D95) ; preflight, base sur le document, ancien CSS supprimé, Inter retirée (D96, D97) | 21 octobre |
+
+De l'étape 4 au lot 5, deux mondes cohabitaient (plan, G7 et piège 10) :
+l'ancien `globals.css`, inchangé, rangé dans une couche `legacy` sous la
+charte ; Tailwind sans preflight ; une base limitée au sous-arbre `.charte`
+de chaque gabarit ; des `@source` limités aux dossiers des écrans repris,
+lot après lot, avec `source(none)` et l'exclusion des homonymes `block` et
+`fill-accent` (classes de l'ancien `/admin/cron`) ; la règle de transition
+`.admin-content-area:has(.charte)`, qui peignait le fond de la charte sous un
+écran repris dans l'ancien cadre ; aux lots 2 et 3, un îlot sombre pour les
+onglets pas encore repris (`manage/legacy/`, D60, D61).
+
+**Les classes mortes de la couche `legacy`** (201), relevées à chaque lot :
+142 à la fin du lot 1 ; 12 de plus au lot 2 ; 151 au départ du lot 3 et 174
+à la fin (un script qui lisait aussi les chaînes des expressions
+conditionnelles) ; 171 au départ du lot 4 et 176 à la fin (toutes les
+chaînes des fichiers de `app/` et `components/`) ; 173 au départ du lot 5 et
+184 à la fin (les mots des chaînes, conditions des gabarits comprises, le CSS
+des blocs `styled-jsx` ignoré) ; au lot 6, le même relevé, réécrit sur
+l'analyseur de TypeScript : **184 au départ, 193 à la fin** ; les 8
+restantes ne vivent que par homonymie (`alert`, un `role` ; `open`, une
+valeur d'onglet ; `campus-name`, `pricing-table`, `programs-list`,
+`ranking-name`, `ranking-year`, `rankings-list`, des `id`) : aucune n'est
+plus une classe, et la couche est supprimée (D97). Les 9 vraiment vivantes
+au départ du lot 6 étaient celles du cadre et du menu.
+
+**Le CSS compilé du lot 6**, comparé règle à règle à celui de `3af80f7` :
+634 règles avant, 414 après. Parties : les 282 règles de la couche
+`legacy`, les 12 de la base limitée à `.charte` (transition `:has()`
+comprise), et la `@keyframes spin` du thème de Tailwind, émise seulement
+parce que l'ancienne `.spinner` (morte) la citait. Ajoutées : les 36 du
+preflight, les 9 de la base du document, et 30 utilitaires (27 du cadre et
+du menu ; `block`, `table`, `filter`). Aucun utilitaire perdu ni changé ;
+dans le thème, `--font-sans` n'est plus émise (plus rien ne la lit en
+variable), `--default-font-family`, `--default-mono-font-family` (le
+preflight) et `--color-side-ink` (le filet de l'entrée choisie) le sont.

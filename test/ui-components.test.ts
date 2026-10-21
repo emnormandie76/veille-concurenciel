@@ -203,9 +203,10 @@ test("Tabs et TabPanel : un seul onglet dans l'ordre de tabulation, chacun comma
 });
 
 test("TabPanel : un panneau caché ne prend pas la mise en page de l'appelant, qui défairait `hidden`", () => {
-  // Sans preflight (piège 10), `hidden` ne tient que par la feuille du
-  // navigateur : un utilitaire `flex` l'emporte et montre le panneau (relevé à
-  // l'étape 9, sur la fiche école).
+  // Sans preflight (piège 10), `hidden` ne tenait que par la feuille du
+  // navigateur : un utilitaire `flex` l'emportait et montrait le panneau
+  // (relevé à l'étape 9, sur la fiche école). Le preflight, actif depuis le
+  // lot 6, le tient aussi ; le composant garde sa propre parade.
   const shown = html(h(TabPanel, { idPrefix: "fiche", value: "stats", selected: true, className: "flex flex-col gap-3", children: "x" }));
   assert.match(shown, /class="pt-5 flex flex-col gap-3"/);
   const hidden = html(h(TabPanel, { idPrefix: "fiche", value: "stats", selected: false, className: "flex flex-col gap-3", children: "x" }));
@@ -283,7 +284,8 @@ test("ProgressBar : un <progress> natif, valeur, maximum et nom ; le ton sur la 
   // (contrôle visuel du lot 5 : en `surface-2`, elle disparaissait).
   assert.ok(classes.includes("bg-line") && classes.includes("[&::-webkit-progress-bar]:bg-line"), "piste en line");
   assert.ok(!classes.some((name) => name.endsWith("bg-surface-2")), "pas de piste en surface-2");
-  // `block` n'est jamais généré (homonyme d'une ancienne classe) : la barre n'en dépend pas.
+  // `block` n'était pas généré jusqu'au lot 6 (homonyme d'une ancienne classe) :
+  // la barre a été écrite sans lui, et le reste.
   assert.ok(!classes.includes("block"), "sans block");
   // Le ton par défaut : l'accent (la progression d'une tâche).
   const accent = progressClasses(html(h(ProgressBar, { value: 2, max: 5, "aria-label": "2/5 catégories" })));
@@ -293,20 +295,24 @@ test("ProgressBar : un <progress> natif, valeur, maximum et nom ; le ton sur la 
 
 // ─── Gabarits ───────────────────────────────────────────────────────────────
 
-test("AuthShell et AdminPage : la racine porte la classe charte, et un seul h1", () => {
+test("AuthShell et AdminPage : un seul h1, et plus de classe charte à la racine (étape 9, D96)", () => {
+  // L'attendu change avec la règle : jusqu'au lot 5, la racine portait la
+  // classe `charte`, seule à recevoir la base de la charte ; depuis le lot 6,
+  // la base est posée sur le document (test/charte.test.ts).
   const auth = html(h(AuthShell, { title: "Première connexion", subtitle: "Votre adresse…", footer: "Déjà un mot de passe ?", children: "formulaire" }));
-  assert.match(auth, /^<main class="charte /);
+  assert.match(auth, /^<main class="grid /);
   assert.equal(auth.match(/<h1/g)?.length, 1);
   const admin = html(h(AdminPage, { title: "Comptes", description: "Ajoutez…", actions: h(Button, null, "Ajouter"), children: "tableau" }));
-  assert.match(admin, /^<div class="charte /);
+  assert.match(admin, /^<div class="flex flex-col gap-6">/);
   assert.equal(admin.match(/<h1/g)?.length, 1);
+  assert.doesNotMatch(auth + admin, /\bcharte\b/);
 });
 
 test("AdminPage : sans lien de retour ni badge, l'en-tête de l'étape 4 ; avec, le lien au-dessus et le badge hors du titre (étape 9)", () => {
   // Sans les deux emplacements : l'en-tête est le premier enfant, le titre le
   // premier élément de sa colonne, comme pour « Comptes » et « Signalements ».
   const plain = html(h(AdminPage, { title: "Comptes", children: "x" }));
-  assert.match(plain, /^<div class="charte [^"]*"><header [^>]*><div [^>]*><h1 [^>]*>Comptes<\/h1>/);
+  assert.match(plain, /^<div class="[^"]*"><header [^>]*><div [^>]*><h1 [^>]*>Comptes<\/h1>/);
   assert.doesNotMatch(plain, /<a /);
 
   const full = html(
@@ -317,7 +323,7 @@ test("AdminPage : sans lien de retour ni badge, l'en-tête de l'étape 4 ; avec,
       children: "x",
     }),
   );
-  assert.match(full, /^<div class="charte [^"]*"><div [^>]*><a [^>]*href="\/admin\/schools"[^>]*>← Retour à la liste des écoles<\/a><header /, "le lien avant l'en-tête");
+  assert.match(full, /^<div class="[^"]*"><div [^>]*><a [^>]*href="\/admin\/schools"[^>]*>← Retour à la liste des écoles<\/a><header /, "le lien avant l'en-tête");
   assert.match(full, /<h1 [^>]*>Em Normandie<\/h1><span [^>]*>ACTIVE<\/span>/, "le badge à côté du titre, pas dedans");
   assert.equal(full.match(/<h1/g)?.length, 1);
 });

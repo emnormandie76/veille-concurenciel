@@ -281,32 +281,6 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
     }
   };
 
-  const handleToggleProgramCampus = async (program: Program, campusId: string) => {
-    const currentCampusIds = program.associatedCampuses.map((ac) => ac.campusId);
-    let nextCampusIds: string[];
-    if (currentCampusIds.includes(campusId)) {
-      if (currentCampusIds.length <= 1) {
-        alert("Un programme doit être associé à au moins un campus.");
-        return;
-      }
-      nextCampusIds = currentCampusIds.filter((id) => id !== campusId);
-    } else {
-      nextCampusIds = [...currentCampusIds, campusId];
-    }
-
-    try {
-      const res = await fetch(`/api/admin/programs/${program.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campusIds: nextCampusIds }),
-      });
-      if (!res.ok) throw new Error("Erreur de mise à jour de l'association");
-      fetchAll();
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
   const handleDeleteProgram = async () => {
     if (!deleteProgram) return;
     setActionLoading(true);

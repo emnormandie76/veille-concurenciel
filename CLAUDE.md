@@ -222,8 +222,30 @@ branche `gestion` :
   Inter retirée ; styles calculés des 15 écrans repris comparés avant et
   après, à 1 440 et 390 px ; les trois cases de l'étape 9 cochées, **étape 9
   validée**. Détail : journal du plan ;
-- prochaine : l'étape 10 (guide utilisateur) dans une nouvelle session ;
-  D15 reste ouverte.
+- **replanifié le 21 octobre** (demande du propriétaire, D99 à D104) :
+  ranger avant le guide. Étape 10 : deux corrections d'interface (le type
+  d'une accréditation en français ; le lien « Back-office » dès la
+  connexion, D104) ; étape 11 : une branche `local` garde la
+  console IA et le backend (D100), qui quittent `gestion` et `main` (D101),
+  l'inbox restant en ligne ; étape 12 : ne garder que `main`, `gestion` et
+  `local`, sur le poste et `origin` (D102) ; étape 13 : nettoyage du
+  contexte de chaque branche, inventaire puis validation (D103) ; étape 14 :
+  le guide utilisateur, en dernier ;
+- étape 10 (deux corrections d'interface) **faite et validée le
+  21 octobre, sur le poste** (le propriétaire demande le commit et le push
+  sur `gestion`, pas de mise en production) : D104 tranchée
+  (un composant client dans la barre du site, `BackOfficeLink`, demande à
+  `GET /api/admin/account/back-office`, en `guardSignedIn`, si le compte a
+  accès au back-office ; la réponse gardée dans l'onglet, revérifiée à
+  chaque page ; les pages gardent leur cache ; revient sur D57) ; le type
+  d'une accréditation en français sur sa carte
+  (`manage/accreditation-type.ts`) ; 61 méthodes sous `app/api/admin`
+  (4 en `Session`) ; aucune migration ; contrôle dans une fenêtre Edge
+  pilotée (D98) sur `dev`, en lecture seule, un `USER` simulé dans
+  l'onglet. Détail : journal du plan ;
+- prochaine : l'étape 11 (la branche `local` ; `gestion` sans console ni
+  backend), dans une nouvelle session, en commençant par le sens de
+  `npm test` ; D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 

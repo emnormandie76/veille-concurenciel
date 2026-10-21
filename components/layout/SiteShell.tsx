@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import SignOutButton from "@/app/SignOutButton";
 import { buttonClasses } from "@/components/ui/Button";
 import { cx } from "@/components/ui/cx";
+import BackOfficeLink from "./BackOfficeLink";
+import { BackOfficeNavLink, SiteNavLink } from "./SiteNavLink";
 
 /**
  * components/layout/SiteShell.tsx — le gabarit des pages du site (charte,
@@ -12,33 +14,22 @@ import { cx } from "@/components/ui/cx";
  * compte », déconnexion), puis une colonne de contenu. Toutes les pages du
  * site s'y posent depuis l'étape 9 (lot 1).
  *
- * `showBackOffice` vient de la session relue en base (`requirePage`, D1) : le
- * lien n'est qu'une commodité, le layout /admin contrôle l'accès.
+ * « Back-office » (étape 10, D104, revient sur D57) : une page qui lit la
+ * session (relue en base, `requirePage`, D1) passe `showBackOffice` ; une
+ * page qui ne la lit pas (l'accueil, les fiches en cache, /api-docs) ne le
+ * passe pas, et la barre le demande elle-même (`BackOfficeLink`). Le lien
+ * n'est qu'une commodité : le layout /admin contrôle l'accès.
  */
 
 export type SiteSection = "schools" | "api" | "account";
 
 interface SiteShellProps {
   current?: SiteSection;
-  showBackOffice: boolean;
+  /** Ce que la page sait de la session ; absent, la barre le demande. */
+  showBackOffice?: boolean;
   /** `narrow` pour un formulaire (48 rem), `wide` pour des listes (72 rem). */
   width?: "narrow" | "wide";
   children: ReactNode;
-}
-
-function NavLink({ href, current, children }: { href: string; current: boolean; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      aria-current={current ? "page" : undefined}
-      className={cx(
-        "inline-flex h-8 items-center rounded-control px-3 text-compact",
-        current ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
-      )}
-    >
-      {children}
-    </Link>
-  );
 }
 
 export function SiteShell({ current, showBackOffice, width = "wide", children }: SiteShellProps) {
@@ -50,20 +41,16 @@ export function SiteShell({ current, showBackOffice, width = "wide", children }:
             EduData France
           </Link>
           <nav aria-label="Navigation du site" className="flex flex-wrap items-center gap-1">
-            <NavLink href="/" current={current === "schools"}>
+            <SiteNavLink href="/" current={current === "schools"}>
               Écoles
-            </NavLink>
-            <NavLink href="/api-docs" current={current === "api"}>
+            </SiteNavLink>
+            <SiteNavLink href="/api-docs" current={current === "api"}>
               API
-            </NavLink>
-            {showBackOffice && (
-              <NavLink href="/admin/schools" current={false}>
-                Back-office
-              </NavLink>
-            )}
-            <NavLink href="/account" current={current === "account"}>
+            </SiteNavLink>
+            {showBackOffice === undefined ? <BackOfficeLink /> : showBackOffice && <BackOfficeNavLink />}
+            <SiteNavLink href="/account" current={current === "account"}>
               Mon compte
-            </NavLink>
+            </SiteNavLink>
             <SignOutButton className={buttonClasses({ variant: "secondary", className: "ml-2" })} />
           </nav>
         </div>

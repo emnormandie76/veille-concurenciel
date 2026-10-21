@@ -20,7 +20,9 @@
 > puis le lot 5 (`/admin/cron` dans la charte, le style seulement ; D46
 > posée, D81 à D91 ; §3.2, §6, §7), puis le lot 6 (le menu latéral et le
 > cadre du back-office dans la charte, le preflight, l'ancien CSS supprimé,
-> Inter retirée : un seul monde ; D92 à D97 ; §2.2, §3.2, §6, §7).
+> Inter retirée : un seul monde ; D92 à D97 ; §2.2, §3.2, §6, §7), puis
+> l'étape 10 (le lien « Back-office » dès la connexion, D104, une route en
+> plus ; le type d'une accréditation en français ; §2.2, §3, §4, §7).
 > Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
@@ -77,6 +79,7 @@ Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 | Layout admin | [`app/admin/layout.tsx`](../../app/admin/layout.tsx) | `requirePage("manager")` : un `USER` est renvoyé vers le site (piège 2) |
 | Écrans IA et comptes | `app/admin/inbox/layout.tsx`, `app/admin/cron/page.tsx`, `app/admin/users/page.tsx` | `requirePage("admin")` |
 | « Mon compte » | [`app/account/page.tsx`](../../app/account/page.tsx) | `requirePage("signedIn")` : toute session, hors du back-office. Nom affiché et mot de passe, par `PATCH /api/admin/account` et `PATCH /api/admin/account/password`, qui ne prennent aucun identifiant. « Vos signalements » (étape 6, D36) : la page lit en base les signalements **de la session**, et eux seuls |
+| Lien « Back-office » de la barre du site | [`components/layout/SiteShell.tsx`](../../components/layout/SiteShell.tsx), [`BackOfficeLink.tsx`](../../components/layout/BackOfficeLink.tsx), [`back-office-access.ts`](../../components/layout/back-office-access.ts), [`app/api/admin/account/back-office/route.ts`](../../app/api/admin/account/back-office/route.ts) | étape 10, D104 (revient sur D57) : sur toutes les pages du site, pour un gestionnaire ou un admin, jamais pour un `USER`. Une page qui lit la session le dit au gabarit (`showBackOffice`) ; les autres (accueil, fiches en cache, `/api-docs`) laissent la barre demander à `GET /api/admin/account/back-office` (`guardSignedIn`, rôle relu en base, D1), qui ne rend que `{ backOffice: true \| false }`, en `private, no-store`. Le lien ne fait que montrer le chemin : le layout `/admin` contrôle l'accès |
 | Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » (étape 6) ; un admin voit aussi l'inbox, le cron et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Mon compte » est au pied du menu, hors de `navFor`. Depuis l'étape 9 (lot 6) : dans la charte, texte seul (D93, plus de champ `icon`), `aria-current="page"` sur l'entrée de l'écran affiché ; sous 1 024 px, replié derrière un bouton « Menu » (D94). `AdminMenu`, sa partie sans état, se rend côté serveur (`test/admin-frame.test.ts`) |
 | Déconnexion | `app/admin/SidebarClient.tsx`, [`app/SignOutButton.tsx`](../../app/SignOutButton.tsx) | dans le menu du back-office, et dans la barre du site (le bouton « Se déconnecter » a pris la place du lien « Contribuer » ; « Mon compte » le précède) |
 | Mots de passe | [`lib/password.ts`](../../lib/password.ts) | politique unique (longueurs, borne bcrypt de 72 octets) |
@@ -161,16 +164,43 @@ cache, et le mur tient (plan, piège 4). `/contribute` est retirée (D2) ; le
 signalement l'a remplacée (étape 6, ci-dessous).
 
 **Dans la charte depuis l'étape 9 (lot 1)** : toutes les pages du site, sur
-le gabarit `SiteShell`. L'accueil, les deux fiches et `/api-docs` ne lisent
-toujours pas la session : leur barre n'a pas le lien « Back-office »
-(`showBackOffice={false}`, D57), comme avant ; « Mon compte » et le
-formulaire de signalement l'ont, pour qui y a droit. La fiche école garde
+le gabarit `SiteShell`. La fiche école garde
 ses onglets (Programmes, Statistiques, Accréditations), désormais au modèle
 ARIA de la charte, et ses filtres (boutons enfoncés, `aria-pressed`) ;
 `/api-docs` garde ses trois colonnes (une seule sur un téléphone), son
 panneau d'exemples en clair (onglets cURL, JavaScript, Python, D59). Les
 deux champs de recherche ont un libellé visible (D58). Les émojis décoratifs
 sont partis, les textes restent (D56).
+
+**La barre du site** (`SiteShell`) : Écoles, API, Back-office pour qui y a
+droit, Mon compte, Se déconnecter. Depuis l'étape 10 (D104, revient sur
+D57, qui laissait le lien aux seules pages lisant la session), le lien
+« Back-office » est sur **toutes les pages, dès la connexion**, pour un
+gestionnaire ou un admin, jamais pour un `USER` :
+
+- « Mon compte » et le formulaire de signalement lisent la session (relue en
+  base, D1) : ils passent `showBackOffice`, et le lien est dans leur HTML ;
+- l'accueil, les deux fiches et `/api-docs` ne la lisent toujours pas (cache
+  ISR, page statique) : ils ne passent rien, et la barre pose
+  `BackOfficeLink`, un composant client qui demande à
+  `GET /api/admin/account/back-office` (§4.1) si le compte a accès au
+  back-office. Le HTML du serveur n'a jamais le lien : rien n'apparaît puis
+  disparaît pour un `USER` ; pour un gestionnaire, le lien arrive avec la
+  réponse au premier chargement de l'onglet ;
+- la réponse est gardée en mémoire le temps de l'onglet
+  (`back-office-access.ts`, lue par `useSyncExternalStore`) et revérifiée à
+  chaque page (choix du propriétaire) : d'une page à l'autre, le lien reste
+  en place ; un rôle retiré le fait partir à la page suivante. Dans le doute
+  (session finie, erreur, réseau), pas de lien. Une déconnexion recharge la
+  page et vide la mémoire. Coût : une lecture du compte en base par page
+  vue, la même que celle de toute garde ; les pages, elles, gardent leur
+  cache.
+
+Limite constatée au contrôle (21 octobre) : sur un téléphone (390 px), la
+barre tient sur une ligne sans le lien et sur deux avec ; pour un
+gestionnaire, au premier chargement de l'onglet, le contenu descend donc de
+36 px quand la réponse arrive. Sur grand écran, les entrées glissent vers la
+gauche, sans changer de hauteur.
 
 **Signaler une information** (étape 6, G8, D33) : les fiches école et programme
 portent un lien « Signaler une information », en bouton secondaire de la
@@ -221,7 +251,7 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 | Chemin | Niveau | IA ? |
 |---|---|---|
 | `/admin/schools` | `manager` : liste, création et suppression des écoles ; recherche libellée « Rechercher une école » (D65) ; badge de statut d'un ton par statut (D66, `school-status.ts`) | non |
-| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 8 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab`, et depuis l'étape 8 `AdmissionsTab` (« Admissions », D50 : une carte par entrée d'un programme, filtre par programme, année d'entrée, niveau requis et voie choisis dans les listes de `lib/program-entries.ts`, note, lien source ; compteur dans l'onglet) ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source » sur la carte d'une accréditation (« Source 🔗 » jusqu'au lot 2 de l'étape 9, D56), et dans les tableaux des classements et des capacités (« Source 🔗 » jusqu'au lot 3, lien `http(s)` seulement depuis, D72). Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux). `?tab=` ouvre un onglet (`info`, `accreditations`, `stats`, `campus-programs`, `pricing`, `rankings`, `capacities`, `admissions`) : la vue des signalements y renvoie (étape 6 ; la catégorie « Admissions » mène au 8e onglet, D52). Depuis l'étape 9 (lot 2), dans la charte : en-tête (`AdminPage` avec lien de retour et badge de statut), onglets `Tabs` au modèle ARIA (« Rubriques de l'école », identifiants `manage-tab-<onglet>` et `manage-panel-<onglet>`), une ligne qui tient à 1 440 px et défile en largeur plus étroit (D62) ; seul l'onglet choisi est monté. Depuis le lot 3, les huit onglets sont dans le gabarit et dans la charte (l'îlot sombre de l'intervalle, D60, et les copies de `manage/legacy/`, D61, sont retirés) : dialogues natifs, l'erreur d'une fenêtre dans la fenêtre (D67), le statut d'une accréditation en case à cocher (D64), la suppression d'une année de chiffres clés et celle d'un tarif confirmées dans un dialogue (D63), « Nouvelle année » et « Copier depuis : » libellés (D65) ; au lot 3, une carte par campus et un tableau des programmes, l'alternance et l'expatriation d'un programme en cases à cocher (D69), ses campus en cases dans un groupe légendé ; l'onglet Tarifs garde une vue à la fois, le tableau ou la grille d'un programme (D70) ; le rang d'un classement en ton de catégorie par palier, sans médaille (D68, `manage/ranking-badge.ts`) ; la modification rapide des places au clavier, son erreur sous le champ (D71) | non |
+| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 8 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab`, et depuis l'étape 8 `AdmissionsTab` (« Admissions », D50 : une carte par entrée d'un programme, filtre par programme, année d'entrée, niveau requis et voie choisis dans les listes de `lib/program-entries.ts`, note, lien source ; compteur dans l'onglet) ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source » sur la carte d'une accréditation (« Source 🔗 » jusqu'au lot 2 de l'étape 9, D56), et dans les tableaux des classements et des capacités (« Source 🔗 » jusqu'au lot 3, lien `http(s)` seulement depuis, D72). Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux). `?tab=` ouvre un onglet (`info`, `accreditations`, `stats`, `campus-programs`, `pricing`, `rankings`, `capacities`, `admissions`) : la vue des signalements y renvoie (étape 6 ; la catégorie « Admissions » mène au 8e onglet, D52). Depuis l'étape 9 (lot 2), dans la charte : en-tête (`AdminPage` avec lien de retour et badge de statut), onglets `Tabs` au modèle ARIA (« Rubriques de l'école », identifiants `manage-tab-<onglet>` et `manage-panel-<onglet>`), une ligne qui tient à 1 440 px et défile en largeur plus étroit (D62) ; seul l'onglet choisi est monté. Depuis le lot 3, les huit onglets sont dans le gabarit et dans la charte (l'îlot sombre de l'intervalle, D60, et les copies de `manage/legacy/`, D61, sont retirés) : dialogues natifs, l'erreur d'une fenêtre dans la fenêtre (D67), le statut d'une accréditation en case à cocher (D64), son type en français sur sa carte depuis l'étape 10 (« International », « État », « Label », `manage/accreditation-type.ts` ; la base, les routes et l'API v1 gardent `international`, `state`, `label`), la suppression d'une année de chiffres clés et celle d'un tarif confirmées dans un dialogue (D63), « Nouvelle année » et « Copier depuis : » libellés (D65) ; au lot 3, une carte par campus et un tableau des programmes, l'alternance et l'expatriation d'un programme en cases à cocher (D69), ses campus en cases dans un groupe légendé ; l'onglet Tarifs garde une vue à la fois, le tableau ou la grille d'un programme (D70) ; le rang d'un classement en ton de catégorie par palier, sans médaille (D68, `manage/ranking-badge.ts`) ; la modification rapide des places au clavier, son erreur sous le champ (D71) | non |
 | `/admin/schools/[id]/campuses` | `manager` : les campus d'une école, avec « Modifié par … le … » (D29) ; dans la charte depuis l'étape 9 (lot 2), dialogues natifs, erreur dans la fenêtre (D67) | non |
 | `/admin/reports` | `manager` (étape 6, D31) : « Signalements », en attente (les plus anciens d'abord) et fermés (les 100 derniers). Pour chacun : l'école, la cible (« supprimé » si le campus ou le programme n'existe plus, D37), la catégorie, le message, le lien (`sourceHref`), le nom affiché de l'auteur (D39) ; « Ouvrir l'onglet de gestion » (l'onglet de la catégorie), « Traiter » et « Rejeter » (dialogue, réponse facultative pour l'auteur). Fermer un signalement ne date aucune donnée (D32) | non |
 | `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter. Dans la charte depuis l'étape 9 (lot 4), le style seulement (règle 10 : requêtes, textes et identifiants gardés, `test/inbox-screen.test.ts`) : `AdminPage`, filtres libellés « Statut » et « Catégorie » (D58, D65), un tableau ; le détail d'un ticket dans un dialogue natif collé à droite, 600 px, fermé par Échap, « Fermer » ou un clic à côté (D76, `Dialog` `placement="side"`) ; un ton de badge par état (D77, `inbox/ticket-tones.ts`) ; ni émoji ni ✓, ✕, ⚠ en tête des textes, les « ✕ » seuls devenus des boutons d'icône nommés (D78) ; un lien d'un ticket cliquable en `http(s)` seulement, sinon du texte (D79, `sourceHref`) ; le bandeau des contributions `Pending_AI` au ton « info » (D80) ; la purge confirmée dans un dialogue, son erreur dans la fenêtre (D67). Le contenu venu de l'IA et du web s'affiche en texte (aucun `dangerouslySetInnerHTML`) | **oui** |
@@ -250,9 +280,10 @@ Garde de chaque méthode à la fin de l'étape 2 (16 octobre 2026), inchangée �
 l'étape 5 (aucune route ajoutée) ; l'étape 6 ajoute les trois méthodes des
 signalements (§4.1 bis) ; l'étape 7 n'en ajoute aucune (les routes IA
 existantes écrivent et lisent le journal des lancements, §4.2) ; l'étape 8
-ajoute les quatre des admissions (§4.1). `Gest.` = `guardManager` (gestionnaire ou admin),
+ajoute les quatre des admissions (§4.1) ; l'étape 10, celle du lien
+« Back-office » (`account/back-office`, D104). `Gest.` = `guardManager` (gestionnaire ou admin),
 `Admin` = `guardAdmin`, `Session` = `guardSignedIn` (toute session).
-60 méthodes : 39 `Gest.`, 18 `Admin`, 3 `Session`.
+61 méthodes : 39 `Gest.`, 18 `Admin`, 4 `Session`.
 
 La table de référence est [`test/helpers/access-policy.ts`](../../test/helpers/access-policy.ts) :
 `test/api/admin-guards.test.ts` vérifie que chaque handler attend la garde de
@@ -287,6 +318,7 @@ modification se reporte ici.
 | `users/[id]/email` | PATCH Admin (D3 : l'adresse d'un compte qui n'en a pas ; l'ancien identifiant cesse alors de servir) |
 | `account` | PATCH Session (son nom affiché, D6) |
 | `account/password` | PATCH Session (son mot de passe, l'actuel exigé). Personne ne fixe plus le mot de passe d'un tiers (D4) : l'ancienne route `users/[id]/password` est retirée |
+| `account/back-office` | GET Session (étape 10, D104 : la barre du site demande si le compte de la session a accès au back-office ; rôle relu en base par la garde, D1 ; rend `{ backOffice: true }` pour un gestionnaire ou un admin, `{ backOffice: false }` pour un `USER`, rien d'autre, en `Cache-Control: private, no-store` ; aucune lecture en base hors la relecture du compte) |
 
 Les routes `users/[id]/role`, `reset`, `disable` et `email` passent par
 `changeAccount` ([`lib/account-admin.ts`](../../lib/account-admin.ts)) : aucune
@@ -740,6 +772,29 @@ l'historique de la reprise lot par lot).
   effet ; D95 le rôle en texte, l'avatar en `aria-hidden`, les initiales
   inchangées ; ni `styled-jsx`, ni `style` en ligne, ni couleur littérale) ;
   `admin-pages` (menu par rôle, `navFor`) inchangé et vert.
+- **La barre du site** (étape 10, D104) : `test/api/account-back-office.test.ts`
+  (la route sous la vraie `lib/auth.ts`, `getServerSession` remplacé : 401
+  sans session et rien de lu ; « non » pour un `USER`, « oui » pour un
+  gestionnaire et un admin ; le rôle de la base et non celui du jeton, D1 ;
+  un compte non actif, remis à zéro ou supprimé : 401, D20 ; la seule clé
+  `backOffice`, en `private, no-store` ; la base lue pour relire le compte,
+  et rien d'autre), `test/site-bar.test.ts` (la réponse lue : le lien
+  seulement sur un 200 qui dit `true` ; la mémoire de l'onglet : rien avant
+  la réponse ni dans le HTML du serveur, le lien gardé d'une page à l'autre,
+  revérifié, parti dans le doute, une seule question à la fois, en
+  `no-store` ; le gabarit rendu : le lien d'emblée pour un gestionnaire ou
+  un admin d'une page qui lit la session, jamais pour un `USER`, jamais
+  dans le HTML d'une page qui ne la lit pas ; la barre ne lit pas la
+  session ; les quatre pages en cache ne passent plus `showBackOffice`,
+  « Mon compte » et le signalement passent ce qu'ils savent). La route
+  entre dans `access-policy.ts` (`SIGNED_IN`) : `admin-guards` et
+  `access-matrix` la couvrent (61 handlers) ; `proxy.test.ts` la voit
+  refusée sans session.
+- **Le type d'une accréditation** (étape 10) : dans
+  `test/manager-screens.test.ts`, les libellés « International », « État »,
+  « Label », les tons inchangés, une valeur inconnue telle quelle, le badge
+  de la carte par `accreditationTypeLabel`, plus de valeur brute, et le
+  formulaire qui envoie toujours les valeurs de la base.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts` (dont D75 : les
   programmes de chaque école, et non la somme par campus ; la liste
@@ -787,7 +842,9 @@ l'historique de la reprise lot par lot).
   (attendus changés avec D96) ;
   `reports-pages.test.ts` attend le lien « Signaler une information » en
   bouton secondaire de la charte, et des fiches qui posent `SiteShell` sans
-  « Back-office » (D57), toujours sans lire la session.
+  rien dire du lien « Back-office », que leur barre demande (D104 ;
+  l'attendu était `showBackOffice={false}`, D57, jusqu'à l'étape 10),
+  toujours sans lire la session.
 - `npm run smoke` : contre `npm run dev`, d'abord **le mur** sans session
   (connexion et première connexion 200, chaque page renvoyée vers la
   connexion, `/account` et le formulaire de signalement compris, `/api/schools` et les 15 `GET /api/v1/*` en

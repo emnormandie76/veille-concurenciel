@@ -10,6 +10,8 @@
  *   `SiteShell`, sans le lien « Back-office », la page ne lisant pas la
  *   session, D57) ; émojis retirés (D56) ; libellé visible de la recherche
  *   (D58). Textes, identifiants et comportement inchangés.
+ * - Étape 10 (D104, revient sur D57) : la barre demande elle-même
+ *   « Back-office » ; la page ne lit toujours pas la session.
  * - D75 (contrôle du 21 octobre) : les programmes de chaque école, comme sa
  *   fiche (`programs_count` de /api/schools), au bandeau comme sur les
  *   cartes, et non plus la somme par campus.
@@ -103,7 +105,7 @@ export default function HomePage() {
   }, [query, fetchSchools]);
 
   return (
-    <SiteShell current="schools" showBackOffice={false}>
+    <SiteShell current="schools">
       <div className="flex flex-col gap-8">
         <header className="flex flex-col gap-3">
           <p className="text-xs font-semibold tracking-wider text-accent-strong uppercase">Données vérifiées par des humains</p>

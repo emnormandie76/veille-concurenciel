@@ -7,6 +7,8 @@
  * - Étape 9 (lot 1) : dans la charte (gabarit `SiteShell` sans « Back-office »,
  *   D57) ; exemples de code en clair, onglets de la charte (D59) ; libellé
  *   visible de la recherche (D58) ; émojis des catégories retirés (D56).
+ * - Étape 10 (D104, revient sur D57) : la barre demande elle-même
+ *   « Back-office » ; la page reste statique.
  * - Entièrement statique et sans requêtes à la base de données Neon.
  * - Contenu dans endpoints.ts, aligné sur les réponses réelles le 15 octobre
  *   2026 et tenu par test/api-docs.test.ts.
@@ -157,7 +159,7 @@ export default function ApiDocsPage() {
   }, [filteredEndpoints]);
 
   return (
-    <SiteShell current="api" showBackOffice={false}>
+    <SiteShell current="api">
       <div className="grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)] xl:grid-cols-[14rem_minmax(0,1fr)_minmax(0,26rem)]">
         {/* Colonne 1 : navigation */}
         <aside className="flex flex-col gap-5 lg:row-span-2 xl:row-span-1">

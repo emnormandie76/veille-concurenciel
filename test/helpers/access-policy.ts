@@ -18,8 +18,9 @@
  * - `signedIn` : ce que chacun fait pour soi, sur « Mon compte » : son nom
  *   affiché et son mot de passe ; et, depuis l'étape 6, envoyer un
  *   signalement, dont l'auteur est la session (G4 : un USER « consulte et
- *   signale »). Ces routes ne prennent pas d'identifiant ; personne ne fixe
- *   plus le mot de passe d'un tiers (D4) ;
+ *   signale ») ; depuis l'étape 10, savoir si l'on a accès au back-office
+ *   (`GET account/back-office`, D104). Ces routes ne prennent pas
+ *   d'identifiant ; personne ne fixe plus le mot de passe d'un tiers (D4) ;
  * - `manager` : tout le reste, c'est-à-dire la lecture et l'écriture du
  *   contenu, création et suppressions d'école, de campus et de programme
  *   comprises (D19) ; depuis l'étape 8, les admissions d'un programme
@@ -75,6 +76,9 @@ export const SIGNED_IN = [
   // Étape 6 : envoyer un signalement. Le lire et le traiter restent aux
   // gestionnaires (`GET reports`, `PATCH reports/[id]`, niveau par défaut).
   "POST reports",
+  // Étape 10 (D104) : la barre du site demande si le compte de la session a
+  // accès au back-office ; la route ne rend que oui ou non.
+  "GET account/back-office",
 ];
 
 export function expectedLevel(key: string): AccessLevel {

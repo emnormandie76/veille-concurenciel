@@ -15,6 +15,8 @@
  *   avec sa note, son lien source et « Modifié par … le … », à l'ancien style.
  * - Étape 9 (lot 1) : dans la charte (gabarit `SiteShell` sans « Back-office »,
  *   D57 ; tableau des tarifs `Table`, badges, listes) ; émojis retirés (D56).
+ *   Étape 10 (D104) : la barre demande elle-même « Back-office » ; la page
+ *   ne lit toujours pas la session.
  *   Textes, identifiants et données inchangés.
  * - D74 (contrôle du 21 octobre) : la note d'un tarif quitte sa colonne, où une
  *   note longue faisait une ligne de plus de 1 000 px et poussait le tableau
@@ -133,7 +135,7 @@ export default async function ProgramDetailPage({ params }: Props) {
   );
 
   return (
-    <SiteShell showBackOffice={false}>
+    <SiteShell>
       <div className="flex flex-col gap-10">
         {/* En-tête du programme */}
         <div className="flex flex-col gap-3" id="program-hero">

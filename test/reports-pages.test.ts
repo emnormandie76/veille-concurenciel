@@ -121,6 +121,10 @@ test("les fiches ne lisent pas la session et gardent leur cache d'une heure", ()
   // fiches n'importaient rien de `@/components/` (l'ancien style, D33) ;
   // désormais dans la charte, elles posent le gabarit du site sans le lien
   // « Back-office », qui demanderait la session (D57).
+  // Étape 10 : l'attendu change encore avec la règle (D104 revient sur D57) :
+  // les fiches posent le gabarit sans rien dire du lien, et c'est la barre
+  // qui demande à une route gardée (test/site-bar.test.ts) ; les fiches ne
+  // lisent toujours pas la session.
   // Le code seul : le commentaire de SiteShell nomme `requirePage`.
   const SESSION = /requirePage|getSession|getServerSession|useSession/;
   const code = (file: string) => read(file).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
@@ -128,7 +132,7 @@ test("les fiches ne lisent pas la session et gardent leur cache d'une heure", ()
     assert.equal(SESSION.test(code(file)), false, file);
   }
   for (const file of ["app/schools/[id]/SchoolDetailClient.tsx", "app/schools/[id]/programs/[pid]/page.tsx"]) {
-    assert.match(read(file), /<SiteShell showBackOffice=\{false\}>/, `${file} : gabarit sans « Back-office » (D57)`);
+    assert.match(read(file), /<SiteShell>/, `${file} : gabarit dont la barre demande « Back-office » (D104)`);
   }
   for (const file of ["app/schools/[id]/page.tsx", "app/schools/[id]/programs/[pid]/page.tsx"]) assert.match(read(file), /export const revalidate = 3600;/, file);
 });

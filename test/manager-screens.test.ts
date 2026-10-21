@@ -43,6 +43,12 @@ import { Prisma } from "@prisma/client";
 
 import { SCHOOL_STATUS_TONES, schoolStatusTone } from "../app/admin/schools/school-status";
 import { rankLabel, rankTone } from "../app/admin/schools/[id]/manage/ranking-badge";
+import {
+  ACCREDITATION_TYPE_LABELS,
+  ACCREDITATION_TYPE_TONES,
+  accreditationTypeLabel,
+  accreditationTypeTone,
+} from "../app/admin/schools/[id]/manage/accreditation-type";
 
 const DIR = "app/admin/schools/[id]";
 const read = (file: string) => readFileSync(file, "utf8").replace(/\r/g, "");
@@ -192,6 +198,28 @@ test("D64 : le statut d'une accréditation est une case à cocher native, libell
   assert.match(source, /<input\s+id="acc-active"\s+type="checkbox"/);
   assert.match(source, /checked=\{formIsActive\}/);
   assert.match(source, /<label htmlFor="acc-active"[^>]*>\s*Accréditation encore active\s*<\/label>/);
+});
+
+test("Étape 10 : le type d'une accréditation en français sur sa carte ; la base et le formulaire gardent les valeurs", () => {
+  assert.deepEqual(ACCREDITATION_TYPE_LABELS, { international: "International", state: "État", label: "Label" });
+  // Les tons de catégorie du lot 2 (charte §6) ne changent pas.
+  assert.deepEqual(ACCREDITATION_TYPE_TONES, { international: "accent", state: "solid", label: "neutral" });
+  assert.equal(accreditationTypeLabel("state"), "État");
+  assert.equal(accreditationTypeTone("state"), "solid");
+  // La colonne n'a pas de contrainte : une valeur inconnue s'affiche telle
+  // quelle, en neutre, plutôt que de disparaître.
+  assert.equal(accreditationTypeLabel("autre"), "autre");
+  assert.equal(accreditationTypeTone("autre"), "neutral");
+  const source = code(`${DIR}/manage/tabs/AccreditationsTab.tsx`);
+  assert.match(
+    source,
+    /<Badge tone=\{accreditationTypeTone\(acc\.accreditation_type\)\}>\{accreditationTypeLabel\(acc\.accreditation_type\)\}<\/Badge>/,
+  );
+  assert.doesNotMatch(source, />\{acc\.accreditation_type\}</, "plus de valeur brute à l'écran");
+  // Le formulaire envoie toujours la valeur de la base, sous un libellé français.
+  for (const [value, text] of [["international", "International"], ["state", "État"], ["label", "Label"]]) {
+    assert.match(source, new RegExp(`<option value="${value}">${text} \\(ex: `), value);
+  }
 });
 
 test("D66 : le badge de statut d'une école suit le statut, sur la liste comme dans la gestion", () => {

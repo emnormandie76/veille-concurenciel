@@ -229,7 +229,9 @@ Dans la gestion des écoles (étape 9, lot 2) : le statut d'une école, sur la
 liste et dans l'en-tête, ACTIVE en `success`, INACTIVE en `neutral`, DRAFT
 en `warning` (D66, `app/admin/schools/school-status.ts`) ; le type d'une
 accréditation en catégorie (`international` en `accent`, `state` en
-`solid`, `label` en `neutral`), « Actif » en `success`, « Inactif » en
+`solid`, `label` en `neutral`), écrit en français depuis l'étape 10
+(« International », « État », « Label », `manage/accreditation-type.ts` ;
+la valeur brute s'affichait), « Actif » en `success`, « Inactif » en
 `neutral` ; le niveau requis d'une admission et la ville d'un campus en
 `neutral`. Une case à cocher reste native (`accent-accent`), libellée, dans
 un `fieldset` dont la légende nomme le groupe (D64 : le statut d'une
@@ -316,7 +318,7 @@ et la classe n'existe plus.
 
 | Gabarit | Fichier | Emploi |
 |---|---|---|
-| Site | `SiteShell.tsx` | la barre du site (Écoles, API, Back-office pour qui y a droit, Mon compte, Se déconnecter), puis une colonne `narrow` (48 rem, formulaires) ou `wide` (72 rem). « Back-office » suit la session relue en base : les pages qui ne la lisent pas (l'accueil, les fiches en cache, `/api-docs`) passent `showBackOffice={false}` (D57). `current` marque l'entrée qui mène à la page affichée (Écoles sur l'accueil, API sur `/api-docs`), aucune sur une fiche |
+| Site | `SiteShell.tsx` | la barre du site (Écoles, API, Back-office pour qui y a droit, Mon compte, Se déconnecter), puis une colonne `narrow` (48 rem, formulaires) ou `wide` (72 rem). Les entrées sont des `SiteNavLink` (`SiteNavLink.tsx`, sorti du gabarit à l'étape 10). « Back-office » suit la session relue en base, sur toutes les pages depuis l'étape 10 (D104, revient sur D57) : une page qui la lit passe `showBackOffice` (le lien est dans son HTML) ; une page qui ne la lit pas (l'accueil, les fiches en cache, `/api-docs`) ne passe rien, et la barre pose `BackOfficeLink`, composant client qui demande l'accès à une route et n'affiche le lien que sur un « oui » (jamais dans le HTML du serveur : rien n'apparaît puis disparaît pour un `USER`). Sur un téléphone, la barre passe sur deux lignes avec le lien. `current` marque l'entrée qui mène à la page affichée (Écoles sur l'accueil, API sur `/api-docs`), aucune sur une fiche |
 | Connexion | `AuthShell.tsx` | une colonne de 24 rem au centre : titre, carte du formulaire, lien vers l'autre page ; sans barre. `AuthShellLoading` pendant la lecture de l'adresse |
 | Back-office | `AdminPage.tsx` | l'en-tête d'un écran (titre, explication, actions), puis son contenu ; se pose dans le cadre de `app/admin/layout.tsx` (ligne suivante). Deux emplacements facultatifs depuis le lot 2 de l'étape 9, sur la maquette A : `back`, le lien de retour au-dessus du titre (« ← Retour à la liste des écoles »), et `badge`, à côté du titre et hors du `h1` (le statut d'une école) ; sans eux, le rendu est celui de l'étape 4 |
 | Cadre du back-office | `app/admin/layout.tsx`, `app/admin/SidebarClient.tsx` | depuis le lot 6 de l'étape 9 : le menu (§6), puis un `main` (`min-w-0` : un tableau large défile dans son cadre) ; sur grand écran, les marges d'avant (40 px, 1 200 px au plus) à côté d'une colonne de 240 px collée en haut de la fenêtre ; sous 1 024 px, la barre et le menu repliable au-dessus, 16 px de gouttière (24 px dès 640 px). `requirePage("manager")` y reste |

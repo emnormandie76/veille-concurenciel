@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ExternalIcon } from "@/app/schools/icons";
 import { Alert } from "@/components/ui/Alert";
-import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { cx } from "@/components/ui/cx";
@@ -12,12 +12,14 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { TEXT_LINK } from "@/components/ui/text-link";
 import { sourceHref } from "@/lib/provenance";
 import LastEdit from "../../LastEdit";
+import { accreditationTypeLabel, accreditationTypeTone } from "../accreditation-type";
 
 /**
  * L'onglet « Accréditations » de la gestion d'une école. Dans la charte
  * depuis l'étape 9 (lot 2) : une carte par accréditation, les fenêtres en
  * dialogues natifs ; le statut se coche (D64) ; l'erreur d'une fenêtre
- * s'affiche dans la fenêtre (D67).
+ * s'affiche dans la fenêtre (D67). Depuis l'étape 10, le type s'affiche en
+ * français sur la carte (« État », et non `state`).
  */
 
 interface Accreditation {
@@ -34,13 +36,6 @@ interface Accreditation {
   // « Modifié par … le … » (étape 5, D29).
   last_edit: string | null;
 }
-
-// Trois catégories, trois tons de catégorie (charte §6) ; le texte reste le type.
-const TYPE_TONES: Record<string, BadgeTone> = {
-  international: "accent",
-  state: "solid",
-  label: "neutral",
-};
 
 export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
   const [accreditations, setAccreditations] = useState<Accreditation[]>([]);
@@ -213,7 +208,7 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-ink-2">
-                  <Badge tone={TYPE_TONES[acc.accreditation_type] ?? "neutral"}>{acc.accreditation_type}</Badge>
+                  <Badge tone={accreditationTypeTone(acc.accreditation_type)}>{accreditationTypeLabel(acc.accreditation_type)}</Badge>
                   <Badge tone={acc.is_active ? "success" : "neutral"}>{acc.is_active ? "Actif" : "Inactif"}</Badge>
                   <span>
                     {acc.year_obtained != null

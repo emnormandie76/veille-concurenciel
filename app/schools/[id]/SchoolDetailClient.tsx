@@ -224,10 +224,10 @@ export default function SchoolDetailClient({ school }: { school: School }) {
     { id: "label", title: "Labels & Certifications", items: labels },
   ].filter((group) => group.items.length > 0);
 
-  // Le gabarit du site, sans « Back-office » (D57) : la fiche ne lit pas la
-  // session, et garde son cache d'une heure.
+  // Le gabarit du site : la fiche ne lit pas la session, et garde son cache
+  // d'une heure ; sa barre demande elle-même « Back-office » (D104).
   return (
-    <SiteShell showBackOffice={false}>
+    <SiteShell>
       <div className="flex flex-col gap-6">
         {/* En-tête de l'école */}
         <div className="flex flex-col gap-4" id="school-hero">

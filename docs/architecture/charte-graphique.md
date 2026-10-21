@@ -18,8 +18,9 @@
 > **Étape 9, reprise des écrans restants** (D54 : six lots, une session par
 > lot) : le lot 1 (site public et `/api-docs`) et le lot 2 (liste des
 > écoles, cadre de la gestion, campus, onglets Infos, Accréditations,
-> Chiffres clés, Admissions) sont faits le 20 octobre ; l'état de la reprise
-> est au §9.
+> Chiffres clés, Admissions) sont faits le 20 octobre, le lot 3 (onglets
+> Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot retiré) le
+> 21 octobre ; l'état de la reprise est au §9.
 
 ---
 
@@ -220,6 +221,18 @@ accréditation en catégorie (`international` en `accent`, `state` en
 un `fieldset` dont la légende nomme le groupe (D64 : le statut d'une
 accréditation, qui était un interrupteur sans clavier).
 
+Au lot 3 : le rang d'un classement en ton de catégorie par palier (D68,
+`manage/ranking-badge.ts`) : le podium (1 à 3) en `solid`, de 4 à 10 en
+`accent`, au-delà en `neutral`, textes « 1er », « 2ème », « 3ème », « #N » ;
+l'alternance et l'expatriation d'un programme, « Oui » en `success`, « Non »
+en `neutral` ; les campus d'un programme en `accent`, avec le repère. Les
+deux interrupteurs du formulaire d'un programme deviennent des cases
+natives sous la règle de D64 (D69), et ses campus des cases natives dans
+un groupe légendé, chacune dans une étiquette bordée qui prend l'accent une
+fois cochée (`has-checked:`). La modification rapide des places (D71) : un
+bouton natif souligné en tirets, un champ nommé par `aria-label`, deux
+boutons d'icône nommés, l'erreur sous le champ en `role="alert"`.
+
 **Pas d'émoji** (§1, D56) : les émojis décoratifs des anciens écrans partent
 à la reprise, leurs textes restent ; une icône SVG cachée aux lecteurs
 d'écran les remplace là où elle aide (le repère des campus, le lien
@@ -269,7 +282,7 @@ de l'étape 9 (D54).
 |---|---|---|
 | 1 | accueil, fiche école, fiche programme, `/api-docs` (avec `SourceLine`) | **fait le 20 octobre** |
 | 2 | liste des écoles, cadre de la gestion, page des campus, onglets Infos, Accréditations, Chiffres clés, Admissions (avec `LastEdit` et les sélecteurs de programme et d'année) | **fait le 20 octobre** |
-| 3 | onglets Campus & Programmes, Tarifs, Classements, Capacités | à faire |
+| 3 | onglets Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot et `manage/legacy/` retirés | **fait le 21 octobre** (validé) |
 | 4 | inbox | à faire |
 | 5 | `/admin/cron` | à faire |
 | 6 | menu latéral et cadre du back-office ; preflight, nettoyage de `globals.css`, Inter | à faire |
@@ -294,12 +307,9 @@ de l'étape 9 (D54).
   de l'étape 9 `app/schools/` (les fiches, le formulaire de signalement),
   `app/api-docs/` et le seul fichier `app/page.tsx` (l'accueil : lire tout
   `app/` ferait générer les homonymes des classes des écrans pas encore
-  repris), et depuis le lot 2, fichier par fichier ou dossier par dossier,
-  la gestion des écoles sans les onglets du lot 3 :
-  `app/admin/schools/page.tsx`, `[id]/LastEdit.tsx`, `[id]/campuses/`,
-  `[id]/manage/page.tsx`, `[id]/manage/components/` et les quatre onglets
-  `SchoolInfoTab`, `AccreditationsTab`, `StatsTab`, `AdmissionsTab` ; un
-  chemin qui existe est lu à la lettre, crochets compris), avec
+  repris), et depuis le lot 3 toute la gestion des écoles en une source,
+  `app/admin/schools/` (au lot 2, fichier par fichier, sans les onglets du
+  lot 3 ; aucun fichier de l'ancien style n'y reste)), avec
   `source(none)` sur l'import des utilitaires : un ancien
   nom de classe qui serait aussi un utilitaire n'en reçoit pas les règles.
   `block` et `fill-accent`, deux classes de `/admin/cron`, ne sont jamais
@@ -307,15 +317,13 @@ de l'étape 9 (D54).
   (une colonne flex à la place de `block`).
 - **Transition du back-office** : `.admin-content-area:has(.charte)` peint
   toute la zone de contenu au fond de la charte quand l'écran est repris.
-- **L'îlot sombre des onglets du lot 3** (lot 2, D60, D61) : la gestion
-  d'une école est dans la charte, mais quatre de ses onglets (Campus &
-  Programmes, Tarifs, Classements, Capacités) gardent l'ancien style
-  jusqu'au lot 3. La base `.charte` étant au-dessus de `legacy`, leur
-  panneau se pose après le gabarit, hors du sous-arbre `.charte`, dans
-  `manage/legacy/TabFrame.tsx` (fond sombre du back-office, largeur de
-  l'ancienne page) ; ils prennent les copies à l'ancien style de
-  `LastEdit`, `ProgramSelector` et `YearSelector` rangées dans
-  `manage/legacy/`, hors des `@source`. Le lot 3 supprime ce dossier.
+- **L'îlot sombre des onglets du lot 3** (lot 2, D60, D61), **retiré au
+  lot 3** : entre les deux lots, quatre onglets de la gestion d'une école
+  gardaient l'ancien style, posés après le gabarit, hors du sous-arbre
+  `.charte`, dans `manage/legacy/TabFrame.tsx`, avec des copies à l'ancien
+  style de `LastEdit`, `ProgramSelector` et `YearSelector`. Depuis le
+  lot 3, les huit onglets sont dans le gabarit et dans la charte ; le
+  dossier `manage/legacy/` est supprimé.
 - **Polices** : Inter reste pour les anciens écrans (`--font-inter`) ; les
   trois Plex s'y ajoutent (`app/layout.tsx`).
 
@@ -329,9 +337,7 @@ de l'étape 9 (D54).
 4. garder libellés, identifiants de champ et comportement ;
 5. regarder l'écran dans un navigateur, et un écran voisin non repris.
 
-**Restes pour l'étape 9** (lots 3 à 6) : les quatre onglets du lot 3, avec
-la suppression de l'îlot et des copies de `manage/legacy/` (et de leur
-exception dans `test/manager-screens.test.ts`), l'inbox (lot 4) et
+**Restes pour l'étape 9** (lots 4 à 6) : l'inbox (lot 4) et
 `/admin/cron` (lot 5) ; puis, au lot 6, le
 menu latéral et le cadre du back-office (jetons `side-*`), le preflight à la
 place de la base `.charte` (il pose aussi `[hidden] { display: none }`), la
@@ -348,6 +354,16 @@ autres déjà mortes avant l'étape 9 (`campus-accordion`, `forbidden-*`,
 `manage-header-top`, `manage-school-name`, `manage-school-meta`, `tabs-nav`,
 `tab-button`, `tab-count`, `tab-content`, `badge-type-international`,
 `badge-type-state`, `badge-type-label`, `modal-footer` (relevé par le même
-script au début et à la fin du lot). Elles restent jusqu'au lot 6 : la couche
-`legacy` de `globals.css` ne change pas avant (seuls ses `@source`
-s'allongent, lot après lot).
+script au début et à la fin du lot). Au lot 3, un script écrit pour le lot
+(celui du lot 2 n'est pas conservé), qui lit aussi les chaînes des
+expressions conditionnelles (`active`, `checked`, `open`, `badge-inactive`,
+`badge-moderator` servaient encore au départ), compte **151 classes mortes
+sur 201 au départ, 174 à la fin** ; les 23 de plus : `modal-overlay`,
+`modal`, `modal-header`, `modal-title`, `modal-close`, `data-card`,
+`data-card-header`, `data-card-title`, `data-card-actions`,
+`data-card-meta`, `cards-grid`, `inline-form`, `inline-form-grid`,
+`inline-form-actions`, `tab-section-header`, `tab-section-title`,
+`toggle-container`, `toggle-switch`, `campus-checkbox`,
+`campus-checkbox-group`, `checked`, `badge-inactive`, `year-selector`. Elles
+restent jusqu'au lot 6 : la couche `legacy` de `globals.css` ne change pas
+avant (seuls ses `@source` changent, lot après lot).

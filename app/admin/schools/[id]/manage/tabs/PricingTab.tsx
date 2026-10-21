@@ -1,9 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import YearSelector from "../legacy/YearSelector";
-import ProgramSelector from "../legacy/ProgramSelector";
-import LastEdit from "../legacy/LastEdit";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Field, Input, Textarea } from "@/components/ui/Field";
+import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/Table";
+import YearSelector from "../components/YearSelector";
+import ProgramSelector from "../components/ProgramSelector";
+import LastEdit from "../../LastEdit";
+
+/**
+ * L'onglet « Tarifs » de la gestion d'une école. Dans la charte depuis
+ * l'étape 9 (lot 3) : une vue à la fois, comme avant (D70) : le tableau des
+ * programmes de l'année, ou la grille d'un programme dans une carte ; la
+ * suppression d'un tarif se confirme dans le dialogue de la charte, plus par
+ * `confirm()` (D63).
+ */
 
 interface ProgramOption {
   id: string;
@@ -45,6 +59,7 @@ export default function PricingTab({ schoolId }: { schoolId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Form state when a specific program is selected
   const [currentPricingId, setCurrentPricingId] = useState<string | null>(null);
@@ -193,9 +208,11 @@ export default function PricingTab({ schoolId }: { schoolId: string }) {
     }
   };
 
+  // D63 : le dialogue de la charte remplace `confirm()`. La suppression part
+  // une fois le dialogue fermé, comme après la fenêtre du navigateur.
   const handleDeletePricing = async () => {
     if (!currentPricingId) return;
-    if (!confirm("Supprimer ce tarif ?")) return;
+    setConfirmDelete(false);
 
     setSaving(true);
     setError(null);
@@ -217,21 +234,28 @@ export default function PricingTab({ schoolId }: { schoolId: string }) {
 
   const selectedProgObj = programs.find((p) => p.id === selectedProgramId);
 
-  return (
-    <div>
-      {error && <div className="alert alert-danger" style={{ marginBottom: "20px" }}>{error}</div>}
-      {success && <div className="alert alert-success" style={{ marginBottom: "20px" }}>{success}</div>}
+  /** Un montant du tableau, ou « — » s'il manque. */
+  const amount = (text: string | null) => text ?? <span className="text-ink-3">—</span>;
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "16px",
-          marginBottom: "24px",
-        }}
-      >
+  /** Un champ de la grille : un montant, en chiffres alignés. */
+  const feeField = (id: string, label: string, value: string, onChange: (value: string) => void, placeholder: string) => (
+    <Field id={id} label={label}>
+      {(control) => (
+        <Input
+          {...control}
+          type="number"
+          className="font-mono tabular-nums"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+      )}
+    </Field>
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <YearSelector
           availableYears={availableYears}
           selectedYear={selectedYear}
@@ -247,226 +271,168 @@ export default function PricingTab({ schoolId }: { schoolId: string }) {
         />
       </div>
 
+      {error && <Alert tone="danger">{error}</Alert>}
+      {success && <Alert tone="success">{success}</Alert>}
+
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des tarifs...
-        </div>
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des tarifs...</p>
       ) : programs.length === 0 ? (
-        <div className="inline-form" style={{ textAlign: "center", padding: "40px" }}>
-          <p style={{ color: "var(--text-secondary)" }}>
-            Aucun programme enregistré. Veuillez d'abord créer des programmes dans l'onglet Campus & Programmes.
+        <Card className="py-10 text-center">
+          <p className="text-sm text-ink-2">
+            Aucun programme enregistré. Veuillez d&apos;abord créer des programmes dans l&apos;onglet Campus & Programmes.
           </p>
-        </div>
+        </Card>
       ) : selectedProgramId === null ? (
         /* VUE D'ENSEMBLE TOUS LES PROGRAMMES */
-        <div className="table-container">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Programme</th>
-                <th>Total Frais</th>
-                <th>Année 1</th>
-                <th>Année 2</th>
-                <th>Année 3</th>
-                <th>Année 4</th>
-                <th>Année 5</th>
-                <th>Intl Total</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {programs.map((prog) => {
-                const pRecord = pricingRecords.find((r) => r.programId === prog.id);
-                return (
-                  <tr key={prog.id}>
-                    <td style={{ fontWeight: 600 }}>
-                      {prog.name}
+        <Table caption="Tarifs">
+          <THead>
+            <Tr>
+              <Th>Programme</Th>
+              <Th align="right">Total Frais</Th>
+              <Th align="right">Année 1</Th>
+              <Th align="right">Année 2</Th>
+              <Th align="right">Année 3</Th>
+              <Th align="right">Année 4</Th>
+              <Th align="right">Année 5</Th>
+              <Th align="right">Intl Total</Th>
+              <Th align="right">Actions</Th>
+            </Tr>
+          </THead>
+          <TBody>
+            {programs.map((prog) => {
+              const pRecord = pricingRecords.find((r) => r.programId === prog.id);
+              return (
+                <Tr key={prog.id}>
+                  <Td className="min-w-56">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium text-ink">{prog.name}</span>
                       <LastEdit text={pRecord?.last_edit} />
-                    </td>
-                    <td style={{ color: "var(--accent)", fontWeight: 600 }}>
-                      {pRecord?.total_fee ? pRecord.total_fee.toLocaleString() + " " + (pRecord.currency || "€") : "—"}
-                    </td>
-                    <td>{pRecord?.year_1_fee ? pRecord.year_1_fee.toLocaleString() + " €" : "—"}</td>
-                    <td>{pRecord?.year_2_fee ? pRecord.year_2_fee.toLocaleString() + " €" : "—"}</td>
-                    <td>{pRecord?.year_3_fee ? pRecord.year_3_fee.toLocaleString() + " €" : "—"}</td>
-                    <td>{pRecord?.year_4_fee ? pRecord.year_4_fee.toLocaleString() + " €" : "—"}</td>
-                    <td>{pRecord?.year_5_fee ? pRecord.year_5_fee.toLocaleString() + " €" : "—"}</td>
-                    <td>{pRecord?.intl_total_fee ? pRecord.intl_total_fee.toLocaleString() + " " + (pRecord.intl_currency || "€") : "—"}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => setSelectedProgramId(prog.id)}
-                        style={{ padding: "4px 10px" }}
-                      >
-                        {pRecord ? "Éditer" : "➕ Renseigner"}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                  </Td>
+                  <Td numeric className="font-medium whitespace-nowrap text-ink">
+                    {amount(pRecord?.total_fee ? pRecord.total_fee.toLocaleString() + " " + (pRecord.currency || "€") : null)}
+                  </Td>
+                  <Td numeric className="whitespace-nowrap">
+                    {amount(pRecord?.year_1_fee ? pRecord.year_1_fee.toLocaleString() + " €" : null)}
+                  </Td>
+                  <Td numeric className="whitespace-nowrap">
+                    {amount(pRecord?.year_2_fee ? pRecord.year_2_fee.toLocaleString() + " €" : null)}
+                  </Td>
+                  <Td numeric className="whitespace-nowrap">
+                    {amount(pRecord?.year_3_fee ? pRecord.year_3_fee.toLocaleString() + " €" : null)}
+                  </Td>
+                  <Td numeric className="whitespace-nowrap">
+                    {amount(pRecord?.year_4_fee ? pRecord.year_4_fee.toLocaleString() + " €" : null)}
+                  </Td>
+                  <Td numeric className="whitespace-nowrap">
+                    {amount(pRecord?.year_5_fee ? pRecord.year_5_fee.toLocaleString() + " €" : null)}
+                  </Td>
+                  <Td numeric className="whitespace-nowrap">
+                    {amount(
+                      pRecord?.intl_total_fee ? pRecord.intl_total_fee.toLocaleString() + " " + (pRecord.intl_currency || "€") : null,
+                    )}
+                  </Td>
+                  <Td align="right">
+                    <Button size="sm" onClick={() => setSelectedProgramId(prog.id)}>
+                      {pRecord ? "Éditer" : "Renseigner"}
+                    </Button>
+                  </Td>
+                </Tr>
+              );
+            })}
+          </TBody>
+        </Table>
       ) : (
         /* VUE DÉTAILLÉE PAR PROGRAMME */
-        <form onSubmit={handleSavePricing} className="inline-form">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <h3 className="tab-section-title" style={{ margin: 0 }}>
-              Grille tarifaire — {selectedProgObj?.name} (Année {selectedYear})
-            </h3>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setSelectedProgramId(null)}
-            >
+        <Card aria-labelledby="pricing-grid-title" className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardHeader
+              title={`Grille tarifaire — ${selectedProgObj?.name ?? ""} (Année ${selectedYear})`}
+              titleId="pricing-grid-title"
+            />
+            <Button variant="ghost" size="sm" onClick={() => setSelectedProgramId(null)}>
               ← Voir tous les programmes
-            </button>
+            </Button>
           </div>
 
-          <div className="inline-form-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", marginBottom: "20px" }}>
-            <div className="form-group">
-              <label className="form-label">Frais Année 1 (€)</label>
-              <input
-                type="number"
-                className="form-control"
-                value={year1Fee}
-                onChange={(e) => setYear1Fee(e.target.value)}
-                placeholder="ex: 11500"
-              />
+          <form onSubmit={handleSavePricing} className="flex flex-col gap-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {feeField("pricing-year-1-fee", "Frais Année 1 (€)", year1Fee, setYear1Fee, "ex: 11500")}
+              {feeField("pricing-year-2-fee", "Frais Année 2 (€)", year2Fee, setYear2Fee, "ex: 11500")}
+              {feeField("pricing-year-3-fee", "Frais Année 3 (€)", year3Fee, setYear3Fee, "ex: 12000")}
+              {feeField("pricing-year-4-fee", "Frais Année 4 (€)", year4Fee, setYear4Fee, "ex: 12500")}
+              {feeField("pricing-year-5-fee", "Frais Année 5 (€)", year5Fee, setYear5Fee, "ex: 12500")}
+              {feeField("pricing-total-fee", "Frais Totaux (€) *", totalFee, setTotalFee, "ex: 60000")}
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Frais Année 2 (€)</label>
-              <input
-                type="number"
-                className="form-control"
-                value={year2Fee}
-                onChange={(e) => setYear2Fee(e.target.value)}
-                placeholder="ex: 11500"
-              />
+            {/* Tarifs internationaux & Méta */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {feeField("pricing-intl-year-1-fee", "Frais Année 1 (International)", intlYear1Fee, setIntlYear1Fee, "ex: 14000")}
+              {feeField("pricing-intl-total-fee", "Frais Totaux (International)", intlTotalFee, setIntlTotalFee, "ex: 70000")}
+              <Field id="pricing-intl-currency" label="Devise internationale">
+                {(control) => (
+                  <Input
+                    {...control}
+                    type="text"
+                    value={intlCurrency}
+                    onChange={(e) => setIntlCurrency(e.target.value)}
+                    placeholder="ex: USD, EUR, GBP"
+                  />
+                )}
+              </Field>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Frais Année 3 (€)</label>
-              <input
-                type="number"
-                className="form-control"
-                value={year3Fee}
-                onChange={(e) => setYear3Fee(e.target.value)}
-                placeholder="ex: 12000"
-              />
+            <Field id="pricing-notes" label="Notes sur les frais additionnels">
+              {(control) => (
+                <Textarea
+                  {...control}
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="ex: Frais de dossier 100€ non inclus, sécurité sociale..."
+                />
+              )}
+            </Field>
+
+            <Field id="pricing-source-url" label="URL de la source des tarifs">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="text"
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(e.target.value)}
+                  placeholder="https://ecole.fr/frais-de-scolarite"
+                />
+              )}
+            </Field>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+              {currentPricingId ? (
+                <Button variant="danger-soft" size="sm" onClick={() => setConfirmDelete(true)} disabled={saving}>
+                  Supprimer ce tarif
+                </Button>
+              ) : (
+                <div />
+              )}
+              <Button type="submit" variant="primary" disabled={saving}>
+                {saving ? "Enregistrement..." : "Enregistrer la grille tarifaire"}
+              </Button>
             </div>
+          </form>
+        </Card>
+      )}
 
-            <div className="form-group">
-              <label className="form-label">Frais Année 4 (€)</label>
-              <input
-                type="number"
-                className="form-control"
-                value={year4Fee}
-                onChange={(e) => setYear4Fee(e.target.value)}
-                placeholder="ex: 12500"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Frais Année 5 (€)</label>
-              <input
-                type="number"
-                className="form-control"
-                value={year5Fee}
-                onChange={(e) => setYear5Fee(e.target.value)}
-                placeholder="ex: 12500"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Frais Totaux (€) *</label>
-              <input
-                type="number"
-                className="form-control"
-                value={totalFee}
-                onChange={(e) => setTotalFee(e.target.value)}
-                placeholder="ex: 60000"
-              />
-            </div>
-          </div>
-
-          {/* Tarifs internationaux & Méta */}
-          <div className="inline-form-grid" style={{ marginBottom: "20px" }}>
-            <div className="form-group">
-              <label className="form-label">Frais Année 1 (International)</label>
-              <input
-                type="number"
-                className="form-control"
-                value={intlYear1Fee}
-                onChange={(e) => setIntlYear1Fee(e.target.value)}
-                placeholder="ex: 14000"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Frais Totaux (International)</label>
-              <input
-                type="number"
-                className="form-control"
-                value={intlTotalFee}
-                onChange={(e) => setIntlTotalFee(e.target.value)}
-                placeholder="ex: 70000"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Devise internationale</label>
-              <input
-                type="text"
-                className="form-control"
-                value={intlCurrency}
-                onChange={(e) => setIntlCurrency(e.target.value)}
-                placeholder="ex: USD, EUR, GBP"
-              />
-            </div>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: "16px" }}>
-            <label className="form-label">Notes sur les frais additionnels</label>
-            <textarea
-              className="form-control"
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="ex: Frais de dossier 100€ non inclus, sécurité sociale..."
-            />
-          </div>
-
-          <div className="form-group" style={{ marginBottom: "24px" }}>
-            <label className="form-label">URL de la source des tarifs</label>
-            <input
-              type="text"
-              className="form-control"
-              value={sourceUrl}
-              onChange={(e) => setSourceUrl(e.target.value)}
-              placeholder="https://ecole.fr/frais-de-scolarite"
-            />
-          </div>
-
-          <div className="inline-form-actions" style={{ display: "flex", justifyContent: "space-between" }}>
-            {currentPricingId ? (
-              <button
-                type="button"
-                className="btn btn-danger btn-sm"
-                onClick={handleDeletePricing}
-                disabled={saving}
-              >
-                🗑️ Supprimer ce tarif
-              </button>
-            ) : (
-              <div />
-            )}
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? "Enregistrement..." : "Enregistrer la grille tarifaire"}
-            </button>
-          </div>
-        </form>
+      {confirmDelete && (
+        <Dialog titleId="pricing-delete-title" onClose={() => setConfirmDelete(false)} title="Supprimer ce tarif ?">
+          <DialogFooter>
+            <Button onClick={() => setConfirmDelete(false)} data-autofocus>
+              Annuler
+            </Button>
+            <Button variant="danger" onClick={handleDeletePricing}>
+              Supprimer ce tarif
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
     </div>
   );

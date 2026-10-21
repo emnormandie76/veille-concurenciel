@@ -8,8 +8,8 @@
  * que le poser, et rien pour une donnée d'avant le suivi.
  *
  * Dans la charte depuis l'étape 9 (lot 2), comme `app/schools/SourceLine.tsx` :
- * petit texte secondaire, placé par son parent. Jusqu'au lot 3, les onglets
- * encore à l'ancien style prennent la copie de `manage/legacy/` (D61).
+ * petit texte secondaire, placé par son parent. La copie à l'ancien style de
+ * l'intervalle (D61) est retirée au lot 3 : tous les écrans prennent celui-ci.
  */
 
 interface Props {

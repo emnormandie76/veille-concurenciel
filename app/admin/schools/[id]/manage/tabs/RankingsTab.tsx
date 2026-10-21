@@ -1,9 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import YearSelector from "../legacy/YearSelector";
-import ProgramSelector from "../legacy/ProgramSelector";
-import LastEdit from "../legacy/LastEdit";
+import { ExternalIcon } from "@/app/schools/icons";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { cx } from "@/components/ui/cx";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { Table, TBody, Td, Th, THead, Tr } from "@/components/ui/Table";
+import { TEXT_LINK } from "@/components/ui/text-link";
+import { sourceHref } from "@/lib/provenance";
+import YearSelector from "../components/YearSelector";
+import ProgramSelector from "../components/ProgramSelector";
+import { rankLabel, rankTone } from "../ranking-badge";
+import LastEdit from "../../LastEdit";
+
+/**
+ * L'onglet « Classements » de la gestion d'une école. Dans la charte depuis
+ * l'étape 9 (lot 3) : un tableau, les fenêtres en dialogues natifs ; le rang
+ * en badge d'un ton par palier, sans médaille (D68, ../ranking-badge.ts) ; le
+ * lien « Source » en http(s) seulement (D72, D27) ; l'erreur d'une fenêtre
+ * s'affiche dans la fenêtre (D67).
+ */
 
 interface ProgramOption {
   id: string;
@@ -47,6 +67,7 @@ export default function RankingsTab({ schoolId }: { schoolId: string }) {
   const [modalError, setModalError] = useState<string | null>(null);
 
   const [deleteRecord, setDeleteRecord] = useState<RankingRecord | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProgramsAndRankings();
@@ -114,6 +135,19 @@ export default function RankingsTab({ schoolId }: { schoolId: string }) {
     setIsModalOpen(true);
   };
 
+  const openDeleteModal = (rec: RankingRecord) => {
+    setDeleteError(null);
+    setDeleteRecord(rec);
+  };
+
+  // Une fenêtre ne se ferme pas pendant l'enregistrement.
+  const closeModal = () => {
+    if (!actionLoading) setIsModalOpen(false);
+  };
+  const closeDeleteModal = () => {
+    if (!actionLoading) setDeleteRecord(null);
+  };
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formProgramId) {
@@ -158,6 +192,7 @@ export default function RankingsTab({ schoolId }: { schoolId: string }) {
   const handleDelete = async () => {
     if (!deleteRecord) return;
     setActionLoading(true);
+    setDeleteError(null);
     try {
       const res = await fetch(`/api/admin/rankings/${deleteRecord.id}`, {
         method: "DELETE",
@@ -167,33 +202,17 @@ export default function RankingsTab({ schoolId }: { schoolId: string }) {
       setDeleteRecord(null);
       fetchProgramsAndRankings(selectedYear || undefined, selectedProgramId);
     } catch (err: any) {
-      setError(err.message);
+      // D67 : dans la fenêtre restée ouverte, où elle est lue.
+      setDeleteError(err.message);
     } finally {
       setActionLoading(false);
     }
   };
 
-  const getRankBadgeClass = (rank: number) => {
-    if (rank <= 3) return "badge-active"; // Vert
-    if (rank <= 10) return "badge-admin"; // Bleu
-    return "badge-inactive"; // Gris
-  };
-
   return (
-    <div>
-      {error && <div className="alert alert-danger" style={{ marginBottom: "20px" }}>{error}</div>}
-
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "16px",
-          marginBottom: "24px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <YearSelector
             availableYears={availableYears}
             selectedYear={selectedYear}
@@ -209,124 +228,104 @@ export default function RankingsTab({ schoolId }: { schoolId: string }) {
           />
         </div>
 
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={openAddModal}
-          disabled={programs.length === 0}
-        >
-          ➕ Ajouter un classement
-        </button>
+        <Button variant="primary" size="sm" onClick={openAddModal} disabled={programs.length === 0}>
+          Ajouter un classement
+        </Button>
       </div>
 
+      {error && <Alert tone="danger">{error}</Alert>}
+
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des classements...
-        </div>
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des classements...</p>
       ) : programs.length === 0 ? (
-        <div className="inline-form" style={{ textAlign: "center", padding: "40px" }}>
-          <p style={{ color: "var(--text-secondary)" }}>
-            Aucun programme enregistré. Créez des programmes dans l'onglet Campus & Programmes avant d'ajouter des classements.
+        <Card className="py-10 text-center">
+          <p className="text-sm text-ink-2">
+            Aucun programme enregistré. Créez des programmes dans l&apos;onglet Campus & Programmes avant d&apos;ajouter des classements.
           </p>
-        </div>
+        </Card>
       ) : rankingRecords.length === 0 ? (
-        <div className="inline-form" style={{ textAlign: "center", padding: "40px" }}>
-          <p style={{ color: "var(--text-secondary)", marginBottom: "16px" }}>
-            Aucun classement enregistré pour les critères sélectionnés.
-          </p>
-          <button className="btn btn-primary btn-sm" onClick={openAddModal}>
-            ➕ Ajouter un premier classement
-          </button>
-        </div>
+        <Card className="flex flex-col items-center gap-4 py-10 text-center">
+          <p className="text-sm text-ink-2">Aucun classement enregistré pour les critères sélectionnés.</p>
+          <Button variant="primary" size="sm" onClick={openAddModal}>
+            Ajouter un premier classement
+          </Button>
+        </Card>
       ) : (
-        <div className="table-container">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Programme</th>
-                <th>Nom du classement</th>
-                <th>Rang</th>
-                <th>Année</th>
-                <th>Source</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rankingRecords.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ fontWeight: 600 }}>
-                    {r.program?.name || "—"}
+        <Table caption="Classements">
+          <THead>
+            <Tr>
+              <Th>Programme</Th>
+              <Th>Nom du classement</Th>
+              <Th>Rang</Th>
+              <Th>Année</Th>
+              <Th>Source</Th>
+              <Th align="right">Actions</Th>
+            </Tr>
+          </THead>
+          <TBody>
+            {rankingRecords.map((r) => (
+              <Tr key={r.id}>
+                <Td>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium text-ink">{r.program?.name || "—"}</span>
                     <LastEdit text={r.last_edit} />
-                  </td>
-                  <td>{r.ranking_name}</td>
-                  <td>
-                    <span className={`badge ${getRankBadgeClass(r.rank)}`}>
-                      {r.rank === 1 ? "🥇 1er" : r.rank === 2 ? "🥈 2ème" : r.rank === 3 ? "🥉 3ème" : "#" + r.rank}
-                    </span>
-                  </td>
-                  <td>{r.academic_year}</td>
-                  <td>
-                    {r.source_url ? (
-                      <a
-                        href={r.source_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ color: "var(--accent)", textDecoration: "none", fontSize: "0.85rem" }}
-                      >
-                        Source 🔗
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => openEditModal(r)}
-                        style={{ padding: "4px 8px" }}
-                      >
-                        Modifier
-                      </button>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        onClick={() => setDeleteRecord(r)}
-                        style={{ padding: "4px 8px" }}
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+                </Td>
+                <Td>{r.ranking_name}</Td>
+                <Td>
+                  <Badge tone={rankTone(r.rank)}>{rankLabel(r.rank)}</Badge>
+                </Td>
+                <Td className="font-mono tabular-nums">{r.academic_year}</Td>
+                <Td>
+                  {sourceHref(r.source_url) ? (
+                    <a
+                      href={sourceHref(r.source_url)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cx(TEXT_LINK, "inline-flex items-center gap-1")}
+                    >
+                      Source
+                      <ExternalIcon />
+                    </a>
+                  ) : (
+                    <span className="text-ink-3">—</span>
+                  )}
+                </Td>
+                <Td>
+                  <div className="flex justify-end gap-1.5">
+                    <Button size="sm" onClick={() => openEditModal(r)}>
+                      Modifier
+                    </Button>
+                    <Button size="sm" variant="danger-soft" onClick={() => openDeleteModal(r)}>
+                      Supprimer
+                    </Button>
+                  </div>
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
       )}
 
       {/* Modal Formulaire */}
       {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">
-                {editingRecord ? "Modifier le classement" : "Ajouter un classement"}
-              </h3>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}>
-                ✕
-              </button>
-            </div>
+        <Dialog
+          titleId="ranking-dialog-title"
+          onClose={closeModal}
+          title={editingRecord ? "Modifier le classement" : "Ajouter un classement"}
+        >
+          {modalError && <Alert tone="danger">{modalError}</Alert>}
 
-            {modalError && <div className="alert alert-danger" style={{ marginBottom: "16px" }}>{modalError}</div>}
-
-            <form onSubmit={handleFormSubmit}>
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label">Programme *</label>
-                <select
-                  className="form-control"
+          <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
+            <Field id="ranking-program" label="Programme *">
+              {(control) => (
+                <Select
+                  {...control}
                   value={formProgramId}
                   onChange={(e) => setFormProgramId(e.target.value)}
                   disabled={Boolean(editingRecord)}
                   required
+                  data-autofocus={editingRecord ? undefined : true}
                 >
                   <option value="" disabled>
                     Choisir un programme
@@ -336,113 +335,98 @@ export default function RankingsTab({ schoolId }: { schoolId: string }) {
                       {p.name}
                     </option>
                   ))}
-                </select>
-              </div>
+                </Select>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ marginBottom: "16px" }}>
-                <label className="form-label">Nom du classement (Média / Organisme) *</label>
-                <input
+            <Field id="ranking-name" label="Nom du classement (Média / Organisme) *">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   value={formRankingName}
                   onChange={(e) => setFormRankingName(e.target.value)}
                   placeholder="ex: Le Figaro, SIGEM, L'Étudiant, FT..."
                   required
+                  data-autofocus={editingRecord ? true : undefined}
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="inline-form-grid" style={{ marginBottom: "16px", gridTemplateColumns: "1fr 1fr" }}>
-                <div className="form-group">
-                  <label className="form-label">Rang / Position *</label>
-                  <input
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field id="ranking-rank" label="Rang / Position *">
+                {(control) => (
+                  <Input
+                    {...control}
                     type="number"
-                    className="form-control"
+                    className="font-mono tabular-nums"
                     value={formRank}
                     onChange={(e) => setFormRank(Number(e.target.value))}
                     min={1}
                     required
                   />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Année académique *</label>
-                  <input
+                )}
+              </Field>
+              <Field id="ranking-year" label="Année académique *">
+                {(control) => (
+                  <Input
+                    {...control}
                     type="number"
-                    className="form-control"
+                    className="font-mono tabular-nums"
                     value={formYear}
                     onChange={(e) => setFormYear(Number(e.target.value))}
                     min={2000}
                     max={new Date().getFullYear() + 2}
                     required
                   />
-                </div>
-              </div>
+                )}
+              </Field>
+            </div>
 
-              <div className="form-group" style={{ marginBottom: "24px" }}>
-                <label className="form-label">URL de la source</label>
-                <input
+            <Field id="ranking-source-url" label="URL de la source">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   value={formSourceUrl}
                   onChange={(e) => setFormSourceUrl(e.target.value)}
                   placeholder="https://etudiant.lefigaro.fr/..."
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={actionLoading}
-                >
-                  Annuler
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={actionLoading}>
-                  {actionLoading ? "Enregistrement..." : editingRecord ? "Modifier" : "Ajouter"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <DialogFooter>
+              <Button onClick={closeModal} disabled={actionLoading}>
+                Annuler
+              </Button>
+              <Button type="submit" variant="primary" disabled={actionLoading}>
+                {actionLoading ? "Enregistrement..." : editingRecord ? "Modifier" : "Ajouter"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
       )}
 
       {/* Confirmation Suppression */}
       {deleteRecord && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3 className="modal-title">Supprimer le classement</h3>
-              <button className="modal-close" onClick={() => setDeleteRecord(null)}>
-                ✕
-              </button>
-            </div>
-            <p style={{ marginBottom: "24px", color: "var(--text-secondary)" }}>
-              Êtes-vous sûr de vouloir supprimer le classement{" "}
-              <strong style={{ color: "#ffffff" }}>
-                {deleteRecord.ranking_name + " (#" + deleteRecord.rank + ")"}
-              </strong>{" "}
-              pour le programme {deleteRecord.program?.name} ({deleteRecord.academic_year}) ?
-            </p>
-            <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setDeleteRecord(null)}
-                disabled={actionLoading}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={handleDelete}
-                disabled={actionLoading}
-              >
-                {actionLoading ? "Suppression..." : "Supprimer"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <Dialog titleId="ranking-delete-title" onClose={closeDeleteModal} title="Supprimer le classement">
+          {deleteError && <Alert tone="danger">{deleteError}</Alert>}
+          <p className="text-sm leading-relaxed text-ink-2">
+            Êtes-vous sûr de vouloir supprimer le classement{" "}
+            <strong className="font-medium text-ink">
+              {deleteRecord.ranking_name + " (#" + deleteRecord.rank + ")"}
+            </strong>{" "}
+            pour le programme {deleteRecord.program?.name} ({deleteRecord.academic_year}) ?
+          </p>
+          <DialogFooter>
+            <Button onClick={closeDeleteModal} disabled={actionLoading}>
+              Annuler
+            </Button>
+            <Button variant="danger" onClick={handleDelete} disabled={actionLoading}>
+              {actionLoading ? "Suppression..." : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
     </div>
   );

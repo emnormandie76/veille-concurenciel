@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, Select } from "@/components/ui/Field";
 
 /**
- * Le choix de l'année d'un onglet de gestion (Chiffres clés ; Tarifs,
- * Classements et Capacités au lot 3), avec l'ajout d'une année et la copie
- * depuis une autre. Dans la charte depuis l'étape 9 (lot 2) : une barre
- * d'outils ; chaque champ a son libellé visible (D65 : « Nouvelle année »,
- * « Copier depuis : »). Jusqu'au lot 3, les onglets encore à l'ancien style
- * prennent la copie de `../legacy/` (D61).
+ * Le choix de l'année d'un onglet de gestion (Chiffres clés, Tarifs,
+ * Classements, Capacités), avec l'ajout d'une année et la copie depuis une
+ * autre. Dans la charte depuis l'étape 9 (lot 2) : une barre d'outils ;
+ * chaque champ a son libellé visible (D65 : « Nouvelle année », « Copier
+ * depuis : »). La copie à l'ancien style de l'intervalle (D61) est retirée au
+ * lot 3.
  */
 
 interface YearSelectorProps {

@@ -216,8 +216,9 @@ const SCREENS = [
   "app/schools/[id]/programs/[pid]/page.tsx",
   "app/api-docs/page.tsx",
   // Étape 9, lot 2 (D54) : la liste des écoles, le cadre de la gestion d'une
-  // école et la page des campus ; quatre onglets et leurs pièces sont lus
-  // fichier par fichier (D60, D61 : ceux du lot 3 restent dehors).
+  // école et la page des campus. Leurs onglets n'ont pas de gabarit à eux (ils
+  // se posent dans celui de la gestion) : ils sont lus avec leur dossier, et
+  // depuis le lot 3 tout app/admin/schools/ est une seule source.
   "app/admin/schools/page.tsx",
   "app/admin/schools/[id]/manage/page.tsx",
   "app/admin/schools/[id]/campuses/page.tsx",
@@ -240,6 +241,20 @@ test("les écrans repris : un gabarit, aucune classe de l'ancien CSS, aucun styl
     assert.doesNotMatch(source, EMOJI, `${file} : émoji`);
   }
   for (const screen of SCREENS) assert.match(read(screen), /from "@\/components\/layout\/(AuthShell|AdminPage|SiteShell)"/, screen);
+});
+
+test("étape 9, lot 3 : toute la gestion des écoles est une seule source, et chacun de ses fichiers est dans la charte", () => {
+  // L'attendu change avec la règle : les sources du lot 2, fichier par
+  // fichier, laissaient dehors les onglets du lot 3 et leur îlot (D60, D61).
+  assert.ok(sourceDirs.includes("app/admin/schools"), "app/admin/schools en une source");
+  assert.deepEqual(sourceDirs.filter((dir) => dir.startsWith("app/admin/schools/")), [], "plus de source fichier par fichier");
+  const legacy = legacyCssClasses();
+  const files = filesUnder("app/admin/schools", /\.tsx$/);
+  assert.ok(files.length >= 14, files.join(", "));
+  for (const file of files) {
+    const old = [...classTokens(read(file))].filter((token) => legacy.has(token));
+    assert.deepEqual(old, [], `${file} : classes de l'ancien CSS`);
+  }
 });
 
 test("les gabarits : leur racine porte la classe charte", () => {

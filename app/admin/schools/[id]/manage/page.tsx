@@ -16,7 +16,6 @@ import PricingTab from "./tabs/PricingTab";
 import RankingsTab from "./tabs/RankingsTab";
 import CapacitiesTab from "./tabs/CapacitiesTab";
 import AdmissionsTab from "./tabs/AdmissionsTab";
-import TabFrame from "./legacy/TabFrame";
 
 /**
  * La gestion du contenu d'une école : un en-tête, puis huit onglets.
@@ -26,9 +25,8 @@ import TabFrame from "./legacy/TabFrame";
  * (D62). Seul l'onglet choisi est monté, comme avant : chacun relit ses
  * données en s'ouvrant.
  *
- * D60 : jusqu'au lot 3, les quatre onglets marqués `legacy` restent à
- * l'ancien style. Leur panneau se pose après le gabarit, hors du sous-arbre
- * `.charte`, dans l'îlot sombre de `legacy/TabFrame.tsx`.
+ * Depuis le lot 3, les huit onglets sont dans la charte et dans le gabarit :
+ * l'îlot sombre de l'intervalle (D60) est retiré.
  */
 
 interface SchoolManageData {
@@ -52,17 +50,16 @@ interface SchoolManageData {
   };
 }
 
-// `legacy` : l'onglet est encore à l'ancien style, jusqu'au lot 3 (D60).
 const TABS = [
-  { key: "info", label: "Infos", legacy: false },
-  { key: "accreditations", label: "Accréditations", legacy: false },
-  { key: "stats", label: "Statistiques", legacy: false },
-  { key: "campus-programs", label: "Campus & Programmes", legacy: true },
-  { key: "pricing", label: "Tarifs", legacy: true },
-  { key: "rankings", label: "Classements", legacy: true },
-  { key: "capacities", label: "Capacités", legacy: true },
+  { key: "info", label: "Infos" },
+  { key: "accreditations", label: "Accréditations" },
+  { key: "stats", label: "Statistiques" },
+  { key: "campus-programs", label: "Campus & Programmes" },
+  { key: "pricing", label: "Tarifs" },
+  { key: "rankings", label: "Classements" },
+  { key: "capacities", label: "Capacités" },
   // Étape 8 (D50) : l'année d'entrée et le niveau requis de chaque programme.
-  { key: "admissions", label: "Admissions", legacy: false },
+  { key: "admissions", label: "Admissions" },
 ] as const;
 
 type TabKey = typeof TABS[number]["key"];
@@ -158,56 +155,50 @@ export default function ManagePage() {
   };
 
   // Un panneau par onglet, pour que chaque onglet commande le sien ; seul le
-  // panneau choisi contient son onglet, dans l'îlot sombre s'il est encore à
-  // l'ancien style (D60).
-  const panel = ({ key, legacy }: (typeof TABS)[number]) => (
+  // panneau choisi contient son onglet.
+  const panel = ({ key }: (typeof TABS)[number]) => (
     <TabPanel key={key} idPrefix={ID_PREFIX} value={key} selected={activeTab === key}>
-      {activeTab === key && (legacy ? <TabFrame>{renderTab(key)}</TabFrame> : renderTab(key))}
+      {activeTab === key && renderTab(key)}
     </TabPanel>
   );
 
   return (
-    <>
-      <AdminPage
-        back={{ href: "/admin/schools", label: "← Retour à la liste des écoles" }}
-        title={school ? school.name : "…"}
-        badge={school && <Badge tone={schoolStatusTone(school.status)}>{school.status}</Badge>}
-        description={
-          school && (
-            <>
-              Domaine officiel :{" "}
-              <code className="rounded-control bg-surface-2 px-1.5 py-0.5 font-mono text-compact text-ink">
-                {school.official_domain}
-              </code>
-            </>
-          )
-        }
-      >
-        {loading && !school && (
-          <p className="py-10 text-center text-sm text-ink-2">Chargement des informations de l&apos;école...</p>
-        )}
+    <AdminPage
+      back={{ href: "/admin/schools", label: "← Retour à la liste des écoles" }}
+      title={school ? school.name : "…"}
+      badge={school && <Badge tone={schoolStatusTone(school.status)}>{school.status}</Badge>}
+      description={
+        school && (
+          <>
+            Domaine officiel :{" "}
+            <code className="rounded-control bg-surface-2 px-1.5 py-0.5 font-mono text-compact text-ink">
+              {school.official_domain}
+            </code>
+          </>
+        )
+      }
+    >
+      {loading && !school && (
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des informations de l&apos;école...</p>
+      )}
 
-        {error && <Alert tone="danger">{error}</Alert>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
-        {school && (
-          <div>
-            <Tabs
-              label="Rubriques de l'école"
-              idPrefix={ID_PREFIX}
-              value={activeTab}
-              onValueChange={(value) => setActiveTab(value as TabKey)}
-              items={TABS.map((tab) => {
-                const count = getTabCount(tab.key);
-                return { value: tab.key, label: tab.label, count: count !== null && count > 0 ? count : undefined };
-              })}
-            />
-            {TABS.filter((tab) => !tab.legacy).map(panel)}
-          </div>
-        )}
-      </AdminPage>
-
-      {/* D60 : les onglets du lot 3, hors du sous-arbre .charte. */}
-      {school && TABS.filter((tab) => tab.legacy).map(panel)}
-    </>
+      {school && (
+        <div>
+          <Tabs
+            label="Rubriques de l'école"
+            idPrefix={ID_PREFIX}
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as TabKey)}
+            items={TABS.map((tab) => {
+              const count = getTabCount(tab.key);
+              return { value: tab.key, label: tab.label, count: count !== null && count > 0 ? count : undefined };
+            })}
+          />
+          {TABS.map(panel)}
+        </div>
+      )}
+    </AdminPage>
   );
 }

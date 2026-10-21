@@ -168,10 +168,15 @@ branche `gestion` :
   (`LastEdit` et les deux sélecteurs à la charte en place, copies à
   l'ancien style dans `manage/legacy/` jusqu'au lot 3), D62 à D67 (barre
   d'onglets, dialogue à la place de `confirm()`, case à cocher, libellés,
-  tons des statuts, erreur dans la fenêtre). Détail : journal du plan ;
-- prochaine : le lot 3 (onglets Campus &
-  Programmes, Tarifs, Classements, Capacités ; il retire l'îlot et
-  `manage/legacy/`) dans une nouvelle session ; D15 reste ouverte.
+  tons des statuts, erreur dans la fenêtre) ; **lot 3** (onglets Campus &
+  Programmes, Tarifs, Classements, Capacités ; l'îlot et `manage/legacy/`
+  retirés) fait et validé le 21 octobre (le propriétaire demande le commit
+  et le push sur `gestion`) : D68 (podium du classement en tons de catégorie), D69
+  (interrupteurs d'un programme en cases à cocher), D70 (Tarifs : une vue à
+  la fois), D71 (modification rapide des places au clavier, erreur sous le
+  champ), D72 (lien « Source » en `http(s)`). Détail : journal du plan ;
+- prochaine : le lot 4 (inbox, IA gelée : le style seulement) dans une
+  nouvelle session ; D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -305,11 +310,10 @@ propriétaire le 20 octobre.
   d'émoji (D56) dans un écran de la charte. Sans preflight, un utilitaire
   d'affichage défait l'attribut `hidden` : ne pas en poser sur un élément
   qui se cache par `hidden` (`TabPanel` s'en garde). Depuis le lot 1, le
-  site public et `/api-docs` sont dans la charte ; depuis le lot 2, la
-  gestion des écoles aussi, sauf quatre onglets laissés à l'ancien style
-  dans un îlot hors du sous-arbre `.charte` (D60 : leurs fichiers et
-  `manage/legacy/` restent hors des `@source`) ; reste le back-office
-  (lots 3 à 6, `docs/architecture/charte-graphique.md` §9).
+  site public et `/api-docs` sont dans la charte ; depuis le lot 3, toute
+  la gestion des écoles aussi (`app/admin/schools/`, une seule source ;
+  plus d'îlot) ; reste le back-office : inbox, `/admin/cron`, menu latéral
+  (lots 4 à 6, `docs/architecture/charte-graphique.md` §9).
 
 ## Réseau du poste
 

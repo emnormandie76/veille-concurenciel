@@ -3,10 +3,10 @@
 import { Label, Select } from "@/components/ui/Field";
 
 /**
- * Le choix du programme d'un onglet de gestion (Admissions ; Tarifs et
- * Classements au lot 3). Dans la charte depuis l'étape 9 (lot 2) : le libellé
- * à gauche de la liste, comme avant ; jusqu'au lot 3, les onglets encore à
- * l'ancien style prennent la copie de `../legacy/` (D61).
+ * Le choix du programme d'un onglet de gestion (Tarifs, Classements,
+ * Admissions). Dans la charte depuis l'étape 9 (lot 2) : le libellé à gauche
+ * de la liste, comme avant ; la copie à l'ancien style de l'intervalle (D61)
+ * est retirée au lot 3.
  */
 
 interface ProgramOption {

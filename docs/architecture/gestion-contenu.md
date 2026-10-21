@@ -11,7 +11,9 @@
 > des programmes (étape 8 : §2, §3, §4, §5, §6, §7), puis le lot 1 de la
 > reprise graphique (étape 9 : le site public et `/api-docs` dans la
 > charte ; §3, §6, §7), puis son lot 2 (la gestion des écoles dans la
-> charte, sauf quatre onglets laissés au lot 3 ; §3.2, §6, §7). Cette fiche
+> charte, sauf quatre onglets laissés au lot 3 ; §3.2, §6, §7), **et le
+> 21 octobre** : le lot 3 (les quatre onglets restants dans la charte,
+> l'îlot retiré ; §3.2, §6, §7). Cette fiche
 > décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
@@ -212,7 +214,7 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 | Chemin | Niveau | IA ? |
 |---|---|---|
 | `/admin/schools` | `manager` : liste, création et suppression des écoles ; recherche libellée « Rechercher une école » (D65) ; badge de statut d'un ton par statut (D66, `school-status.ts`) | non |
-| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 8 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab`, et depuis l'étape 8 `AdmissionsTab` (« Admissions », D50 : une carte par entrée d'un programme, filtre par programme, année d'entrée, niveau requis et voie choisis dans les listes de `lib/program-entries.ts`, note, lien source ; compteur dans l'onglet) ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source » sur la carte d'une accréditation (« Source 🔗 » jusqu'au lot 2 de l'étape 9, D56). Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux). `?tab=` ouvre un onglet (`info`, `accreditations`, `stats`, `campus-programs`, `pricing`, `rankings`, `capacities`, `admissions`) : la vue des signalements y renvoie (étape 6 ; la catégorie « Admissions » mène au 8e onglet, D52). Depuis l'étape 9 (lot 2), dans la charte : en-tête (`AdminPage` avec lien de retour et badge de statut), onglets `Tabs` au modèle ARIA (« Rubriques de l'école », identifiants `manage-tab-<onglet>` et `manage-panel-<onglet>`), une ligne qui tient à 1 440 px et défile en largeur plus étroit (D62) ; seul l'onglet choisi est monté. Les quatre onglets du lot 3 (`CampusProgramsTab`, `PricingTab`, `RankingsTab`, `CapacitiesTab`) gardent l'ancien style dans un îlot sombre, hors du sous-arbre `.charte` (D60, `manage/legacy/TabFrame.tsx`), avec les copies à l'ancien style de `LastEdit`, `ProgramSelector` et `YearSelector` (D61, `manage/legacy/`) ; les quatre autres sont dans la charte : dialogues natifs, l'erreur d'une fenêtre dans la fenêtre (D67), le statut d'une accréditation en case à cocher (D64), la suppression d'une année de chiffres clés confirmée dans un dialogue (D63), « Nouvelle année » et « Copier depuis : » libellés (D65) | non |
+| `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 8 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab`, et depuis l'étape 8 `AdmissionsTab` (« Admissions », D50 : une carte par entrée d'un programme, filtre par programme, année d'entrée, niveau requis et voie choisis dans les listes de `lib/program-entries.ts`, note, lien source ; compteur dans l'onglet) ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source » sur la carte d'une accréditation (« Source 🔗 » jusqu'au lot 2 de l'étape 9, D56), et dans les tableaux des classements et des capacités (« Source 🔗 » jusqu'au lot 3, lien `http(s)` seulement depuis, D72). Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux). `?tab=` ouvre un onglet (`info`, `accreditations`, `stats`, `campus-programs`, `pricing`, `rankings`, `capacities`, `admissions`) : la vue des signalements y renvoie (étape 6 ; la catégorie « Admissions » mène au 8e onglet, D52). Depuis l'étape 9 (lot 2), dans la charte : en-tête (`AdminPage` avec lien de retour et badge de statut), onglets `Tabs` au modèle ARIA (« Rubriques de l'école », identifiants `manage-tab-<onglet>` et `manage-panel-<onglet>`), une ligne qui tient à 1 440 px et défile en largeur plus étroit (D62) ; seul l'onglet choisi est monté. Depuis le lot 3, les huit onglets sont dans le gabarit et dans la charte (l'îlot sombre de l'intervalle, D60, et les copies de `manage/legacy/`, D61, sont retirés) : dialogues natifs, l'erreur d'une fenêtre dans la fenêtre (D67), le statut d'une accréditation en case à cocher (D64), la suppression d'une année de chiffres clés et celle d'un tarif confirmées dans un dialogue (D63), « Nouvelle année » et « Copier depuis : » libellés (D65) ; au lot 3, une carte par campus et un tableau des programmes, l'alternance et l'expatriation d'un programme en cases à cocher (D69), ses campus en cases dans un groupe légendé ; l'onglet Tarifs garde une vue à la fois, le tableau ou la grille d'un programme (D70) ; le rang d'un classement en ton de catégorie par palier, sans médaille (D68, `manage/ranking-badge.ts`) ; la modification rapide des places au clavier, son erreur sous le champ (D71) | non |
 | `/admin/schools/[id]/campuses` | `manager` : les campus d'une école, avec « Modifié par … le … » (D29) ; dans la charte depuis l'étape 9 (lot 2), dialogues natifs, erreur dans la fenêtre (D67) | non |
 | `/admin/reports` | `manager` (étape 6, D31) : « Signalements », en attente (les plus anciens d'abord) et fermés (les 100 derniers). Pour chacun : l'école, la cible (« supprimé » si le campus ou le programme n'existe plus, D37), la catégorie, le message, le lien (`sourceHref`), le nom affiché de l'auteur (D39) ; « Ouvrir l'onglet de gestion » (l'onglet de la catégorie), « Traiter » et « Rejeter » (dialogue, réponse facultative pour l'auteur). Fermer un signalement ne date aucune donnée (D32) | non |
 | `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter | **oui** |
@@ -225,10 +227,9 @@ connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
 signalement (`SiteShell`) et « Signalements » (`AdminPage`, onglets et
 dialogue) ; depuis l'étape 9 (lot 1), tout le site (§3.1) ; depuis le
 lot 2, la liste des écoles, la page des campus et la gestion d'une école,
-sauf quatre onglets (D60). Les autres écrans du back-office gardent l'ancien
-style jusqu'à leur lot de l'étape 9 (D54 : onglets Campus & Programmes,
-Tarifs, Classements et Capacités au lot 3, inbox au lot 4, `/admin/cron` au
-lot 5, menu latéral et cadre au lot 6).
+sauf quatre onglets (D60), repris au lot 3. Les autres écrans du back-office
+gardent l'ancien style jusqu'à leur lot de l'étape 9 (D54 : inbox au lot 4,
+`/admin/cron` au lot 5, menu latéral et cadre au lot 6).
 
 ---
 
@@ -469,8 +470,8 @@ reprise, lot par lot).
 
 | | Écrans | Où |
 |---|---|---|
-| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) ; étape 9, lot 1 : l'accueil, les fiches école et programme, `/api-docs` ; lot 2 : la liste des écoles, la page des campus, le cadre de la gestion d'une école et ses onglets Infos, Accréditations, Statistiques (chiffres clés) et Admissions | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
-| **L'ancien style** | tous les autres : les onglets Campus & Programmes, Tarifs, Classements et Capacités (lot 3, dans l'îlot sombre de D60), inbox (lot 4), `/admin/cron` (lot 5), menu latéral du back-office (lot 6) | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
+| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) ; étape 9, lot 1 : l'accueil, les fiches école et programme, `/api-docs` ; lot 2 : la liste des écoles, la page des campus, le cadre de la gestion d'une école et ses onglets Infos, Accréditations, Statistiques (chiffres clés) et Admissions ; lot 3 : ses onglets Campus & Programmes, Tarifs, Classements et Capacités | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
+| **L'ancien style** | tous les autres : inbox (lot 4), `/admin/cron` (lot 5), menu latéral du back-office (lot 6) | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
 
 - [`app/globals.css`](../../app/globals.css) est le point d'entrée : ordre des
   couches `theme, legacy, base, components, utilities`, thème et utilitaires de
@@ -478,8 +479,8 @@ reprise, lot par lot).
   (`components/`, `app/(admin-auth)/admin/`, `app/admin/users/`,
   `app/account/`, depuis l'étape 6 `app/admin/reports/`, depuis le lot 1 de
   l'étape 9 `app/schools/`, `app/api-docs/` et le seul fichier
-  `app/page.tsx`, depuis le lot 2 la gestion des écoles fichier par fichier,
-  sans les onglets du lot 3 ni `manage/legacy/`) ; `block` et `fill-accent`,
+  `app/page.tsx`, depuis le lot 3 toute la gestion des écoles en une source,
+  `app/admin/schools/` ; au lot 2, fichier par fichier) ; `block` et `fill-accent`,
   homonymes de classes de `/admin/cron`, ne sont jamais générés.
 - La racine de chaque gabarit porte la classe `charte` : la base de la charte
   n'agit que dans ce sous-arbre. Le menu latéral du back-office reste l'ancien
@@ -496,9 +497,10 @@ reprise, lot par lot).
   Accréditations : cartes, fenêtre), repris au lot 2. **Repris au lot 2** :
   `LastEdit` (petit texte secondaire), les champs « URL de la source » des
   chiffres clés et des accréditations, le lien « Source » des cartes
-  (souligné, avec l'icône de lien externe du lot 1) ; restent à l'ancien
-  style, jusqu'au lot 3, les mêmes ajouts dans les quatre autres onglets,
-  avec les copies de `manage/legacy/` (D61). **Déjà repris au lot 1** :
+  (souligné, avec l'icône de lien externe du lot 1) ; **repris au lot 3**,
+  les mêmes ajouts dans les quatre autres onglets (champs « URL de la
+  source », « Source » des classements et des capacités, `LastEdit`), les
+  copies de `manage/legacy/` (D61) supprimées. **Déjà repris au lot 1** :
   la ligne `SourceLine` des fiches (petit texte, lien `TEXT_LINK`), le lien
   « Signaler une information » (étape 6, D33 ; bouton secondaire de la
   charte) et la section « Admissions » de la fiche programme (une liste
@@ -517,6 +519,11 @@ reprise, lot par lot).
   (`manage/legacy/TabFrame.tsx`, hors des `@source`, à l'ancien style) et
   les copies à l'ancien style des trois pièces partagées ; les tons du
   statut d'une école dans `app/admin/schools/school-status.ts` (D66).
+- Étape 9, lot 3 (D68 à D72) : l'îlot et `manage/legacy/` retirés, les
+  huit onglets dans le gabarit ; aucun composant changé ; les tons du rang
+  d'un classement dans `app/admin/schools/[id]/manage/ranking-badge.ts`
+  (D68) ; les cases à cocher d'un programme (D69) ; la modification rapide
+  des places (D71) ; le lien « Source » par `sourceHref` (D72).
 - Deux défauts des composants de l'étape 4, vus au contrôle visuel de
   l'étape 6 et corrigés : les onglets (`Tabs`) montraient une barre de
   défilement verticale (le filet du bas est désormais une ombre intérieure) ;
@@ -525,8 +532,8 @@ reprise, lot par lot).
   dialogue est resté fermé).
 - CSP posée par [`next.config.ts`](../../next.config.ts), inchangée :
   `style-src 'self' 'unsafe-inline'` ; aucune violation sur un build de
-  production (19 octobre ; et le 20 octobre aux lots 1 et 2 de l'étape 9,
-  dans Chromium, sur une base Postgres jetable du conteneur, D55).
+  production (19 octobre ; et les 20 et 21 octobre aux lots 1 à 3 de
+  l'étape 9, dans Chromium, sur une base Postgres jetable du conteneur, D55).
 
 ---
 
@@ -584,10 +591,13 @@ reprise, lot par lot).
   couverte), `test/manager-screens.test.ts` (`LastEdit` sur chaque écran de
   gestion ; D30, les pourcentages en `step="any"` ; depuis le lot 2 de
   l'étape 9 : la version de la charte et la copie à l'ancien style de
-  `LastEdit`, les seuls onglets du lot 3 sur `manage/legacy/` (D61), leur
-  îlot après le gabarit (D60), le dialogue des chiffres clés sans
+  `LastEdit` (D61), l'îlot après le gabarit (D60), retirés au lot 3 avec
+  la transition : plus d'îlot ni de copie, les huit onglets dans le
+  gabarit ; le dialogue des chiffres clés et celui des tarifs sans
   `confirm()` (D63), la case à cocher des accréditations (D64), les tons
-  du statut d'une école (D66)),
+  du statut d'une école (D66) ; au lot 3, le rang d'un classement (D68),
+  les cases d'un programme (D69), la modification rapide des places
+  (D71), le lien « Source » en `http(s)` (D72)),
   `test/provenance-pages.test.ts` (les fiches rendues : source, « Modifié
   par », pas d'adresse ni de lien hors `http(s)`) ; dans `users.test.ts`, D24.
 - **Signalements** (étape 6) : `test/content-reports.test.ts`
@@ -646,7 +656,9 @@ reprise, lot par lot).
   identiques à `charte-graphique.md` §2 et §3). Étape 9, lot 1 :
   `SCREENS` compte l'accueil, les deux fiches et `/api-docs`, puis, au
   lot 2, la liste des écoles, la gestion d'une école et la page des campus
-  (`ui-components` : les deux emplacements d'`AdminPage`) ;
+  (`ui-components` : les deux emplacements d'`AdminPage`) ; au lot 3,
+  `app/admin/schools/` en une seule source, aucun de ses fichiers à
+  l'ancien style ;
   `reports-pages.test.ts` attend le lien « Signaler une information » en
   bouton secondaire de la charte, et des fiches qui posent `SiteShell` sans
   « Back-office » (D57), toujours sans lire la session.

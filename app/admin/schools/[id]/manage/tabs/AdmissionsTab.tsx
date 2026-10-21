@@ -285,7 +285,8 @@ export default function AdmissionsTab({ schoolId }: { schoolId: string }) {
           {entries.map((entry) => (
             <li key={entry.id}>
               <Card aria-labelledby={`entry-${entry.id}-title`} className="flex h-full flex-col gap-3">
-                <div className="flex items-start justify-between gap-3">
+                {/* D73 : un titre long garde la largeur, les boutons passent dessous. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                   <h3 id={`entry-${entry.id}-title`} className="min-w-0 font-medium break-words text-ink">
                     {describeEntry(entry)}
                   </h3>

@@ -16,6 +16,10 @@
  * - Étape 9 (lot 1) : dans la charte (gabarit `SiteShell` sans « Back-office »,
  *   D57 ; tableau des tarifs `Table`, badges, listes) ; émojis retirés (D56).
  *   Textes, identifiants et données inchangés.
+ * - D74 (contrôle du 21 octobre) : la note d'un tarif quitte sa colonne, où une
+ *   note longue faisait une ligne de plus de 1 000 px et poussait le tableau
+ *   hors de son cadre ; elle s'affiche sous les montants de son année, sur
+ *   toute la largeur. Chaque année est un groupe de lignes (`TBody`).
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
@@ -239,13 +243,14 @@ export default async function ProgramDetailPage({ params }: Props) {
                   <Th align="right">Année 5</Th>
                   <Th align="right">Total cursus</Th>
                   <Th align="right">Tarif intl.</Th>
-                  <Th>Notes</Th>
                   <Th>Source</Th>
                 </Tr>
               </THead>
-              <TBody>
-                {program.pricingRecords.map((pr) => (
-                  <Tr key={pr.id} id={`pricing-row-${pr.id}`}>
+              {/* D74 : un groupe de lignes par année, ses montants puis sa note ;
+                  le filet sépare les années, pas une année de sa note. */}
+              {program.pricingRecords.map((pr) => (
+                <TBody key={pr.id} className="border-b border-line last:border-b-0">
+                  <tr id={`pricing-row-${pr.id}`}>
                     <Td numeric align="left" className="font-medium text-ink">
                       {pr.academic_year}
                     </Td>
@@ -259,7 +264,6 @@ export default async function ProgramDetailPage({ params }: Props) {
                       amount={pr.intl_year_1_fee ?? pr.intl_total_fee ?? null}
                       currency={pr.intl_currency ?? pr.currency}
                     />
-                    <Td className="max-w-52 min-w-40 text-xs leading-relaxed text-ink-2">{pr.additional_fees_notes ?? "—"}</Td>
                     <Td className="max-w-56 min-w-36">
                       {sourceHref(pr.source_url) || describeProvenance(pr) ? (
                         <SourceLine href={sourceHref(pr.source_url)} provenance={describeProvenance(pr)} />
@@ -267,9 +271,16 @@ export default async function ProgramDetailPage({ params }: Props) {
                         <span className="text-ink-3">—</span>
                       )}
                     </Td>
-                  </Tr>
-                ))}
-              </TBody>
+                  </tr>
+                  {pr.additional_fees_notes && (
+                    <tr id={`pricing-notes-${pr.id}`}>
+                      <Td colSpan={9} className="pt-0 pb-3 text-xs leading-relaxed text-ink-2">
+                        <span className="font-medium text-ink">Notes :</span> {pr.additional_fees_notes}
+                      </Td>
+                    </tr>
+                  )}
+                </TBody>
+              ))}
             </Table>
           )}
         </section>

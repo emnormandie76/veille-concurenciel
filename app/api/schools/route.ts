@@ -7,6 +7,9 @@
  *
  * - Filtre status = ACTIVE obligatoire (architecture.md §7.1)
  * - Inclut campuses + programs pour la navigation
+ * - `programs_count` : tous les programmes de l'école, avec ou sans campus,
+ *   ceux de sa fiche (plan gestion-contenu, D75 : l'accueil les comptait à
+ *   travers les campus, 51 pour 46)
  * - Cache ISR 1h (Étape 8.3)
  * - Référence : task.md §8.2
  */
@@ -44,6 +47,7 @@ export async function GET(request: Request) {
           name: true,
           official_domain: true,
           status: true,
+          _count: { select: { programs: true } },
           campuses: {
             select: {
               id: true,
@@ -77,6 +81,7 @@ export async function GET(request: Request) {
       name: school.name,
       official_domain: school.official_domain,
       status: school.status,
+      programs_count: school._count.programs,
       campuses: school.campuses.map((campus) => ({
         id: campus.id,
         name: campus.name,

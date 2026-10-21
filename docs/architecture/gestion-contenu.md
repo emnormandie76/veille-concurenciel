@@ -13,7 +13,9 @@
 > charte ; §3, §6, §7), puis son lot 2 (la gestion des écoles dans la
 > charte, sauf quatre onglets laissés au lot 3 ; §3.2, §6, §7), **et le
 > 21 octobre** : le lot 3 (les quatre onglets restants dans la charte,
-> l'îlot retiré ; §3.2, §6, §7). Cette fiche
+> l'îlot retiré ; §3.2, §6, §7), puis les corrections du contrôle du
+> propriétaire (D73 à D75 : cartes du gestionnaire, notes des tarifs,
+> nombre de programmes de l'accueil ; §3.1, §4.3, §6, §7). Cette fiche
 > décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
@@ -142,7 +144,7 @@ reste affiché dans « Modifié par », quel que soit son état (D25).
 
 | Chemin | Rôle | Données |
 |---|---|---|
-| `/` ([`app/page.tsx`](../../app/page.tsx)) | liste et recherche des écoles | client : `fetch('/api/schools')`, erreurs par [`lib/public-schools.ts`](../../lib/public-schools.ts) |
+| `/` ([`app/page.tsx`](../../app/page.tsx)) | liste et recherche des écoles | client : `fetch('/api/schools')`, erreurs par [`lib/public-schools.ts`](../../lib/public-schools.ts) ; les programmes de chaque école par `programs_count`, comme sa fiche (D75) |
 | `/schools/[id]` | fiche école (campus, programmes, chiffres clés, accréditations) | serveur, Prisma, ISR 1 h |
 | `/schools/[id]/programs/[pid]` | fiche programme (admissions depuis l'étape 8, tarifs, places, classements, rattachements) | serveur, Prisma, ISR 1 h |
 | `/api-docs` | documentation de l'API v1 | statique, verrouillée par `test/api-docs.test.ts` |
@@ -372,7 +374,9 @@ le connaît pas, et **Next.js n'écrit jamais `PipelineJob`** (piège 5).
 Session exigée par le proxy (401 en JSON sans session) ; les routes elles-mêmes
 ne lisent pas la session, ce qui garde leur cache ISR.
 
-- `app/api/schools/*` : 3 routes GET, ISR 1 h, utilisées par l'accueil.
+- `app/api/schools/*` : 3 routes GET, ISR 1 h, utilisées par l'accueil. La
+  liste rend pour chaque école `programs_count`, tous ses programmes avec ou
+  sans campus (D75 : l'accueil les comptait à travers les campus, 51 pour 46).
 - `app/api/v1/*` : 15 routes GET, plafonnées à 60 requêtes par minute et par
   IP ; de la provenance, la date seule (`updated_at`, D25 revue le
   20 octobre). Depuis l'étape 8, le détail d'un programme et la comparaison
@@ -524,6 +528,12 @@ reprise, lot par lot).
   d'un classement dans `app/admin/schools/[id]/manage/ranking-badge.ts`
   (D68) ; les cases à cocher d'un programme (D69) ; la modification rapide
   des places (D71) ; le lien « Source » par `sourceHref` (D72).
+- Contrôle du propriétaire, 21 octobre (D73, D74) : sur les cartes des
+  onglets Accréditations, Admissions et Campus & Programmes, l'en-tête passe
+  à la ligne (`flex-wrap`) : un titre long garde la largeur, « Modifier » et
+  « Supprimer » descendent dessous ; sur la fiche programme, la note d'un
+  tarif quitte sa colonne et s'affiche sous les montants de son année, sur
+  toute la largeur, chaque année dans son `TBody`.
 - Deux défauts des composants de l'étape 4, vus au contrôle visuel de
   l'étape 6 et corrigés : les onglets (`Tabs`) montraient une barre de
   défilement verticale (le filet du bas est désormais une ombre intérieure) ;
@@ -597,9 +607,11 @@ reprise, lot par lot).
   `confirm()` (D63), la case à cocher des accréditations (D64), les tons
   du statut d'une école (D66) ; au lot 3, le rang d'un classement (D68),
   les cases d'un programme (D69), la modification rapide des places
-  (D71), le lien « Source » en `http(s)` (D72)),
+  (D71), le lien « Source » en `http(s)` (D72) ; l'en-tête des cartes qui
+  passe à la ligne (D73)),
   `test/provenance-pages.test.ts` (les fiches rendues : source, « Modifié
-  par », pas d'adresse ni de lien hors `http(s)`) ; dans `users.test.ts`, D24.
+  par », pas d'adresse ni de lien hors `http(s)` ; la note d'un tarif sous
+  ses montants, D74) ; dans `users.test.ts`, D24.
 - **Signalements** (étape 6) : `test/content-reports.test.ts`
   (`lib/content-reports.ts` : corps lu et borné, longueur comptée comme
   Postgres, lien D27, décision, onglet de chaque catégorie, ce que voient le
@@ -641,7 +653,9 @@ reprise, lot par lot).
   `provenance-pages` (la section de la fiche) ; `content-reports`,
   `content-reports-migration` et `reports-pages` suivent D52 et D50.
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
-  `test/page-titles.test.ts`, `test/silent-pages.test.ts`.
+  `test/page-titles.test.ts`, `test/silent-pages.test.ts` (dont D75 : les
+  programmes de chaque école, et non la somme par campus ; la liste
+  `/api/schools` et son `programs_count` dans `test/api/public-schools.test.ts`).
 - **Charte** (étape 4) : `test/ui-components.test.ts` (le HTML rendu par
   React côté serveur : libellés, aides et erreurs reliés, rôles des messages,
   onglets au modèle ARIA et leur clavier, dialogue nommé, boutons qui

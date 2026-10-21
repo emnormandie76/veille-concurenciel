@@ -72,6 +72,8 @@ const SCHOOL = {
   name: "EM Normandie",
   official_domain: "em-normandie.com",
   status: "ACTIVE",
+  // Trois programmes : p-1 sur deux campus, p-2, et un troisième sans campus.
+  programs_count: 3,
   campuses: [
     { id: "c-1", name: "Caen", city: "Caen", programs: [{ id: "p-1" }, { id: "p-2" }] },
     { id: "c-2", name: "Paris", city: "Paris", programs: [{ id: "p-1" }] },
@@ -106,13 +108,25 @@ test("readSchoolsResponse : une erreur de l'API n'est jamais une liste vide", ()
   assert.match(SCHOOLS_LOAD_ERROR, /n'ont pas pu être chargées/);
 });
 
-test("summarizeSchools : écoles, campus et programmes par campus", () => {
-  assert.deepEqual(summarizeSchools([SCHOOL, { ...SCHOOL, id: "s-2", campuses: [] }], 6), {
+// Plan gestion-contenu, D75 (contrôle du 21 octobre) : les programmes sont
+// ceux de l'école (`programs_count`, celui de sa fiche), et non plus la somme
+// par campus. L'attendu était 3 pour cette liste (p-1 compté deux fois, le
+// programme sans campus oublié) : l'accueil annonçait 51 programmes pour 46.
+test("summarizeSchools : écoles, campus, et les programmes de chaque école (D75)", () => {
+  assert.deepEqual(summarizeSchools([SCHOOL, { ...SCHOOL, id: "s-2", campuses: [], programs_count: 0 }], 6), {
     schools: 6,
     campuses: 2,
     programs: 3,
   });
+  const noCampus = { ...SCHOOL, id: "s-3", campuses: [], programs_count: 15 };
+  assert.deepEqual(summarizeSchools([SCHOOL, noCampus], 2), { schools: 2, campuses: 2, programs: 18 });
   assert.deepEqual(summarizeSchools([], 0), { schools: 0, campuses: 0, programs: 0 });
+});
+
+test("D75 : la carte d'une école de l'accueil compte ses programmes comme sa fiche", () => {
+  const page = read("app/page.tsx");
+  assert.match(page, /const programCount = school\.programs_count;/);
+  assert.doesNotMatch(page, /c\.programs\.length/, "plus de somme par campus");
 });
 
 // ── lib/ticket-refresh.ts ────────────────────────────────────────────

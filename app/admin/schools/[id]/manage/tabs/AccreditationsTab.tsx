@@ -198,7 +198,8 @@ export default function AccreditationsTab({ schoolId }: { schoolId: string }) {
           {accreditations.map((acc) => (
             <li key={acc.id}>
               <Card aria-labelledby={`acc-${acc.id}-title`} className="flex h-full flex-col gap-3">
-                <div className="flex items-start justify-between gap-3">
+                {/* D73 : un titre long garde la largeur, les boutons passent dessous. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                   <h3 id={`acc-${acc.id}-title`} className="min-w-0 font-medium break-words text-ink">
                     {acc.accreditation_name}
                   </h3>

@@ -195,7 +195,7 @@ variantes (`cx` ne fusionne pas les classes contradictoires).
 | Bouton | `Button.tsx` | `primary` (une action principale par zone), `secondary` (par défaut), `danger` (confirme une suppression), `danger-soft` (ouvre une suppression depuis une ligne), `ghost` (action discrète, bouton d'icône) ; tailles `md`, `sm`, `icon`. `type="button"` par défaut. `buttonClasses()` habille un lien |
 | Champ | `Field.tsx` : `Field`, `Input`, `Textarea`, `Label` | `Field` relie libellé, aide (`<id>-hint`) et erreur (`<id>-error`) au contrôle : `htmlFor`, `aria-describedby`, `aria-invalid`. Un libellé visible, toujours ; le texte indicatif ne le remplace jamais |
 | Liste déroulante | `Field.tsx` : `Select` | `<select>` natif, avec une flèche ; se place dans un `Field` |
-| Tableau | `Table.tsx` : `Table`, `THead`, `TBody`, `Tr`, `Th`, `Td` | `caption` (lu, pas affiché) ; en-têtes `scope="col"` ; `numeric` aligne à droite en chiffres tabulaires ; défile en largeur dans son cadre ; `id` va au `<table>` (un écran repris garde le sien : `pricing-table`, étape 9) |
+| Tableau | `Table.tsx` : `Table`, `THead`, `TBody`, `Tr`, `Th`, `Td` | `caption` (lu, pas affiché) ; en-têtes `scope="col"` ; `numeric` aligne à droite en chiffres tabulaires ; défile en largeur dans son cadre ; `id` va au `<table>` (un écran repris garde le sien : `pricing-table`, étape 9). Un texte long ne prend pas une colonne : il passe sur sa propre ligne, sous celle qu'il complète (`colSpan`), les deux dans un `TBody` qui porte le filet (D74 : la note d'un tarif) |
 | Carte | `Card.tsx` : `Card`, `CardHeader` | un bloc détaché (formulaire, groupe de faits) ; `CardHeader` donne un titre `h2` et un `titleId` pour `aria-labelledby` |
 | Onglets | `Tabs.tsx` : `Tabs`, `TabPanel` ; `tabs-keys.ts` | modèle ARIA : flèches gauche et droite (en boucle), Début, Fin ; un seul onglet dans l'ordre de tabulation ; compteur facultatif. Le filet du bas est une ombre intérieure, que couvre le soulignement de l'onglet choisi : rien ne déborde de la liste, qui défile en largeur sans barre verticale (corrigé à l'étape 6). Un `TabPanel` caché ne prend pas le `className` de l'appelant : sans preflight, un utilitaire d'affichage (`flex`) défaisait l'attribut `hidden` et montrait le panneau (corrigé à l'étape 9) |
 | Badge | `Badge.tsx` | `neutral`, `accent`, `solid` (catégories : rôles) ; `success`, `warning`, `danger` (états) ; `wrap` pour un texte long qui passe à la ligne (le concours d'un programme, étape 9) : hauteur minimale, arrondi d'un contrôle |
@@ -232,6 +232,13 @@ un groupe légendé, chacune dans une étiquette bordée qui prend l'accent une
 fois cochée (`has-checked:`). La modification rapide des places (D71) : un
 bouton natif souligné en tirets, un champ nommé par `aria-label`, deux
 boutons d'icône nommés, l'erreur sous le champ en `role="alert"`.
+
+Une carte du gestionnaire dont le titre partage sa ligne avec des boutons
+(accréditation, admission, campus) a un en-tête qui passe à la ligne
+(`flex flex-wrap`, D73, contrôle du 21 octobre) : un titre court garde ses
+boutons à côté, un titre long garde la largeur et les boutons descendent
+dessous. Sans cela, « Modifier » et « Supprimer » ne laissaient que 80 px au
+titre, coupé au milieu d'un mot.
 
 **Pas d'émoji** (§1, D56) : les émojis décoratifs des anciens écrans partent
 à la reprise, leurs textes restent ; une icône SVG cachée aux lecteurs

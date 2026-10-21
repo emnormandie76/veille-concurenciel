@@ -23,6 +23,8 @@ export interface PublicSchool {
   name: string;
   official_domain: string;
   status: string;
+  /** Tous les programmes de l'école, avec ou sans campus : ceux de sa fiche (D75). */
+  programs_count: number;
   campuses: PublicCampus[];
 }
 
@@ -48,7 +50,12 @@ export function readSchoolsResponse(httpStatus: number, body: unknown): SchoolsL
   return { ok: true, schools: data as PublicSchool[], total: pagination.total };
 }
 
-/** Les chiffres du bandeau : écoles (total de l'API), campus, programmes par campus. */
+/**
+ * Les chiffres du bandeau : écoles (total de l'API), campus, programmes. Les
+ * programmes sont ceux de chaque école (`programs_count`), et non la somme par
+ * campus, qui comptait deux fois un programme enseigné sur deux campus et
+ * oubliait ceux sans campus (plan gestion-contenu, D75 : 51 pour 46).
+ */
 export function summarizeSchools(
   schools: PublicSchool[],
   total: number
@@ -57,7 +64,7 @@ export function summarizeSchools(
   let programs = 0;
   for (const school of schools) {
     campuses += school.campuses.length;
-    for (const campus of school.campuses) programs += campus.programs.length;
+    programs += school.programs_count;
   }
   return { schools: total, campuses, programs };
 }

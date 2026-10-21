@@ -251,6 +251,23 @@ test("D71 : la modification rapide des places se fait au clavier, et son erreur 
   assert.match(source, /if \(e\.key === "Escape"\) cancelInlineEdit\(c\.id\);/);
 });
 
+test("D73 : sur une carte, un titre long garde la largeur, et ses boutons passent dessous", () => {
+  // Contrôle du 21 octobre : « Modifier » et « Supprimer » ne laissaient que
+  // 80 px au titre, coupé au milieu d'un mot (« Managemen-t »).
+  for (const [tab, prefix] of [
+    ["AccreditationsTab", "acc"],
+    ["AdmissionsTab", "entry"],
+    ["CampusProgramsTab", "campus"],
+  ]) {
+    const source = read(`${DIR}/manage/tabs/${tab}.tsx`);
+    assert.match(
+      source,
+      new RegExp(`<div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">\\s*<h3 id=\\{\`${prefix}-\\$\\{`),
+      tab,
+    );
+  }
+});
+
 test("D72 : le lien « Source » des classements et des capacités n'est cliquable qu'en http(s)", () => {
   for (const tab of ["RankingsTab", "CapacitiesTab"]) {
     const source = read(`${DIR}/manage/tabs/${tab}.tsx`);

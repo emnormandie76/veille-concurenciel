@@ -172,6 +172,30 @@ test("fiche programme : sans entrée, la section le dit", async () => {
   assert.match(out, /Aucune donnée d&#x27;admission disponible\./);
 });
 
+// Plan gestion-contenu, D74 (contrôle du 21 octobre) : une colonne « Notes »
+// tassée à 160 px faisait d'une note longue une ligne de plus de 1 000 px, et
+// le tableau débordait de son cadre. La note passe sous les montants de son
+// année, sur toute la largeur ; une année et sa note forment un groupe.
+test("D74 : la note d'un tarif s'affiche sous ses montants, sur toute la largeur du tableau", async () => {
+  const NOTE = "Frais de dossier : 50 EUR ; CVEC en sus.";
+  const [withNote, withoutNote] = PROGRAM.pricingRecords;
+  db.use({ program: { findUnique: () => ({ ...PROGRAM, pricingRecords: [{ ...withNote, additional_fees_notes: NOTE }, withoutNote] }) } });
+  const out = html(await ProgramPage({ params: Promise.resolve({ id: SCHOOL.id, pid: PROGRAM.id }) }));
+  const table = out.match(/<table id="pricing-table"[\s\S]*?<\/table>/)?.[0] ?? "";
+
+  assert.doesNotMatch(table, /<th[^>]*>Notes<\/th>/, "plus de colonne « Notes »");
+  assert.equal(table.match(/<th[\s>]/g)?.length, 9, "neuf en-têtes (« <thead » non compté)");
+  const groups = table.match(/<tbody[\s\S]*?<\/tbody>/g) ?? [];
+  assert.equal(groups.length, 2, "un groupe de lignes par année");
+
+  const [first, second] = groups;
+  const amounts = first.match(/<tr id="pricing-row-pr-1"[\s\S]*?<\/tr>/)?.[0] ?? "";
+  assert.equal(amounts.match(/<td/g)?.length, 9, "l'année, sept montants, la source");
+  assert.match(first, /<\/tr><tr id="pricing-notes-pr-1"><td[^>]*colSpan="9"[^>]*>[\s\S]*Notes :[\s\S]*Frais de dossier : 50 EUR ; CVEC en sus\.<\/td><\/tr>/i);
+  assert.match(second, /id="pricing-row-pr-0"/);
+  assert.doesNotMatch(second, /pricing-notes-/, "sans note, pas de ligne vide");
+});
+
 test("fiche école : l'en-tête dit qui a modifié l'école ; chiffres clés et accréditations reçoivent leur provenance", async () => {
   db.use({
     school: {

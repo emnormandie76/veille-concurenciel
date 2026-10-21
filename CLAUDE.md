@@ -174,7 +174,14 @@ branche `gestion` :
   et le push sur `gestion`) : D68 (podium du classement en tons de catégorie), D69
   (interrupteurs d'un programme en cases à cocher), D70 (Tarifs : une vue à
   la fois), D71 (modification rapide des places au clavier, erreur sous le
-  champ), D72 (lien « Source » en `http(s)`). Détail : journal du plan ;
+  champ), D72 (lien « Source » en `http(s)`) ; le 21 octobre, sur le poste,
+  relecture des lots 1 à 3 et contrôle dans le Chrome du propriétaire sur
+  `dev` (D55, second temps) : trois défauts corrigés, D73 (titre des cartes
+  écrasé par ses boutons), D74 (note d'un tarif sous ses montants), D75
+  (l'accueil compte les programmes comme les fiches, `programs_count` de
+  `/api/schools`), validés le 21 octobre (le propriétaire demande le commit
+  et le push sur `gestion`, pas de mise en production). Détail : journal
+  du plan ;
 - prochaine : le lot 4 (inbox, IA gelée : le style seulement) dans une
   nouvelle session ; D15 reste ouverte.
 

@@ -10,6 +10,9 @@
  *   `SiteShell`, sans le lien « Back-office », la page ne lisant pas la
  *   session, D57) ; émojis retirés (D56) ; libellé visible de la recherche
  *   (D58). Textes, identifiants et comportement inchangés.
+ * - D75 (contrôle du 21 octobre) : les programmes de chaque école, comme sa
+ *   fiche (`programs_count` de /api/schools), au bandeau comme sur les
+ *   cartes, et non plus la somme par campus.
  * - Référence : task.md §8.1, architecture.md §7.1
  */
 
@@ -98,11 +101,6 @@ export default function HomePage() {
     const t = setTimeout(() => fetchSchools(query), 280);
     return () => clearTimeout(t);
   }, [query, fetchSchools]);
-
-  const totalCampuses = (schools: School[]) =>
-    schools.reduce((acc, s) => acc + s.campuses.length, 0);
-  const totalPrograms = (schools: School[]) =>
-    schools.reduce((acc, s) => s.campuses.reduce((a, c) => a + c.programs.length, acc), 0);
 
   return (
     <SiteShell current="schools" showBackOffice={false}>
@@ -203,7 +201,7 @@ export default function HomePage() {
             <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {schools.map((school) => {
                 const campusCount = school.campuses.length;
-                const programCount = school.campuses.reduce((a, c) => a + c.programs.length, 0);
+                const programCount = school.programs_count;
                 return (
                   <li key={school.id}>
                     <Link

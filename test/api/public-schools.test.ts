@@ -19,10 +19,12 @@ const db = installFakePrisma();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Handler = (request: Request, ctx: { params: Promise<any> }) => Promise<Response>;
+let getSchools: (request: Request) => Promise<Response>;
 let getSchool: Handler;
 let getProgram: Handler;
 
 before(async () => {
+  ({ GET: getSchools } = await import("../../app/api/schools/route"));
   ({ GET: getSchool } = await import("../../app/api/schools/[id]/route"));
   ({ GET: getProgram } = await import("../../app/api/schools/[id]/programs/[pid]/route"));
 });
@@ -37,6 +39,34 @@ function assertSchema() {
   // Tables jamais exposées (architecture.md §8.9).
   assert.doesNotMatch(JSON.stringify(db.calls.map((c) => c.args)), /contributions|password_hash|ai_extracted_json/);
 }
+
+// ── /api/schools ─────────────────────────────────────────────────────
+
+// Plan gestion-contenu, D75 (contrôle du 21 octobre) : l'accueil comptait les
+// programmes à travers leurs campus (51 pour 46 ; Em Lyon, 24 programmes dont
+// 15 sans campus, en montrait 9). La liste rend le nombre de programmes de
+// chaque école, celui de sa fiche.
+test("GET /api/schools : chaque école dit son nombre de programmes, avec ou sans campus (D75)", async () => {
+  const row = {
+    ...SCHOOL,
+    _count: { programs: 24 },
+    campuses: [{ id: "c-1", name: "Lyon", city: "Lyon", programCampuses: [{ program: { id: "p-1", name: "PGE", admission_exam: null, is_alternance_possible: false, is_expatriation_mandatory: false } }] }],
+  };
+  db.use({ school: { findMany: () => [row], count: () => 1 } });
+
+  const res = await getSchools(get("http://localhost/api/schools?limit=50"));
+
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.data[0].programs_count, 24);
+  assert.equal(body.data[0].campuses[0].programs.length, 1, "les programmes par campus restent, pour la navigation");
+  assert.equal("_count" in body.data[0], false);
+  const findMany = db.calls.find((c) => c.model === "school" && c.method === "findMany")!;
+  const args = findMany.args[0] as { where: { status: string }; select: { _count: unknown } };
+  assert.equal(args.where.status, "ACTIVE");
+  assert.deepEqual(args.select._count, { select: { programs: true } });
+  assertSchema();
+});
 
 // ── /api/schools/[id] ────────────────────────────────────────────────
 

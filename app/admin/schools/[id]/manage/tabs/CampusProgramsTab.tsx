@@ -355,7 +355,8 @@ export default function CampusProgramsTab({ schoolId }: { schoolId: string }) {
             {campuses.map((c) => (
               <li key={c.id}>
                 <Card aria-labelledby={`campus-${c.id}-title`} className="flex h-full flex-col gap-3">
-                  <div className="flex items-start justify-between gap-3">
+                  {/* D73 : un titre long garde la largeur, les boutons passent dessous. */}
+                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                     <h3 id={`campus-${c.id}-title`} className="min-w-0 font-medium break-words text-ink">
                       {c.name}
                     </h3>

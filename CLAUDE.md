@@ -210,8 +210,9 @@ branche `gestion` :
   **lot 6** (menu latéral et cadre du back-office ; preflight, nettoyage de
   `globals.css`, Inter) fait et validé le 21 octobre, sur le poste (le
   propriétaire demande le commit, le push et la mise en production :
-  `main` avancée sur `gestion`, **les lots 1 à 6 en production**, aucune
-  migration) : D92 (menu sombre sur `side-*`, filet
+  `main` avancée sur `gestion` (`be0c052`), **les lots 1 à 6 en
+  production**, aucune migration, CI verte, déploiement Vercel READY) : D92
+  (menu sombre sur `side-*`, filet
   de l'entrée choisie, focus en `side-ink`), D93 (texte seul, plus de
   champ `icon`), D94 (repliable sous 1 024 px, bouton « Menu »), D95 (le
   rôle en texte), D96 (la base sur le document, plus de classe `charte`),

@@ -182,8 +182,19 @@ branche `gestion` :
   `/api/schools`), validés le 21 octobre (le propriétaire demande le commit
   et le push sur `gestion`, pas de mise en production). Détail : journal
   du plan ;
-- prochaine : le lot 4 (inbox, IA gelée : le style seulement) dans une
-  nouvelle session ; D15 reste ouverte.
+  **lot 4** (l'inbox, IA gelée : le style seulement) fait et validé le
+  21 octobre, sur le poste (le propriétaire demande le commit et le push
+  sur `gestion`, pas de mise en production) : D76
+  (détail d'un ticket en dialogue collé à droite, `Dialog`
+  `placement="side"`, clic à côté gardé), D77 (un ton de badge par état),
+  D78 (✓, ✕, ⚠ retirés comme les émojis), D79 (liens en `http(s)`
+  seulement, `sourceHref`), D80 (bandeau `Pending_AI` en « info ») ;
+  requêtes, textes et identifiants gardés (`test/inbox-screen.test.ts`) ;
+  contrôle dans le Chrome du propriétaire sur `dev`, en lecture seule,
+  avec des tickets fictifs injectés dans l'onglet. Détail : journal du
+  plan ;
+- prochaine : le lot 5 (`/admin/cron`, IA gelée : le style seulement ;
+  D46 à poser) dans une nouvelle session ; D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -319,8 +330,9 @@ propriétaire le 20 octobre.
   qui se cache par `hidden` (`TabPanel` s'en garde). Depuis le lot 1, le
   site public et `/api-docs` sont dans la charte ; depuis le lot 3, toute
   la gestion des écoles aussi (`app/admin/schools/`, une seule source ;
-  plus d'îlot) ; reste le back-office : inbox, `/admin/cron`, menu latéral
-  (lots 4 à 6, `docs/architecture/charte-graphique.md` §9).
+  plus d'îlot) ; depuis le lot 4, l'inbox (`app/admin/inbox/`) ; reste le
+  back-office : `/admin/cron`, menu latéral (lots 5 et 6,
+  `docs/architecture/charte-graphique.md` §9).
 
 ## Réseau du poste
 

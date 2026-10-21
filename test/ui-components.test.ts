@@ -13,6 +13,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement as h, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -23,7 +24,7 @@ import { Badge } from "../components/ui/Badge";
 import { Button, buttonClasses } from "../components/ui/Button";
 import { Card, CardHeader } from "../components/ui/Card";
 import { cx } from "../components/ui/cx";
-import { Dialog, DialogFooter } from "../components/ui/Dialog";
+import { Dialog, DialogFooter, isBackdropPoint } from "../components/ui/Dialog";
 import { Field, Input, Select, type ControlProps } from "../components/ui/Field";
 import { TBody, THead, Table, Td, Th, Tr } from "../components/ui/Table";
 import { TabPanel, Tabs } from "../components/ui/Tabs";
@@ -226,6 +227,39 @@ test("Dialog : un <dialog> nommé par son titre, un bouton « Fermer » qui n'en
   assert.doesNotMatch(out, /<dialog[^>]* open/, "fermé tant que showModal() ne l'a pas ouvert");
   assert.match(out, /<h2 id="users-dialog-title"[^>]*>Désactiver ce compte \?<\/h2>/);
   assert.match(out, /<button type="button" aria-label="Fermer"/);
+});
+
+/** Les classes du `<dialog>` rendu. */
+const dialogClasses = (out: string) => (out.match(/^<dialog[^>]* class="([^"]*)"/)?.[1] ?? "").split(" ");
+
+test("Dialog : la variante side, un panneau collé au bord droit sur toute la hauteur (étape 9, D76) ; le centre inchangé", () => {
+  const props = { title: "Ranking", titleId: "inbox-panel-title", onClose: () => {}, children: "x" };
+  const center = dialogClasses(html(h(Dialog, props)));
+  for (const name of ["m-auto", "w-[min(32rem,calc(100vw-2rem))]", "max-h-[calc(100dvh-2rem)]", "rounded-card", "border"]) {
+    assert.ok(center.includes(name), `centre : ${name}`);
+  }
+  const side = dialogClasses(html(h(Dialog, { ...props, placement: "side" })));
+  for (const name of ["my-0", "mr-0", "ml-auto", "h-dvh", "max-h-dvh", "w-[min(37.5rem,95vw)]", "max-w-[95vw]", "border-l"]) {
+    assert.ok(side.includes(name), `side : ${name}`);
+  }
+  // Rien du dialogue centré qui contredirait la place du panneau.
+  for (const name of ["m-auto", "rounded-card", "border", "w-[min(32rem,calc(100vw-2rem))]", "max-h-[calc(100dvh-2rem)]"]) {
+    assert.ok(!side.includes(name), `side sans ${name}`);
+  }
+  // Même titre et même bouton « Fermer ».
+  assert.match(html(h(Dialog, { ...props, placement: "side" })), /<button type="button" aria-label="Fermer"/);
+});
+
+test("Dialog : closeOnBackdrop, seul un clic hors du cadre du dialogue (sur le fond voilé) le ferme (D76)", () => {
+  const rect = { left: 840, right: 1440, top: 0, bottom: 900 };
+  assert.equal(isBackdropPoint(rect, 400, 300), true, "à gauche du panneau");
+  assert.equal(isBackdropPoint(rect, 1000, 300), false, "dans le panneau");
+  assert.equal(isBackdropPoint(rect, 840, 0), false, "sur le bord");
+  assert.equal(isBackdropPoint({ left: 200, right: 712, top: 100, bottom: 400 }, 300, 450), true, "sous un dialogue centré");
+  // Sans l'option, le dialogue n'écoute pas le clic : le rendu n'en dit rien,
+  // la source le dit.
+  const source = readFileSync("components/ui/Dialog.tsx", "utf8");
+  assert.match(source, /closeOnBackdrop &&\s*event\.target === event\.currentTarget/);
 });
 
 // ─── Gabarits ───────────────────────────────────────────────────────────────

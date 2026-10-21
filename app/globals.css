@@ -45,6 +45,8 @@
  * campus, le cadre de la gestion d'une école et ses huit onglets) ; l'îlot
  * de l'intervalle (manage/legacy/, D60, D61) est retiré au lot 3. */
 @source "./admin/schools";
+/* Étape 9, lot 4 : l'inbox (partie IA gelée, le style seulement). */
+@source "./admin/inbox";
 /* Homonymes de classes de /admin/cron (RotationPanel, CronMonitoringClient) :
  * jamais générés, même si un fichier lu les contient. */
 @source not inline("block fill-accent");

@@ -15,8 +15,9 @@
 > 21 octobre** : le lot 3 (les quatre onglets restants dans la charte,
 > l'îlot retiré ; §3.2, §6, §7), puis les corrections du contrôle du
 > propriétaire (D73 à D75 : cartes du gestionnaire, notes des tarifs,
-> nombre de programmes de l'accueil ; §3.1, §4.3, §6, §7). Cette fiche
-> décrit
+> nombre de programmes de l'accueil ; §3.1, §4.3, §6, §7), puis le lot 4
+> (l'inbox dans la charte, le style seulement ; D76 à D80 ; §3.2, §6, §7).
+> Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
 > du plan la met à jour.
@@ -219,7 +220,7 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 | `/admin/schools/[id]/manage` | `manager` : **la gestion de contenu d'une école**, 8 onglets (`manage/tabs/`) : `SchoolInfoTab`, `CampusProgramsTab`, `PricingTab`, `CapacitiesTab`, `RankingsTab`, `StatsTab`, `AccreditationsTab`, et depuis l'étape 8 `AdmissionsTab` (« Admissions », D50 : une carte par entrée d'un programme, filtre par programme, année d'entrée, niveau requis et voie choisis dans les listes de `lib/program-entries.ts`, note, lien source ; compteur dans l'onglet) ; sélecteurs `ProgramSelector`, `YearSelector`. Un champ « URL de la source » dans chaque formulaire de saisie : tarifs, places et classements (déjà là), chiffres clés, accréditations et programme (étape 5, D12) ; « Source » sur la carte d'une accréditation (« Source 🔗 » jusqu'au lot 2 de l'étape 9, D56), et dans les tableaux des classements et des capacités (« Source 🔗 » jusqu'au lot 3, lien `http(s)` seulement depuis, D72). Sous chaque donnée (l'école, chaque campus, programme, tarif, place, classement, accréditation, les chiffres clés de l'année), « Modifié par X le 19 octobre 2026 » : le nom et la date de la dernière modification, sans l'origine (D29, [`LastEdit`](../../app/admin/schools/[id]/LastEdit.tsx)). Les pourcentages des chiffres clés acceptent toutes les décimales (D30 : la base en tient à deux). `?tab=` ouvre un onglet (`info`, `accreditations`, `stats`, `campus-programs`, `pricing`, `rankings`, `capacities`, `admissions`) : la vue des signalements y renvoie (étape 6 ; la catégorie « Admissions » mène au 8e onglet, D52). Depuis l'étape 9 (lot 2), dans la charte : en-tête (`AdminPage` avec lien de retour et badge de statut), onglets `Tabs` au modèle ARIA (« Rubriques de l'école », identifiants `manage-tab-<onglet>` et `manage-panel-<onglet>`), une ligne qui tient à 1 440 px et défile en largeur plus étroit (D62) ; seul l'onglet choisi est monté. Depuis le lot 3, les huit onglets sont dans le gabarit et dans la charte (l'îlot sombre de l'intervalle, D60, et les copies de `manage/legacy/`, D61, sont retirés) : dialogues natifs, l'erreur d'une fenêtre dans la fenêtre (D67), le statut d'une accréditation en case à cocher (D64), la suppression d'une année de chiffres clés et celle d'un tarif confirmées dans un dialogue (D63), « Nouvelle année » et « Copier depuis : » libellés (D65) ; au lot 3, une carte par campus et un tableau des programmes, l'alternance et l'expatriation d'un programme en cases à cocher (D69), ses campus en cases dans un groupe légendé ; l'onglet Tarifs garde une vue à la fois, le tableau ou la grille d'un programme (D70) ; le rang d'un classement en ton de catégorie par palier, sans médaille (D68, `manage/ranking-badge.ts`) ; la modification rapide des places au clavier, son erreur sous le champ (D71) | non |
 | `/admin/schools/[id]/campuses` | `manager` : les campus d'une école, avec « Modifié par … le … » (D29) ; dans la charte depuis l'étape 9 (lot 2), dialogues natifs, erreur dans la fenêtre (D67) | non |
 | `/admin/reports` | `manager` (étape 6, D31) : « Signalements », en attente (les plus anciens d'abord) et fermés (les 100 derniers). Pour chacun : l'école, la cible (« supprimé » si le campus ou le programme n'existe plus, D37), la catégorie, le message, le lien (`sourceHref`), le nom affiché de l'auteur (D39) ; « Ouvrir l'onglet de gestion » (l'onglet de la catégorie), « Traiter » et « Rejeter » (dialogue, réponse facultative pour l'auteur). Fermer un signalement ne date aucune donnée (D32) | non |
-| `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter | **oui** |
+| `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter. Dans la charte depuis l'étape 9 (lot 4), le style seulement (règle 10 : requêtes, textes et identifiants gardés, `test/inbox-screen.test.ts`) : `AdminPage`, filtres libellés « Statut » et « Catégorie » (D58, D65), un tableau ; le détail d'un ticket dans un dialogue natif collé à droite, 600 px, fermé par Échap, « Fermer » ou un clic à côté (D76, `Dialog` `placement="side"`) ; un ton de badge par état (D77, `inbox/ticket-tones.ts`) ; ni émoji ni ✓, ✕, ⚠ en tête des textes, les « ✕ » seuls devenus des boutons d'icône nommés (D78) ; un lien d'un ticket cliquable en `http(s)` seulement, sinon du texte (D79, `sourceHref`) ; le bandeau des contributions `Pending_AI` au ton « info » (D80) ; la purge confirmée dans un dialogue, son erreur dans la fenêtre (D67). Le contenu venu de l'IA et du web s'affiche en texte (aucun `dangerouslySetInnerHTML`) | **oui** |
 | `/admin/users` | `admin` : les comptes (« Comptes » dans le menu) : ajouter une adresse à la liste, retirer un invité, changer un rôle, remettre en première connexion (ou réactiver), désactiver (un actif ou un invité, D24), renseigner l'adresse d'un compte ancien. Aucun e-mail envoyé | non |
 | `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs. Depuis l'étape 7, l'historique a une colonne « Lancé par » : le nom affiché du lanceur (D25), ou « non suivi », avec sa raison au survol (D44) ; à l'ancien style de l'écran (D45) | **oui** |
 
@@ -229,9 +230,9 @@ connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
 signalement (`SiteShell`) et « Signalements » (`AdminPage`, onglets et
 dialogue) ; depuis l'étape 9 (lot 1), tout le site (§3.1) ; depuis le
 lot 2, la liste des écoles, la page des campus et la gestion d'une école,
-sauf quatre onglets (D60), repris au lot 3. Les autres écrans du back-office
-gardent l'ancien style jusqu'à leur lot de l'étape 9 (D54 : inbox au lot 4,
-`/admin/cron` au lot 5, menu latéral et cadre au lot 6).
+sauf quatre onglets (D60), repris au lot 3 ; depuis le lot 4, l'inbox. Les
+autres écrans du back-office gardent l'ancien style jusqu'à leur lot de
+l'étape 9 (D54 : `/admin/cron` au lot 5, menu latéral et cadre au lot 6).
 
 ---
 
@@ -474,8 +475,8 @@ reprise, lot par lot).
 
 | | Écrans | Où |
 |---|---|---|
-| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) ; étape 9, lot 1 : l'accueil, les fiches école et programme, `/api-docs` ; lot 2 : la liste des écoles, la page des campus, le cadre de la gestion d'une école et ses onglets Infos, Accréditations, Statistiques (chiffres clés) et Admissions ; lot 3 : ses onglets Campus & Programmes, Tarifs, Classements et Capacités | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
-| **L'ancien style** | tous les autres : inbox (lot 4), `/admin/cron` (lot 5), menu latéral du back-office (lot 6) | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
+| **La charte** (étape 4 : maquette A « Registre », D8 composants maison, D9 clair) | connexion, première connexion, « Comptes » (`/admin/users`), « Mon compte » (`/account`) ; étape 6 : le formulaire de signalement (`/schools/[id]/report`), « Signalements » (`/admin/reports`) ; étape 9, lot 1 : l'accueil, les fiches école et programme, `/api-docs` ; lot 2 : la liste des écoles, la page des campus, le cadre de la gestion d'une école et ses onglets Infos, Accréditations, Statistiques (chiffres clés) et Admissions ; lot 3 : ses onglets Campus & Programmes, Tarifs, Classements et Capacités ; lot 4 : l'inbox | Tailwind CSS v4 ; jetons et base dans [`app/charte.css`](../../app/charte.css) ; composants dans [`components/ui/`](../../components/ui/) ; gabarits dans [`components/layout/`](../../components/layout/) (`SiteShell`, `AuthShell`, `AdminPage`) |
+| **L'ancien style** | tous les autres : `/admin/cron` (lot 5), menu latéral du back-office (lot 6) | [`app/globals.css`](../../app/globals.css), inchangé, rangé dans la couche `legacy` : thème sombre, 21 variables CSS, classes globales (`badge`, `admin-layout-wrapper`…) ; `styled-jsx` dans quelques écrans |
 
 - [`app/globals.css`](../../app/globals.css) est le point d'entrée : ordre des
   couches `theme, legacy, base, components, utilities`, thème et utilitaires de
@@ -484,7 +485,8 @@ reprise, lot par lot).
   `app/account/`, depuis l'étape 6 `app/admin/reports/`, depuis le lot 1 de
   l'étape 9 `app/schools/`, `app/api-docs/` et le seul fichier
   `app/page.tsx`, depuis le lot 3 toute la gestion des écoles en une source,
-  `app/admin/schools/` ; au lot 2, fichier par fichier) ; `block` et `fill-accent`,
+  `app/admin/schools/` ; au lot 2, fichier par fichier ; depuis le lot 4
+  `app/admin/inbox/`) ; `block` et `fill-accent`,
   homonymes de classes de `/admin/cron`, ne sont jamais générés.
 - La racine de chaque gabarit porte la classe `charte` : la base de la charte
   n'agit que dans ce sous-arbre. Le menu latéral du back-office reste l'ancien
@@ -528,6 +530,16 @@ reprise, lot par lot).
   d'un classement dans `app/admin/schools/[id]/manage/ranking-badge.ts`
   (D68) ; les cases à cocher d'un programme (D69) ; la modification rapide
   des places (D71) ; le lien « Source » par `sourceHref` (D72).
+- Étape 9, lot 4 (D76 à D80) : l'inbox, le style seulement. `Dialog` gagne
+  deux options, sans changer le rendu des dialogues qui ne s'en servent pas :
+  `placement="side"` (un panneau collé au bord droit, pleine hauteur,
+  `min(37.5rem, 95vw)`) et `closeOnBackdrop` (un clic sur le fond voilé,
+  hors du cadre, appelle `onClose`, qui peut refuser) ; les tons des badges
+  de l'inbox dans `app/admin/inbox/ticket-tones.ts` (D77) ; le bloc
+  `<style>` global que la page montait avec elle (panneau, badges, alertes)
+  est retiré. Le CSS compilé avant et après le lot a été comparé règle à
+  règle : aucune règle d'avant perdue ni déplacée, trois variables de thème
+  et 26 utilitaires ajoutés.
 - Contrôle du propriétaire, 21 octobre (D73, D74) : sur les cartes des
   onglets Accréditations, Admissions et Campus & Programmes, l'en-tête passe
   à la ligne (`flex-wrap`) : un titre long garde la largeur, « Modifier » et
@@ -544,6 +556,10 @@ reprise, lot par lot).
   `style-src 'self' 'unsafe-inline'` ; aucune violation sur un build de
   production (19 octobre ; et les 20 et 21 octobre aux lots 1 à 3 de
   l'étape 9, dans Chromium, sur une base Postgres jetable du conteneur, D55).
+  Lot 4, sur le poste : build de production vert, puis aucune violation ni
+  erreur de console sous `next dev` dans le Chrome du propriétaire (inbox,
+  `/admin/cron`, « Signalements ») ; la CSP de développement ne diffère que
+  par `'unsafe-eval'` dans `script-src`, `style-src` est le même.
 
 ---
 
@@ -652,6 +668,16 @@ reprise, lot par lot).
   style), `api/v1-provenance` et `api/v1` (les admissions imbriquées),
   `provenance-pages` (la section de la fiche) ; `content-reports`,
   `content-reports-migration` et `reports-pages` suivent D52 et D50.
+- **Inbox** (étape 9, lot 4) : `test/inbox-screen.test.ts` (la source de
+  la page : les 9 requêtes inchangées, adresse, méthode et corps ; les
+  16 identifiants gardés ; D76, le panneau et la purge en dialogues de la
+  charte, fermés aussi par un clic à côté, plus de calque ni de `<style>` ;
+  D77, `ticket-tones.ts` ; D78, ni ✓, ni ✕, ni ⚠, boutons d'icône nommés ;
+  D79, un seul `<a>`, dont l'adresse passe par `sourceHref` ; D80, le
+  bandeau en `Alert` « info » ; D58 et D65, les libellés ; D67, l'erreur de
+  la purge dans sa fenêtre) ; `silent-pages` (F6) et `ticket-sources` (le
+  bloc « Sources ») lisent la page, inchangés ; `test/api/inbox-*`
+  inchangés (aucune route ne bouge).
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts` (dont D75 : les
   programmes de chaque école, et non la somme par campus ; la liste
@@ -672,7 +698,8 @@ reprise, lot par lot).
   lot 2, la liste des écoles, la gestion d'une école et la page des campus
   (`ui-components` : les deux emplacements d'`AdminPage`) ; au lot 3,
   `app/admin/schools/` en une seule source, aucun de ses fichiers à
-  l'ancien style ;
+  l'ancien style ; au lot 4, l'inbox (`ui-components` : la variante `side`
+  de `Dialog`, le centre inchangé, et le point hors du cadre qui ferme) ;
   `reports-pages.test.ts` attend le lien « Signaler une information » en
   bouton secondaire de la charte, et des fiches qui posent `SiteShell` sans
   « Back-office » (D57), toujours sans lire la session.

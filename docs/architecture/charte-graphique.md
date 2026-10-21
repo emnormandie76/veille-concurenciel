@@ -19,8 +19,8 @@
 > lot) : le lot 1 (site public et `/api-docs`) et le lot 2 (liste des
 > écoles, cadre de la gestion, campus, onglets Infos, Accréditations,
 > Chiffres clés, Admissions) sont faits le 20 octobre, le lot 3 (onglets
-> Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot retiré) le
-> 21 octobre ; l'état de la reprise est au §9.
+> Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot retiré) et
+> le lot 4 (l'inbox) le 21 octobre ; l'état de la reprise est au §9.
 
 ---
 
@@ -199,7 +199,7 @@ variantes (`cx` ne fusionne pas les classes contradictoires).
 | Carte | `Card.tsx` : `Card`, `CardHeader` | un bloc détaché (formulaire, groupe de faits) ; `CardHeader` donne un titre `h2` et un `titleId` pour `aria-labelledby` |
 | Onglets | `Tabs.tsx` : `Tabs`, `TabPanel` ; `tabs-keys.ts` | modèle ARIA : flèches gauche et droite (en boucle), Début, Fin ; un seul onglet dans l'ordre de tabulation ; compteur facultatif. Le filet du bas est une ombre intérieure, que couvre le soulignement de l'onglet choisi : rien ne déborde de la liste, qui défile en largeur sans barre verticale (corrigé à l'étape 6). Un `TabPanel` caché ne prend pas le `className` de l'appelant : sans preflight, un utilitaire d'affichage (`flex`) défaisait l'attribut `hidden` et montrait le panneau (corrigé à l'étape 9) |
 | Badge | `Badge.tsx` | `neutral`, `accent`, `solid` (catégories : rôles) ; `success`, `warning`, `danger` (états) ; `wrap` pour un texte long qui passe à la ligne (le concours d'un programme, étape 9) : hauteur minimale, arrondi d'un contrôle |
-| Dialogue | `Dialog.tsx` : `Dialog`, `DialogFooter` | `<dialog>` natif ouvert par `showModal()` : focus gardé dans le dialogue, page inerte, focus rendu à la fermeture ; Échap et « Fermer » passent par `onClose`, qui peut refuser ; `data-autofocus` désigne le premier champ. Remplace `confirm()`. Un événement `close` du navigateur arrivé quand le dialogue est de nouveau ouvert est ignoré : sous `next dev`, React rejoue les effets, et le dialogue se refermait aussitôt ouvert (corrigé à l'étape 6) |
+| Dialogue | `Dialog.tsx` : `Dialog`, `DialogFooter` | `<dialog>` natif ouvert par `showModal()` : focus gardé dans le dialogue, page inerte, focus rendu à la fermeture ; Échap et « Fermer » passent par `onClose`, qui peut refuser ; `data-autofocus` désigne le premier champ. Remplace `confirm()`. Un événement `close` du navigateur arrivé quand le dialogue est de nouveau ouvert est ignoré : sous `next dev`, React rejoue les effets, et le dialogue se refermait aussitôt ouvert (corrigé à l'étape 6). Deux options depuis l'étape 9 (lot 4, D76) : `placement="side"`, un panneau collé au bord droit, pleine hauteur, `min(37.5rem, 95vw)`, filet à gauche, sans arrondi (le détail d'un ticket de l'inbox) ; `closeOnBackdrop`, un clic sur le fond voilé, hors du cadre du dialogue, appelle `onClose` (un clic au clavier vise un bouton, jamais le fond) |
 | Message | `Alert.tsx` | `danger` (`role="alert"`), `success` et `info` (`role="status"`) ; texte en encre, teinte portée par le fond et l'icône |
 | Lien dans un texte | `text-link.ts` : `TEXT_LINK` | souligné, en `accent-strong` |
 
@@ -232,6 +232,21 @@ un groupe légendé, chacune dans une étiquette bordée qui prend l'accent une
 fois cochée (`has-checked:`). La modification rapide des places (D71) : un
 bouton natif souligné en tirets, un champ nommé par `aria-label`, deux
 boutons d'icône nommés, l'erreur sous le champ en `role="alert"`.
+
+Dans l'inbox (lot 4, D77, `app/admin/inbox/ticket-tones.ts`) : un ton par
+état, comme les signalements : `Pending_Admin` en `warning` (à l'admin
+d'agir), `Pending_AI` en `neutral` (il attend le backend), `Validated` en
+`success`, `Rejected` en `neutral`, `Failed` en `danger` ; les alertes
+d'un ticket, « Année supposée » et « Nom incohérent » en `warning` (l'orange
+de l'ancien style n'existe pas), « Conflit » en `danger` ; la
+correspondance d'un programme, exacte en `success`, approximative en
+`warning`, absente en `danger`. Le bandeau des contributions en attente est
+un message `info` (D80). Les symboles ✓, ✕ et ⚠ en tête d'un texte partent
+comme les émojis (D78) ; un « ✕ » seul devient un bouton d'icône
+(`danger-soft`, taille `icon`, une croix) nommé par `aria-label`. Un lien tiré d'un
+ticket n'est cliquable qu'en `http(s)` (D79) ; l'icône de lien externe ne
+suit qu'un texte court (« source ») : à côté d'un intitulé sur plusieurs
+lignes, elle restait centrée à droite du bloc.
 
 Une carte du gestionnaire dont le titre partage sa ligne avec des boutons
 (accréditation, admission, campus) a un en-tête qui passe à la ligne
@@ -290,7 +305,7 @@ de l'étape 9 (D54).
 | 1 | accueil, fiche école, fiche programme, `/api-docs` (avec `SourceLine`) | **fait le 20 octobre** |
 | 2 | liste des écoles, cadre de la gestion, page des campus, onglets Infos, Accréditations, Chiffres clés, Admissions (avec `LastEdit` et les sélecteurs de programme et d'année) | **fait le 20 octobre** |
 | 3 | onglets Campus & Programmes, Tarifs, Classements, Capacités ; l'îlot et `manage/legacy/` retirés | **fait le 21 octobre** (validé) |
-| 4 | inbox | à faire |
+| 4 | inbox (le style seulement, IA gelée ; D76 à D80) | **fait le 21 octobre** (validé) |
 | 5 | `/admin/cron` | à faire |
 | 6 | menu latéral et cadre du back-office ; preflight, nettoyage de `globals.css`, Inter | à faire |
 
@@ -316,7 +331,8 @@ de l'étape 9 (D54).
   `app/` ferait générer les homonymes des classes des écrans pas encore
   repris), et depuis le lot 3 toute la gestion des écoles en une source,
   `app/admin/schools/` (au lot 2, fichier par fichier, sans les onglets du
-  lot 3 ; aucun fichier de l'ancien style n'y reste)), avec
+  lot 3 ; aucun fichier de l'ancien style n'y reste), et depuis le lot 4
+  l'inbox, `app/admin/inbox/`), avec
   `source(none)` sur l'import des utilitaires : un ancien
   nom de classe qui serait aussi un utilitaire n'en reçoit pas les règles.
   `block` et `fill-accent`, deux classes de `/admin/cron`, ne sont jamais
@@ -344,8 +360,8 @@ de l'étape 9 (D54).
 4. garder libellés, identifiants de champ et comportement ;
 5. regarder l'écran dans un navigateur, et un écran voisin non repris.
 
-**Restes pour l'étape 9** (lots 4 à 6) : l'inbox (lot 4) et
-`/admin/cron` (lot 5) ; puis, au lot 6, le
+**Restes pour l'étape 9** (lots 5 et 6) : `/admin/cron` (lot 5) ; puis,
+au lot 6, le
 menu latéral et le cadre du back-office (jetons `side-*`), le preflight à la
 place de la base `.charte` (il pose aussi `[hidden] { display: none }`), la
 règle de transition `:has()`, les exclusions `block` et `fill-accent`, Inter,
@@ -371,6 +387,14 @@ sur 201 au départ, 174 à la fin** ; les 23 de plus : `modal-overlay`,
 `data-card-meta`, `cards-grid`, `inline-form`, `inline-form-grid`,
 `inline-form-actions`, `tab-section-header`, `tab-section-title`,
 `toggle-container`, `toggle-switch`, `campus-checkbox`,
-`campus-checkbox-group`, `checked`, `badge-inactive`, `year-selector`. Elles
-restent jusqu'au lot 6 : la couche `legacy` de `globals.css` ne change pas
+`campus-checkbox-group`, `checked`, `badge-inactive`, `year-selector`. Au
+lot 4, un autre script écrit pour le lot (gardé dans le scratchpad de la
+session), qui lit toutes les chaînes des fichiers de `app/` et
+`components/`, et non les seules expressions `className`, compte **171
+classes mortes sur 201 au départ, 176 à la fin** ; les 5 de plus, qui ne
+servaient qu'à l'inbox : `alert-danger`, `alert-success`, `btn-danger`,
+`empty-state`, `table-container`. Les classes que l'inbox se donnait dans
+son propre bloc `<style>` (`panel`, `flag-badge`, `badge-info`…) n'étaient
+pas dans `globals.css` : elles disparaissent avec lui. Les classes mortes
+de `globals.css` restent jusqu'au lot 6 : sa couche `legacy` ne change pas
 avant (seuls ses `@source` changent, lot après lot).

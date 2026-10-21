@@ -18,7 +18,24 @@ import { cx } from "./cx";
  * porte `data-autofocus`. Un événement `close` du navigateur arrivé quand le
  * dialogue est de nouveau ouvert (effets rejoués par React en développement)
  * est ignoré.
+ *
+ * Étape 9, lot 4 (D76) : `placement="side"` en fait un panneau collé au bord
+ * droit, sur toute la hauteur (le détail d'un ticket de l'inbox) ;
+ * `closeOnBackdrop` le ferme aussi, par `onClose`, sur un clic à côté, sur le
+ * fond voilé. Sans ces deux options, le dialogue de l'étape 4.
  */
+
+type Rect = { left: number; right: number; top: number; bottom: number };
+
+/** Vrai si le point est hors du cadre du dialogue : sur le fond voilé. */
+export function isBackdropPoint(rect: Rect, x: number, y: number): boolean {
+  return x < rect.left || x > rect.right || y < rect.top || y > rect.bottom;
+}
+
+const PLACEMENTS = {
+  center: "m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] rounded-card border",
+  side: "my-0 mr-0 ml-auto h-dvh max-h-dvh w-[min(37.5rem,95vw)] max-w-[95vw] border-l",
+} as const;
 
 interface DialogProps {
   title: ReactNode;
@@ -27,9 +44,21 @@ interface DialogProps {
   onClose: () => void;
   children: ReactNode;
   className?: string;
+  /** `side` : un panneau collé au bord droit, sur toute la hauteur. */
+  placement?: keyof typeof PLACEMENTS;
+  /** Un clic à côté, sur le fond voilé, ferme aussi le dialogue (par `onClose`). */
+  closeOnBackdrop?: boolean;
 }
 
-export function Dialog({ title, titleId, onClose, children, className }: DialogProps) {
+export function Dialog({
+  title,
+  titleId,
+  onClose,
+  children,
+  className,
+  placement = "center",
+  closeOnBackdrop = false,
+}: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
   // À chaque rendu : rouvrir un dialogue que le navigateur aurait fermé.
@@ -62,9 +91,21 @@ export function Dialog({ title, titleId, onClose, children, className }: DialogP
       onClose={(event) => {
         if (!event.currentTarget.open) onClose();
       }}
+      // Le fond voilé n'est pas un élément : un clic dessus vise le <dialog>
+      // lui-même, hors de son cadre. Un clic au clavier sur un bouton vise le
+      // bouton, jamais le <dialog>.
+      onClick={(event) => {
+        if (
+          closeOnBackdrop &&
+          event.target === event.currentTarget &&
+          isBackdropPoint(event.currentTarget.getBoundingClientRect(), event.clientX, event.clientY)
+        ) {
+          onClose();
+        }
+      }}
       className={cx(
-        "m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto",
-        "rounded-card border border-line bg-surface p-0 text-ink shadow-xl",
+        PLACEMENTS[placement],
+        "overflow-y-auto border-line bg-surface p-0 text-ink shadow-xl",
         className,
       )}
     >

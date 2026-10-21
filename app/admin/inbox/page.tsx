@@ -12,14 +12,35 @@
  * - Actions : Valider (→ upsert tables rigides) / Rejeter
  *
  * Référence : task.md §3, architecture.md §5.2, bdd.md §4 (upsert)
+ *
+ * Plan gestion-contenu, étape 9, lot 4 : l'écran passe à la charte graphique,
+ * le style seulement (partie IA gelée, règle 10) ; requêtes, textes et
+ * identifiants restent. Décisions du propriétaire : le panneau de détail est
+ * un dialogue collé à droite, fermé aussi par un clic à côté (D76) ; un ton
+ * de badge par état (D77, ./ticket-tones.ts) ; ni émoji (D56) ni ✓, ✕, ⚠ en
+ * tête des textes (D78) ; un lien n'est cliquable qu'en http(s) (D79) ; le
+ * bandeau des contributions en attente au ton « info » (D80). L'erreur d'une
+ * purge s'affiche dans sa fenêtre (D67).
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { AdminPage } from "@/components/layout/AdminPage";
+import { Alert } from "@/components/ui/Alert";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { cx } from "@/components/ui/cx";
+import { Dialog, DialogFooter } from "@/components/ui/Dialog";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { TBody, THead, Table, Td, Th, Tr } from "@/components/ui/Table";
+import { TEXT_LINK } from "@/components/ui/text-link";
+import { ExternalIcon, PinIcon } from "@/app/schools/icons";
 import { CONTRIBUTION_CATEGORIES, CONTRIBUTION_STATUSES, STATUS_PENDING_AI } from "@/lib/contribution";
 import { hasCampusAttachmentBlock } from "@/lib/campus-attachment";
 import { describePendingAi } from "@/lib/pipeline-history";
+import { sourceHref } from "@/lib/provenance";
 import { readRefreshedTicket, TICKET_REFRESH_ERROR } from "@/lib/ticket-refresh";
 import { displayedTicketSources } from "@/lib/ticket-sources";
+import { FLAG_TONES, matchConfidence, ticketStatusTone } from "./ticket-tones";
 
 // ──────────────────────────────────────────────
 // Types
@@ -65,23 +86,53 @@ interface Ticket {
 const STATUS_OPTIONS = ["", ...CONTRIBUTION_STATUSES];
 const CATEGORY_OPTIONS = ["", ...CONTRIBUTION_CATEGORIES];
 
-const STATUS_COLORS: Record<string, string> = {
-  Pending_AI: "badge-warning",
-  Pending_Admin: "badge-info",
-  Validated: "badge-active",
-  Rejected: "badge-danger",
-  // Manquait : un ticket en échec s'affichait sans badge, donc sans couleur.
-  Failed: "badge-danger",
-};
+// ──────────────────────────────────────────────
+// Pièces communes
+// ──────────────────────────────────────────────
 
-const CATEGORY_ICONS: Record<string, string> = {
-  Program_Discovery: "🗺️",
-  Pricing: "💰",
-  Ranking: "🏆",
-  Capacity: "🎓",
-  SchoolStats: "📊",
-  Accreditation: "📜",
-};
+/**
+ * Un lien vers une page du web, tiré d'un ticket (contenu venu de l'IA et du
+ * web) : cliquable en http(s) seulement, en nouvel onglet ; une autre adresse
+ * reste du texte (D79, comme D27 et D72). `icon` ajoute l'icône de lien
+ * externe à un texte court (« source ») ; un intitulé long (une fiche, une
+ * adresse) s'en passe : sur plusieurs lignes, l'icône restait à côté du bloc.
+ */
+function WebLink({ url, icon = false, children }: { url: string | null | undefined; icon?: boolean; children: ReactNode }) {
+  const href = sourceHref(url);
+  if (!href) return <>{children}</>;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={icon ? cx(TEXT_LINK, "inline-flex items-center gap-1") : TEXT_LINK}>
+      {children}
+      {icon && <ExternalIcon />}
+    </a>
+  );
+}
+
+/** La croix des boutons d'icône qui retirent un élément (D78). */
+function RemoveIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" className="size-4">
+      <path d="M5 5l10 10M15 5L5 15" />
+    </svg>
+  );
+}
+
+/** Le JSON brut d'un ticket, replié, en lecture seule. */
+function RawJson({ json }: { json: unknown }) {
+  return (
+    <details>
+      <summary className="cursor-pointer text-sm text-ink-2">Voir JSON brut complet</summary>
+      <pre className="mt-2 max-h-50 overflow-auto rounded-control border border-line bg-surface-2 p-3 font-mono text-xs text-ink">
+        {JSON.stringify(json, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+/** Le titre d'une section du panneau de détail. */
+function FormTitle({ children }: { children: ReactNode }) {
+  return <h3 className="font-display text-base leading-snug font-semibold text-ink">{children}</h3>;
+}
 
 // ──────────────────────────────────────────────
 // Composant principal
@@ -113,6 +164,7 @@ export default function InboxPage() {
   const [purgeStatuses, setPurgeStatuses] = useState<string[]>(["Validated", "Rejected"]);
   const [purgeCount, setPurgeCount] = useState<number | null>(null);
   const [purgeLoading, setPurgeLoading] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
 
   const LIMIT = 20;
 
@@ -179,7 +231,7 @@ export default function InboxPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur lors de la validation");
-      setActionMsg({ type: "success", text: data.message || "Ticket validé ✓" });
+      setActionMsg({ type: "success", text: data.message || "Ticket validé" });
       fetchTickets();
       // Mettre à jour le ticket affiché
       setSelectedTicket((prev) => prev ? { ...prev, status: "Validated" } : null);
@@ -226,6 +278,7 @@ export default function InboxPage() {
 
   const handlePurge = async () => {
     setPurgeLoading(true);
+    setPurgeError(null);
     try {
       const res = await fetch("/api/admin/inbox/purge", {
         method: "DELETE",
@@ -237,10 +290,16 @@ export default function InboxPage() {
       setPurgeModalOpen(false);
       fetchTickets();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
+      // D67 : dans la fenêtre, restée ouverte ; la page derrière est inerte.
+      setPurgeError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setPurgeLoading(false);
     }
+  };
+
+  // Échap, « Annuler » et un clic à côté ne ferment pas la fenêtre pendant la purge.
+  const closePurge = () => {
+    if (!purgeLoading) setPurgeModalOpen(false);
   };
 
   const totalPages = Math.ceil(total / LIMIT);
@@ -251,405 +310,356 @@ export default function InboxPage() {
     : [];
 
   return (
-    <div>
-      {/* ── En-tête ── */}
-      <div className="page-header">
-        <div>
-          <h1>Boîte de Réception — Validation IA</h1>
-          <p className="page-title-desc">
-            Examinez et validez les données extraites par le pipeline IA avant publication.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
+    <AdminPage
+      title="Boîte de Réception — Validation IA"
+      description="Examinez et validez les données extraites par le pipeline IA avant publication."
+      actions={
+        <>
+          <span className="text-sm text-ink-2">
             {total} ticket{total !== 1 ? "s" : ""}
           </span>
-          <button
+          <Button
             id="btn-open-purge"
-            className="btn btn-danger btn-sm"
+            variant="danger-soft"
             onClick={() => {
+              setPurgeError(null);
               setPurgeModalOpen(true);
               fetchPurgeCount(purgeStatuses);
             }}
           >
-            🗑️ Purger
-          </button>
-        </div>
-      </div>
-
+            Purger
+          </Button>
+        </>
+      }
+    >
       {pendingAi !== null && describePendingAi(pendingAi) && (
-        <div className="pending-ai-banner">
-          <span>
-            ⏳ {describePendingAi(pendingAi)} Passage en <code>Pending_Admin</code> au prochain
-            lancement du backend, sur le poste de l&apos;admin.
-          </span>
-          {filterStatus !== STATUS_PENDING_AI && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                setFilterStatus(STATUS_PENDING_AI);
-                setPage(1);
-              }}
-            >
-              Voir
-            </button>
-          )}
-        </div>
+        <Alert tone="info">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>
+              {describePendingAi(pendingAi)} Passage en <code className="font-mono text-xs">Pending_Admin</code> au prochain
+              lancement du backend, sur le poste de l&apos;admin.
+            </span>
+            {filterStatus !== STATUS_PENDING_AI && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setFilterStatus(STATUS_PENDING_AI);
+                  setPage(1);
+                }}
+              >
+                Voir
+              </Button>
+            )}
+          </div>
+        </Alert>
       )}
 
-      {error && (
-        <div className="alert alert-danger">
-          <span>⚠️</span> <span>{error}</span>
-        </div>
-      )}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {/* ── Filtres ── */}
-      <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
-        <select
-          id="filter-status"
-          className="form-control"
-          style={{ maxWidth: "200px" }}
-          value={filterStatus}
-          onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
-        >
-          <option value="">Tous les statuts</option>
-          {STATUS_OPTIONS.filter(Boolean).map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field id="filter-status" label="Statut" className="w-50">
+          {(control) => (
+            <Select
+              {...control}
+              value={filterStatus}
+              onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
+            >
+              <option value="">Tous les statuts</option>
+              {STATUS_OPTIONS.filter(Boolean).map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
 
-        <select
-          id="filter-category"
-          className="form-control"
-          style={{ maxWidth: "220px" }}
-          value={filterCategory}
-          onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
-        >
-          <option value="">Toutes les catégories</option>
-          {CATEGORY_OPTIONS.filter(Boolean).map((c) => (
-            <option key={c} value={c}>{CATEGORY_ICONS[c]} {c}</option>
-          ))}
-        </select>
+        <Field id="filter-category" label="Catégorie" className="w-55">
+          {(control) => (
+            <Select
+              {...control}
+              value={filterCategory}
+              onChange={(e) => { setFilterCategory(e.target.value); setPage(1); }}
+            >
+              <option value="">Toutes les catégories</option>
+              {CATEGORY_OPTIONS.filter(Boolean).map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
 
         {(filterStatus || filterCategory) && (
-          <button
-            className="btn btn-secondary"
-            onClick={() => { setFilterStatus(""); setFilterCategory(""); setPage(1); }}
-          >
-            ✕ Réinitialiser
-          </button>
+          <Button onClick={() => { setFilterStatus(""); setFilterCategory(""); setPage(1); }}>
+            Réinitialiser
+          </Button>
         )}
       </div>
 
       {/* ── Table des tickets ── */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-          Chargement des tickets...
-        </div>
+        <p className="py-10 text-center text-sm text-ink-2">Chargement des tickets...</p>
       ) : tickets.length === 0 ? (
-        <div className="empty-state">
-          <span>📬</span>
-          <p>Aucun ticket trouvé avec ces filtres.</p>
-        </div>
+        <p className="rounded-card border border-line bg-surface px-6 py-12 text-center text-sm text-ink-2">
+          Aucun ticket trouvé avec ces filtres.
+        </p>
       ) : (
-        <div className="table-container">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Catégorie</th>
-                <th>Source</th>
-                <th>École / Campus / Parcours</th>
-                <th>Alertes</th>
-                <th>Statut</th>
-                <th>Date</th>
-                <th style={{ textAlign: "right" }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tickets.map((t) => (
-                <tr
-                  key={t.id}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => openTicket(t)}
-                >
-                  <td>
-                    <span style={{ fontWeight: 600 }}>
-                      {CATEGORY_ICONS[t.ai_category]} {t.ai_category}
+        <Table caption="Tickets">
+          <THead>
+            <Tr>
+              <Th>Catégorie</Th>
+              <Th>Source</Th>
+              <Th>École / Campus / Parcours</Th>
+              <Th>Alertes</Th>
+              <Th>Statut</Th>
+              <Th>Date</Th>
+              <Th align="right">Action</Th>
+            </Tr>
+          </THead>
+          <TBody>
+            {tickets.map((t) => (
+              <Tr
+                key={t.id}
+                className="cursor-pointer transition-colors hover:bg-surface-2"
+                onClick={() => openTicket(t)}
+              >
+                <Td className="font-semibold text-ink">{t.ai_category}</Td>
+                <Td className="text-xs text-ink-2">{t.source_type}</Td>
+                <Td>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-semibold text-ink">
+                      {t.schoolName || (t.schoolId ? t.schoolId.substring(0, 8) + "…" : "—")}
                     </span>
-                  </td>
-                  <td>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                      {t.source_type}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                      <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
-                        {t.schoolName || (t.schoolId ? t.schoolId.substring(0, 8) + "…" : "—")}
+                    {(t.campusName || t.programName) && (
+                      <div className="flex flex-wrap gap-x-1.5 gap-y-0.5 text-xs text-ink-2">
+                        {t.campusName && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <PinIcon />
+                            {t.campusName}
+                          </span>
+                        )}
+                        {t.programName && <span>{t.programName}</span>}
+                      </div>
+                    )}
+                  </div>
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap gap-1">
+                    {t.year_assumed && (
+                      <span title="Année supposée par l'IA">
+                        <Badge tone={FLAG_TONES.year_assumed}>Année supposée</Badge>
                       </span>
-                      {(t.campusName || t.programName) && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", fontSize: "0.75rem", color: "var(--text-secondary)" }}>
-                          {t.campusName && (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
-                              📍 {t.campusName}
-                            </span>
-                          )}
-                          {t.programName && (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
-                              📚 {t.programName}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-                      {t.year_assumed && (
-                        <span className="flag-badge flag-warning" title="Année supposée par l'IA">📅 Année supposée</span>
-                      )}
-                      {t.data_conflict_warning && (
-                        <span className="flag-badge flag-danger" title="Conflit de données détecté">⚡ Conflit</span>
-                      )}
-                      {t.program_name_mismatch && (
-                        <span className="flag-badge flag-orange" title="Nom de programme incohérent">🔀 Nom incohérent</span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`badge ${STATUS_COLORS[t.status] || "badge-info"}`}>
-                      {t.status}
-                    </span>
-                  </td>
-                  <td style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                    {new Date(t.createdAt).toLocaleDateString("fr-FR")}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={(e) => { e.stopPropagation(); openTicket(t); }}
-                    >
-                      Examiner →
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    )}
+                    {t.data_conflict_warning && (
+                      <span title="Conflit de données détecté">
+                        <Badge tone={FLAG_TONES.data_conflict_warning}>Conflit</Badge>
+                      </span>
+                    )}
+                    {t.program_name_mismatch && (
+                      <span title="Nom de programme incohérent">
+                        <Badge tone={FLAG_TONES.program_name_mismatch}>Nom incohérent</Badge>
+                      </span>
+                    )}
+                  </div>
+                </Td>
+                <Td>
+                  <Badge tone={ticketStatusTone(t.status)}>{t.status}</Badge>
+                </Td>
+                <Td className="whitespace-nowrap text-ink-2">
+                  {new Date(t.createdAt).toLocaleDateString("fr-FR")}
+                </Td>
+                <Td align="right">
+                  <Button
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); openTicket(t); }}
+                  >
+                    Examiner →
+                  </Button>
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
       )}
 
       {/* ── Pagination ── */}
       {totalPages > 1 && (
-        <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginTop: "20px" }}>
-          <button
-            className="btn btn-secondary btn-sm"
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            size="sm"
             disabled={page === 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
             ← Précédent
-          </button>
-          <span style={{ padding: "6px 12px", color: "var(--text-secondary)" }}>
+          </Button>
+          <span className="px-3 text-sm text-ink-2">
             Page {page} / {totalPages}
           </span>
-          <button
-            className="btn btn-secondary btn-sm"
+          <Button
+            size="sm"
             disabled={page === totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           >
             Suivant →
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* ── Panneau de détail (slide-over) ── */}
+      {/* ── Panneau de détail, collé à droite (D76) ── */}
       {panelOpen && selectedTicket && (
-        <div className="panel-overlay" onClick={closePanel}>
-          <div className="panel" onClick={(e) => e.stopPropagation()}>
-            <div className="panel-header">
-              <div>
-                <h2 style={{ margin: 0, fontSize: "1.2rem" }}>
-                  {CATEGORY_ICONS[selectedTicket.ai_category]} {selectedTicket.ai_category}
-                </h2>
-                <p style={{ margin: "4px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                  ID: {selectedTicket.id}
-                </p>
-                {(selectedTicket.schoolName || selectedTicket.schoolId) && (
-                  <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "2px" }}>
-                    <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "var(--accent)" }}>
-                      🏫 {selectedTicket.schoolName || selectedTicket.schoolId}
-                    </span>
-                    {(selectedTicket.campusName || selectedTicket.programName) && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                        {selectedTicket.campusName && <span>📍 {selectedTicket.campusName}</span>}
-                        {selectedTicket.programName && <span>📚 {selectedTicket.programName}</span>}
-                      </div>
+        <Dialog placement="side" closeOnBackdrop titleId="inbox-panel-title" title={selectedTicket.ai_category} onClose={closePanel}>
+          <div className="flex flex-col gap-1 border-b border-line pb-4">
+            <p className="text-xs break-all text-ink-2">ID: {selectedTicket.id}</p>
+            {(selectedTicket.schoolName || selectedTicket.schoolId) && (
+              <div className="flex flex-col gap-0.5 pt-1">
+                <span className="font-semibold text-ink">{selectedTicket.schoolName || selectedTicket.schoolId}</span>
+                {(selectedTicket.campusName || selectedTicket.programName) && (
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-ink-2">
+                    {selectedTicket.campusName && (
+                      <span className="inline-flex items-center gap-1">
+                        <PinIcon />
+                        {selectedTicket.campusName}
+                      </span>
                     )}
+                    {selectedTicket.programName && <span>{selectedTicket.programName}</span>}
                   </div>
                 )}
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={closePanel}>✕ Fermer</button>
-            </div>
-
-            {/* Badges d'alerte — toujours visibles (task.md §3.3) */}
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-              <span className={`badge ${STATUS_COLORS[selectedTicket.status] || "badge-info"}`}>
-                {selectedTicket.status}
-              </span>
-              <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                {selectedTicket.source_type}
-              </span>
-              {selectedTicket.year_assumed && (
-                <span className="flag-badge flag-warning">📅 Année supposée — Vérifier l'année</span>
-              )}
-              {selectedTicket.data_conflict_warning && (
-                <span className="flag-badge flag-danger">⚡ Conflit de données — Sources contradictoires</span>
-              )}
-              {selectedTicket.program_name_mismatch && (
-                <span className="flag-badge flag-orange">🔀 Nom de programme incohérent</span>
-              )}
-            </div>
-
-            {/* URLs source : trois au plus pour un ticket du pipeline (lib/ticket-sources.ts) */}
-            {selectedSources.length > 0 && (
-              <div style={{ marginBottom: "16px" }}>
-                <p style={{ fontWeight: 600, marginBottom: "6px", fontSize: "0.9rem" }}>Sources :</p>
-                {selectedSources.map((url, i) => (
-                  <a
-                    key={i}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ display: "block", fontSize: "0.85rem", color: "var(--accent)", wordBreak: "break-all", marginBottom: "4px" }}
-                  >
-                    🔗 {url}
-                  </a>
-                ))}
-              </div>
-            )}
-
-            {/* Commentaire utilisateur — bloc secondaire, conditionnel */}
-            {selectedTicket.user_text && (
-              <aside
-                style={{
-                  borderLeft: "3px solid var(--muted, #64748b)",
-                  paddingLeft: "12px",
-                  marginTop: "16px",
-                  marginBottom: "16px",
-                  opacity: 0.75,
-                }}
-              >
-                <p style={{ fontSize: "11px", textTransform: "uppercase", marginBottom: "4px", fontWeight: "bold", color: "var(--text-secondary)" }}>
-                  Note du contributeur
-                </p>
-                <p style={{ fontSize: "14px", margin: 0 }}>{selectedTicket.user_text}</p>
-              </aside>
-            )}
-
-            {/* ── Formulaire par catégorie ── */}
-            <div className="form-section">
-              {selectedTicket.ai_category === "Program_Discovery" &&
-              hasCampusAttachmentBlock(selectedTicket.ai_extracted_json) ? (
-                // Même catégorie, autre charge : ces lignes s'écrivent par la
-                // route voisine, jamais par le formulaire répéteur.
-                <CampusAttachmentsForm
-                  ticket={selectedTicket}
-                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
-                  onWritten={() => {
-                    fetchTickets();
-                    setSelectedTicket((prev) => (prev ? { ...prev, status: "Validated" } : null));
-                  }}
-                />
-              ) : selectedTicket.ai_category === "Program_Discovery" ? (
-                <ProgramDiscoveryForm
-                  ticket={selectedTicket}
-                  onValidate={handleValidate}
-                  loading={actionLoading}
-                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
-                />
-              ) : selectedTicket.ai_category === "Accreditation" ? (
-                <AccreditationListForm
-                  ticket={selectedTicket}
-                  onValidate={handleValidate}
-                  loading={actionLoading}
-                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
-                />
-              ) : (selectedTicket.ai_extracted_json as any)?.programs ? (
-                <MultiProgramForm
-                  ticket={selectedTicket}
-                  onValidate={handleValidate}
-                  loading={actionLoading}
-                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
-                  onRefreshTicket={async () => {
-                    // Recharger le ticket depuis l'API pour avoir le JSON mis à
-                    // jour. Un échec s'affiche : l'admin ne doit pas valider
-                    // sans le savoir sur des données anciennes (F6,
-                    // lib/ticket-refresh.ts).
-                    try {
-                      const res = await fetch(`/api/admin/inbox/${selectedTicket.id}`);
-                      const refreshed = readRefreshedTicket<Ticket>(
-                        res.status,
-                        await res.json().catch(() => null)
-                      );
-                      if (refreshed.ok) setSelectedTicket(refreshed.ticket);
-                      else setActionMsg({ type: "error", text: refreshed.error });
-                    } catch {
-                      setActionMsg({ type: "error", text: TICKET_REFRESH_ERROR });
-                    }
-                    fetchTickets();
-                  }}
-                />
-              ) : (
-                <GenericForm
-                  ticket={selectedTicket}
-                  onValidate={handleValidate}
-                  loading={actionLoading}
-                  disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
-                />
-              )}
-            </div>
-
-            {/* Message d'action */}
-            {actionMsg && (
-              <div className={`alert ${actionMsg.type === "success" ? "alert-success" : "alert-danger"}`} style={{ margin: "16px 0 0" }}>
-                {actionMsg.type === "success" ? "✅" : "❌"} {actionMsg.text}
-              </div>
-            )}
-
-            {/* Bouton Rejeter (commun à toutes les catégories) */}
-            {selectedTicket.status !== "Validated" && selectedTicket.status !== "Rejected" && (
-              <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid var(--border-color)" }}>
-                <button
-                  id="btn-reject-ticket"
-                  className="btn btn-danger"
-                  style={{ width: "100%" }}
-                  onClick={handleReject}
-                  disabled={actionLoading}
-                >
-                  {actionLoading ? "Rejet en cours..." : "❌ Rejeter ce ticket"}
-                </button>
-              </div>
             )}
           </div>
-        </div>
+
+          {/* Badges d'alerte — toujours visibles (task.md §3.3) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={ticketStatusTone(selectedTicket.status)}>{selectedTicket.status}</Badge>
+            <span className="text-xs text-ink-2">{selectedTicket.source_type}</span>
+            {selectedTicket.year_assumed && (
+              <Badge tone={FLAG_TONES.year_assumed} wrap>Année supposée — Vérifier l&apos;année</Badge>
+            )}
+            {selectedTicket.data_conflict_warning && (
+              <Badge tone={FLAG_TONES.data_conflict_warning} wrap>Conflit de données — Sources contradictoires</Badge>
+            )}
+            {selectedTicket.program_name_mismatch && (
+              <Badge tone={FLAG_TONES.program_name_mismatch} wrap>Nom de programme incohérent</Badge>
+            )}
+          </div>
+
+          {/* URLs source : trois au plus pour un ticket du pipeline (lib/ticket-sources.ts) */}
+          {selectedSources.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-sm font-semibold text-ink">Sources :</p>
+              <ul className="flex flex-col gap-1">
+                {selectedSources.map((url, i) => (
+                  <li key={i} className="text-xs break-all text-ink-2">
+                    <WebLink url={url}>{url}</WebLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Commentaire utilisateur — bloc secondaire, conditionnel */}
+          {selectedTicket.user_text && (
+            <aside className="border-l-3 border-line-strong pl-3">
+              <p className="mb-1 text-xs font-semibold tracking-wider text-ink-2 uppercase">
+                Note du contributeur
+              </p>
+              <p className="text-sm text-ink">{selectedTicket.user_text}</p>
+            </aside>
+          )}
+
+          {/* ── Formulaire par catégorie ── */}
+          <div>
+            {selectedTicket.ai_category === "Program_Discovery" &&
+            hasCampusAttachmentBlock(selectedTicket.ai_extracted_json) ? (
+              // Même catégorie, autre charge : ces lignes s'écrivent par la
+              // route voisine, jamais par le formulaire répéteur.
+              <CampusAttachmentsForm
+                ticket={selectedTicket}
+                disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+                onWritten={() => {
+                  fetchTickets();
+                  setSelectedTicket((prev) => (prev ? { ...prev, status: "Validated" } : null));
+                }}
+              />
+            ) : selectedTicket.ai_category === "Program_Discovery" ? (
+              <ProgramDiscoveryForm
+                ticket={selectedTicket}
+                onValidate={handleValidate}
+                loading={actionLoading}
+                disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+              />
+            ) : selectedTicket.ai_category === "Accreditation" ? (
+              <AccreditationListForm
+                ticket={selectedTicket}
+                onValidate={handleValidate}
+                loading={actionLoading}
+                disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+              />
+            ) : (selectedTicket.ai_extracted_json as any)?.programs ? (
+              <MultiProgramForm
+                ticket={selectedTicket}
+                onValidate={handleValidate}
+                loading={actionLoading}
+                disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+                onRefreshTicket={async () => {
+                  // Recharger le ticket depuis l'API pour avoir le JSON mis à
+                  // jour. Un échec s'affiche : l'admin ne doit pas valider
+                  // sans le savoir sur des données anciennes (F6,
+                  // lib/ticket-refresh.ts).
+                  try {
+                    const res = await fetch(`/api/admin/inbox/${selectedTicket.id}`);
+                    const refreshed = readRefreshedTicket<Ticket>(
+                      res.status,
+                      await res.json().catch(() => null)
+                    );
+                    if (refreshed.ok) setSelectedTicket(refreshed.ticket);
+                    else setActionMsg({ type: "error", text: refreshed.error });
+                  } catch {
+                    setActionMsg({ type: "error", text: TICKET_REFRESH_ERROR });
+                  }
+                  fetchTickets();
+                }}
+              />
+            ) : (
+              <GenericForm
+                ticket={selectedTicket}
+                onValidate={handleValidate}
+                loading={actionLoading}
+                disabled={selectedTicket.status === "Validated" || selectedTicket.status === "Rejected"}
+              />
+            )}
+          </div>
+
+          {/* Message d'action */}
+          {actionMsg && (
+            <Alert tone={actionMsg.type === "success" ? "success" : "danger"}>{actionMsg.text}</Alert>
+          )}
+
+          {/* Bouton Rejeter (commun à toutes les catégories) */}
+          {selectedTicket.status !== "Validated" && selectedTicket.status !== "Rejected" && (
+            <div className="border-t border-line pt-4">
+              <Button
+                id="btn-reject-ticket"
+                variant="danger"
+                className="w-full"
+                onClick={handleReject}
+                disabled={actionLoading}
+              >
+                {actionLoading ? "Rejet en cours..." : "Rejeter ce ticket"}
+              </Button>
+            </div>
+          )}
+        </Dialog>
       )}
 
-      {/* ── Modal de purge ── */}
+      {/* ── Fenêtre de purge ── */}
       {purgeModalOpen && (
-        <div className="panel-overlay" onClick={() => setPurgeModalOpen(false)}>
-          <div
-            className="purge-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ margin: "0 0 16px", fontSize: "1.1rem" }}>
-              🗑️ Purger les tickets traités
-            </h3>
+        <Dialog titleId="inbox-purge-title" title="Purger les tickets traités" onClose={closePurge} closeOnBackdrop>
+          {purgeError && <Alert tone="danger">{purgeError}</Alert>}
 
-            <div className="form-group" style={{ marginBottom: "16px" }}>
-              <label className="form-label">Statuts à supprimer</label>
-              <select
-                id="purge-status-filter"
-                className="form-control"
+          <Field id="purge-status-filter" label="Statuts à supprimer">
+            {(control) => (
+              <Select
+                {...control}
                 value={purgeStatuses.join(",")}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -657,143 +667,37 @@ export default function InboxPage() {
                   setPurgeStatuses(newStatuses);
                   fetchPurgeCount(newStatuses);
                 }}
+                data-autofocus
               >
                 <option value="Validated,Rejected">Validés + Rejetés</option>
                 <option value="Validated">Validés uniquement</option>
                 <option value="Rejected">Rejetés uniquement</option>
-              </select>
-            </div>
-
-            {purgeCount !== null && (
-              <div style={{
-                padding: "12px",
-                background: "rgba(239,68,68,0.08)",
-                border: "1px solid rgba(239,68,68,0.2)",
-                borderRadius: "var(--radius)",
-                marginBottom: "16px",
-                fontSize: "0.9rem",
-                textAlign: "center",
-              }}>
-                ⚠️ <strong>{purgeCount}</strong> ticket{purgeCount !== 1 ? "s" : ""} seront supprimés définitivement
-              </div>
+              </Select>
             )}
+          </Field>
 
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setPurgeModalOpen(false)}
-              >
-                Annuler
-              </button>
-              <button
-                id="btn-confirm-purge"
-                className="btn btn-danger"
-                onClick={handlePurge}
-                disabled={purgeLoading || purgeCount === 0}
-              >
-                {purgeLoading ? "Suppression..." : "Confirmer la suppression"}
-              </button>
-            </div>
-          </div>
-        </div>
+          {purgeCount !== null && (
+            <p className="rounded-control border border-danger/30 bg-danger-soft px-3 py-2.5 text-center text-sm text-ink">
+              <strong className="font-semibold">{purgeCount}</strong> ticket{purgeCount !== 1 ? "s" : ""} seront supprimés définitivement
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button onClick={closePurge} disabled={purgeLoading}>
+              Annuler
+            </Button>
+            <Button
+              id="btn-confirm-purge"
+              variant="danger"
+              onClick={handlePurge}
+              disabled={purgeLoading || purgeCount === 0}
+            >
+              {purgeLoading ? "Suppression..." : "Confirmer la suppression"}
+            </Button>
+          </DialogFooter>
+        </Dialog>
       )}
-
-      <style>{`
-        .empty-state {
-          text-align: center;
-          padding: 60px 40px;
-          background-color: var(--bg-secondary);
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-lg);
-          color: var(--text-secondary);
-        }
-        .empty-state span { font-size: 3rem; display: block; margin-bottom: 16px; }
-
-        /* ── Flags ── */
-        .flag-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 2px 8px;
-          border-radius: 999px;
-          font-size: 0.75rem;
-          font-weight: 600;
-        }
-        .flag-warning { background: rgba(234,179,8,0.15); color: #ca8a04; border: 1px solid rgba(234,179,8,0.3); }
-        .flag-danger  { background: rgba(239,68,68,0.12); color: #dc2626; border: 1px solid rgba(239,68,68,0.25); }
-        .flag-orange  { background: rgba(249,115,22,0.12); color: #ea580c; border: 1px solid rgba(249,115,22,0.25); }
-
-        /* ── Badges status ── */
-        .badge-warning { background: rgba(234,179,8,0.15); color: #ca8a04; }
-        .pending-ai-banner {
-          display: flex; align-items: center; justify-content: space-between; gap: 12px;
-          margin-bottom: 20px; padding: 12px 16px; border-radius: var(--radius-md);
-          background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.3);
-          color: #ca8a04; font-size: 0.9rem;
-        }
-        .badge-info    { background: rgba(59,130,246,0.12); color: #2563eb; }
-        .badge-danger  { background: rgba(239,68,68,0.12); color: #dc2626; }
-
-        /* ── Panneau slide-over ── */
-        .panel-overlay {
-          position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000;
-          display: flex; justify-content: flex-end;
-          animation: fadeIn 0.15s ease;
-        }
-        .panel {
-          width: min(600px, 95vw); height: 100vh; overflow-y: auto;
-          background: var(--bg-primary); border-left: 1px solid var(--border-color);
-          padding: 28px; display: flex; flex-direction: column; gap: 0;
-          animation: slideIn 0.2s ease;
-        }
-        .panel-header {
-          display: flex; justify-content: space-between; align-items: flex-start;
-          margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);
-        }
-        .user-text-box {
-          background: var(--bg-secondary); border: 1px solid var(--border-color);
-          border-radius: var(--radius); padding: 12px; margin-bottom: 16px;
-        }
-        .form-section { flex: 1; }
-
-        /* ── Formulaire Program_Discovery ── */
-        .campus-block {
-          border: 1px solid var(--border-color); border-radius: var(--radius);
-          padding: 16px; margin-bottom: 12px; background: var(--bg-secondary);
-        }
-        .campus-block-header {
-          display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
-        }
-        .program-row {
-          display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
-          padding: 8px; border-radius: var(--radius); background: var(--bg-primary);
-          margin-bottom: 6px; border: 1px solid var(--border-color);
-        }
-        .program-fields { display: flex; flex-direction: column; gap: 4px; }
-
-        /* ── Formulaire générique ── */
-        .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
-
-        /* ── Modal de purge ── */
-        .purge-modal {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          background: var(--bg-primary);
-          border: 1px solid var(--border-color);
-          border-radius: var(--radius-lg);
-          padding: 28px;
-          min-width: 400px;
-          max-width: 90vw;
-          z-index: 1001;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-      `}</style>
-    </div>
+    </AdminPage>
   );
 }
 
@@ -872,110 +776,112 @@ function ProgramDiscoveryForm({
   };
 
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <h3 style={{ margin: 0, fontSize: "1rem" }}>
-          🗺️ Campus & Programmes découverts ({campuses.length} campus)
-        </h3>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <FormTitle>Campus & Programmes découverts ({campuses.length} campus)</FormTitle>
         {!disabled && (
-          <button id="btn-add-campus" className="btn btn-secondary btn-sm" onClick={addCampus}>
+          <Button id="btn-add-campus" size="sm" onClick={addCampus}>
             + Ajouter un campus
-          </button>
+          </Button>
         )}
       </div>
 
       {campuses.length === 0 && (
-        <div style={{ color: "var(--text-secondary)", fontStyle: "italic", marginBottom: "16px" }}>
-          Aucun campus détecté dans le JSON.
-        </div>
+        <p className="text-sm text-ink-2 italic">Aucun campus détecté dans le JSON.</p>
       )}
 
       {campuses.map((campus, ci) => (
-        <div key={ci} className="campus-block">
-          <div className="campus-block-header">
-            <strong>🏫 Campus {ci + 1}</strong>
+        <div key={ci} className="flex flex-col gap-3 rounded-card border border-line bg-surface-2 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong className="font-semibold text-ink">Campus {ci + 1}</strong>
             {!disabled && (
-              <button className="btn btn-danger btn-sm" onClick={() => removeCampus(ci)}>
+              <Button size="sm" variant="danger-soft" onClick={() => removeCampus(ci)}>
                 Supprimer campus
-              </button>
+              </Button>
             )}
           </div>
 
-          <div className="field-grid" style={{ marginBottom: "12px" }}>
-            <div className="form-group">
-              <label className="form-label">Nom du campus *</label>
-              <input
-                id={`campus-name-${ci}`}
-                type="text"
-                className="form-control"
-                value={campus.name}
-                onChange={(e) => updateCampusName(ci, e.target.value)}
-                disabled={disabled}
-                placeholder="ex: Campus Paris La Défense"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Ville</label>
-              <input
-                id={`campus-city-${ci}`}
-                type="text"
-                className="form-control"
-                value={campus.city ?? ""}
-                onChange={(e) => updateCampusCity(ci, e.target.value)}
-                disabled={disabled}
-                placeholder="ex: Paris"
-              />
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field id={`campus-name-${ci}`} label="Nom du campus *">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="text"
+                  value={campus.name}
+                  onChange={(e) => updateCampusName(ci, e.target.value)}
+                  disabled={disabled}
+                  placeholder="ex: Campus Paris La Défense"
+                />
+              )}
+            </Field>
+            <Field id={`campus-city-${ci}`} label="Ville">
+              {(control) => (
+                <Input
+                  {...control}
+                  type="text"
+                  value={campus.city ?? ""}
+                  onChange={(e) => updateCampusCity(ci, e.target.value)}
+                  disabled={disabled}
+                  placeholder="ex: Paris"
+                />
+              )}
+            </Field>
           </div>
 
-          <div style={{ marginBottom: "8px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-ink">
                 Programmes ({campus.programs.length})
               </span>
               {!disabled && (
-                <button className="btn btn-secondary btn-sm" onClick={() => addProgram(ci)}>
+                <Button size="sm" onClick={() => addProgram(ci)}>
                   + Programme
-                </button>
+                </Button>
               )}
             </div>
 
             {campus.programs.map((prog, pi) => (
-              <div key={pi} className="program-row">
-                <div className="program-fields">
-                  <input
-                    id={`prog-name-${ci}-${pi}`}
-                    type="text"
-                    className="form-control"
-                    value={prog.name}
-                    onChange={(e) => updateProgram(ci, pi, "name", e.target.value)}
-                    disabled={disabled}
-                    placeholder="Nom exact du programme"
-                    style={{ marginBottom: "4px" }}
-                  />
-                  <input
-                    id={`prog-exam-${ci}-${pi}`}
-                    type="text"
-                    className="form-control"
-                    value={prog.admission_exam ?? ""}
-                    onChange={(e) => updateProgram(ci, pi, "admission_exam", e.target.value || null)}
-                    disabled={disabled}
-                    placeholder="Concours d'admission (optionnel)"
-                    style={{ fontSize: "0.85rem" }}
-                  />
-                  <div style={{ display: "flex", gap: "12px", marginTop: "4px" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", cursor: "pointer" }}>
+              <div key={pi} className="flex items-start gap-2 rounded-control border border-line bg-surface p-3">
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <Field id={`prog-name-${ci}-${pi}`} label="Nom exact du programme">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        type="text"
+                        value={prog.name}
+                        onChange={(e) => updateProgram(ci, pi, "name", e.target.value)}
+                        disabled={disabled}
+                        placeholder="Nom exact du programme"
+                      />
+                    )}
+                  </Field>
+                  <Field id={`prog-exam-${ci}-${pi}`} label="Concours d'admission (optionnel)">
+                    {(control) => (
+                      <Input
+                        {...control}
+                        type="text"
+                        value={prog.admission_exam ?? ""}
+                        onChange={(e) => updateProgram(ci, pi, "admission_exam", e.target.value || null)}
+                        disabled={disabled}
+                        placeholder="Concours d'admission (optionnel)"
+                      />
+                    )}
+                  </Field>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-ink">
                       <input
                         type="checkbox"
+                        className="size-4 cursor-pointer accent-accent"
                         checked={prog.is_alternance_possible ?? false}
                         onChange={(e) => updateProgram(ci, pi, "is_alternance_possible", e.target.checked)}
                         disabled={disabled}
                       />
                       Alternance possible
                     </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.8rem", cursor: "pointer" }}>
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-ink">
                       <input
                         type="checkbox"
+                        className="size-4 cursor-pointer accent-accent"
                         checked={prog.is_expatriation_mandatory ?? false}
                         onChange={(e) => updateProgram(ci, pi, "is_expatriation_mandatory", e.target.checked)}
                         disabled={disabled}
@@ -985,14 +891,15 @@ function ProgramDiscoveryForm({
                   </div>
                 </div>
                 {!disabled && (
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() => removeProgram(ci, pi)}
+                  <Button
+                    size="icon"
+                    variant="danger-soft"
+                    aria-label="Supprimer ce programme"
                     title="Supprimer ce programme"
-                    style={{ alignSelf: "flex-start" }}
+                    onClick={() => removeProgram(ci, pi)}
                   >
-                    ✕
-                  </button>
+                    <RemoveIcon />
+                  </Button>
                 )}
               </div>
             ))}
@@ -1001,15 +908,15 @@ function ProgramDiscoveryForm({
       ))}
 
       {!disabled && (
-        <button
+        <Button
           id="btn-validate-discovery"
-          className="btn btn-primary"
-          style={{ width: "100%", marginTop: "8px" }}
+          variant="primary"
+          className="w-full"
           onClick={handleSubmit}
           disabled={loading || campuses.length === 0}
         >
-          {loading ? "Validation en cours..." : "✓ Valider — Créer Campus & Programmes"}
-        </button>
+          {loading ? "Validation en cours..." : "Valider — Créer Campus & Programmes"}
+        </Button>
       )}
     </div>
   );
@@ -1133,19 +1040,19 @@ function CampusAttachmentsForm({
   }, {});
 
   return (
-    <div>
-      <h3 style={{ margin: "0 0 8px", fontSize: "1rem" }}>
-        🧭 Rattachement campus — {rows.length} ligne(s)-année(s), {notes.length} note(s)
-      </h3>
+    <div className="flex flex-col gap-3">
+      <FormTitle>
+        Rattachement campus — {rows.length} ligne(s)-année(s), {notes.length} note(s)
+      </FormTitle>
       {planned && (
-        <p style={{ fontSize: "0.85rem", margin: "0 0 8px" }}>
+        <p className="text-sm text-ink">
           Au moment de la collecte : {planned.attachments?.create ?? 0} ligne(s) à créer,{" "}
           {planned.attachments?.update ?? 0} à mettre à jour, {planned.attachments?.unchanged ?? 0} déjà
           en base ; {(planned.policy_notes?.create ?? 0) + (planned.policy_notes?.update ?? 0)} note(s) à
           écrire. La route recalcule ce plan au moment d&apos;écrire.
         </p>
       )}
-      <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)", margin: "0 0 12px" }}>
+      <p className="text-xs leading-relaxed text-ink-2">
         Aucune arête n&apos;est créée : une ligne dont l&apos;arête ProgramCampus manque n&apos;est pas
         écrite. Aucune ligne n&apos;est supprimée.
         {initial?.collector?.placements_not_written
@@ -1157,84 +1064,85 @@ function CampusAttachmentsForm({
       </p>
 
       {rows.length > 0 && (
-        <div className="table-container" style={{ marginBottom: "12px" }}>
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Programme</th>
-                <th>Campus</th>
-                <th>Année</th>
-                <th>Régime</th>
-                <th>Langues</th>
-                <th>Fiche</th>
-                {!disabled && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={`${row.programId}-${row.campusId}-${row.study_year}-${row.regime}-${row.fiche}-${index}`}>
-                  <td>{row.program ?? row.programId}</td>
-                  <td>{row.campus ?? row.campusId}</td>
-                  <td>{row.study_year}</td>
-                  <td>{row.regime ?? "ANY"}</td>
-                  <td>{(row.languages ?? []).join(", ") || "—"}</td>
-                  <td style={{ fontSize: "0.75rem" }}>
-                    {row.source_url ? (
-                      <a href={row.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
-                        {row.fiche ?? "source"}
-                      </a>
-                    ) : (
-                      row.fiche ?? "—"
-                    )}
-                  </td>
-                  {!disabled && (
-                    <td>
-                      <button
-                        className="btn btn-danger btn-sm"
-                        title="Retirer cette ligne avant l'écriture"
-                        onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
-                      >
-                        ✕
-                      </button>
-                    </td>
+        <Table caption="Rattachement campus">
+          <THead>
+            <Tr>
+              <Th>Programme</Th>
+              <Th>Campus</Th>
+              <Th>Année</Th>
+              <Th>Régime</Th>
+              <Th>Langues</Th>
+              <Th>Fiche</Th>
+              {!disabled && <Th />}
+            </Tr>
+          </THead>
+          <TBody>
+            {rows.map((row, index) => (
+              <Tr key={`${row.programId}-${row.campusId}-${row.study_year}-${row.regime}-${row.fiche}-${index}`}>
+                <Td>{row.program ?? row.programId}</Td>
+                <Td>{row.campus ?? row.campusId}</Td>
+                <Td>{row.study_year}</Td>
+                <Td>{row.regime ?? "ANY"}</Td>
+                <Td>{(row.languages ?? []).join(", ") || "—"}</Td>
+                <Td className="text-xs">
+                  {row.source_url ? (
+                    <WebLink url={row.source_url}>
+                      {row.fiche ?? "source"}
+                    </WebLink>
+                  ) : (
+                    row.fiche ?? "—"
                   )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                </Td>
+                {!disabled && (
+                  <Td>
+                    <Button
+                      size="icon"
+                      variant="danger-soft"
+                      aria-label="Retirer cette ligne avant l'écriture"
+                      title="Retirer cette ligne avant l'écriture"
+                      onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      <RemoveIcon />
+                    </Button>
+                  </Td>
+                )}
+              </Tr>
+            ))}
+          </TBody>
+        </Table>
       )}
 
       {notes.map((note, index) => (
-        <div key={`${note.programId}-${index}`} className="campus-block">
-          <div className="campus-block-header">
-            <strong>📝 Note de politique de campus — {note.program ?? note.programId}</strong>
+        <div key={`${note.programId}-${index}`} className="flex flex-col gap-2 rounded-card border border-line bg-surface-2 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong className="font-semibold text-ink">Note de politique de campus — {note.program ?? note.programId}</strong>
             {!disabled && (
-              <button
-                className="btn btn-danger btn-sm"
+              <Button
+                size="sm"
+                variant="danger-soft"
                 onClick={() => setNotes((prev) => prev.filter((_, i) => i !== index))}
               >
                 Retirer
-              </button>
+              </Button>
             )}
           </div>
-          <p style={{ margin: 0, fontSize: "0.9rem" }}>« {note.note} »</p>
+          <p className="text-sm text-ink">« {note.note} »</p>
         </div>
       ))}
 
       {removed > 0 && !disabled && (
-        <p style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+        <p className="text-xs text-ink-2">
           {removed} élément(s) retiré(s) : ils ne seront pas écrits.
         </p>
       )}
 
-      {error && <div className="alert alert-danger">❌ {error}</div>}
+      {error && <Alert tone="danger">{error}</Alert>}
 
       {result && (
-        <div className="alert alert-success" style={{ display: "block" }}>
-          <div>✅ {result.message}</div>
+        <Alert tone="success">
+          <div>{result.message}</div>
           {Object.keys(conflictsByType).length > 0 && (
-            <div style={{ fontSize: "0.8rem", marginTop: "6px" }}>
+            <div className="mt-1.5 text-xs">
               Non écrit ou fusionné :{" "}
               {Object.entries(conflictsByType)
                 .map(([type, count]) => `${type} ×${count}`)
@@ -1242,39 +1150,28 @@ function CampusAttachmentsForm({
             </div>
           )}
           {(result.stale?.length ?? 0) > 0 && (
-            <div style={{ fontSize: "0.8rem", marginTop: "6px" }}>
+            <div className="mt-1.5 text-xs">
               {result.stale!.length} ligne(s) en base non réaffirmée(s), conservée(s) :{" "}
               {result.stale!.map((s) => `${s.program} · ${s.campus} · année ${s.study_year}`).join(" ; ")}
             </div>
           )}
-        </div>
+        </Alert>
       )}
 
-      <details style={{ marginTop: "12px" }}>
-        <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-          Voir JSON brut complet
-        </summary>
-        <pre style={{
-          background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
-          borderRadius: "var(--radius)", padding: "12px", fontSize: "0.75rem",
-          overflow: "auto", maxHeight: "200px", marginTop: "8px",
-        }}>
-          {JSON.stringify(ticket.ai_extracted_json, null, 2)}
-        </pre>
-      </details>
+      <RawJson json={ticket.ai_extracted_json} />
 
       {!disabled && (
-        <button
+        <Button
           id="btn-write-campus-attachments"
-          className="btn btn-primary"
-          style={{ width: "100%", marginTop: "16px" }}
+          variant="primary"
+          className="w-full"
           onClick={handleWrite}
           disabled={writing || rows.length + notes.length === 0}
         >
           {writing
             ? "Écriture en cours..."
-            : `✓ Écrire ${rows.length} ligne(s)-année(s) et ${notes.length} note(s)`}
-        </button>
+            : `Écrire ${rows.length} ligne(s)-année(s) et ${notes.length} note(s)`}
+        </Button>
       )}
     </div>
   );
@@ -1291,6 +1188,16 @@ interface CapacityChannel {
   academic_year?: number | null;
   admission_channel?: string | null;
   source_url?: string | null;
+}
+
+/** Le libellé d'un champ, et son astérisque s'il est requis. */
+function fieldLabel(label: string, required?: boolean): ReactNode {
+  return (
+    <>
+      {label}
+      {required && <span className="text-danger"> *</span>}
+    </>
+  );
 }
 
 function GenericForm({
@@ -1326,42 +1233,32 @@ function GenericForm({
   ).filter((item) => item && item.spots_available != null);
 
   return (
-    <div>
-      <h3 style={{ fontSize: "1rem", marginBottom: "16px" }}>
-        {CATEGORY_ICONS[ticket.ai_category]} Données extraites — {ticket.ai_category}
-      </h3>
+    <div className="flex flex-col gap-4">
+      <FormTitle>Données extraites — {ticket.ai_category}</FormTitle>
 
       {capacityChannels.length > 0 && (
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: "6px",
-            padding: "12px 14px",
-            marginBottom: "16px",
-            fontSize: "13px",
-          }}
-        >
-          <strong style={{ display: "block", marginBottom: "8px" }}>
-            🎓 Voies d&apos;admission détectées ({capacityChannels.length})
+        <div className="flex flex-col gap-2 rounded-control border border-line px-3.5 py-3 text-compact">
+          <strong className="font-semibold text-ink">
+            Voies d&apos;admission détectées ({capacityChannels.length})
           </strong>
-          <ul style={{ margin: 0, paddingLeft: "18px" }}>
+          <ul className="flex list-disc flex-col gap-1 pl-4.5">
             {capacityChannels.map((item, idx) => (
-              <li key={idx} style={{ marginBottom: "4px" }}>
-                <strong>{item.spots_available}</strong> place(s)
+              <li key={idx}>
+                <strong className="font-semibold">{item.spots_available}</strong> place(s)
                 {item.admission_channel ? ` — ${item.admission_channel}` : ""}
                 {item.academic_year ? ` (${item.academic_year})` : ""}
                 {item.source_url && (
                   <>
                     {" — "}
-                    <a href={item.source_url} target="_blank" rel="noopener noreferrer">
+                    <WebLink url={item.source_url} icon>
                       source
-                    </a>
+                    </WebLink>
                   </>
                 )}
               </li>
             ))}
           </ul>
-          <p style={{ margin: "8px 0 0", color: "var(--muted, #666)" }}>
+          <p className="text-ink-2">
             Laisser « Places disponibles » vide applique la règle par défaut :
             le total publié s&apos;il en existe un, la somme des voies sinon.
             Un chiffre saisi ici fait autorité.
@@ -1369,71 +1266,57 @@ function GenericForm({
         </div>
       )}
 
-      <div className="field-grid">
+      <div className="grid gap-3 sm:grid-cols-2">
         {fields.map(({ key, label, type, required }) => (
-          <div key={key} className="form-group">
-            <label className="form-label" htmlFor={`field-${key}`}>
-              {label}{required && <span style={{ color: "var(--danger)" }}> *</span>}
-            </label>
-            {type === "boolean" ? (
-              <select
-                id={`field-${key}`}
-                className="form-control"
-                value={String(formData[key] ?? "")}
-                onChange={(e) => update(key, e.target.value === "true" ? true : e.target.value === "false" ? false : null)}
-                disabled={disabled}
-              >
-                <option value="">—</option>
-                <option value="true">Oui</option>
-                <option value="false">Non</option>
-              </select>
-            ) : type === "number" ? (
-              <input
-                id={`field-${key}`}
-                type="number"
-                className="form-control"
-                value={formData[key] != null ? String(formData[key]) : ""}
-                onChange={(e) => update(key, e.target.value ? Number(e.target.value) : null)}
-                disabled={disabled}
-              />
-            ) : (
-              <input
-                id={`field-${key}`}
-                type="text"
-                className="form-control"
-                value={formData[key] != null ? String(formData[key]) : ""}
-                onChange={(e) => update(key, e.target.value || null)}
-                disabled={disabled}
-              />
-            )}
-          </div>
+          <Field key={key} id={`field-${key}`} label={fieldLabel(label, required)}>
+            {(control) =>
+              type === "boolean" ? (
+                <Select
+                  {...control}
+                  value={String(formData[key] ?? "")}
+                  onChange={(e) => update(key, e.target.value === "true" ? true : e.target.value === "false" ? false : null)}
+                  disabled={disabled}
+                >
+                  <option value="">—</option>
+                  <option value="true">Oui</option>
+                  <option value="false">Non</option>
+                </Select>
+              ) : type === "number" ? (
+                <Input
+                  {...control}
+                  type="number"
+                  className="font-mono tabular-nums"
+                  value={formData[key] != null ? String(formData[key]) : ""}
+                  onChange={(e) => update(key, e.target.value ? Number(e.target.value) : null)}
+                  disabled={disabled}
+                />
+              ) : (
+                <Input
+                  {...control}
+                  type="text"
+                  value={formData[key] != null ? String(formData[key]) : ""}
+                  onChange={(e) => update(key, e.target.value || null)}
+                  disabled={disabled}
+                />
+              )
+            }
+          </Field>
         ))}
       </div>
 
       {/* JSON brut (lecture seule) */}
-      <details style={{ marginTop: "12px" }}>
-        <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-          Voir JSON brut complet
-        </summary>
-        <pre style={{
-          background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
-          borderRadius: "var(--radius)", padding: "12px", fontSize: "0.75rem",
-          overflow: "auto", maxHeight: "200px", marginTop: "8px",
-        }}>
-          {JSON.stringify(ticket.ai_extracted_json, null, 2)}
-        </pre>
-      </details>
+      <RawJson json={ticket.ai_extracted_json} />
 
       {!disabled && (
-        <button
+        <Button
           id="btn-validate-generic"
-          className="btn btn-primary"
-          style={{ width: "100%", marginTop: "16px" }}
+          variant="primary"
+          className="w-full"
           onClick={() => onValidate(formData)}
           disabled={loading}
         >
-          {loading ? "Validation en cours..." : `✓ Valider et publier — ${ticket.ai_category}`}
-        </button>
+          {loading ? "Validation en cours..." : `Valider et publier — ${ticket.ai_category}`}
+        </Button>
       )}
     </div>
   );
@@ -1595,125 +1478,109 @@ function AccreditationListForm({
   };
 
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <h3 style={{ margin: 0, fontSize: "1rem" }}>
-          📜 Accréditations et Labels détectés ({accreditations.length})
-        </h3>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <FormTitle>Accréditations et Labels détectés ({accreditations.length})</FormTitle>
         {!disabled && (
-          <button className="btn btn-secondary btn-sm" onClick={addItem}>
+          <Button size="sm" onClick={addItem}>
             + Ajouter
-          </button>
+          </Button>
         )}
       </div>
 
       {accreditations.length === 0 && (
-        <div style={{ color: "var(--text-secondary)", fontStyle: "italic", marginBottom: "16px" }}>
-          Aucune accréditation détectée dans le JSON.
-        </div>
+        <p className="text-sm text-ink-2 italic">Aucune accréditation détectée dans le JSON.</p>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "16px" }}>
-        {accreditations.map((item, idx) => (
-          <div
-            key={idx}
-            style={{
-              border: "1px solid var(--border-color)",
-              borderRadius: "var(--radius)",
-              padding: "12px",
-              background: "var(--bg-secondary)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "var(--text-secondary)" }}>
-                Item #{idx + 1}
-              </span>
-              {!disabled && (
-                <button
-                  className="btn btn-danger btn-sm"
-                  style={{ padding: "2px 8px", fontSize: "0.75rem" }}
-                  onClick={() => removeItem(idx)}
-                >
-                  Supprimer
-                </button>
-              )}
-            </div>
+      {accreditations.map((item, idx) => (
+        <div key={idx} className="flex flex-col gap-3 rounded-card border border-line bg-surface-2 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-ink-2">
+              Item #{idx + 1}
+            </span>
+            {!disabled && (
+              <Button size="sm" variant="danger-soft" onClick={() => removeItem(idx)}>
+                Supprimer
+              </Button>
+            )}
+          </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontSize: "0.75rem" }}>Nom</label>
-                <input
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <Field id={`accreditation-${idx}-name`} label="Nom">
+              {(control) => (
+                <Input
+                  {...control}
                   type="text"
-                  className="form-control"
                   value={item.accreditation_name}
                   onChange={(e) => updateItem(idx, "accreditation_name", e.target.value)}
                   disabled={disabled}
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontSize: "0.75rem" }}>Type</label>
-                <select
-                  className="form-control"
+            <Field id={`accreditation-${idx}-type`} label="Type">
+              {(control) => (
+                <Select
+                  {...control}
                   value={item.accreditation_type}
                   onChange={(e) => updateItem(idx, "accreditation_type", e.target.value as any)}
                   disabled={disabled}
                 >
-                  <option value="international">🌍 International (EQUIS, AACSB, AMBA...)</option>
-                  <option value="state">🇫🇷 Reconnu par l'État (Grade, CTI...)</option>
-                  <option value="label">🏷️ Label / Certif (CGE, Qualiopi, DDRS...)</option>
-                </select>
-              </div>
-            </div>
+                  <option value="international">International (EQUIS, AACSB, AMBA...)</option>
+                  <option value="state">Reconnu par l&apos;État (Grade, CTI...)</option>
+                  <option value="label">Label / Certif (CGE, Qualiopi, DDRS...)</option>
+                </Select>
+              )}
+            </Field>
+          </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontSize: "0.75rem" }}>Année d'obtention</label>
-                <input
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <Field id={`accreditation-${idx}-year`} label="Année d'obtention">
+              {(control) => (
+                <Input
+                  {...control}
                   type="number"
-                  className="form-control"
+                  className="font-mono tabular-nums"
                   value={item.year_obtained ?? ""}
                   onChange={(e) => updateItem(idx, "year_obtained", e.target.value ? Number(e.target.value) : null)}
                   disabled={disabled}
                 />
-              </div>
+              )}
+            </Field>
 
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontSize: "0.75rem" }}>Statut actif</label>
-                <select
-                  className="form-control"
+            <Field id={`accreditation-${idx}-active`} label="Statut actif">
+              {(control) => (
+                <Select
+                  {...control}
                   value={String(item.is_active)}
                   onChange={(e) => updateItem(idx, "is_active", e.target.value === "true")}
                   disabled={disabled}
                 >
                   <option value="true">Actif</option>
                   <option value="false">Inactif (Expiré)</option>
-                </select>
-              </div>
-            </div>
-
-            {item.source_url && (
-              <div style={{ fontSize: "0.7rem", color: "var(--text-secondary)", wordBreak: "break-all" }}>
-                Source : <a href={item.source_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{item.source_url}</a>
-              </div>
-            )}
+                </Select>
+              )}
+            </Field>
           </div>
-        ))}
-      </div>
+
+          {item.source_url && (
+            <p className="text-xs break-all text-ink-2">
+              Source : <WebLink url={item.source_url}>{item.source_url}</WebLink>
+            </p>
+          )}
+        </div>
+      ))}
 
       {!disabled && (
-        <button
+        <Button
           id="btn-validate-accreditations"
-          className="btn btn-primary"
-          style={{ width: "100%", marginTop: "8px" }}
+          variant="primary"
+          className="w-full"
           onClick={handleSubmit}
           disabled={loading || accreditations.length === 0}
         >
-          {loading ? "Validation en cours..." : "✓ Valider et Publier ces accréditations"}
-        </button>
+          {loading ? "Validation en cours..." : "Valider et Publier ces accréditations"}
+        </Button>
       )}
     </div>
   );
@@ -1798,111 +1665,81 @@ function MultiProgramForm({
     });
   };
 
-  const CONFIDENCE_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-    exact: { bg: "rgba(34, 197, 94, 0.12)", color: "#16a34a", label: "✓ Match exact" },
-    fuzzy: { bg: "rgba(249, 115, 22, 0.12)", color: "#ea580c", label: "⚠ Match approximatif" },
-    none: { bg: "rgba(239, 68, 68, 0.12)", color: "#dc2626", label: "✕ Non matché" },
-  };
-
   return (
-    <div>
-      <h3 style={{ fontSize: "1rem", marginBottom: "16px" }}>
-        {CATEGORY_ICONS[ticket.ai_category]} Données extraites — {ticket.ai_category} ({programs.length} programme{programs.length !== 1 ? "s" : ""})
-      </h3>
+    <div className="flex flex-col gap-4">
+      <FormTitle>
+        Données extraites — {ticket.ai_category} ({programs.length} programme{programs.length !== 1 ? "s" : ""})
+      </FormTitle>
 
       {/* Programmes matchés */}
       {programs.map((prog, idx) => {
-        const conf = CONFIDENCE_STYLES[prog.match_confidence] || CONFIDENCE_STYLES.none;
+        const conf = matchConfidence(prog.match_confidence);
         return (
-          <div
-            key={idx}
-            style={{
-              border: "1px solid var(--border-color)",
-              borderRadius: "var(--radius)",
-              padding: "16px",
-              marginBottom: "12px",
-              background: "var(--bg-secondary)",
-            }}
-          >
+          <div key={idx} className="flex flex-col gap-3 rounded-card border border-line bg-surface-2 p-4">
             {/* Header du programme */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "4px" }}>
-                  📚 {prog.matched_program_name || prog.extracted_program_name}
-                </div>
-                {prog.extracted_program_name !== prog.matched_program_name && prog.matched_program_name && (
-                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", fontStyle: "italic" }}>
-                    Nom extrait : « {prog.extracted_program_name} »
-                  </div>
-                )}
-                <span
-                  style={{
-                    display: "inline-block",
-                    padding: "2px 8px",
-                    borderRadius: "999px",
-                    fontSize: "0.7rem",
-                    fontWeight: 600,
-                    marginTop: "6px",
-                    background: conf.bg,
-                    color: conf.color,
-                  }}
-                >
-                  {conf.label}
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-col items-start gap-1">
+                <span className="text-sm font-bold text-ink">
+                  {prog.matched_program_name || prog.extracted_program_name}
                 </span>
+                {prog.extracted_program_name !== prog.matched_program_name && prog.matched_program_name && (
+                  <span className="text-xs text-ink-2 italic">
+                    Nom extrait : « {prog.extracted_program_name} »
+                  </span>
+                )}
+                <Badge tone={conf.tone} className="mt-1">
+                  {conf.label}
+                </Badge>
               </div>
               {!disabled && (
-                <button
-                  className="btn btn-danger btn-sm"
-                  style={{ padding: "2px 8px", fontSize: "0.75rem" }}
-                  onClick={() => removeProgram(idx)}
-                >
+                <Button size="sm" variant="danger-soft" onClick={() => removeProgram(idx)}>
                   Retirer
-                </button>
+                </Button>
               )}
             </div>
 
             {/* Champs de données */}
-            <div className="field-grid">
+            <div className="grid gap-3 sm:grid-cols-2">
               {fields.map(({ key, label, type, required }) => (
-                <div key={key} className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" style={{ fontSize: "0.75rem" }}>
-                    {label}{required && <span style={{ color: "var(--danger)" }}> *</span>}
-                  </label>
-                  {type === "boolean" ? (
-                    <select
-                      className="form-control"
-                      value={String(prog.data[key] ?? "")}
-                      onChange={(e) =>
-                        updateProgramData(
-                          idx,
-                          key,
-                          e.target.value === "true" ? true : e.target.value === "false" ? false : null
-                        )
-                      }
-                      disabled={disabled}
-                    >
-                      <option value="">—</option>
-                      <option value="true">Oui</option>
-                      <option value="false">Non</option>
-                    </select>
-                  ) : type === "number" ? (
-                    <input
-                      type="number"
-                      className="form-control"
-                      value={prog.data[key] != null ? String(prog.data[key]) : ""}
-                      onChange={(e) => updateProgramData(idx, key, e.target.value ? Number(e.target.value) : null)}
-                      disabled={disabled}
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={prog.data[key] != null ? String(prog.data[key]) : ""}
-                      onChange={(e) => updateProgramData(idx, key, e.target.value || null)}
-                      disabled={disabled}
-                    />
-                  )}
-                </div>
+                <Field key={key} id={`program-${idx}-${key}`} label={fieldLabel(label, required)}>
+                  {(control) =>
+                    type === "boolean" ? (
+                      <Select
+                        {...control}
+                        value={String(prog.data[key] ?? "")}
+                        onChange={(e) =>
+                          updateProgramData(
+                            idx,
+                            key,
+                            e.target.value === "true" ? true : e.target.value === "false" ? false : null
+                          )
+                        }
+                        disabled={disabled}
+                      >
+                        <option value="">—</option>
+                        <option value="true">Oui</option>
+                        <option value="false">Non</option>
+                      </Select>
+                    ) : type === "number" ? (
+                      <Input
+                        {...control}
+                        type="number"
+                        className="font-mono tabular-nums"
+                        value={prog.data[key] != null ? String(prog.data[key]) : ""}
+                        onChange={(e) => updateProgramData(idx, key, e.target.value ? Number(e.target.value) : null)}
+                        disabled={disabled}
+                      />
+                    ) : (
+                      <Input
+                        {...control}
+                        type="text"
+                        value={prog.data[key] != null ? String(prog.data[key]) : ""}
+                        onChange={(e) => updateProgramData(idx, key, e.target.value || null)}
+                        disabled={disabled}
+                      />
+                    )
+                  }
+                </Field>
               ))}
             </div>
           </div>
@@ -1911,46 +1748,28 @@ function MultiProgramForm({
 
       {/* Programmes non matchés */}
       {unmatchedPrograms.length > 0 && (
-        <div style={{ marginTop: "16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-            <h4 style={{ fontSize: "0.9rem", margin: 0, color: "var(--danger)" }}>
-              ⚠️ Programmes non matchés ({unmatchedPrograms.length})
-            </h4>
-          </div>
-          {unmatchedPrograms.map((up, idx) => (
-            <div
-              key={idx}
-              style={{
-                padding: "10px 14px",
-                background: "rgba(239, 68, 68, 0.06)",
-                border: "1px solid rgba(239, 68, 68, 0.15)",
-                borderRadius: "var(--radius)",
-                marginBottom: "6px",
-                fontSize: "0.85rem",
-              }}
-            >
-              <strong>{up.extracted_program_name}</strong>
-              <span style={{ color: "var(--text-secondary)", marginLeft: "8px" }}>— {up.reason}</span>
-            </div>
-          ))}
+        <div className="flex flex-col gap-2">
+          <h4 className="text-sm font-semibold text-danger">
+            Programmes non matchés ({unmatchedPrograms.length})
+          </h4>
+          <ul className="flex flex-col gap-1.5">
+            {unmatchedPrograms.map((up, idx) => (
+              <li key={idx} className="rounded-control border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-sm text-ink">
+                <strong className="font-semibold">{up.extracted_program_name}</strong>
+                <span className="ml-2 text-ink-2">— {up.reason}</span>
+              </li>
+            ))}
+          </ul>
 
           {createMsg && (
-            <div className={`alert ${createMsg.type === "success" ? "alert-success" : "alert-danger"}`} style={{ margin: "8px 0" }}>
-              {createMsg.type === "success" ? "✅" : "❌"} {createMsg.text}
-            </div>
+            <Alert tone={createMsg.type === "success" ? "success" : "danger"}>{createMsg.text}</Alert>
           )}
 
           {!disabled && (
-            <button
-              className="btn btn-primary btn-sm"
-              style={{
-                width: "100%",
-                marginTop: "8px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "6px",
-              }}
+            <Button
+              variant="primary"
+              size="sm"
+              className="w-full"
               disabled={creatingPrograms}
               onClick={async () => {
                 setCreatingPrograms(true);
@@ -1964,15 +1783,15 @@ function MultiProgramForm({
                   });
                   const data = await res.json();
                   if (!res.ok) throw new Error(data.error || "Erreur lors de la création");
-                  
+
                   // Update local React state instantly with new updated JSON
                   if (data.updatedJson) {
                     setPrograms(data.updatedJson.programs || []);
                     setUnmatchedPrograms(data.updatedJson.unmatched_programs || []);
                   }
-                  
+
                   setCreateMsg({ type: "success", text: `${data.count} programme(s) créé(s) et rattaché(s) au ticket` });
-                  
+
                   // Refresh parent ticket in background
                   if (onRefreshTicket) await onRefreshTicket();
                 } catch (err: unknown) {
@@ -1982,35 +1801,24 @@ function MultiProgramForm({
                 }
               }}
             >
-              {creatingPrograms ? "Création en cours..." : `➕ Créer et rattacher les ${unmatchedPrograms.length} programme(s)`}
-            </button>
+              {creatingPrograms ? "Création en cours..." : `Créer et rattacher les ${unmatchedPrograms.length} programme(s)`}
+            </Button>
           )}
         </div>
       )}
 
       {/* JSON brut */}
-      <details style={{ marginTop: "12px" }}>
-        <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-          Voir JSON brut complet
-        </summary>
-        <pre style={{
-          background: "var(--bg-secondary)", border: "1px solid var(--border-color)",
-          borderRadius: "var(--radius)", padding: "12px", fontSize: "0.75rem",
-          overflow: "auto", maxHeight: "200px", marginTop: "8px",
-        }}>
-          {JSON.stringify(ticket.ai_extracted_json, null, 2)}
-        </pre>
-      </details>
+      <RawJson json={ticket.ai_extracted_json} />
 
       {!disabled && (
-        <button
-          className="btn btn-primary"
-          style={{ width: "100%", marginTop: "16px" }}
+        <Button
+          variant="primary"
+          className="w-full"
           onClick={handleSubmit}
           disabled={loading || programs.length === 0}
         >
-          {loading ? "Validation en cours..." : `✓ Valider — ${programs.length} programme(s) ${ticket.ai_category}`}
-        </button>
+          {loading ? "Validation en cours..." : `Valider — ${programs.length} programme(s) ${ticket.ai_category}`}
+        </Button>
       )}
     </div>
   );

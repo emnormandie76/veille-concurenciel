@@ -222,6 +222,9 @@ const SCREENS = [
   "app/admin/schools/page.tsx",
   "app/admin/schools/[id]/manage/page.tsx",
   "app/admin/schools/[id]/campuses/page.tsx",
+  // Étape 9, lot 4 (D54) : l'inbox, le style seulement (IA gelée, règle 10 ;
+  // test/inbox-screen.test.ts).
+  "app/admin/inbox/page.tsx",
 ];
 
 /** Un émoji (présentation émoji, ou sélecteur de variante U+FE0F) ; les flèches

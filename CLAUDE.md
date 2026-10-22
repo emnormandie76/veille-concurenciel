@@ -236,7 +236,7 @@ branche `gestion` :
   le guide utilisateur, en dernier ;
 - étape 10 (deux corrections d'interface) **faite et validée le
   21 octobre, sur le poste** (le propriétaire demande le commit et le push
-  sur `gestion`, pas de mise en production) : D104 tranchée
+  sur `gestion` ; en production le 22 octobre, avec l'étape 12) : D104 tranchée
   (un composant client dans la barre du site, `BackOfficeLink`, demande à
   `GET /api/admin/account/back-office`, en `guardSignedIn`, si le compte a
   accès au back-office ; la réponse gardée dans l'onglet, revérifiée à
@@ -248,7 +248,7 @@ branche `gestion` :
   l'onglet. Détail : journal du plan ;
 - étape 11 (séparer l'IA) **faite le 21 octobre, contrôlée et validée le
   22, sur le poste** (le propriétaire demande le commit et le push sur
-  `gestion`, pas de mise en production : `main` reste à `9f71567`) : la branche `local` créée depuis `e4ba0c5` et poussée
+  `gestion` ; en production le 22 octobre, avec l'étape 12) : la branche `local` créée depuis `e4ba0c5` et poussée
   sur `origin` (CI verte, aucun déploiement Vercel) ; sur `gestion`, la
   console (`/admin/cron`, « Monitoring & Cron »), ses cinq routes, le code
   de `lib/` qu'elles seules employaient, `backend/`, les tests Python,
@@ -270,7 +270,10 @@ branche `gestion` :
   sur décision du propriétaire ; la `main` du poste avancée sur
   `origin/main` ; le dépôt `Anton1P/veille-concurenciel` et le remote
   `anton1p` intacts ; la CI ne vise plus `devresearch` (piège 11) ; aucune
-  migration. Détail : journal du plan ;
+  migration. **Les étapes 10 à 12 en production le 22 octobre** : `main`
+  avancée sur `gestion` (`0880308`) par avance rapide, CI verte, déploiement
+  Vercel READY ; en ligne, le menu sans « Monitoring & Cron » et
+  `/admin/cron` en 404. Détail : journal du plan ;
 - prochaine : l'étape 13 (le nettoyage du contexte, D103), dans une
   nouvelle session ; D15 reste ouverte.
 

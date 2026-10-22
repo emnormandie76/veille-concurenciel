@@ -15,6 +15,10 @@
 > vivent sur la branche `local`, lancée sur le poste ; `gestion` et `main`
 > (la production) ne les ont plus. L'inbox reste en ligne. §0, §1.3, §4,
 > §8.2 et §11 mis à jour.
+> **Mis à jour le 22 octobre 2026** (étape 12, D102) : le dépôt ne garde que
+> `main` (la production), `gestion` et `local` ; la CI ne vise plus
+> `devresearch` (§13). Les branches que nomment les sections datées (§8.1,
+> §9) n'existent plus.
 > **Qui fait quoi** : la création du projet, les variables, la connexion de la
 > base et le déploiement reviennent au propriétaire (règle 3 de
 > [`CLAUDE.md`](../../CLAUDE.md)). L'agent prépare, guide pas à pas sans
@@ -655,11 +659,12 @@ exécute `npx prisma migrate status` **contre la base Neon partagée**, celle
 que désignent les secrets `DATABASE_URL` / `DIRECT_URL` du dépôt.
 
 Depuis le 2 septembre 2026, elle ne fait échouer le job que sur les branches
-d'intégration :
+d'intégration ; depuis le 22 octobre 2026 (étape 12 du plan
+[gestion-contenu](../features/gestion-contenu.md), `devresearch` supprimée),
+il n'en reste qu'une, `main`, avec les PR vers elle :
 
 ```yaml
 continue-on-error: ${{ !(github.ref == 'refs/heads/main'
-                      || github.ref == 'refs/heads/devresearch'
                       || github.base_ref == 'main') }}
 ```
 

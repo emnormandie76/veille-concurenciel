@@ -259,8 +259,20 @@ branche `gestion` :
   `test_contribution_enums.py` qui tient `lib/contribution.ts` contre la
   base ; `test/no-ai-backend.test.ts` verrouille la séparation ; 56 méthodes
   sous `app/api/admin` ; aucune migration. Détail : journal du plan ;
-- prochaine : l'étape 12 (le tri des branches, D102), dans une nouvelle
-  session ; D15 reste ouverte.
+- étape 12 (le tri des branches, D102) **faite et validée le 22 octobre,
+  sur le poste** (le propriétaire demande le commit, le push et la mise en
+  production des étapes 10 à 12) : il ne reste que
+  `main`, `gestion` et `local`, sur le poste et sur `origin` (accord du
+  propriétaire pour `origin`) ; aucune des branches supprimées n'avait de
+  commit hors de `gestion` ; la `newresearch` du poste, refusée par
+  `git branch -d` (son amont `anton1p/newresearch` n'avait pas 8 de ses
+  commits, tous dans `gestion`), supprimée par `-d` une fois ce lien coupé,
+  sur décision du propriétaire ; la `main` du poste avancée sur
+  `origin/main` ; le dépôt `Anton1P/veille-concurenciel` et le remote
+  `anton1p` intacts ; la CI ne vise plus `devresearch` (piège 11) ; aucune
+  migration. Détail : journal du plan ;
+- prochaine : l'étape 13 (le nettoyage du contexte, D103), dans une
+  nouvelle session ; D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -394,10 +406,15 @@ propriétaire le 20 octobre.
   appartiennent au propriétaire. Ne jamais les lire, les afficher, les modifier
   ni les committer. La liste des variables est dans `.env.example`.
 - Pas de commit ni de push sans demande explicite. Le propriétaire indique la
-  branche de travail : aujourd'hui `gestion`, créée depuis `localpython`
-  (`423631e`) le 16 octobre 2026. `local` (depuis le 21 octobre, `e4ba0c5`)
-  garde la partie IA ; `localpython` est gardée en l'état jusqu'au tri des
-  branches (étape 12).
+  branche de travail : aujourd'hui `gestion`, créée le 16 octobre 2026
+  depuis `423631e` (alors la tête de `localpython`). Depuis l'étape 12
+  (22 octobre, D102), le dépôt ne garde que trois branches, sur le poste
+  comme sur `origin` : `main` (la production, avancée sur `gestion` par
+  avance rapide), `gestion` (le travail) et `local` (la partie IA, depuis le
+  21 octobre, `e4ba0c5`). Le remote `anton1p`
+  (`Anton1P/veille-concurenciel`) est une sauvegarde figée : aucune commande
+  vers lui ; `git fetch origin`, jamais `git fetch --all`, qui y reste
+  bloqué (il demande des identifiants).
 - Next.js 16 : lire `node_modules/next/dist/docs/` avant de toucher au front
   (voir le bloc en fin de fichier). `proxy.ts` tient lieu de middleware.
 - Styles : la charte graphique

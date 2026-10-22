@@ -13,7 +13,7 @@
  * - Contenu dans endpoints.ts, aligné sur les réponses réelles le 15 octobre
  *   2026 et tenu par test/api-docs.test.ts.
  * - Langue : Français.
- * - Référence : task.md §10, implementation_plan.md
+ * - Référence : task.md §10
  */
 
 "use client";

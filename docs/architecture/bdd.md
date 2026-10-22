@@ -1,47 +1,9 @@
 # Schéma de base de données (PostgreSQL / Prisma)
 
-> **Mise à jour** : 28 septembre 2026 — aligné sur `prisma/schema.prisma` et ses
-> 10 migrations (branche `newresearch`). Ajouts depuis le 1er septembre :
-> `PipelineJob`, `ProgramCampusAttachment`, `ProgramPlacement`,
-> `Program.campus_policy_note`, `ContributionInbox.raw_report`, clés étrangères
-> et contraintes `CHECK` sur l'inbox, `AccreditationRecord.year_obtained`
-> facultatif.
-> **16 octobre 2026** (plan gestion-contenu, étape 1) : 11e migration,
-> `20261016120000_three_roles` : `User.role` passe aux trois rôles `USER`,
-> `GESTIONNAIRE`, `ADMIN` (défaut `USER`). Appliquée sur la branche Neon `dev`
-> le 16 octobre, sur `main` le 19 octobre (étape 3).
-> **16 octobre 2026** (étape 2) : 12e migration,
-> `20261016150000_whitelist_accounts` : la liste blanche. `User` reçoit
-> l'adresse, le nom affiché, l'état, la date de première connexion et la
-> version de session ; `username` et `password_hash` deviennent facultatifs.
-> Appliquée sur `dev` le 16 octobre, sur `main` le 19 octobre (étape 3).
-> **20 octobre 2026** (étape 5) : 13e migration,
-> `20261019120000_content_provenance` : la **provenance** de chaque donnée.
-> Les neuf tables de données reçoivent `updated_at`, `updated_by_id` (clé vers
-> `User`, `ON DELETE RESTRICT`) et `updated_via` (D10, D11, D24) ;
-> `SchoolStatsRecord`, `AccreditationRecord` et `Program` reçoivent
-> `source_url` (D12). Appliquée sur `dev`, puis sur `main` le 20 octobre,
-> avant la mise en production du code qui la lit.
-> **20 octobre 2026** (étape 6) : 14e migration,
-> `20261020120000_content_reports` : les **signalements**, dans une table
-> neuve, `ContentReport` (D13), jamais dans `ContributionInbox` (piège 6).
-> Appliquée sur la branche Neon `dev`, puis sur `main` le 20 octobre, avant
-> la mise en production du code qui la lit.
-> **20 octobre 2026** (étape 7) : 15e migration,
-> `20261020150000_research_launches` : le **journal des lancements de l'IA**,
-> dans une table neuve, `ResearchLaunch` (D14), tenue par Next.js seul ;
-> `PipelineJob`, que le backend gelé écrit, n'est pas touchée. Appliquée sur
-> la branche Neon `dev`, puis sur `main` le 20 octobre, avant la mise en
-> production du code qui la lit.
-> **20 octobre 2026** (étape 8) : 16e migration,
-> `20261020180000_program_entries` : les **admissions d'un programme**
-> (année d'entrée, niveau requis, voie), dans une table fille neuve,
-> `ProgramEntry` (D16), avec la provenance de l'étape 5 (D49) ; et une
-> 9e catégorie de signalement, `ADMISSIONS` (D52 : la contrainte de
-> `ContentReport` est remplacée). `Program` n'est pas touchée ;
-> `admission_exam` reste tel quel (D47). Appliquée sur la branche Neon `dev`,
-> puis sur `main` le 20 octobre, avant la mise en production du code qui la
-> lit (la fiche programme, l'onglet « Admissions », l'API v1).
+> Aligné sur `prisma/schema.prisma` et ses seize migrations, appliquées sur les
+> deux branches Neon (`dev` et `main`, la production) ; sur la branche
+> `local`, l'état est celui de l'étape 10 du plan (`e4ba0c5`). Les étapes et
+> décisions citées (D10, D16…) sont celles du plan, sur la branche `gestion`.
 
 Référence du projet School Data Pipeline. La source de vérité reste
 [`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique

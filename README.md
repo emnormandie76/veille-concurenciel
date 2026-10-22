@@ -1,27 +1,23 @@
-# Veille Concurrentiel — pipeline de données de l'enseignement supérieur
+# Veille Concurrentiel — branche `local`, la partie IA
 
-Plateforme de collecte, de vérification et de publication de données sur les
-écoles françaises : campus, programmes, tarifs, classements, capacités
-d'accueil, accréditations et statistiques.
-
-Deux exécutions distinctes :
+Le gestionnaire de contenu des données sur les écoles françaises (campus,
+programmes, tarifs, classements, capacités d'accueil, accréditations,
+statistiques, admissions), et sa **recherche IA, gelée** depuis le
+16 octobre 2026. Cette branche est un instantané de `gestion` à la fin de
+l'étape 10 du plan (`e4ba0c5`) qui garde le backend FastAPI, ses tests et la
+console `/admin/cron` : elle se lance sur le poste de l'admin, et Vercel ne la
+construit pas. Le site en ligne (<https://app-vc-emn.vercel.app>) vient de
+`main`, sans la console.
 
 | | Rôle |
 |---|---|
-| **Next.js 16** (`app/`, `lib/`) | site et back-office du contenu, derrière une connexion obligatoire (rôles `USER`, `GESTIONNAIRE`, `ADMIN`) ; API `/api/v1` réservée aux personnes connectées |
+| **Next.js 16** (`app/`, `lib/`) | site et back-office du contenu, derrière une connexion obligatoire (rôles `USER`, `GESTIONNAIRE`, `ADMIN`) ; API `/api/v1` réservée aux personnes connectées ; l'inbox et la console `/admin/cron` |
 | **FastAPI** (`backend/`) | pipeline IA — recherche Tavily, extraction par la cascade Gemini (Gemma en dernier recours pour les contributions), traitement des contributions ; lancé à la main sur le poste, les recherches partent sur demande |
 
 Les deux partagent une base **PostgreSQL (Neon)** : Prisma côté TypeScript,
-psycopg2 côté Python.
-
-> **Réorientation du 16 octobre 2026.** Le projet devient d'abord un
-> **gestionnaire de contenu** en ligne, derrière une connexion obligatoire, avec
-> trois rôles (utilisateur, gestionnaire, admin). La partie FastAPI (recherche
-> IA) est **gelée** : conservée telle quelle, réservée à l'admin. La
-> contribution du public est abandonnée, remplacée par un formulaire de
-> signalement sans IA (étape 6). Plan : [`docs/features/gestion-contenu.md`](docs/features/gestion-contenu.md) ;
-> index de la documentation : [`docs/README.md`](docs/README.md). Ce README
-> décrit le code tel qu'il est ; chaque étape du plan le met à jour.
+psycopg2 côté Python. Le plan du chantier est sur `gestion`
+(`git show gestion:docs/features/gestion-contenu.md`) ; l'index de la
+documentation de cette branche : [`docs/README.md`](docs/README.md).
 
 ---
 
@@ -56,7 +52,7 @@ Le back-office est sur `/admin`, la connexion sur `/admin/login`.
 
 ### Comptes
 
-Plan gestion-contenu, étape 2 ([`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §2) :
+Détail : [`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §2.
 
 - **Pas d'inscription libre, pas d'envoi d'e-mail.** Un admin ajoute l'adresse
   de travail d'un collègue à la liste blanche (`/admin/users`, « Ajouter une
@@ -125,8 +121,9 @@ La liste complète, commentée et classée par exécution, est dans
 sur le poste. **En ligne depuis le 19 octobre 2026** :
 <https://app-vc-emn.vercel.app> (projet `app-vc` du Vercel de l'école, base
 Neon de l'école, branche `main`). Variables à poser et à ne jamais poser sur
-Vercel, intégration Neon, Upstash, ordre des opérations et vérifications :
-[`docs/memory/memory-deploiement-vercel.md`](docs/memory/memory-deploiement-vercel.md).
+Vercel, intégration Neon, Upstash : la version à jour du mémo est sur `gestion`
+(`git show gestion:docs/memory/memory-deploiement-vercel.md`) ; celle de cette
+branche date de l'étape 10.
 
 ---
 
@@ -182,7 +179,7 @@ obligatoire (exigence de Prisma 7).
 npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
 npm test              # 722 tests Python (pytest), +25 sous-tests
-npm run test:ts       # 542 tests TypeScript (node --test), dont les routes de test/api/
+npm run test:ts       # 1 338 tests TypeScript (node --test), dont les routes de test/api/
 npm run smoke         # à la main, npm run dev lancé : le mur, puis pages et API v1 connecté
 ```
 
@@ -241,20 +238,8 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
 
 ## Documentation
 
-| Chemin | Contenu |
-|--------|---------|
-| `docs/architecture/` | architecture et découpage fonctionnel |
-| `docs/features/` | spécifications par fonctionnalité |
-| `docs/memory/` | tâches et décisions **en cours** — déploiement Vercel, rétention des tickets, vulnérabilités npm |
-| `docs/testing/` | stratégie de test |
-| `docs/edgecase.md` | cas limites recensés |
-
-`docs/architecture/` a été remis en phase avec le code après la remédiation de
-l'audit technique de septembre 2026 — c'est la référence. `docs/memory/` ne
-contient plus que ce qui n'est **pas terminé** : la marche à suivre pour le
-déploiement Vercel, la politique de rétention des tickets, et la tâche de
-traitement des vulnérabilités npm.
-
-Les grandes fiches de `docs/features/` sont des **plans d'implémentation
-historiques**. Chacune porte en tête un encadré signalant ce que la remédiation a
-changé et où lire la version à jour.
+L'index est [`docs/README.md`](docs/README.md) : la référence technique de
+l'IA (`docs/architecture/architecture.md`), le plan gelé du backend local et
+son journal, les fiches de test, le tutoriel de démonstration, et l'état du
+gestionnaire de contenu sur cette branche. Le plan du chantier, la production
+et la documentation à jour du gestionnaire sont sur `gestion`.

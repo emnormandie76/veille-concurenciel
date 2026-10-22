@@ -1,7 +1,7 @@
 # La charte graphique
 
-> **Arrêtée le 19 octobre 2026**, étape 4 du plan
-> [`features/gestion-contenu.md`](../features/gestion-contenu.md) : maquette
+> **Arrêtée le 19 octobre 2026**, étape 4 du plan (`docs/features/gestion-contenu.md`,
+> sur la branche `gestion`) : maquette
 > **A « Registre »** choisie par le propriétaire parmi trois (artefacts privés :
 > [A](https://claude.ai/artifact/4jUPQ1b1FXojVDLD6T3p1v),
 > [B](https://claude.ai/artifact/Xch8tsLf1Sf9KsAgo2EZGX),

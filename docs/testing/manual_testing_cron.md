@@ -12,8 +12,8 @@ Ce guide détaille les étapes nécessaires pour tester localement le tableau de
 > (reprise des jobs orphelins, purge des jobs terminés) et **traite aussitôt les
 > contributions en attente**, ce qui coûte des crédits. La branche Neon `main`
 > est aussi la production Vercel : les essais se font sur la branche `dev`
-> (`br-rapid-bird-abck4fdr`, créée depuis `main` le 15 octobre 2026, décision
-> D7), le travail réel sur `main` (§1.3).
+> (`br-odd-cloud-zao7fqra`, base du compte de l'école), le travail réel sur
+> `main` (§1.3).
 
 ---
 

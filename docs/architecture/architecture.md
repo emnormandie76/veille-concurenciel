@@ -1,43 +1,22 @@
 # Architecture Complète — School Data Pipeline (Partie 1 : Système)
 
-> **Depuis le 16 octobre 2026, ce document décrit surtout la partie IA, gelée.**
-> Le projet se réoriente vers la gestion de contenu : l'état du code du
-> gestionnaire de contenu (rôles, gardes, écrans, routes, tables) est dans
-> [`gestion-contenu.md`](gestion-contenu.md), le plan dans
-> [`../features/gestion-contenu.md`](../features/gestion-contenu.md). Les
-> sections transverses restent la référence : sécurité (§10), outillage, build
-> et qualité (§10 bis).
+> **La référence technique de la partie IA** (version 2.1), sur la branche
+> `local` : le pipeline Tavily + Gemini, le crowdsourcing, la console
+> `/admin/cron`, la sécurité (§10) et l'outillage (§10 bis), tels qu'à
+> l'étape 10 du plan du gestionnaire de contenu (`e4ba0c5`). La recherche IA
+> est **gelée** depuis le 16 octobre 2026 : ni développement ni recette.
+> L'état du code du gestionnaire de contenu est dans
+> [`gestion-contenu.md`](gestion-contenu.md) ; le plan du chantier, sur la branche `gestion`.
 >
-> **Version :** 2.1 — 12 octobre 2026
-> **Statut :** Aligné sur le code de la branche `newresearch` (commit `827db5e`).
-> **Mises à jour du plan [backend-local](../features/backend-local.md)**
-> (branche `localpython`, octobre 2026) : pont WebSocket et migrations en 443
-> (§10.8) ; **plus de cron** : les passes dues partent sur demande (§5.5), et un
-> démarrage raté se voit (§2.3) ; une Phase 2 dont une cible a échoué finit
-> `failed` et nomme ses cibles (§5.3) ; le site en ligne n'a pas de backend :
-> `/admin/cron` y lit la base, et ne pilote le backend qu'en local (§2.3, §7.4) ;
-> `npm run local` lance le backend dans sa propre fenêtre, puis Next.js (§10.6) ;
-> étape 7 : les parties non couvertes sont testées (§10 bis), et les défauts
-> trouvés corrigés : API v1 (§8.4, §8.8), CRUD admin (§7.4), inbox (§5.4, §6.2),
-> contributions (§10.2), erreurs Tavily (§6.2), déclencheurs internes (§2.3) ;
-> smoke local `npm run smoke` (§10 bis) ;
-> étape 8 : l'hébergement réel est décrit en §1.2, §2.1 et §2.2 (Vercel Hobby,
-> backend sur le poste, plus de Koyeb), et le déploiement dans
-> [`memory-deploiement-vercel.md`](../memory/memory-deploiement-vercel.md) ;
-> smoke joué contre `npm run dev` (§10 bis).
-> Tâche « trois sources » (15 octobre 2026) : le bloc « Sources » d'un ticket
-> du pipeline porte au plus trois liens, coupés à l'écriture et plafonnés dans
-> l'inbox (§5.6, §7.4) ; les contributions du public n'y passent pas (§6.2).
-> Depuis la v2.0 : les deux crons Research (`phase1_scanner`, `phase2_enricher`)
-> sont remplacés par une **rotation nocturne** sous plafond mensuel (§5.5) ; une
-> passe automatique ne repaie pas une cible dont le ticket attend l'admin
-> (§5.3) ; la Phase 1 ne propose que ce qui manque en base (§5.1) ; panneau
-> « Rotation automatique » dans `/admin/cron`.
-> Depuis la v1.2 : Tavily Research rédige un rapport que Gemini structure (plus
-> d'`output_schema`) ; cascade Gemini à paliers ; rattachement campus année par
-> année (`ProgramCampusAttachment`) ; vraies clés étrangères et énumérations
-> gardées sur l'Inbox ; suivi des jobs (`PipelineJob`) ; cron Research réservé à
-> la production ; rapport Research conservé quand son extraction échoue.
+> Le plan gelé [backend-local](../features/backend-local.md) (octobre 2026) y
+> est reporté : pont WebSocket et migrations en 443 (§10.8) ; plus de cron, les
+> passes dues partent sur demande (§5.5), et un démarrage raté se voit (§2.3) ;
+> une Phase 2 dont une cible a échoué finit `failed` et nomme ses cibles
+> (§5.3) ; le site en ligne n'a pas de backend (§2.3, §7.4) ; `npm run local`
+> lance le backend dans sa propre fenêtre, puis Next.js (§10.6) ; les parties
+> non couvertes sont testées (§10 bis) ; le bloc « Sources » d'un ticket porte
+> au plus trois liens (§5.6). Les sections qui racontent une étape ou une
+> date gardent la trace de ce qui a été fait alors.
 
 ---
 

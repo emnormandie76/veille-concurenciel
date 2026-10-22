@@ -266,7 +266,7 @@ Défauts F3, F4, F8 et F9 de [`backend-local.md`](features/backend-local.md) §5
 
 ## Session 12 — formulaire de signalement (octobre 2026)
 
-Plan gestion-contenu, étape 6 ([`features/gestion-contenu.md`](features/gestion-contenu.md), décisions D13 et D31 à D39).
+Plan gestion-contenu, étape 6 (`docs/features/gestion-contenu.md`, sur la branche `gestion` ; décisions D13 et D31 à D39).
 
 ### Edge Case 42 : L'abus du formulaire de signalement
 - **Contexte :** « Signaler une information » est ouvert à toute session, `USER` compris (G4) : un formulaire sur chaque fiche école et programme (`/schools/[id]/report`), qui écrit par `POST /api/admin/reports` dans la table `ContentReport`. Les gestionnaires les lisent sur `/admin/reports`.

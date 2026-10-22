@@ -12,7 +12,7 @@
 > [`architecture.md`](../architecture/architecture.md) §5.5.
 >
 > **Statut :** plan validé par le propriétaire le 29 septembre 2026. Étapes 0 à 6 faites.
-> **Branche de départ :** `newresearch`.
+> **Branche de départ :** `newresearch` (supprimée le 22 octobre 2026).
 > **Lire avant de coder :** ce document en entier, puis
 > [`architecture.md`](../architecture/architecture.md) §3.5 bis, §5.1, §5.3,
 > et `AGENTS.md` à la racine (Next.js 16 : lire `node_modules/next/dist/docs/`

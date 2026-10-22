@@ -30,7 +30,7 @@ usage externe apparaît.
 - **Framework** : Next.js App Router (Route Handlers `app/api/v1/...`) — `next@16.3.8` (depuis le 14 octobre 2026, correctif de sécurité)
 - **Langage** : TypeScript
 - **Accès BDD** : Prisma ORM — `prisma@7.10.0`
-- **Hébergement cible** : Vercel (non déployé à ce jour)
+- **Hébergement** : Vercel, depuis `main` (la branche `local` n'est pas déployée)
 
 > **La montée en `next@16.3.4` (1er septembre 2026) n'est pas cosmétique pour
 > cette API.** Les versions antérieures portaient un avis de *bypass de

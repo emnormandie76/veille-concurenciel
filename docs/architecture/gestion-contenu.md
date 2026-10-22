@@ -1,32 +1,11 @@
 # Le gestionnaire de contenu — état du code
 
-> **Relevé du 16 octobre 2026**, branche `gestion`, à la fin de l'étape 2 du
-> plan (liste blanche, première connexion, écran des rôles ; l'étape 1 a posé
-> les trois rôles, les gardes et la connexion obligatoire), **mis à jour le
-> 19 octobre** : site en ligne (étape 3), charte graphique et composants de
-> base (étape 4 : §3 et §6), **et le 20 octobre** : sources et auteur de
-> chaque modification (étape 5 : §2.3, §3, §4, §5, §6, §7), puis le formulaire
-> de signalement (étape 6 : §2, §3, §4, §5, §6, §7), puis l'historique des
-> recherches IA (étape 7 : §2.3, §3.2, §4.2, §5, §7), puis les admissions
-> des programmes (étape 8 : §2, §3, §4, §5, §6, §7), puis le lot 1 de la
-> reprise graphique (étape 9 : le site public et `/api-docs` dans la
-> charte ; §3, §6, §7), puis son lot 2 (la gestion des écoles dans la
-> charte, sauf quatre onglets laissés au lot 3 ; §3.2, §6, §7), **et le
-> 21 octobre** : le lot 3 (les quatre onglets restants dans la charte,
-> l'îlot retiré ; §3.2, §6, §7), puis les corrections du contrôle du
-> propriétaire (D73 à D75 : cartes du gestionnaire, notes des tarifs,
-> nombre de programmes de l'accueil ; §3.1, §4.3, §6, §7), puis le lot 4
-> (l'inbox dans la charte, le style seulement ; D76 à D80 ; §3.2, §6, §7),
-> puis le lot 5 (`/admin/cron` dans la charte, le style seulement ; D46
-> posée, D81 à D91 ; §3.2, §6, §7), puis le lot 6 (le menu latéral et le
-> cadre du back-office dans la charte, le preflight, l'ancien CSS supprimé,
-> Inter retirée : un seul monde ; D92 à D97 ; §2.2, §3.2, §6, §7), puis
-> l'étape 10 (le lien « Back-office » dès la connexion, D104, une route en
-> plus ; le type d'une accréditation en français ; §2.2, §3, §4, §7).
-> Cette fiche décrit
-> **ce que le code fait aujourd'hui** ; la cible est dans le plan
-> [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
-> du plan la met à jour.
+> L'état du code du gestionnaire de contenu **sur la branche `local`** :
+> celui de `gestion` à la fin de l'étape 10 du plan (`e4ba0c5`,
+> 21 octobre 2026), console IA `/admin/cron` comprise. La version à jour du
+> gestionnaire, et le plan qui explique les décisions citées (G1 à G9, D1 à
+> D104), sont sur la branche `gestion` :
+> `git show gestion:docs/architecture/gestion-contenu.md`.
 >
 > C'est le point d'entrée pour travailler sur le contenu sans lire
 > [`architecture.md`](architecture.md), centrée sur le pipeline IA (gelé).
@@ -859,7 +838,7 @@ Les tests Python (`npm test`) couvrent le backend gelé : ils restent verts.
 ## 8. Pour aller plus loin
 
 - Chantier qui a construit les onglets de gestion :
-  [`features/school-content-management.md`](../features/school-content-management.md).
+  `features/school-content-management.md`, dans l'historique Git.
 - Les quatre zones du front, à l'origine : [`architecture.md`](architecture.md) §7.
 - Sécurité : [`architecture.md`](architecture.md) §10, README « Sécurité ».
 - Déploiement : [`memory/memory-deploiement-vercel.md`](../memory/memory-deploiement-vercel.md).

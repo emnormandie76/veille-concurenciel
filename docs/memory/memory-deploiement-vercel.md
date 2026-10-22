@@ -1,103 +1,12 @@
 # Mémoire — Déployer le site sur Vercel
 
-> **Rédigé le** : 1er septembre 2026
-> **Réécrit le** : 15 octobre 2026, à l'étape 8 du plan
-> [backend-local](../features/backend-local.md). Koyeb et le backend hébergé
-> ont disparu. Variables, intégration Neon, build vérifié, offre Hobby,
-> Upstash, ordre des opérations et vérifications ont été revus.
-> **Statut** : **en ligne depuis le 19 octobre 2026**, sur
-> <https://app-vc-emn.vercel.app> (étape 3 du plan
-> [`gestion-contenu.md`](../features/gestion-contenu.md)). L'état réel est
-> dans l'encadré « Ce qui est en ligne » ci-dessous ; le reste du mémo garde la
-> procédure et ses raisons.
-> **Qui fait quoi** : la création du projet, les variables, la connexion de la
-> base et le déploiement reviennent au propriétaire (règle 3 de
-> [`CLAUDE.md`](../../CLAUDE.md)). L'agent prépare, guide pas à pas sans
-> jamais demander de secret dans le chat, puis vérifie en lecture par le MCP
-> Vercel.
->
-> Le détail technique vit dans [`architecture.md`](../architecture/architecture.md)
-> (§2.1 à §2.3 pour l'hébergement, §10.3 pour la limitation de débit, §10 bis
-> pour le build).
->
-> **Mise à jour du 16 octobre 2026** (plan
-> [`gestion-contenu.md`](../features/gestion-contenu.md)). La branche de travail
-> est désormais `gestion` : lire `gestion` partout où ce mémo dit
-> `localpython`. **Décision 8.1 tranchée, option A** : `main` reste la
-> production, rattrapée sur `gestion` à chaque version validée (décision G3).
-> **La mise en ligne attend la connexion obligatoire** (étape 3 du plan, après
-> les étapes 1 et 2), sinon les données des écoles restent publiques dans
-> l'intervalle. L'usage devient un outil d'équipe : le point « usage non
-> commercial » du §6 est à revoir par le propriétaire (plan, D7). Le §8.2
-> (préversions) reste à trancher. Le reste du mémo est valable ; l'étape 3 du
-> plan le révisera.
->
-> **Ce que l'étape 1 du plan a rendu faux ici** (16 octobre 2026), à réviser à
-> l'étape 3 : `/contribute` et `/api/contribute` n'existent plus (D2), donc
-> les vérifications qui les citent (§10, lignes 3, 10 et 12) tombent, et
-> `CONTRIBUTION_ALLOWED_DOMAINS` n'est plus lue (§1 et §9) ; le site entier exige
-> une session (sans session : renvoi vers `/admin/login`, 401 sur les API) ;
-> les gardes sont `guardSignedIn`, `guardManager`, `guardAdmin` (plus de
-> `guardAuth`) ; la migration `20261016120000_three_roles` (rôles `USER`,
-> `GESTIONNAIRE`, `ADMIN`) doit passer sur `main` avant la fusion, et le
-> compte `MODERATOR` de la production deviendra `GESTIONNAIRE`.
->
-> **Ce que l'étape 2 a changé** (16 octobre 2026) : les comptes entrent par la
-> liste blanche (§3.3, réécrit) ; la migration `20261016150000_whitelist_accounts`
-> doit passer sur `main` avant la fusion, après celle des trois rôles ; la
-> première connexion (`/admin/first-login`, `POST /api/first-login`) est
-> ouverte sans session et plafonnée avec la connexion (5 tentatives par
-> 15 minutes et par IP, tentatives confondues : Upstash compte aussi pour
-> elle, §5) ; les jetons émis avant ce code ne valent plus (version de
-> session), chacun se reconnecte une fois.
->
-> **Étape 3, en cours (19 octobre 2026).** Les deux migrations des étapes 1
-> et 2 sont **appliquées sur la branche Neon `main`** (12/12, vérifié par le
-> MCP). Décisions du propriétaire (plan, §2.2) : **D7** l'offre Hobby est
-> gardée, en connaissance de cause (§6) ; **D22** les préversions suivent
-> l'option A du §8.2 (base reliée à Production seulement, « Only build
-> production ») ; **D23** `preload` de HSTS gardé (§7). Le mot de passe du
-> rôle `neondb_owner` a été changé sur `main` et sur `dev`, et les secrets
-> GitHub `DATABASE_URL` et `DIRECT_URL` mis à jour, **avant** de relier la base
-> à Vercel : l'intégration injectera directement le nouveau mot de passe.
-> *(C'était l'ancienne base : voir l'encadré suivant.)*
->
-> **Ce qui est en ligne (19 octobre 2026).** Le propriétaire a déplacé
-> l'hébergement sur des **comptes de l'école** ; `Anton1P` ne fait plus que
-> commiter et pousser. *(Depuis le 20 octobre, les commits sont signés au
-> nom d'`emnormandie76` : voir le §6.)*
->
-> - **Dépôt** : `emnormandie76/veille-concurenciel` (compte GitHub personnel
->   de l'école, `Anton1P` collaborateur). `main` = `ecad4a9`, rattrapée sur
->   `gestion` par avance rapide, sans PR (écart à G3, décision du
->   propriétaire). Secrets Actions du nouveau dépôt créés par le
->   propriétaire : `DATABASE_URL`, `DIRECT_URL` de la **nouvelle** base, sans
->   guillemets, et un `NEXTAUTH_SECRET` **distinct** de celui de Vercel.
-> - **Base** : nouveau projet Neon `vc-bdd` (`noisy-credit-34683167`), créé
->   depuis le Vercel de l'école, Londres ; `main` (`ep-super-rain-zas6jyy2`) =
->   production, `dev` (`ep-proud-lab-za705j3u`) = essais du poste. Schéma posé
->   par `npx prisma migrate deploy` (12 migrations, depuis une base vierge, par
->   le partage de connexion du téléphone : 5432) ; données copiées de
->   l'ancienne base à l'identique (14 tables, empreintes MD5). Le mot de passe
->   de `neondb_owner` de cette base n'a pas été changé (décision du
->   propriétaire, risque accepté). L'ancienne base (`lucky-cell-29057691`)
->   reste en sauvegarde figée.
-> - **Projet Vercel** : `app-vc` (`prj_x0D6x90ihnJnc86piYtt9fJXfNLM`), équipe
->   `em-normandie1`, Hobby (D7). Importé comme **projet Next.js seul** : Vercel
->   proposait un projet « Services » (FastAPI + Next.js), refusé. Adresse
->   principale `https://app-vc-emn.vercel.app` ; `app-vc-taupe.vercel.app`,
->   attribuée à la création, y renvoie en 307.
-> - **Variables de Production** (noms relus par le MCP) : `DATABASE_URL` et
->   ses cousines (intégration Neon, Production seule, D22), `NEXTAUTH_SECRET`,
->   `NEXTAUTH_URL` (= l'adresse principale), `UPSTASH_REDIS_REST_URL`,
->   `UPSTASH_REDIS_REST_TOKEN` (recopiées à la main), et les `KV_*` et
->   `REDIS_URL` de l'intégration Upstash, sans effet. Aucune du §1.3.
-> - **Réglages** : `lhr1`, Fluid compute, Node 24.x, « Only build
->   production ».
-> - **Comptes** : `aparede@em-normandie.fr` (admin), un compte gestionnaire
->   de test, et un premier collègue (admin).
-> - **Vérifications** : §10, colonne « Relevé ».
-
+> **Copie de l'étape 10** (`e4ba0c5`, 21 octobre 2026), gardée sur la branche
+> `local` : elle décrit la mise en ligne telle qu'elle était alors, console IA
+> comprise. **La version à jour**, qui décrit la production (`main`, sans la
+> console depuis l'étape 11), la bascule du poste et la façon de livrer une
+> version, est sur la branche `gestion` :
+> `git show gestion:docs/memory/memory-deploiement-vercel.md`. La branche
+> `local` n'est jamais déployée.
 ---
 
 ## 0. Ce qui va où

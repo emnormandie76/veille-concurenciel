@@ -3,7 +3,7 @@
 > **Évolution du 16 octobre 2026, décision de l'équipe.** Les nouvelles
 > priorités sont dans le doc « Plan d'évolution – School Data Pipeline » du
 > propriétaire, et leur mise en œuvre dans
-> [`features/gestion-contenu.md`](features/gestion-contenu.md). Ce qui change
+> `docs/features/gestion-contenu.md` (sur la branche `gestion`). Ce qui change
 > par rapport à ce cahier :
 >
 > - la plateforme devient d'abord un **gestionnaire de contenu**, utilisable en

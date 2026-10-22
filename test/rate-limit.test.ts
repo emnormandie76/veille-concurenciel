@@ -3,7 +3,7 @@
  *
  *     npm run test:ts
  *
- * L'implémentation unique du projet (architecture.md §10.3). Upstash Redis
+ * L'implémentation unique du projet (architecture/gestion-contenu.md §8.1). Upstash Redis
  * si ses deux variables sont posées ; sinon, ou s'il répond mal, repli sur un
  * compteur mémoire, et c'est journalisé. Plan backend-local, étape 7 (P0).
  *

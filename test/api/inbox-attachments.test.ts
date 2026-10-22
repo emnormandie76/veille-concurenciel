@@ -4,7 +4,7 @@
  *     npm run test:ts
  *
  * L'écriture des lignes-années `ProgramCampusAttachment` d'un ticket
- * (architecture.md §5.4). Plan backend-local, étape 7 (P0) :
+ * (architecture/gestion-contenu.md §4.2). Plan backend-local, étape 7 (P0) :
  *
  * - **F2**, comme `validate` : un corps mal formé était avalé par un
  *   `catch {}` muet, et la route écrivait le bloc **brut** du ticket, lignes

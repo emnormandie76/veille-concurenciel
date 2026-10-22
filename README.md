@@ -1,28 +1,20 @@
-# Veille Concurrentiel — pipeline de données de l'enseignement supérieur
+# Veille Concurrentiel — gestionnaire de contenu de l'enseignement supérieur
 
-Plateforme de collecte, de vérification et de publication de données sur les
-écoles françaises : campus, programmes, tarifs, classements, capacités
-d'accueil, accréditations et statistiques.
+Le gestionnaire de contenu des données sur les écoles françaises : campus,
+programmes, tarifs, classements, capacités d'accueil, accréditations,
+statistiques et admissions. Des collègues de l'équipe (adresses
+`@em-normandie.fr`) consultent les données, des gestionnaires les tiennent à
+jour, des admins gèrent les accès. En ligne : <https://app-vc-emn.vercel.app>.
 
 | | Rôle | Branche |
 |---|---|---|
 | **Next.js 16** (`app/`, `lib/`) | site et back-office du contenu, derrière une connexion obligatoire (rôles `USER`, `GESTIONNAIRE`, `ADMIN`) ; API `/api/v1` réservée aux personnes connectées ; l'inbox, où l'admin valide les tickets de l'IA | `gestion`, `main` (la production) et `local` |
-| **FastAPI** (`backend/`) et sa console (`/admin/cron`) | pipeline IA — recherche Tavily, extraction par la cascade Gemini (Gemma en dernier recours pour les contributions), traitement des contributions ; lancé à la main sur le poste de l'admin, les recherches partent sur demande | **`local` seulement** |
+| **FastAPI** (`backend/`) et sa console (`/admin/cron`) | la recherche IA, **gelée** : recherche Tavily, extraction par la cascade Gemini, traitement des contributions ; lancée à la main sur le poste de l'admin, les recherches partent sur demande | **`local` seulement** |
 
-Ils partagent une base **PostgreSQL (Neon)** : Prisma côté TypeScript,
-psycopg2 côté Python. Cette branche n'a que Next.js : aucun code n'y joint
-le backend, aucune commande ne le lance.
-
-> **Réorientation du 16 octobre 2026.** Le projet devient d'abord un
-> **gestionnaire de contenu** en ligne, derrière une connexion obligatoire, avec
-> trois rôles (utilisateur, gestionnaire, admin). La partie FastAPI (recherche
-> IA) est **gelée** : conservée telle quelle, réservée à l'admin ; depuis le
-> 21 octobre (étape 11), elle vit sur la branche `local` (le backend, ses
-> tests et la console), et l'inbox reste en ligne. La
-> contribution du public est abandonnée, remplacée par un formulaire de
-> signalement sans IA (étape 6). Plan : [`docs/features/gestion-contenu.md`](docs/features/gestion-contenu.md) ;
-> index de la documentation : [`docs/README.md`](docs/README.md). Ce README
-> décrit le code tel qu'il est ; chaque étape du plan le met à jour.
+Ils partagent une base **PostgreSQL (Neon)**. Cette branche n'a que Next.js :
+aucun code n'y joint le backend, aucune commande ne le lance. Le plan du
+chantier : [`docs/features/gestion-contenu.md`](docs/features/gestion-contenu.md) ;
+l'index de la documentation : [`docs/README.md`](docs/README.md).
 
 ---
 
@@ -52,7 +44,7 @@ Le back-office est sur `/admin`, la connexion sur `/admin/login`.
 
 ### Comptes
 
-Plan gestion-contenu, étape 2 ([`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §2) :
+Détail : [`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §2.
 
 - **Pas d'inscription libre, pas d'envoi d'e-mail.** Un admin ajoute l'adresse
   de travail d'un collègue à la liste blanche (`/admin/users`, « Ajouter une
@@ -72,12 +64,6 @@ Plan gestion-contenu, étape 2 ([`docs/architecture/gestion-contenu.md`](docs/ar
   nom gardé pour l'historique) ; un invité qui ne s'est jamais connecté se
   retire de la liste. Il reste toujours au moins un administrateur actif.
 
-**La partie IA** (le backend FastAPI, la console `/admin/cron`,
-`npm run local`, `npm run backend` et les tests Python) vit sur la branche
-`local`, depuis l'étape 11 du plan : son README dit comment la lancer.
-Lancer le backend peut payer (Tavily, la cascade Gemini) : règle 7 de
-`CLAUDE.md`.
-
 > **Aucun mot de passe par défaut n'existe.** `prisma db seed` échoue tant que
 > `SEED_ADMIN_EMAIL` (une adresse `@em-normandie.fr`) et `SEED_ADMIN_PASSWORD`
 > (12 caractères minimum) ne sont pas renseignées. Il ne sert qu'à une base
@@ -90,6 +76,13 @@ Lancer le backend peut payer (Tavily, la cascade Gemini) : règle 7 de
 > 5432. Le premier déploiement d'une base vide exige la CLI
 > Prisma, donc le 5432.
 
+### La partie IA
+
+Le backend FastAPI, la console `/admin/cron`, `npm run local`,
+`npm run backend` et les tests Python vivent sur la branche `local` : son
+README dit comment les lancer. Lancer le backend peut payer (Tavily, la
+cascade Gemini) : règle 7 de `CLAUDE.md`.
+
 ---
 
 ## Variables d'environnement
@@ -99,14 +92,13 @@ La liste complète, commentée et classée par exécution, est dans
 
 | Variable | Piège |
 |----------|-------|
-| `FASTAPI_URL`, `INTERNAL_API_TOKEN` et les variables du backend (`GEMINI_API_KEY`, `TAVILY_API_KEY*`, `CRON_*`…) | **Plus lues sur cette branche** depuis l'étape 11 : seule la branche `local` s'en sert, sur le poste (son `.env.example`). Sur Vercel, elles n'ont jamais dû être posées ; s'il en reste, le propriétaire les retire (mémo Vercel §1.3). |
+| `FASTAPI_URL`, `INTERNAL_API_TOKEN` et les variables du backend (`GEMINI_API_KEY`, `TAVILY_API_KEY*`, `CRON_*`…) | **Lues par aucun code de cette branche** : seule la branche `local` s'en sert, sur le poste (son `.env.example`). Jamais sur Vercel (mémo Vercel §1.3). |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Sans magasin partagé, la limitation de débit retombe en mémoire — elle ralentit une attaque mais ne la bloque pas sur une plateforme sans état. Ces noms exacts : `KV_REST_API_*` ne sont pas lus. |
 
-**Déploiement** : seul Next.js va sur Vercel (offre Hobby) ; la partie IA
-reste sur le poste, branche `local`, que Vercel ne construit pas. **En ligne depuis le 19 octobre 2026** :
-<https://app-vc-emn.vercel.app> (projet `app-vc` du Vercel de l'école, base
-Neon de l'école, branche `main`). Variables à poser et à ne jamais poser sur
-Vercel, intégration Neon, Upstash, ordre des opérations et vérifications :
+**Déploiement** : seul Next.js va sur Vercel (offre Hobby), depuis `main` ;
+la partie IA reste sur le poste, branche `local`, que Vercel ne construit pas.
+Ce qui est en ligne, les variables à poser et à ne jamais poser, la base, la
+bascule du poste entre les branches Neon, livrer une version :
 [`docs/memory/memory-deploiement-vercel.md`](docs/memory/memory-deploiement-vercel.md).
 
 ---
@@ -120,7 +112,7 @@ Vercel, intégration Neon, Upstash, ordre des opérations et vérifications :
 | `npm run lint` | ESLint (configuration plate, `eslint.config.mjs`) |
 | `npm run lint:fix` | idem, avec correction automatique |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | la suite TypeScript, comme `npm run test:ts` (D105, étape 11 ; les tests Python vivent sur la branche `local`) |
+| `npm test` | la suite TypeScript, comme `npm run test:ts` (D105 ; les tests Python vivent sur la branche `local`) |
 | `npm run test:ts` | suite TypeScript (`node --test`) : fonctions de `lib/` et routes Next.js |
 | `npm run smoke` | smoke local, **à la main** et avec l'accord du propriétaire : `npm run dev` lancé, il vérifie d'abord le mur sans session (pages renvoyées vers la connexion, API en 401), puis, si `APPVC_ADMIN_PASSWORD` et `APPVC_ADMIN_EMAIL` (ou, tant que le compte n'a pas d'adresse, `APPVC_ADMIN_USERNAME`) sont posées, les pages et les 15 `GET /api/v1/*` connecté (`scripts/smoke-local.ts`). Lecture seule, mais sur la base visée par le poste ; adresse locale seulement |
 | `npm run db:status` | état de l'historique face à la base, en lecture seule : `npx prisma migrate status` sans `DB_DRIVER`, WebSocket (443) avec `DB_DRIVER=neon-ws` |
@@ -139,7 +131,7 @@ Vercel, intégration Neon, Upstash, ordre des opérations et vérifications :
 
 Le schéma vit dans [`prisma/schema.prisma`](prisma/schema.prisma), la connexion
 dans [`prisma.config.ts`](prisma.config.ts) (Prisma 7 l'a déplacée hors du
-schéma).
+schéma). Référence : [`docs/architecture/bdd.md`](docs/architecture/bdd.md).
 
 Deux points de modèle qui ne se devinent pas :
 
@@ -151,7 +143,9 @@ Deux points de modèle qui ne se devinent pas :
   campus est **refusé** plutôt qu'écrit au hasard.
 
 Pour régénérer une migration depuis l'historique, `SHADOW_DATABASE_URL` est
-obligatoire (exigence de Prisma 7).
+obligatoire (exigence de Prisma 7). Une migration s'écrit à la main, se joue à
+blanc puis sur la branche Neon `dev`, avec l'accord du propriétaire
+([`bdd.md`](docs/architecture/bdd.md) §4).
 
 ---
 
@@ -176,12 +170,8 @@ ne sort du processus : la suite a été rejouée sous garde réseau
 seule garde, celle de son niveau** (`test/helpers/access-policy.ts`), et
 `test/api/access-matrix.test.ts` appelle chaque route admin sans session, en
 `USER`, en `GESTIONNAIRE` et en `ADMIN`, avec la vraie `lib/auth.ts`.
-La CI lance la suite (`.github/workflows/ci.yml`, job `ts-tests`).
-
-Sur la branche `local`, le test le plus important vérifie une garantie de
-confidentialité : **le texte libre saisi par un contributeur (`user_text`)
-n'atteint jamais un modèle d'IA** (tests Python du backend). Il est stocké en
-base et affiché uniquement dans le back-office.
+La CI lance la suite (`.github/workflows/ci.yml`, job `ts-tests`). Écrire un
+test : [`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §9.3.
 
 `npm run lint` remonte des avertissements (`any`, règles du compilateur React) :
 c'est une dette identifiée et chiffrée, maintenue visible plutôt que masquée.
@@ -201,41 +191,33 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
 2. **Toute route admin choisit une garde de `lib/auth.ts`, et une seule** :
    `guardSignedIn` (toute session : son nom affiché, son mot de passe, l'envoi d'un signalement), `guardManager`
    (gestionnaire ou admin : tout le contenu) ou `guardAdmin` (les comptes et
-   toute l'IA, inbox comprise). L'ancienne garde « toute session » du
-   back-office n'existe plus. Le rôle est **relu en base** à chaque requête,
+   toute l'IA, inbox comprise). Le rôle est **relu en base** à chaque requête,
    pas pris dans le jeton. Les écrans du back-office passent par
    `requirePage` : un `USER` ne voit pas `/admin`. `getServerSession` nu ne
    doit pas réapparaître. Détail : [`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §2 et §4.
-3. **Tout contenu externe injecté dans un prompt passe par `wrap_source()`**
-   (`backend/ai/gemma_client.py`, branche `local`), qui neutralise les
-   balises de délimitation.
-   Les règles vont dans le `system_prompt`, jamais dans le message utilisateur.
-4. **Next.js ne crée aucun ticket dans l'inbox** : la contribution du public
-   (`/api/contribute`) est retirée, et un test garde la porte fermée. Un ticket
-   `Pending_AI` serait payé au prochain lancement du backend. Le formulaire de
-   signalement (étape 6) écrit dans sa propre table, `ContentReport`, sans IA.
-5. **`lib/rate-limit.ts` est l'implémentation unique** de la limitation de débit :
+3. **Next.js ne crée aucun ticket dans l'inbox**, et un test garde la porte
+   fermée : un ticket `Pending_AI` serait payé au prochain lancement du
+   backend. Le formulaire de signalement écrit dans sa propre table,
+   `ContentReport`, sans IA.
+4. **`lib/rate-limit.ts` est l'implémentation unique** de la limitation de débit :
    connexion et API v1 dans le proxy, par IP ; signalement dans sa route, par
    compte (10 par heure), l'équipe partageant l'IP de l'école.
+5. **Sur la branche `local`**, deux garanties du backend : tout contenu
+   externe injecté dans un prompt passe par `wrap_source()`
+   (`backend/ai/gemma_client.py`), qui neutralise les balises de délimitation,
+   et les règles vont dans le `system_prompt`, jamais dans le message
+   utilisateur ; le texte libre d'un contributeur (`user_text`) **n'atteint
+   jamais un modèle d'IA** (tests Python du backend).
+
+En-têtes, dépendances et contrôles manuels :
+[`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §8.
 
 ---
 
 ## Documentation
 
-| Chemin | Contenu |
-|--------|---------|
-| `docs/architecture/` | architecture et découpage fonctionnel |
-| `docs/features/` | spécifications par fonctionnalité |
-| `docs/memory/` | tâches et décisions **en cours** — déploiement Vercel, rétention des tickets, vulnérabilités npm |
-| `docs/testing/` | stratégie de test |
-| `docs/edgecase.md` | cas limites recensés |
-
-`docs/architecture/` a été remis en phase avec le code après la remédiation de
-l'audit technique de septembre 2026 — c'est la référence. `docs/memory/` ne
-contient plus que ce qui n'est **pas terminé** : la marche à suivre pour le
-déploiement Vercel, la politique de rétention des tickets, et la tâche de
-traitement des vulnérabilités npm.
-
-Les grandes fiches de `docs/features/` sont des **plans d'implémentation
-historiques**. Chacune porte en tête un encadré signalant ce que la remédiation a
-changé et où lire la version à jour.
+L'index est [`docs/README.md`](docs/README.md) : le plan
+(`docs/features/gestion-contenu.md`), l'état du code
+(`docs/architecture/gestion-contenu.md`), la charte graphique, la base,
+l'API v1, la production sur Vercel et les cas limites. Les documents de la
+partie IA sont sur la branche `local`.

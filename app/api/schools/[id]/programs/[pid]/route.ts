@@ -1,12 +1,12 @@
 /**
- * app/api/schools/[id]/programs/[pid]/route.ts — GET /api/schools/[id]/programs/[pid] (Étape 8.2)
+ * app/api/schools/[id]/programs/[pid]/route.ts — GET /api/schools/[id]/programs/[pid]
  *
  * Lecture du site (session exigée par le proxy) : détail d'un programme
  * (tarifs, classements, capacité).
  * Filtre école ACTIVE obligatoire.
  *
- * - Cache ISR 1h (Étape 8.3)
- * - Référence : task.md §8.2
+ * - Cache ISR 1h
+ * - Référence : architecture/gestion-contenu.md §4.3
  */
 
 import { NextResponse } from "next/server";

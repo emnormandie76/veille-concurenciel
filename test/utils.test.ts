@@ -3,8 +3,8 @@
  *
  *     npm run test:ts
  *
- * La liste blanche des contributions repose sur ces fonctions
- * (architecture.md §10.2) : `urlBelongsToDomain` accepte le domaine de l'école
+ * La liste blanche des contributions reposait sur ces fonctions :
+ * `urlBelongsToDomain` accepte le domaine de l'école
  * et ses sous-domaines, et doit rejeter les sosies. Plan backend-local,
  * étape 7 (P0).
  */

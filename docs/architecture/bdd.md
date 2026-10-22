@@ -1,51 +1,12 @@
 # Schéma de base de données (PostgreSQL / Prisma)
 
-> **Mise à jour** : 28 septembre 2026 — aligné sur `prisma/schema.prisma` et ses
-> 10 migrations (branche `newresearch`). Ajouts depuis le 1er septembre :
-> `PipelineJob`, `ProgramCampusAttachment`, `ProgramPlacement`,
-> `Program.campus_policy_note`, `ContributionInbox.raw_report`, clés étrangères
-> et contraintes `CHECK` sur l'inbox, `AccreditationRecord.year_obtained`
-> facultatif.
-> **16 octobre 2026** (plan gestion-contenu, étape 1) : 11e migration,
-> `20261016120000_three_roles` : `User.role` passe aux trois rôles `USER`,
-> `GESTIONNAIRE`, `ADMIN` (défaut `USER`). Appliquée sur la branche Neon `dev`
-> le 16 octobre, sur `main` le 19 octobre (étape 3).
-> **16 octobre 2026** (étape 2) : 12e migration,
-> `20261016150000_whitelist_accounts` : la liste blanche. `User` reçoit
-> l'adresse, le nom affiché, l'état, la date de première connexion et la
-> version de session ; `username` et `password_hash` deviennent facultatifs.
-> Appliquée sur `dev` le 16 octobre, sur `main` le 19 octobre (étape 3).
-> **20 octobre 2026** (étape 5) : 13e migration,
-> `20261019120000_content_provenance` : la **provenance** de chaque donnée.
-> Les neuf tables de données reçoivent `updated_at`, `updated_by_id` (clé vers
-> `User`, `ON DELETE RESTRICT`) et `updated_via` (D10, D11, D24) ;
-> `SchoolStatsRecord`, `AccreditationRecord` et `Program` reçoivent
-> `source_url` (D12). Appliquée sur `dev`, puis sur `main` le 20 octobre,
-> avant la mise en production du code qui la lit.
-> **20 octobre 2026** (étape 6) : 14e migration,
-> `20261020120000_content_reports` : les **signalements**, dans une table
-> neuve, `ContentReport` (D13), jamais dans `ContributionInbox` (piège 6).
-> Appliquée sur la branche Neon `dev`, puis sur `main` le 20 octobre, avant
-> la mise en production du code qui la lit.
-> **20 octobre 2026** (étape 7) : 15e migration,
-> `20261020150000_research_launches` : le **journal des lancements de l'IA**,
-> dans une table neuve, `ResearchLaunch` (D14), tenue par Next.js seul ;
-> `PipelineJob`, que le backend gelé écrit, n'est pas touchée. Appliquée sur
-> la branche Neon `dev`, puis sur `main` le 20 octobre, avant la mise en
-> production du code qui la lit.
-> **20 octobre 2026** (étape 8) : 16e migration,
-> `20261020180000_program_entries` : les **admissions d'un programme**
-> (année d'entrée, niveau requis, voie), dans une table fille neuve,
-> `ProgramEntry` (D16), avec la provenance de l'étape 5 (D49) ; et une
-> 9e catégorie de signalement, `ADMISSIONS` (D52 : la contrainte de
-> `ContentReport` est remplacée). `Program` n'est pas touchée ;
-> `admission_exam` reste tel quel (D47). Appliquée sur la branche Neon `dev`,
-> puis sur `main` le 20 octobre, avant la mise en production du code qui la
-> lit (la fiche programme, l'onglet « Admissions », l'API v1).
+> Aligné sur `prisma/schema.prisma` et ses seize migrations, appliquées sur les
+> deux branches Neon (`dev` et `main`, la production). Les étapes et décisions
+> citées (D10, D16…) sont celles du plan
+> [`features/gestion-contenu.md`](../features/gestion-contenu.md).
 
-Référence du projet School Data Pipeline. La source de vérité reste
-[`prisma/schema.prisma`](../../prisma/schema.prisma) ; ce document en explique
-les intentions.
+La source de vérité reste [`prisma/schema.prisma`](../../prisma/schema.prisma) ;
+ce document en explique les intentions.
 
 ---
 
@@ -61,7 +22,8 @@ les intentions.
    (`admission_exam`, `is_alternance_possible`…).
 
 3. **Double zone — tampon et production.** `ContributionInbox` recueille les
-   données brutes issues de l'IA ou du crowdsourcing ; elles ne rejoignent les
+   données brutes de l'IA (ses recherches, les contributions qu'elle traite) ;
+   elles ne rejoignent les
    tables de production qu'après validation humaine.
 
 4. **Un programme appartient à une ÉCOLE, pas à un campus.** *(règle issue du
@@ -453,10 +415,6 @@ model ResearchLaunch {
 > conformité de l'historique). Celles de `User` et de la provenance sont dans
 > leurs migrations (§4).
 
-> **La table `CronTarget` a été supprimée** (migration
-> `20260701100000_remove_cron_target`). Le pipeline n'entretient plus de liste
-> noire ; un échec est tracé dans `PipelineJob`.
-
 ---
 
 ## 3. Chaîne relationnelle
@@ -492,23 +450,9 @@ ResearchLaunch ──→ User (lanceur : RESTRICT)      ·· PipelineJob par job
 
 ## 4. Migrations
 
-Seize migrations, à appliquer par `prisma migrate deploy` (ou
-`npm run db:migrate` par WebSocket). La onzième, `20261016120000_three_roles`,
-et la douzième, `20261016150000_whitelist_accounts`, sont arrivées sur `dev` le
-16 octobre 2026 et sur `main` le 19 octobre (étape 3 du plan gestion-contenu,
-avant la fusion dans la branche Git `main`). La treizième,
-`20261019120000_content_provenance` (étape 5), est arrivée sur `dev` puis
-sur `main` le 20 octobre, avant la fusion de l'étape 5 dans la branche Git
-`main`. La quatorzième, `20261020120000_content_reports` (étape 6), est
-arrivée sur `dev` puis sur `main` le 20 octobre, avant la fusion du code qui
-la lit (« Mon compte » la lit). Les quatorze sont appliquées sur les deux
-branches Neon. La quinzième, `20261020150000_research_launches` (étape 7),
-est arrivée sur `dev` puis sur `main` le 20 octobre, **avant** la fusion du
-code qui la lit (l'historique de `/admin/cron`). Les quinze sont appliquées
-sur les deux branches Neon. La seizième, `20261020180000_program_entries`
-(étape 8), est arrivée sur `dev` puis sur `main` le 20 octobre, **avant** la
-fusion du code qui la lit (la fiche programme, l'onglet « Admissions »,
-l'API v1). Les seize sont appliquées sur les deux branches Neon.
+Seize migrations, toutes appliquées sur les deux branches Neon. Chacune part
+sur `main`, la production, **avant** le code qui la lit (§4, *Écrire et
+appliquer une migration*).
 
 | Migration | Contenu |
 |-----------|---------|
@@ -578,12 +522,61 @@ une arête (validation de découverte, gestion d'école, contribution, Phase 2,
 l'identité de l'arête avait changé. Aucun fichier applicatif n'a eu besoin
 d'être modifié pour l'accueillir.
 
-Elle a été appliquée le 15 septembre 2026 **par le port 443**, le réseau du
-poste de développement coupant le protocole Postgres sur 5432 : SQL du fichier
-et ligne `_prisma_migrations` dans une seule transaction, sur `DIRECT_URL`,
-après une répétition terminée par `ROLLBACK`. Le checksum attendu par Prisma est
-le **sha256 des octets de `migration.sql`** ; les 10 checksums en base se
-reproduisent.
+### Écrire et appliquer une migration
+
+Chaque étape :
+
+1. **à la main**, dans un nouveau dossier
+   `prisma/migrations/<horodatage>_<nom>/`, avec `schema.prisma` mis à jour
+   dans le même commit (`prisma migrate diff` a déjà produit une migration
+   destructrice, ci-dessus) ;
+2. **additive** autant que possible ; toute colonne ajoutée à une table que le
+   backend de la branche `local` écrit (`PipelineJob`, `ContributionInbox`)
+   accepte le vide ou a une valeur par défaut, et aucune colonne qu'il lit ne
+   se renomme ;
+3. **à blanc** (`npm run db:migrate:dry`), puis sur la branche Neon `dev`
+   (`npm run db:migrate`), puis sur `main` avant le code qui la lit ; **avec
+   l'accord du propriétaire à chaque fois** ;
+4. une migration appliquée ne se modifie plus, pas même un commentaire : son
+   empreinte changerait.
+
+La CI ne bloque sur une migration en attente que sur `main` et sur les PR vers
+`main` (`prisma migrate status`, [`gestion-contenu.md`](gestion-contenu.md)
+§9.4).
+
+### Le lanceur `db:migrate` (WebSocket)
+
+Le réseau de l'établissement ne laisse sortir que les ports 80 et 443 : le
+5432 de Neon y est fermé, et la CLI Prisma avec lui. Avec `DB_DRIVER=neon-ws`
+(poste seulement, dans `.env.development.local`, **jamais sur Vercel**),
+`npm run db:status`, `db:migrate` et `db:migrate:dry` passent par
+[`scripts/db-migrate.ts`](../../scripts/db-migrate.ts), en WebSocket (443) ;
+sans la variable, ils lancent la CLI Prisma (`migrate status` ou `deploy`),
+en 5432.
+
+- **Le plan** ([`scripts/lib/migration-plan.ts`](../../scripts/lib/migration-plan.ts),
+  module pur, `planMigrations`) compare les dossiers de `prisma/migrations` aux
+  lignes de `_prisma_migrations` : appliquée, en attente (dans l'ordre des
+  noms), empreinte divergente, en échec (`finished_at` et `rolled_back_at`
+  vides), inconnue en base. L'empreinte attendue est le **sha256 hexadécimal
+  des octets de `migration.sql`**, acceptée en brut, en LF ou en CRLF :
+  l'historique de la base mêle les deux, et Git peut extraire le fichier en
+  CRLF sous Windows.
+- **`status`** lit dans une transaction `READ ONLY`. **`deploy`** refuse de
+  partir si une migration appliquée a changé ou si une autre est en échec,
+  puis applique chaque migration en attente dans **sa** transaction : le
+  fichier, puis l'`INSERT` dans `_prisma_migrations` (`checksum`,
+  `migration_name`, `started_at` et `finished_at`, `applied_steps_count` à 1).
+  **`--dry-run`** fait la même suite dans **une seule** transaction terminée
+  par `ROLLBACK`, et n'inscrit rien.
+- Connexion : `Pool` de `@neondatabase/serverless` (WebSocket, pas `neon()` en
+  HTTP) sur `DIRECT_URL`, repli sur `DATABASE_URL`. Aucune URL n'est affichée :
+  seulement l'hôte, et les messages d'erreur sont nettoyés.
+- Une base sans `_prisma_migrations` (jamais migrée) exige la CLI Prisma, donc
+  le 5432 (partage de connexion du téléphone, par exemple).
+- Tests : `test/migration-plan.test.ts` (le plan, la suite de requêtes de
+  `deploy` et de `--dry-run` sur un faux client SQL, l'aiguillage, le choix de
+  l'URL, le nettoyage des messages).
 
 ### Règles d'exploitation
 
@@ -622,7 +615,8 @@ reproduisent.
 | `Failed` | erreur inattendue (crowdsourcing) ; ou rapport Research rangé (pipeline) |
 
 Les cinq valeurs sont gardées en base par `ContributionInbox_status_check`, et
-listées dans `lib/contribution.ts` et `backend/constants.py`.
+listées dans `lib/contribution.ts` (et, sur la branche `local`, dans
+`backend/constants.py`).
 
 **`Failed` côté crowdsourcing** (`User_Submission`) n'est pas terminal : le
 ticket est rejoué après un délai, puis supprimé au bout de N tentatives. Charge
@@ -638,7 +632,8 @@ compare cette valeur **en SQL** : un `::timestamptz` sur une chaîne issue d'un
 JSON lève une erreur si la valeur est malformée et ferait tomber toute la boucle
 de traitement.
 
-> Politique complète : [`decision-retention-tickets.md`](../memory/decision-retention-tickets.md).
+> Politique complète : `docs/memory/decision-retention-tickets.md`, sur la
+> branche `local`, avec le backend qui l'applique.
 
 **`Failed` côté pipeline** (`Automated_AI`, catégorie `Program_Discovery`) :
 l'extraction Gemini d'un rapport Research a échoué, et le rapport est rangé
@@ -677,19 +672,18 @@ une extraction réussie le supprime.
 - **Les clés de `ContributionInbox` sont de vraies clés étrangères en
   `ON DELETE SET NULL`** : supprimer une école détache ses tickets sans les
   détruire. Une clé étrangère ne prouve pas l'**appartenance** : que `campusId`
-  appartienne bien à `schoolId` reste à vérifier applicativement, comme le
-  faisait `POST /api/contribute` (retirée le 16 octobre 2026, plan
-  gestion-contenu, D2).
+  appartienne bien à `schoolId` reste à vérifier applicativement.
 - **Upsert obligatoire** lors du transfert vers la production : les contraintes
   `@@unique` sont là pour ça.
 - **Upsert et changement de statut dans une même transaction.** Séparés, un échec
   du second laissait la donnée écrite et le ticket ouvert — l'admin revalidait
   et écrasait.
 - **Statuts, catégories et `source_type` sont des énumérations gardées** :
-  `lib/contribution.ts` et `backend/constants.py` (vérifiées l'une contre l'autre
-  par `test_contribution_enums.py`), plus une contrainte `CHECK` en base. Ajouter
-  une valeur impose de modifier les deux listes **et** d'écrire une migration qui
-  remplace la contrainte.
+  `lib/contribution.ts`, tenue contre les contraintes `CHECK` de la migration
+  `20260902120000_inbox_relations_and_enum_guards` par
+  `test/contribution.test.ts` (D107), et `backend/constants.py` sur la branche
+  `local`. Ajouter une valeur impose de modifier les deux listes **et**
+  d'écrire une migration qui remplace la contrainte.
 - **`User.role` est un `String` gardé par `CHECK (role IN ('USER', 'GESTIONNAIRE', 'ADMIN'))`**
   (migration `20261016120000_three_roles`) ; la liste de référence est
   `USER_ROLES` dans `lib/roles.ts` (`test/roles-migration.test.ts`). Les
@@ -705,10 +699,11 @@ une extraction réussie le supprime.
   compte de la **session** (jamais une valeur du corps de la requête),
   `updated_at` la date du serveur, `updated_via` l'origine : `MANUAL` (saisie
   dans le back-office), `AI` (validée depuis l'inbox ; l'auteur est l'admin qui
-  valide, D11), `REPORT` (signalement, étape 6). Le module de référence est
+  valide, D11), `REPORT` (prévu pour un signalement, qu'aucun code n'écrit :
+  D32). Le module de référence est
   `lib/provenance.ts` (`UPDATE_ORIGINS`, `provenance()`), vérifié contre la
-  migration par `test/provenance-migration.test.ts`. Depuis l'étape 8,
-  `ProgramEntry` porte la même provenance (D49). Seule la **dernière**
+  migration par `test/provenance-migration.test.ts`. `ProgramEntry` porte la
+  même provenance (D49). Seule la **dernière**
   modification est connue, et une suppression ne laisse pas de trace (D10).
   Pas de `@updatedAt` de Prisma : il daterait aussi une écriture sans auteur.
 - **Un compte qui figure comme auteur ne se supprime pas** : la clé
@@ -721,27 +716,26 @@ une extraction réussie le supprime.
   est lu en base à l'envoi, et la cible doit appartenir à l'école. Listes et
   bornes de référence : `lib/content-reports.ts`, vérifié contre la
   migration par `test/content-reports-migration.test.ts` (et, pour la liste
-  des catégories en vigueur depuis l'étape 8, par
+  des catégories en vigueur, par
   `test/program-entries-migration.test.ts` : ajouter une catégorie, c'est
   remplacer la contrainte par une nouvelle migration). Traiter un
   signalement ne date aucune donnée (D32) : `updated_via = REPORT` reste
   permis par la contrainte, sans servir.
 - **Next.js n'écrit jamais `PipelineJob`** (D14, piège 5) : la table est au
   backend gelé, qui l'écrit et la purge. Qui a lancé une recherche se lit dans
-  `ResearchLaunch`, que seul Next.js écrit (`trigger-research`,
-  `run-due-passes`, sur la branche `local` depuis l'étape 11 du plan
-  gestion-contenu, D100), **avant** l'appel au backend : si cette écriture échoue,
-  rien ne part (D41). Le lanceur vient de la session. Une recherche ciblée se
-  relie à son job par l'id que le backend rend ; une passe due par la
-  **fenêtre** de son lancement (D40) : les jobs `rotation` créés à partir de
-  son heure et avant le lancement suivant qui a pu partir, au plus
-  `max_passes`. D'où `launched_at` à l'heure de la base : `@default(now())`
-  donnerait l'heure du poste, que le client Prisma 7 calcule lui-même. Listes
-  et règles de référence : `lib/research-launches.ts` (branche `local`) ;
-  `test/research-launches-migration.test.ts` tient la migration contre ces
-  listes, écrites en clair sur `gestion` depuis l'étape 11, et vérifie aussi
-  qu'aucun fichier de `app/` ni de `lib/` n'écrit `PipelineJob`.
-- **Les admissions d'un programme vivent dans `ProgramEntry`** (étape 8, D16) :
+  `ResearchLaunch`, qu'écrivent les seules routes de lancement de la branche
+  `local` (`trigger-research`, `run-due-passes`, D100), **avant** l'appel au
+  backend : si cette écriture échoue, rien ne part (D41). Le lanceur vient de
+  la session. Une recherche ciblée se relie à son job par l'id que le backend
+  rend ; une passe due par la **fenêtre** de son lancement (D40) : les jobs
+  `rotation` créés à partir de son heure et avant le lancement suivant qui a
+  pu partir, au plus `max_passes`. D'où `launched_at` à l'heure de la base :
+  `@default(now())` donnerait l'heure du poste, que le client Prisma 7 calcule
+  lui-même. Sur cette branche, aucun code n'écrit ni ne lit la table ;
+  `test/research-launches-migration.test.ts` tient la migration contre les
+  listes de `local`, écrites en clair, et vérifie qu'aucun fichier de `app/`
+  ni de `lib/` n'écrit `PipelineJob`.
+- **Les admissions d'un programme vivent dans `ProgramEntry`** (D16) :
   une ligne par entrée possible (l'année du programme où l'on entre, le
   niveau requis, la voie), une seule par année, niveau et voie dans un
   programme. Listes et bornes de référence : `lib/program-entries.ts`
@@ -766,5 +760,6 @@ une extraction réussie le supprime.
   fois le même lieu.
 - **Typage JSONB** : `ai_extracted_json` est mappé sur `JSONB`. Les clés générées
   par l'IA doivent correspondre aux champs attendus par les tables `_Record`.
-- **Edge cases** : voir `edgecase.md` pour l'origine de `year_assumed`,
-  `additional_fees_notes`, etc.
+- **Cas limites** : l'origine de `year_assumed`, `additional_fees_notes`, etc.
+  est dans les cas limites de l'IA (`docs/edgecase.md` de la branche
+  `local`) ; ceux du site sont dans [`../edgecase.md`](../edgecase.md).

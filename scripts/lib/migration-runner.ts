@@ -6,7 +6,7 @@
  * c'est un client `Pool` de `@neondatabase/serverless` (WebSocket, 443) ;
  * dans les tests, un faux qui enregistre ses requêtes.
  *
- * Voir docs/features/backend-local.md, étape 2.2.
+ * Voir docs/architecture/bdd.md §4 (le lanceur db:migrate).
  */
 
 import { randomUUID } from "node:crypto";

@@ -4,7 +4,7 @@
  *     npm run test:ts
  *
  * Plan backend-local, étape 7 (P1) : forme de la réponse ; 404 ; en-têtes
- * CORS ; format d'erreur d'architecture.md §8.9 (`{ "error": "…" }`) ; bornes
+ * CORS ; format d'erreur d'API-rest.md (`{ "error": "…" }`) ; bornes
  * de pagination ; une erreur Prisma → 500 au format, sans le message interne.
  *
  * Chaque requête reçue par le faux Prisma est relue contre le vrai schéma
@@ -265,7 +265,7 @@ function assertCors(res: Response) {
   assert.equal(res.headers.get("access-control-allow-methods"), "GET, OPTIONS");
 }
 
-/** Format d'architecture.md §8.9 : `{ "error": "…" }`, et rien d'autre. */
+/** Format d'API-rest.md, « CORS et erreurs » : `{ "error": "…" }`, et rien d'autre. */
 async function assertError(res: Response, status: number, message?: string | RegExp) {
   assert.equal(res.status, status);
   assertCors(res);

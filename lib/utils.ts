@@ -1,7 +1,5 @@
 /**
- * lib/utils.ts — Fonctions utilitaires partagées (Étape 2)
- *
- * Référence : task.md §2, architecture.md §2.4
+ * lib/utils.ts — Fonctions utilitaires partagées
  */
 
 // ──────────────────────────────────────────────
@@ -94,7 +92,7 @@ export function formatAcademicYear(year: number | null | undefined): string {
 
 /**
  * Vérifie que le nom de confirmation correspond au nom attendu.
- * Utilisé pour la double confirmation de suppression d'école (task.md §2.2)
+ * Utilisé pour la double confirmation de suppression d'école (DELETE schools/[id], architecture/gestion-contenu.md §4.1)
  */
 export function confirmationMatches(
   input: string,

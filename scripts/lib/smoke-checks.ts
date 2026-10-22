@@ -6,7 +6,7 @@
  * est testé en CI (test/smoke-checks.test.ts), le smoke lui-même ne l'est pas :
  * il lui faut `npm run dev` et la base.
  *
- * Voir docs/features/backend-local.md, étape 7. Depuis l'étape 1 du plan
+ * Voir docs/architecture/gestion-contenu.md §9.3. Depuis l'étape 1 du plan
  * gestion-contenu, le site exige une session : le smoke joue d'abord le mur
  * (`buildWallChecks`, `judgeWall`), puis les pages et l'API avec la session
  * (`buildChecks`, `judge`). Étape 2 : la première connexion est ouverte comme

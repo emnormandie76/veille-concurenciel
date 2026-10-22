@@ -1,5 +1,5 @@
 /**
- * app/schools/[id]/SchoolDetailClient.tsx — Composant client fiche école (Étape 8.1)
+ * app/schools/[id]/SchoolDetailClient.tsx — Composant client fiche école
  *
  * - Affichage avec onglets : Programmes, Statistiques, Accréditations
  * - Étape 9 (lot 1) : dans la charte (onglets `Tabs`, badges, liste des
@@ -9,7 +9,7 @@
  *   accréditations montrent leur lien source et « Modifié par … le … »,
  *   préparés par la page serveur (`provenance`, `source_href`)
  * - Étape 6 : un lien « Signaler une information » vers le formulaire
- * - Référence : task.md §8.1
+ * - Référence : architecture/gestion-contenu.md §3.1
  */
 
 "use client";

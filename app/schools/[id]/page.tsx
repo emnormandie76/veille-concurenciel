@@ -1,5 +1,5 @@
 /**
- * app/schools/[id]/page.tsx — Fiche école publique (Étape 8.1)
+ * app/schools/[id]/page.tsx — Fiche école publique
  *
  * - Infos école, campus, programmes, stats, accréditations
  * - Navigation par onglets (Campus/Programmes, Stats, Accréditations)
@@ -13,7 +13,7 @@
  *   heure est levé à chaque écriture (lib/content-cache.ts).
  * - Étape 9 (lot 1) : la fiche passe à la charte dans SchoolDetailClient,
  *   qui pose le gabarit du site ; cette page ne lit toujours pas la session.
- * - Référence : task.md §8.1, architecture.md §7.1
+ * - Référence : architecture/gestion-contenu.md §3.1
  */
 
 import { notFound } from "next/navigation";

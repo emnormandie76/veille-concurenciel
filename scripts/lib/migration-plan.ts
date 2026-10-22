@@ -13,7 +13,7 @@
  * CRLF. Constat du 14 octobre 2026 : trois migrations ne concordent qu'en LF,
  * alors que le fichier du poste est en CRLF.
  *
- * Voir docs/features/backend-local.md, étape 2.2.
+ * Voir docs/architecture/bdd.md §4 (le lanceur db:migrate).
  */
 
 import { createHash } from "node:crypto";

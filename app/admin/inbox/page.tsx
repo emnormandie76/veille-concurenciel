@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * app/admin/inbox/page.tsx — Dashboard ContributionInbox (Étape 3)
+ * app/admin/inbox/page.tsx — Dashboard ContributionInbox
  *
  * Interface complète de validation des tickets :
  * - Liste paginée avec filtres (status, ai_category)
@@ -11,7 +11,7 @@
  * - Badges d'alerte visuels : year_assumed, data_conflict_warning, program_name_mismatch
  * - Actions : Valider (→ upsert tables rigides) / Rejeter
  *
- * Référence : task.md §3, architecture.md §5.2, bdd.md §4 (upsert)
+ * Référence : architecture/gestion-contenu.md §4.2, bdd.md §4 (upsert)
  *
  * Plan gestion-contenu, étape 9, lot 4 : l'écran passe à la charte graphique,
  * le style seulement (partie IA gelée, règle 10) ; requêtes, textes et
@@ -527,7 +527,7 @@ export default function InboxPage() {
             )}
           </div>
 
-          {/* Badges d'alerte — toujours visibles (task.md §3.3) */}
+          {/* Badges d'alerte — toujours visibles */}
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={ticketStatusTone(selectedTicket.status)}>{selectedTicket.status}</Badge>
             <span className="text-xs text-ink-2">{selectedTicket.source_type}</span>
@@ -703,7 +703,7 @@ export default function InboxPage() {
 
 // ──────────────────────────────────────────────
 // Formulaire répéteur — Program_Discovery (Super Ticket)
-// Référence : task.md §3.2, architecture.md §5.2
+// Référence : architecture/gestion-contenu.md §4.2
 // ──────────────────────────────────────────────
 
 function ProgramDiscoveryForm({
@@ -1179,7 +1179,7 @@ function CampusAttachmentsForm({
 
 // ──────────────────────────────────────────────
 // Formulaire générique — Pricing, Ranking, Capacity, SchoolStats, Accreditation
-// Référence : task.md §3.3, architecture.md §5.3
+// Référence : architecture/gestion-contenu.md §4.2
 // ──────────────────────────────────────────────
 
 // Une voie d'admission d'un ticket Capacity au nouveau format.

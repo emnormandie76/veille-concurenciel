@@ -5,7 +5,7 @@
  *
  * 12 caractères au moins, 72 **octets** au plus : au-delà, bcrypt tronque sans
  * le dire, et deux mots de passe qui partagent leurs 72 premiers octets
- * deviennent interchangeables (architecture.md §3.6). Plan backend-local,
+ * deviennent interchangeables (architecture/gestion-contenu.md §2). Plan backend-local,
  * étape 7 (P0).
  */
 

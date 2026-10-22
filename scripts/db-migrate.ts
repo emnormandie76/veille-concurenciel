@@ -21,7 +21,7 @@
  * local seulement, jamais sur Vercel.
  *
  * Aucune URL n'est affichée, seulement l'hôte. Voir
- * docs/features/backend-local.md, étape 2.2.
+ * docs/architecture/bdd.md §4 (le lanceur db:migrate).
  */
 
 import { spawnSync } from "node:child_process";

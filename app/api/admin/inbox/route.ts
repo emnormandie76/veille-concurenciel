@@ -1,12 +1,12 @@
 /**
- * app/api/admin/inbox/route.ts — GET /api/admin/inbox (Étape 3.1)
+ * app/api/admin/inbox/route.ts — GET /api/admin/inbox
  *
  * Liste paginée des tickets ContributionInbox.
  * Filtres : status, ai_category, schoolId
  * Pagination : page, limit
  *
  * Règle 5 : Aucune donnée ContributionInbox n'est exposée publiquement.
- * Référence : task.md §3.1, architecture.md §3.4
+ * Référence : architecture/gestion-contenu.md §4.2, bdd.md §5
  */
 
 import { guardAdmin } from "@/lib/auth";

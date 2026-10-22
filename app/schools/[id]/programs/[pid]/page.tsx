@@ -1,5 +1,5 @@
 /**
- * app/schools/[id]/programs/[pid]/page.tsx — Détail programme public (Étape 8.1)
+ * app/schools/[id]/programs/[pid]/page.tsx — Détail programme public
  *
  * - Tarifs par année + total, classements, capacité par campus
  * - ISR 1h
@@ -22,7 +22,7 @@
  *   note longue faisait une ligne de plus de 1 000 px et poussait le tableau
  *   hors de son cadre ; elle s'affiche sous les montants de son année, sur
  *   toute la largeur. Chaque année est un groupe de lignes (`TBody`).
- * - Référence : task.md §8.1, architecture.md §7.1
+ * - Référence : architecture/gestion-contenu.md §3.1
  */
 
 import { Fragment } from "react";

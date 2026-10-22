@@ -1,5 +1,5 @@
 /**
- * app/page.tsx — Page d'accueil publique (Étape 8.1)
+ * app/page.tsx — Page d'accueil publique
  *
  * - Liste des écoles ACTIVE avec recherche en temps réel
  * - ISR 1h (export revalidate)
@@ -15,7 +15,7 @@
  * - D75 (contrôle du 21 octobre) : les programmes de chaque école, comme sa
  *   fiche (`programs_count` de /api/schools), au bandeau comme sur les
  *   cartes, et non plus la somme par campus.
- * - Référence : task.md §8.1, architecture.md §7.1
+ * - Référence : architecture/gestion-contenu.md §3.1
  */
 
 "use client";

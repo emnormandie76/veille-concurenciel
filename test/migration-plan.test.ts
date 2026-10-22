@@ -14,7 +14,7 @@
  * `migration.sql` en CRLF sous Windows alors que la base a enregistré
  * l'empreinte en LF : les deux formes valent. Aucun test ne touche la base :
  * le client SQL est un faux qui enregistre ses requêtes.
- * Voir docs/features/backend-local.md, étape 2.2.
+ * Voir docs/architecture/bdd.md §4 (le lanceur db:migrate).
  */
 
 import { test } from "node:test";

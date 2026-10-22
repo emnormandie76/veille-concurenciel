@@ -1,17 +1,17 @@
 /**
- * app/api/schools/route.ts — GET /api/schools (Étape 8.2)
+ * app/api/schools/route.ts — GET /api/schools
  *
  * Liste des écoles ACTIVE avec recherche et pagination, pour la page d'accueil.
  * Session exigée par le proxy, comme tout le site (plan gestion-contenu,
  * étape 1).
  *
- * - Filtre status = ACTIVE obligatoire (architecture.md §7.1)
+ * - Filtre status = ACTIVE obligatoire (architecture/gestion-contenu.md §4.3)
  * - Inclut campuses + programs pour la navigation
  * - `programs_count` : tous les programmes de l'école, avec ou sans campus,
  *   ceux de sa fiche (plan gestion-contenu, D75 : l'accueil les comptait à
  *   travers les campus, 51 pour 46)
- * - Cache ISR 1h (Étape 8.3)
- * - Référence : task.md §8.2
+ * - Cache ISR 1h
+ * - Référence : architecture/gestion-contenu.md §4.3
  */
 
 import { NextResponse } from "next/server";

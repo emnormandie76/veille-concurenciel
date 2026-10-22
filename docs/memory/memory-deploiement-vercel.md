@@ -1,123 +1,22 @@
-# Mémoire — Déployer le site sur Vercel
+# Mémoire — La production sur Vercel
 
-> **Rédigé le** : 1er septembre 2026
-> **Réécrit le** : 15 octobre 2026, à l'étape 8 du plan
-> [backend-local](../features/backend-local.md). Koyeb et le backend hébergé
-> ont disparu. Variables, intégration Neon, build vérifié, offre Hobby,
-> Upstash, ordre des opérations et vérifications ont été revus.
-> **Statut** : **en ligne depuis le 19 octobre 2026**, sur
-> <https://app-vc-emn.vercel.app> (étape 3 du plan
-> [`gestion-contenu.md`](../features/gestion-contenu.md)). L'état réel est
-> dans l'encadré « Ce qui est en ligne » ci-dessous ; le reste du mémo garde la
-> procédure et ses raisons.
-> **Mis à jour le 21 octobre 2026** (étape 11 du plan gestion-contenu, D100,
-> D101) : la console IA (`/admin/cron`), ses routes et le backend Python
-> vivent sur la branche `local`, lancée sur le poste ; `gestion` et `main`
-> (la production) ne les ont plus. L'inbox reste en ligne. §0, §1.3, §4,
-> §8.2 et §11 mis à jour.
-> **Mis à jour le 22 octobre 2026** (étape 12, D102) : le dépôt ne garde que
-> `main` (la production), `gestion` et `local` ; la CI ne vise plus
-> `devresearch` (§13). Les branches que nomment les sections datées (§8.1,
-> §9) n'existent plus.
-> **Qui fait quoi** : la création du projet, les variables, la connexion de la
-> base et le déploiement reviennent au propriétaire (règle 3 de
-> [`CLAUDE.md`](../../CLAUDE.md)). L'agent prépare, guide pas à pas sans
-> jamais demander de secret dans le chat, puis vérifie en lecture par le MCP
-> Vercel.
+> **En ligne depuis le 19 octobre 2026** : <https://app-vc-emn.vercel.app>,
+> sur les comptes de l'école. Ce mémo dit ce qui est en ligne, comment c'est
+> réglé, et comment livrer une version. Les décisions citées (G3, D7, D22…)
+> sont celles du plan [`features/gestion-contenu.md`](../features/gestion-contenu.md).
 >
-> Le détail technique vit dans [`architecture.md`](../architecture/architecture.md)
-> (§2.1 à §2.3 pour l'hébergement, §10.3 pour la limitation de débit, §10 bis
-> pour le build).
->
-> **Mise à jour du 16 octobre 2026** (plan
-> [`gestion-contenu.md`](../features/gestion-contenu.md)). La branche de travail
-> est désormais `gestion` : lire `gestion` partout où ce mémo dit
-> `localpython`. **Décision 8.1 tranchée, option A** : `main` reste la
-> production, rattrapée sur `gestion` à chaque version validée (décision G3).
-> **La mise en ligne attend la connexion obligatoire** (étape 3 du plan, après
-> les étapes 1 et 2), sinon les données des écoles restent publiques dans
-> l'intervalle. L'usage devient un outil d'équipe : le point « usage non
-> commercial » du §6 est à revoir par le propriétaire (plan, D7). Le §8.2
-> (préversions) reste à trancher. Le reste du mémo est valable ; l'étape 3 du
-> plan le révisera.
->
-> **Ce que l'étape 1 du plan a rendu faux ici** (16 octobre 2026), à réviser à
-> l'étape 3 : `/contribute` et `/api/contribute` n'existent plus (D2), donc
-> les vérifications qui les citent (§10, lignes 3, 10 et 12) tombent, et
-> `CONTRIBUTION_ALLOWED_DOMAINS` n'est plus lue (§1 et §9) ; le site entier exige
-> une session (sans session : renvoi vers `/admin/login`, 401 sur les API) ;
-> les gardes sont `guardSignedIn`, `guardManager`, `guardAdmin` (plus de
-> `guardAuth`) ; la migration `20261016120000_three_roles` (rôles `USER`,
-> `GESTIONNAIRE`, `ADMIN`) doit passer sur `main` avant la fusion, et le
-> compte `MODERATOR` de la production deviendra `GESTIONNAIRE`.
->
-> **Ce que l'étape 2 a changé** (16 octobre 2026) : les comptes entrent par la
-> liste blanche (§3.3, réécrit) ; la migration `20261016150000_whitelist_accounts`
-> doit passer sur `main` avant la fusion, après celle des trois rôles ; la
-> première connexion (`/admin/first-login`, `POST /api/first-login`) est
-> ouverte sans session et plafonnée avec la connexion (5 tentatives par
-> 15 minutes et par IP, tentatives confondues : Upstash compte aussi pour
-> elle, §5) ; les jetons émis avant ce code ne valent plus (version de
-> session), chacun se reconnecte une fois.
->
-> **Étape 3, en cours (19 octobre 2026).** Les deux migrations des étapes 1
-> et 2 sont **appliquées sur la branche Neon `main`** (12/12, vérifié par le
-> MCP). Décisions du propriétaire (plan, §2.2) : **D7** l'offre Hobby est
-> gardée, en connaissance de cause (§6) ; **D22** les préversions suivent
-> l'option A du §8.2 (base reliée à Production seulement, « Only build
-> production ») ; **D23** `preload` de HSTS gardé (§7). Le mot de passe du
-> rôle `neondb_owner` a été changé sur `main` et sur `dev`, et les secrets
-> GitHub `DATABASE_URL` et `DIRECT_URL` mis à jour, **avant** de relier la base
-> à Vercel : l'intégration injectera directement le nouveau mot de passe.
-> *(C'était l'ancienne base : voir l'encadré suivant.)*
->
-> **Ce qui est en ligne (19 octobre 2026).** Le propriétaire a déplacé
-> l'hébergement sur des **comptes de l'école** ; `Anton1P` ne fait plus que
-> commiter et pousser. *(Depuis le 20 octobre, les commits sont signés au
-> nom d'`emnormandie76` : voir le §6.)*
->
-> - **Dépôt** : `emnormandie76/veille-concurenciel` (compte GitHub personnel
->   de l'école, `Anton1P` collaborateur). `main` = `ecad4a9`, rattrapée sur
->   `gestion` par avance rapide, sans PR (écart à G3, décision du
->   propriétaire). Secrets Actions du nouveau dépôt créés par le
->   propriétaire : `DATABASE_URL`, `DIRECT_URL` de la **nouvelle** base, sans
->   guillemets, et un `NEXTAUTH_SECRET` **distinct** de celui de Vercel.
-> - **Base** : nouveau projet Neon `vc-bdd` (`noisy-credit-34683167`), créé
->   depuis le Vercel de l'école, Londres ; `main` (`ep-super-rain-zas6jyy2`) =
->   production, `dev` (`ep-proud-lab-za705j3u`) = essais du poste. Schéma posé
->   par `npx prisma migrate deploy` (12 migrations, depuis une base vierge, par
->   le partage de connexion du téléphone : 5432) ; données copiées de
->   l'ancienne base à l'identique (14 tables, empreintes MD5). Le mot de passe
->   de `neondb_owner` de cette base n'a pas été changé (décision du
->   propriétaire, risque accepté). L'ancienne base (`lucky-cell-29057691`)
->   reste en sauvegarde figée.
-> - **Projet Vercel** : `app-vc` (`prj_x0D6x90ihnJnc86piYtt9fJXfNLM`), équipe
->   `em-normandie1`, Hobby (D7). Importé comme **projet Next.js seul** : Vercel
->   proposait un projet « Services » (FastAPI + Next.js), refusé. Adresse
->   principale `https://app-vc-emn.vercel.app` ; `app-vc-taupe.vercel.app`,
->   attribuée à la création, y renvoie en 307.
-> - **Variables de Production** (noms relus par le MCP) : `DATABASE_URL` et
->   ses cousines (intégration Neon, Production seule, D22), `NEXTAUTH_SECRET`,
->   `NEXTAUTH_URL` (= l'adresse principale), `UPSTASH_REDIS_REST_URL`,
->   `UPSTASH_REDIS_REST_TOKEN` (recopiées à la main), et les `KV_*` et
->   `REDIS_URL` de l'intégration Upstash, sans effet. Aucune du §1.3.
-> - **Réglages** : `lhr1`, Fluid compute, Node 24.x, « Only build
->   production ».
-> - **Comptes** : `aparede@em-normandie.fr` (admin), un compte gestionnaire
->   de test, et un premier collègue (admin).
-> - **Vérifications** : §10, colonne « Relevé ».
+> **Qui fait quoi** : le projet, les variables, la base et le déploiement
+> reviennent au propriétaire (règle 3 de [`CLAUDE.md`](../../CLAUDE.md)).
+> L'agent prépare, guide pas à pas sans jamais demander de secret dans le
+> chat, puis vérifie en lecture par les MCP Vercel, Neon et GitHub.
 
 ---
 
-## 0. Ce qui va où
+## 0. Ce qui est en ligne
 
-**Seul Next.js va sur Vercel, en offre Hobby.** Le backend FastAPI n'est
-hébergé nulle part : l'admin le lance sur son poste avec `npm run local`,
-**depuis la branche `local`** (étape 11, D100), quand il veut lancer des
-recherches ou traiter les contributions (décision du 14 octobre 2026).
-`gestion` et `main` n'ont ni le backend, ni sa console, ni aucun code qui le
-joint. Koyeb est abandonné : son offre gratuite est fermée aux
-nouveaux comptes depuis le 26 février 2026.
+**Seul Next.js va sur Vercel, en offre Hobby.** La partie IA (le backend
+FastAPI, sa console `/admin/cron`) vit sur la branche `local` et ne se lance
+que sur le poste de l'admin (D100, D101) ; Vercel ne la construit pas.
 
 ```
  EN LIGNE — Vercel Hobby (main)              POSTE DE L'ADMIN — branche local
@@ -125,8 +24,8 @@ nouveaux comptes depuis le 26 février 2026.
 │ Next.js 16                        │       │ npm run local                     │
 │ • site et API v1, derrière la     │       │ • FastAPI sur 127.0.0.1:8000      │
 │   connexion                       │       │   (pipeline, contributions)       │
-│ • back-office                     │       │ • Next.js dev sur localhost:3000  │
-│ • ni console IA ni backend        │       │   (back-office qui pilote)        │
+│ • back-office, inbox comprise     │       │ • Next.js dev sur localhost:3000  │
+│ • ni console IA ni backend        │       │   (la console qui pilote)         │
 └─────────────────┬─────────────────┘       └─────────────────┬─────────────────┘
                   │ WebSocket 443                             │ WebSocket 443
                   ▼                                           ▼ (DB_DRIVER=neon-ws)
@@ -136,108 +35,121 @@ nouveaux comptes depuis le 26 février 2026.
                   └───────────────────────────────────────────┘
 ```
 
-Le site en ligne et le backend ne se parlent pas : ils partagent la base. Ce
-que cela donne en ligne :
+Le site en ligne et le backend ne se parlent pas : ils partagent la base.
+`/admin/cron` répond 404 en ligne ; l'inbox y reste, pour que l'admin valide
+les tickets que le backend du poste a écrits.
 
-- **`/admin/cron` n'existe plus en ligne** (404) depuis l'étape 11 : la
-  console vit sur la branche `local`, avec ses routes (`pipeline-status`,
-  `pipeline-jobs`, `trigger-research`, `run-due-passes`,
-  `schools-with-programs`). Jusque-là, elle affichait « Pilotage depuis le
-  poste local » et ses routes de relais répondaient 503 `BACKEND_LOCAL_ONLY`.
-- **L'inbox reste en ligne**, pour l'admin : il y valide les tickets que le
-  backend du poste a écrits en base.
-- **La contribution du public n'existe plus** (D2 du plan gestion-contenu) :
-  rien de nouveau n'arrive en `Pending_AI`. Lancer le backend coûte toujours
-  de l'argent s'il en reste : le traitement appelle Tavily et Gemma dès le
-  démarrage.
-- **Deux branches Neon** (base de l'école depuis le 19 octobre 2026) :
-  `main` (`br-late-water-za82d15h`), que lit le site en ligne, et `dev`
-  (`br-odd-cloud-zao7fqra`), copie de `main` faite ce jour-là, pour les essais
-  du poste. Décision du propriétaire : **`dev` pour les essais et les
-  vérifications, `main` pour le travail réel** : une modification faite sur
-  `main` se voit en ligne tout de suite, une faite sur `dev` ne se voit pas.
-  Bascule du poste :
-  [`manual_testing_cron.md`](../testing/manual_testing_cron.md) §1.3.
+| | |
+|---|---|
+| **Dépôt** | `emnormandie76/veille-concurenciel` (compte GitHub de l'école, `Anton1P` collaborateur) ; production = `main`, avancée sur `gestion` par avance rapide à chaque version validée (G3) |
+| **Projet Vercel** | `app-vc` (`prj_x0D6x90ihnJnc86piYtt9fJXfNLM`), équipe `em-normandie1`, Hobby (D7) ; importé comme **projet Next.js seul** (Vercel proposait un projet « Services » FastAPI + Next.js, refusé) |
+| **Adresses** | principale `https://app-vc-emn.vercel.app` (= `NEXTAUTH_URL`) ; `app-vc-taupe.vercel.app`, attribuée à la création, y renvoie en 307 |
+| **Base** | projet Neon `vc-bdd` (`noisy-credit-34683167`), Londres (`aws-eu-west-2`) : `main` (`ep-super-rain-zas6jyy2`) = production, `dev` (`ep-proud-lab-za705j3u`) = essais du poste |
+| **Variables de Production** | `DATABASE_URL` et ses cousines (intégration Neon, Production seule, D22), `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` ; plus les `KV_*` et `REDIS_URL` de l'intégration Upstash, sans effet. Aucune du §1.3 |
+| **Réglages** | région des fonctions `lhr1`, Fluid compute, Node 24.x, « Only build production » |
+| **Secrets Actions** | `DATABASE_URL`, `DIRECT_URL` (sans guillemets), `NEXTAUTH_SECRET` distinct de celui de Vercel |
+
+L'ancienne base (`lucky-cell-29057691`, Vercel personnel d'`Anton1P`) et
+l'ancien dépôt (`Anton1P/veille-concurenciel`) restent en sauvegarde figée :
+plus rien n'y écrit.
 
 ---
 
 ## 1. Variables d'environnement
 
-Inventaire du 15 octobre 2026 : tous les `process.env` de `app/`, `lib/`,
-`proxy.ts`, `next.config.ts` et `prisma.config.ts`, plus les variables que
-`next-auth` 4.24.15 lit sans que le code les nomme. **Aucune variable lue par
-le code n'échappe aux quatre listes ci-dessous.**
+Inventaire de tous les `process.env` de `app/`, `lib/`, `proxy.ts`,
+`next.config.ts` et `prisma.config.ts`, plus les variables que `next-auth`
+lit sans que le code les nomme. **Aucune variable lue par le code n'échappe
+aux quatre listes ci-dessous.**
 
 ### 1.1. Obligatoires sur Vercel
 
 | Variable | Qui la lit | Valeur | Piège |
 |---|---|---|---|
 | `DATABASE_URL` | `lib/prisma.ts` à l'exécution (une erreur au chargement si elle manque) ; `prisma.config.ts` au build (`prisma generate` exige la variable, sans se connecter) | URL **poolée** (hôte en `-pooler`) | **Injectée par l'intégration Neon (§2) : ne pas la saisir à la main.** |
-| `NEXTAUTH_SECRET` | `app/api/auth/[...nextauth]/route.ts` et `proxy.ts` (`withAuth`) | valeur **neuve** : `openssl rand -base64 32` | Le nom compte : la route passe `NEXTAUTH_SECRET` explicitement (le repli `AUTH_SECRET` de next-auth ne vaut que pour le proxy). Absente, next-auth refuse de fonctionner (`NO_SECRET`) et plus personne ne se connecte. La changer déconnecte toutes les sessions. |
-| `NEXTAUTH_URL` | next-auth, implicitement (absente du code) | `https://<projet>.vercel.app`, ou le domaine définitif, sans barre finale | **Environnement Production seulement.** Sur Vercel, next-auth sait s'en passer : la plateforme pose `VERCEL`, et l'origine se déduit alors de l'hôte de la requête. Posée, elle fixe l'adresse des redirections de connexion. En Preview, la laisser absente : une valeur de production y renverrait la connexion vers la production. |
+| `NEXTAUTH_SECRET` | `app/api/auth/[...nextauth]/route.ts` et `proxy.ts` (`withAuth`) | une valeur à soi : `openssl rand -base64 32` | Le nom compte : la route passe `NEXTAUTH_SECRET` explicitement (le repli `AUTH_SECRET` de next-auth ne vaut que pour le proxy). Absente, next-auth refuse de fonctionner (`NO_SECRET`) et plus personne ne se connecte. La changer déconnecte toutes les sessions. |
+| `NEXTAUTH_URL` | next-auth, implicitement (absente du code) | l'adresse principale, sans barre finale | **Environnement Production seulement.** Posée, elle fixe l'adresse des redirections de connexion. En Preview, la laisser absente : next-auth déduit l'origine de la requête (la plateforme pose `VERCEL`), alors qu'une valeur de production y renverrait la connexion vers la production. |
 
 ### 1.2. Fortement recommandées
 
 | Variable | Qui la lit | Pourquoi |
 |---|---|---|
 | `UPSTASH_REDIS_REST_URL` et `UPSTASH_REDIS_REST_TOKEN` | `lib/rate-limit.ts` | **Le point le plus important de cette page** (§5). Ce sont exactement ces noms. |
-| ~~`CONTRIBUTION_ALLOWED_DOMAINS`~~ | plus personne | Lue par `/api/contribute`, retirée avec la contribution du public (D2, 16 octobre 2026) : ne pas la poser. |
 
 ### 1.3. Jamais sur Vercel
 
 | Variable | Pourquoi |
 |---|---|
-| `FASTAPI_URL` | **Lue par aucun code de `gestion` ni de `main`** depuis l'étape 11 (D101) : seule la branche `local` s'en sert, sur le poste. Posée, elle ne servait qu'à exposer un backend sur Internet. Si elle est sur Vercel, le propriétaire la retire. |
-| `INTERNAL_API_TOKEN` (anciens noms : `FASTAPI_INTERNAL_TOKEN`, `INTERNAL_TOKEN`) | Secret du poste, lu par la seule branche `local` depuis l'étape 11 ; il ne doit pas quitter le poste. |
-| `DB_DRIVER`, `NEON_WS_BRIDGE_PORT` | Réglages du réseau de l'établissement. Next.js ne les lit pas ; seuls les scripts de migration (`DB_DRIVER`) et le backend de la branche `local` les lisent. **`DB_DRIVER` ne se pose jamais sur Vercel.** |
-| `GEMINI_API_KEY`, `TAVILY_API_KEY*` | Backend seulement, branche `local` : aucune route Next ne les lit. |
-| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Le seed ne se joue pas sur la base partagée (§3.3). `SEED_ADMIN_USERNAME` n'est plus lue depuis l'étape 2 du plan gestion-contenu. |
-| `DIRECT_URL`, `SHADOW_DATABASE_URL` | Elles ne servent qu'aux migrations, qui partent du poste (§3). Le build ne se connecte pas (vérifié, §4), et `prisma.config.ts` se replie sur `DATABASE_URL`. **Changement** : la version du 1er septembre exigeait `DIRECT_URL` sur Vercel « pour le build » ; c'était faux. |
-| `CRON_*`, `PIPELINE_JOB_ROTATION_RETENTION_DAYS`, `CROWDSOURCING_*`, `PHASE2_MAX_PROGRAMS` | `backend/.env` seulement, branche `local`. |
+| `FASTAPI_URL`, `INTERNAL_API_TOKEN` (anciens noms : `FASTAPI_INTERNAL_TOKEN`, `INTERNAL_TOKEN`) | Lues par la seule branche `local`, sur le poste ; aucun code de `gestion` ni de `main` ne les lit. Posées en ligne, elles ne serviraient qu'à exposer un backend ou son jeton. |
+| `DB_DRIVER`, `NEON_WS_BRIDGE_PORT` | Réglages du réseau de l'établissement. Next.js ne les lit pas ; seuls les scripts de migration (`DB_DRIVER`) et le backend de `local` les lisent. **`DB_DRIVER` ne se pose jamais sur Vercel.** |
+| `GEMINI_API_KEY`, `TAVILY_API_KEY*`, `CRON_*`, `CROWDSOURCING_*`, `PIPELINE_JOB_ROTATION_RETENTION_DAYS`, `PHASE2_MAX_PROGRAMS` | Backend seulement (`backend/.env`, branche `local`). |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Le seed ne se joue pas sur la base partagée (§3.3). |
+| `DIRECT_URL`, `SHADOW_DATABASE_URL` | Elles ne servent qu'aux migrations, qui partent du poste (§3). Le build ne se connecte pas (§4), et `prisma.config.ts` se replie sur `DATABASE_URL`. |
 
 ### 1.4. Posées par Vercel, rien à faire
 
 `NODE_ENV` (`production`), `VERCEL` et `VERCEL_URL` : next-auth les lit pour
 déduire l'origine.
 
-> **Environnements Vercel.** On remplit l'environnement *Production*. Pour
-> *Preview*, voir la décision du §8.2. L'environnement *Development* ne sert
-> pas : le poste lit ses propres fichiers `.env*`. Marquer les secrets
-> (`NEXTAUTH_SECRET`, jeton Upstash) comme *Sensitive*.
+> **Environnements Vercel.** Seul l'environnement *Production* est rempli
+> (§8). *Development* ne sert pas : le poste lit ses propres fichiers `.env*`.
+> Les secrets (`NEXTAUTH_SECRET`, jeton Upstash) sont marqués *Sensitive*.
 
 ---
 
 ## 2. La base : intégration Neon ↔ Vercel
 
-- **Le projet Neon `vc-bdd`** (`noisy-credit-34683167`, région
-  `aws-eu-west-2`, depuis le 19 octobre 2026) vit dans l'organisation
-  « Vercel: EM-Normandie » (`org-long-unit-38729916`), gérée par le Vercel de
-  l'école : c'est l'intégration Neon du Marketplace, en compte géré par
-  Vercel. Côté Vercel, la base apparaît dans **Storage**, et sa branche `main`
-  y est la branche de production. **Une base ainsi gérée ne se transfère pas**
-  d'un compte à l'autre (ni Neon ni Vercel Hobby ne le permettent) : d'où la
-  nouvelle base et la copie des données le 19 octobre. L'ancienne
-  (`lucky-cell-29057691`, Vercel d'`Anton1P`) reste en sauvegarde figée.
-- **Pour la relier au projet** (documentation Neon, *Vercel-Managed
-  Integration*, relue le 15 octobre 2026) : Storage → la base → **Connect
-  Project** → choisir le projet → cocher les environnements → **Connect**.
+- **Le projet Neon `vc-bdd`** vit dans l'organisation « Vercel: EM-Normandie »
+  (`org-long-unit-38729916`), gérée par le Vercel de l'école : c'est
+  l'intégration Neon du Marketplace, en compte géré par Vercel. Côté Vercel, la
+  base apparaît dans **Storage**, et sa branche `main` y est la branche de
+  production. **Une base ainsi gérée ne se transfère pas** d'un compte à
+  l'autre (ni Neon ni Vercel Hobby ne le permettent) : un changement de compte
+  impose une nouvelle base et la copie des données.
+- **La relier à un projet** : Storage → la base → **Connect Project** →
+  choisir le projet → cocher les environnements (Production seulement, D22) →
+  **Connect**, sans préfixe (avec `PRIMARY_`, la variable deviendrait
+  `PRIMARY_DATABASE_URL`, que le code ne lit pas).
 - **Variables injectées** : `DATABASE_URL` (**poolée**, PgBouncer),
   `DATABASE_URL_UNPOOLED` (directe), `PGHOST`, `PGHOST_UNPOOLED`, `PGUSER`,
   `PGDATABASE`, `PGPASSWORD`, et des `POSTGRES_*` hérités de Vercel Postgres.
-  Le code ne lit que `DATABASE_URL`, qui a le bon nom et pointe vers le pooler.
-  Les autres variables restent sans effet.
-- **Pas de doublon** : ne pas saisir `DATABASE_URL` à la main en plus de
-  l'intégration.
-- **Pas de préfixe** à la connexion : avec `PRIMARY_`, la variable deviendrait
-  `PRIMARY_DATABASE_URL`, que le code ne lit pas.
-- **Option *Preview Branching*** (Advanced Options → Deployments Configuration
-  → Preview) : chaque déploiement de préversion reçoit une branche Neon
-  `preview/<branche git>`, copie de la production. Voir la décision du §8.2.
-- Cette intégration ne se combine pas avec l'intégration « gérée par Neon »
-  dans un même projet Vercel.
-- **Après la connexion**, l'agent vérifie par le MCP Vercel les **noms**
-  (`filter_project_envs`, jamais `decrypt`) : `DATABASE_URL` présente en
-  Production, sans doublon saisi à la main.
+  Le code ne lit que `DATABASE_URL`. Ne pas la saisir à la main en plus.
+- **Vérification** : l'agent relit par le MCP Vercel les **noms**
+  (`filter_project_envs`, jamais `decrypt`).
+
+### 2.1. Les deux branches Neon et la bascule du poste
+
+Décision du propriétaire : **`dev` pour les essais et les vérifications,
+`main` pour le travail réel**. Une modification faite sur `main` se voit en
+ligne tout de suite ; une faite sur `dev` ne se voit pas. Le poste vise `dev`
+par défaut.
+
+| Branche | Endpoint (dans l'hôte des URL, en `c-2.eu-west-2.aws.neon.tech`) |
+|---|---|
+| `main` (production Vercel) | `ep-super-rain-zas6jyy2` |
+| `dev` | `ep-proud-lab-za705j3u` |
+
+**Les deux branches n'ont pas le même mot de passe** (un rôle Neon est propre à
+sa branche) : une bascule change **l'URL entière**. Les URL de chaque branche
+se copient dans la console Neon (bouton *Connect*, branche voulue, *Connection
+pooling* activé pour `DATABASE_URL`, désactivé pour `DIRECT_URL`). Les
+fichiers `.env*` appartiennent au propriétaire : l'agent ne les modifie que sur
+son autorisation explicite, par un script qui n'affiche rien. Pour basculer :
+
+1. arrêter Next.js (et le backend, sur `local`) ;
+2. remplacer l'URL dans les lignes actives suivantes, en gardant `-pooler` là
+   où il figure :
+   - `.env.local` : `DATABASE_URL` (poolée) et `DIRECT_URL` (directe) ;
+   - `.env` à la racine, s'il porte encore le doublon : les deux mêmes. Sinon
+     la CLI Prisma (`prisma.config.ts`), qui lit `.env` en repli, viserait
+     encore l'autre branche ;
+   - `backend/.env` (branche `local`) : `DATABASE_URL`.
+
+   `.env.development.local` ne porte que `DB_DRIVER=neon-ws` : rien à y
+   changer. Ne jamais poser une `DATABASE_URL` dans les variables Windows :
+   elle l'emporterait sur tous les fichiers ;
+3. vérifier : `npm run db:status` affiche l'hôte visé
+   (`Pilote neon-ws : WebSocket (443) vers ep-… (DIRECT_URL)`).
 
 ---
 
@@ -246,98 +158,52 @@ déduire l'origine.
 ### 3.1. Les migrations partent du poste
 
 Elles partent du poste avec `npm run db:migrate` (en WebSocket, avec
-`DB_DRIVER=neon-ws`), **avant** le déploiement qui en dépend. Jamais dans le
-build Vercel : le build tourne à chaque préversion et à chaque retour arrière,
-et une migration s'y jouerait à des moments imprévisibles. La documentation
-Neon propose `npx prisma migrate deploy && npm run build` comme commande de
-build : **ne pas le faire.**
+`DB_DRIVER=neon-ws` : [`bdd.md`](../architecture/bdd.md) §4), **avant** le
+déploiement qui en dépend. Jamais dans le build Vercel : le build tourne à
+chaque préversion et à chaque retour arrière, et une migration s'y jouerait à
+des moments imprévisibles. La documentation Neon propose
+`npx prisma migrate deploy && npm run build` comme commande de build : **ne
+pas le faire.** Les seize migrations sont appliquées sur `main` et sur `dev`.
 
-**État au 19 octobre 2026** : les 12 migrations sont appliquées sur `main`
-(les deux dernières le 19 octobre, `npm run db:migrate` lancé par le
-propriétaire après une passe à blanc), et aucune n'est en attente. Le premier
-déploiement n'a donc aucune migration à appliquer.
+### 3.2. Livrer une version
 
-**20 octobre 2026** (étape 5 du plan gestion-contenu) : une treizième
-migration, `20261019120000_content_provenance` (additive), appliquée sur
-`dev`, puis sur `main` le même jour en suivant le §3.2 (`db:status`, à
-blanc, puis réelle, avec l'accord du propriétaire), **avant** le push sur
-`main` dont le code la lit. Treize migrations sur les deux branches.
+1. CI verte sur le commit de `gestion` à livrer (MCP GitHub) ;
+2. s'il apporte une migration : `npm run db:status` (lecture seule, permis à
+   l'agent), `npm run db:migrate:dry` (applique tout, puis `ROLLBACK`), puis
+   `npm run db:migrate` sur `main`, **avec l'accord du propriétaire** (la base
+   est la production ; le classifieur refuse souvent cette commande à l'agent :
+   le propriétaire la lance, l'agent vérifie par le MCP Neon) ;
+3. ensuite seulement, `git -c credential.username=Anton1P push origin
+   gestion:main` (avance rapide, sans fusion), avec un dernier commit signé au
+   nom d'`emnormandie76` (§6), sans quoi Vercel le bloque ;
+4. vérifier : CI verte sur `main`, déploiement de production `READY` (MCP
+   Vercel), puis un coup d'œil en ligne.
 
-**20 octobre 2026** (étape 6) : une quatorzième migration,
-`20261020120000_content_reports` (une table neuve, additive), appliquée sur
-`dev`, puis sur `main` le même jour en suivant le §3.2 (relevé MCP,
-`db:status`, à blanc, puis réelle, avec l'accord du propriétaire), **avant**
-le push sur `main` (« Mon compte » lit la nouvelle table : sans elle, la
-page tomberait en erreur). Quatorze migrations sur les deux branches.
-
-**20 octobre 2026** (étape 7) : une quinzième migration,
-`20261020150000_research_launches` (une table neuve, additive : le journal
-des lancements de l'IA), appliquée sur `dev`, puis sur `main` le même jour en
-suivant le §3.2 (relevé MCP, `db:status`, à blanc, puis réelle, avec l'accord
-du propriétaire), **avant** le push sur `main` (l'historique de `/admin/cron`
-lit la nouvelle table : sans elle, il tomberait en erreur). Quinze migrations
-sur les deux branches.
-
-**20 octobre 2026** (étape 8) : une seizième migration,
-`20261020180000_program_entries` (une table neuve, `ProgramEntry`, et la
-contrainte des catégories de signalement élargie à `ADMISSIONS`), appliquée
-sur `dev`, puis sur `main` le même jour en suivant le §3.2 (relevé MCP,
-`db:status`, à blanc, puis réelle, avec l'accord du propriétaire), **avant**
-le push sur `main` (la fiche programme, l'onglet « Admissions » et l'API v1
-lisent la nouvelle table : sans elle, la fiche programme tomberait en
-erreur). Seize migrations sur les deux branches.
-
-### 3.2. Une version qui apporte une migration
-
-1. `npm run db:status` : lecture seule, permis à l'agent ;
-2. `npm run db:migrate:dry` : applique tout, puis `ROLLBACK` ;
-3. `npm run db:migrate`, **avec l'accord du propriétaire** : la base est aussi
-   la production ;
-4. ensuite seulement, la fusion ou le push qui déclenche le déploiement, avec
-   un dernier commit signé au nom d'`emnormandie76` (§6), sans quoi Vercel le
-   bloque.
-
-Entre 3 et 4, l'ancien code tourne encore sur le nouveau schéma : une migration
-doit rester compatible avec lui (ajouter d'abord, retirer dans une version
-suivante). Jamais `prisma db push`, `migrate dev` ni `migrate reset`, et jamais
-de modification d'un `migration.sql` déjà appliqué (son empreinte change).
+Entre 2 et 3, l'ancien code tourne encore sur le nouveau schéma : une
+migration doit rester compatible avec lui (ajouter d'abord, retirer dans une
+version suivante). Jamais `prisma db push`, `migrate dev` ni `migrate reset`,
+et jamais de modification d'un `migration.sql` déjà appliqué (son empreinte
+change).
 
 ### 3.3. Les comptes : pas de seed, la liste blanche
 
-La base partagée a déjà ses comptes : 1 ADMIN et 1 MODERATOR sur `main`
-(relevé par le MCP Neon le 16 octobre 2026, `SELECT` seulement ; le MODERATOR
-deviendra GESTIONNAIRE avec la migration des trois rôles). **Les comptes du
-site en ligne sont ceux du développement.** Ne jamais lancer `prisma db seed`
-contre cette base (règle 8) : il ne sert qu'à une base vierge.
-
-Depuis l'étape 2 du plan gestion-contenu, **personne n'entre autrement que par
-la liste blanche**, et aucun e-mail n'est envoyé :
-
-1. après la mise en ligne, l'admin se connecte encore par son **ancien
-   identifiant** : ces deux comptes n'ont pas d'adresse (D3) ;
-2. dans `/admin/users`, il renseigne l'adresse `@em-normandie.fr` de chacun
-   (« Renseigner l'adresse ») ; dès lors, l'identifiant ne sert plus, la
-   connexion se fait par l'adresse ;
-3. si ces mots de passe ont servi pendant le développement, chacun change le
-   sien sur « Mon compte » (`/account`) ; ou l'admin remet le compte en
-   première connexion (le mot de passe est effacé, la personne en choisit un
-   nouveau). Personne ne fixe plus le mot de passe d'un autre ;
-4. il ajoute ensuite les adresses de l'équipe (« Ajouter une adresse ») et
-   prévient chaque collègue, qui choisit son mot de passe sur
-   `/admin/first-login`.
+La base partagée a ses comptes : **ne jamais lancer `prisma db seed`** contre
+elle (règle 8), il ne sert qu'à une base vierge. Personne n'entre autrement
+que par la liste blanche, et aucun e-mail n'est envoyé : l'admin ajoute
+l'adresse `@em-normandie.fr` d'un collègue (« Ajouter une adresse »), le
+prévient, et le collègue choisit son mot de passe sur `/admin/first-login`. Un
+compte d'avant la liste blanche se connecte par son ancien identifiant tant
+que l'admin n'a pas renseigné son adresse (D3).
 
 **Risque accepté (G5)** : tant qu'un invité n'a pas fait sa première
 connexion, quelqu'un qui connaît son adresse peut choisir le mot de passe à sa
 place. Prévenir les collègues juste après l'ajout réduit la fenêtre.
 
-**Fait le 19 octobre 2026** (base de l'école, copie de l'ancienne) : points 1
-et 2 faits, l'admin a l'adresse `aparede@em-normandie.fr` ; l'ancien compte
-`MODERATOR`, devenu gestionnaire, est un compte de test, qui a reçu à la
-demande du propriétaire une adresse de test au suffixe tiré au hasard. Il
-n'est **pas** remis en première connexion : avec une adresse qui ne
-correspond à personne, ce serait offrir un compte gestionnaire à quiconque la
-devine. Point 3 : mot de passe admin changé par le propriétaire. Point 4 :
-un premier collègue ajouté, passé admin, première connexion faite.
+Comptes en place : l'admin (`aparede@em-normandie.fr`), un compte
+gestionnaire **de test**, à l'adresse de test au suffixe tiré au hasard (il
+n'est pas remis en première connexion : avec une adresse qui ne correspond à
+personne, ce serait offrir un compte gestionnaire à quiconque la devine), et
+les collègues ajoutés depuis.
 
 ---
 
@@ -346,23 +212,16 @@ un premier collègue ajouté, passé admin, première connexion faite.
 - `npm run build` vaut `prisma generate && next build`. Prisma 7 n'a plus de
   `postinstall` qui génère le client : sans cet appel explicite, le build
   partirait sans client Prisma.
-- **Vérifié le 15 octobre 2026**, sans lire un seul `.env*` et sans toucher la
-  base. Dans un `git worktree` jetable de `6315a95` (aucun `.env*` suivi par
-  git), `npm ci`, puis `npm run build` avec pour **seule** variable une
-  `DATABASE_URL` morte (`postgresql://build:build@127.0.0.1:9/build`) :
-  **build vert**. Aucune page ne lit la base au build. `/`, `/contribute`,
-  `/api-docs` et `/admin/login` sont statiques ; tout le reste est dynamique,
-  et le proxy est compilé. Le message « Dynamic server usage » sur
-  `/api/schools` est connu et sans effet : la route reste dynamique.
+- **Le build ne lit pas la base** : il passe avec pour seule variable une
+  `DATABASE_URL` morte (vérifié dans un `git worktree` jetable, sans aucun
+  `.env*`). Le message « Dynamic server usage » sur `/api/schools` est connu
+  et sans effet : la route reste dynamique.
 - **npm 11 n'exécute pas les scripts d'installation non approuvés**
   (`@prisma/engines`, `esbuild`, `prisma`, `unrs-resolver`). Le build passe
-  sans eux (vérifié dans le même worktree).
+  sans eux.
 - **Réglages du projet** : préréglage Next.js, répertoire racine du dépôt,
-  commandes par défaut. Le dossier `backend/` (Python) n'a jamais été
-  déployé (pas de dossier `api/` à la racine, préréglage Next.js) ; depuis
-  l'étape 11, il n'est plus sur `gestion` ni sur `main`.
-- **Node** : régler **24.x** (Settings → Build and Deployment → Node.js
-  Version), comme la CI et le poste. `package.json` ne déclare pas d'`engines`.
+  commandes par défaut, **Node 24.x** (comme la CI et le poste ;
+  `package.json` ne déclare pas d'`engines`).
 - Dans les journaux Vercel, des lignes `injected env (0) from .env.local`
   apparaissent. Elles sont sans effet : `lib/prisma.ts` et `prisma.config.ts`
   chargent `.env.local`, absent sur Vercel.
@@ -378,41 +237,17 @@ zéro.
 
 | Plafond | Ce qu'il devient sans Upstash |
 |---|---|
-| 5 tentatives de connexion / 15 min | contournable en provoquant des démarrages à froid |
-| 5 contributions / 20 s | idem. Chaque ticket coûtera des crédits Tavily au prochain lancement du backend |
-| 60 appels `/api/v1` / min | idem, et la base peut être aspirée |
+| 5 tentatives de connexion ou de première connexion / 15 min / IP | contournable en provoquant des démarrages à froid |
+| 60 appels `/api/v1` / min / IP | idem, et la base peut être aspirée |
+| 10 signalements / heure / compte | idem |
 
-**Création, côté propriétaire (offre gratuite)** :
-
-1. sur [console.upstash.com](https://console.upstash.com), créer une base
-   **Redis**, dans une région européenne proche de Londres (Neon est en
-   `eu-west-2`). L'offre gratuite suffit largement ;
-2. dans l'onglet **REST API** de la base, relever `UPSTASH_REDIS_REST_URL` et
-   `UPSTASH_REDIS_REST_TOKEN` ;
-3. dans Vercel (Settings → Environment Variables), créer ces deux variables
-   **sous ces noms exacts**, en Production. Le jeton est à marquer
-   *Sensitive* ;
-4. redéployer.
-
-> **Piège : l'intégration « Upstash for Redis » du Marketplace Vercel.** Sa
-> documentation ne dit pas quels noms elle injecte. L'ancien Vercel KV, migré
-> chez Upstash en décembre 2024, posait `KV_REST_API_URL` et
-> `KV_REST_API_TOKEN`, que `lib/rate-limit.ts` **ne lit pas** : le site
-> retomberait en mémoire sans autre signe que l'avertissement du journal.
-> D'où la création directe ci-dessus. Si le propriétaire préfère
-> l'intégration, l'agent vérifie ensuite les noms par le MCP. S'ils diffèrent,
-> il faut choisir entre recopier les valeurs sous les bons noms et modifier le
-> code, et ce choix revient au propriétaire.
->
-> **Ce qui s'est passé le 19 octobre 2026** : le propriétaire a pris
-> l'intégration (`appvc-ratelimit`, Production seule). Elle pose
-> `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`,
-> `KV_URL` et `REDIS_URL` : le piège était réel. Option retenue, sans toucher
-> au code : les valeurs recopiées à la main sous `UPSTASH_REDIS_REST_URL` et
-> `UPSTASH_REDIS_REST_TOKEN`. **Vérifié** : 6 tentatives de connexion → 429 à
-> la 6ᵉ, et dans le Data Browser d'Upstash la clé `rl:login:<ip>:<fenêtre>`
-> (12 commandes : INCR et EXPIRE de chaque tentative). Le repli mémoire n'a
-> pas servi.
+**Les noms comptent.** L'intégration « Upstash for Redis » du Marketplace
+(`appvc-ratelimit`, Production seule) pose `KV_REST_API_URL`,
+`KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`, `KV_URL` et `REDIS_URL`,
+que `lib/rate-limit.ts` **ne lit pas**. Les valeurs ont donc été recopiées à
+la main sous `UPSTASH_REDIS_REST_URL` et `UPSTASH_REDIS_REST_TOKEN`, sans
+toucher au code. Vérifié en ligne : la 6e tentative de connexion rend 429, et
+la clé `rl:login:<ip>:<fenêtre>` apparaît dans le Data Browser d'Upstash.
 
 **Sans les deux variables**, le repli mémoire s'applique et
 `[rate-limit] Aucun magasin partagé configuré (UPSTASH_REDIS_REST_URL /
@@ -428,225 +263,99 @@ L'appelant est identifié par `x-vercel-forwarded-for`, un en-tête que Vercel
 
 ## 6. Offre Hobby
 
-- **Durée d'une fonction.** Avec Fluid compute, actif par défaut sur un
-  nouveau projet, la durée est de **300 s par défaut et au maximum** en Hobby
-  (documentation Vercel, *Configuring Maximum Duration*, relue le 15 octobre
-  2026). La transaction de `validate`
-  (`app/api/admin/inbox/[id]/validate/route.ts`, `timeout: 60000`) tient
-  largement. Aucune route ne déclare `maxDuration`, et aucune n'en a besoin.
-  Ne pas désactiver Fluid compute (Settings → Functions) : sans lui, la durée
-  d'une fonction Hobby est bien plus courte.
-- **Région des fonctions.** Par défaut, un nouveau projet exécute ses
-  fonctions à Washington (`iad1`), alors que Neon est à Londres. **Recommandé :
-  Settings → Functions → Function Regions → London (`lhr1`).** Hobby autorise
-  une seule région. Sans ce réglage, chaque requête Prisma traverse
-  l'Atlantique. C'est un réglage du projet, sans `vercel.json`.
-- **Aucune tâche planifiée Vercel n'est nécessaire.** Le dépôt n'a ni
-  `vercel.json` ni `vercel.ts`. Plus rien ne tourne sur un calendrier : les
-  passes dues partent sur demande depuis le poste, et les contributions sont
-  traitées par le backend local.
-- **Usage non commercial** : l'offre Hobby est réservée à un usage
-  personnel. L'outil devient celui d'une équipe ; le propriétaire garde Hobby
-  en connaissance de cause (D7, 16 octobre 2026 ; l'agent recommandait Pro).
-- **Fait le 19 octobre 2026** : `lhr1`, Fluid compute actif ; le déploiement
-  en production tourne en `lhr1` (MCP).
-- **L'auteur des commits** (relevé le 20 octobre 2026, documentation Vercel
-  *Troubleshoot project collaboration*) : en Hobby, avec un dépôt **privé**,
-  Vercel ne déploie un commit que si son **auteur** est le propriétaire de
-  l'équipe, `emnormandie76`. Un commit d'`Anton1P` donne un déploiement
-  `BLOCKED`, même lancé à la main par le propriétaire (« Create
-  Deployment ») : la règle porte sur l'auteur du commit. Parade retenue par le
-  propriétaire : sur ce dépôt, `git config --local` signe les commits au nom
-  d'`emnormandie76` (`335444819+emnormandie76@users.noreply.github.com`,
-  l'adresse privée que GitHub rattache à ce compte) ; `Anton1P` reste celui
-  qui pousse (`git -c credential.username=Anton1P push`). Autres voies
-  écartées : l'offre Pro (D7) ou un dépôt public. Le relevé du 19 octobre
-  (« Vercel ne bloque que les dépôts d'organisation ») était faux.
+- **Durée d'une fonction.** Avec Fluid compute, actif, la durée est de
+  **300 s par défaut et au maximum** en Hobby. La transaction de `validate`
+  (`timeout: 60000`) tient largement ; aucune route ne déclare `maxDuration`.
+  Ne pas désactiver Fluid compute : sans lui, la durée d'une fonction Hobby est
+  bien plus courte.
+- **Région des fonctions** : Londres (`lhr1`), près de Neon. Hobby autorise
+  une seule région ; sans ce réglage, chaque requête Prisma traverserait
+  l'Atlantique (`iad1` par défaut).
+- **Aucune tâche planifiée.** Le dépôt n'a ni `vercel.json` ni `vercel.ts`.
+- **Usage non commercial** : l'offre Hobby est réservée à un usage personnel.
+  L'outil sert une équipe ; le propriétaire garde Hobby en connaissance de
+  cause (D7 ; l'agent recommandait Pro).
+- **L'auteur des commits** : en Hobby, avec un dépôt **privé**, Vercel ne
+  déploie un commit que si son **auteur** est le propriétaire de l'équipe,
+  `emnormandie76`. Un commit d'`Anton1P` donne un déploiement `BLOCKED`, même
+  lancé à la main. Parade retenue : sur ce dépôt, `git config --local` signe
+  les commits au nom d'`emnormandie76`
+  (`335444819+emnormandie76@users.noreply.github.com`) ; `Anton1P` pousse
+  (`git -c credential.username=Anton1P push`). Écartés : l'offre Pro (D7), un
+  dépôt public.
 
 ---
 
 ## 7. En-têtes de sécurité
 
-Ils sont posés par `next.config.ts` sur `/:path*`. Le mécanisme `headers()` de
-Next fonctionne nativement sur Vercel, sans réglage. `'unsafe-eval'` est
-absent de la CSP en production (vérifié sur un build de production).
-
-Deux points à surveiller après le premier déploiement :
-
-1. **`Strict-Transport-Security` contient `preload`.** Cette directive engage
-   le domaine vers la liste de préchargement HSTS des navigateurs, et en
-   sortir prend des mois. À garder seulement si le domaine et **tous ses
-   sous-domaines** resteront en HTTPS. Dans le doute, retirer `preload` de
-   `next.config.ts` avant le premier déploiement public : ce serait une
-   modification de code, à décider par le propriétaire. **Tranché : gardé
-   (D23, 16 octobre 2026).** Sur une adresse en `*.vercel.app`, le domaine
-   n'entre de toute façon pas dans la liste de préchargement : la question
-   reviendra avec un domaine à soi.
-2. **La console du navigateur** sur les pages du site et de `/admin` ne doit
-   montrer aucune violation `Content-Security-Policy`. `'unsafe-inline'` reste
-   sur `script-src` : la CSP à nonce est un chantier ouvert. **Vérifié le
-   19 octobre 2026** sur l'accueil, `/admin/schools`, `/admin/cron` et
-   `/admin/inbox` : aucune ligne dans la console.
+Ils sont posés par `next.config.ts` sur `/:path*`, et le mécanisme `headers()`
+de Next fonctionne nativement sur Vercel. Détail :
+[`gestion-contenu.md`](../architecture/gestion-contenu.md) §8.2.
+`'unsafe-eval'` est absent de la CSP en production. **`preload` de HSTS est
+gardé** (D23) : il engage le domaine pour des mois, mais une adresse en
+`*.vercel.app` n'entre pas dans la liste de préchargement ; la question
+reviendra avec un domaine à soi. Aucune violation CSP en console, sur le site
+comme sur le back-office.
 
 ---
 
-## 8. Décisions à prendre avant le premier déploiement
+## 8. Les préversions
 
-> **Tranchées.** 8.1 : option A (G3), faite le 19 octobre 2026 par une avance
-> rapide de `main` sur `gestion`, sans PR (décision du propriétaire). 8.2 :
-> option A (D22), base reliée à Production seulement et « Only build
-> production ».
+Chaque push sur une autre branche que `main` créerait un déploiement de
+préversion, qui lirait et écrirait la base de production. Réglage retenu
+(D22) : la base n'est reliée qu'à l'environnement **Production**, et Settings
+→ Build and Deployment → Ignored Build Step est sur **« Only build
+production »**. Un push sur `gestion` ou sur `local` donne un déploiement
+aussitôt annulé, sans build (il compte quand même dans le quota) ; un commit
+déjà déployé n'en redonne pas.
 
-### 8.1. La branche de production
-
-Vercel déploie en production la branche par défaut du dépôt, `main`. Or
-`origin/main` est resté à `e4c09cf` (2 septembre 2026), **46 commits derrière
-`localpython`** (relevé du 15 octobre 2026). Il ne contient ni le plan
-backend-local ni les corrections de l'étape 7.
-
-- **(A, recommandée)** fusionner `localpython` dans `main` par une pull
-  request, CI verte, avant de créer le projet. `main` reste la branche de
-  production, comme Vercel l'attend.
-- (B) garder `main` en l'état et régler la production sur `localpython`
-  (Settings → Environments → Production → Branch Tracking).
-
-### 8.2. Les préversions
-
-Chaque push sur une autre branche que la production crée un déploiement de
-préversion. Son build exige `DATABASE_URL` (`prisma.config.ts` lève sans elle)
-et, une fois la base connectée, la préversion lit et écrit la base de
-production.
-
-- **(A, recommandée)** connecter la base Neon à l'environnement
-  **Production seulement**, et régler Settings → Build and Deployment →
-  Ignored Build Step sur **« Only build production »**. Un build ainsi annulé
-  compte quand même dans le quota de déploiements. La branche Neon `dev`
-  existe depuis le 15 octobre 2026, mais elle sert aux essais du poste : la
-  relier aux préversions serait une décision à part. **Retenue** (D22). La
-  branche `local` (étape 11) n'est pas construite non plus : son push du
-  21 octobre 2026 n'a créé aucun déploiement, pas même annulé.
-- (B) connecter aussi Preview, avec *Preview Branching* : chaque préversion a
-  sa branche Neon, copie isolée de la production. Il faut alors surveiller le
-  nombre de branches permis par l'offre gratuite de Neon et leur nettoyage.
+Écarté : relier aussi Preview avec *Preview Branching* (une branche Neon par
+préversion, copie isolée de la production), qui demanderait de surveiller le
+nombre de branches de l'offre gratuite de Neon et leur nettoyage.
 
 ---
 
-## 9. Ordre des opérations
+## 9. Vérifier la production
 
-> **Joué le 19 octobre 2026**, avec ces différences : le dépôt importé est
-> `emnormandie76/veille-concurenciel`, depuis le Vercel de l'école ; la base
-> reliée est la nouvelle base de l'école ; Upstash vient de l'intégration du
-> Marketplace (§5) ; `CONTRIBUTION_ALLOWED_DOMAINS` n'existe plus ; la portée
-> MCP à accorder est celle de l'équipe `em-normandie1`. Pour une version
-> suivante, seuls comptent le §3.2 (migrations) et le push sur `main`.
+À rejouer après un changement de réglage ou une montée de version qui touche
+la connexion, avec l'accord du propriétaire pour ce qui demande une session :
 
-1. **Décisions du §8**, tranchées par le propriétaire.
-2. **Contrôles locaux.** CI verte sur le commit à déployer ;
-   `npm run db:status` → aucune migration en attente (§3) ; smoke local vert
-   (joué le 15 octobre 2026 contre `npm run dev`).
-3. **Upstash** : créer la base, garder les deux valeurs (§5).
-4. **Git** : fusionner `localpython` dans `main` (si 8.1 A).
-5. **Créer le projet Vercel** : Add New → Project → importer
-   `Anton1P/veille-concurenciel`, préréglage Next.js, racine du dépôt. Le
-   premier déploiement, lancé à l'import, **échouera faute de `DATABASE_URL`**
-   (`prisma.config.ts`). C'est attendu : ne rien saisir à la main pour le
-   contourner.
-6. **Relier la base** : Storage → `vc-bdd` → Connect Project, environnements
-   selon le §8.2, sans préfixe (§2).
-7. **Variables** (§1) : `NEXTAUTH_SECRET` (neuve, *Sensitive*),
-   `NEXTAUTH_URL` (Production), `UPSTASH_REDIS_REST_URL`,
-   `UPSTASH_REDIS_REST_TOKEN` (*Sensitive*), `CONTRIBUTION_ALLOWED_DOMAINS`.
-   **Aucune variable du §1.3.**
-8. **Réglages** : région `lhr1`, Fluid compute actif, Node 24.x, Ignored Build
-   Step selon le §8.2.
-9. **Redéployer** la production (Deployments → … → Redeploy) : le build doit
-   passer.
-10. **Donner à l'agent le nom du projet** : il note le nom et l'id `prj_…`
-    dans `CLAUDE.md`, puis vérifie par le MCP Vercel (projet, déploiement,
-    noms des variables). Pour les journaux d'exécution (`get_runtime_logs`),
-    le propriétaire doit d'abord se reconnecter par `/mcp` en accordant la
-    portée `anton1ps-projects` : sans elle, tout appel avec `teamId` rend 403.
-11. **Vérifications du §10.**
-12. **Mots de passe** des deux comptes, s'ils ont servi en développement
-    (§3.3).
+| # | Contrôle | Attendu |
+|---|---|---|
+| 1 | Journaux d'exécution Vercel | **aucune** ligne `[rate-limit] Aucun magasin partagé configuré`, aucune `[next-auth][error][NO_SECRET]` |
+| 2 | Variables, par le MCP (noms seulement) | celles du §0, aucune du §1.3 |
+| 3 | Sans session : les pages du site et de `/admin` | redirection vers `/admin/login?callbackUrl=…` ; connexion et première connexion en 200 |
+| 4 | Sans session : l'API (v1, `/api/schools`, back-office, comptes) | **401** JSON |
+| 5 | 6 tentatives de connexion erronées d'affilée | la 6e renvoie **429** ; clé `rl:login:…` dans Upstash |
+| 6 | En-têtes de `/admin/login` | les six en-têtes de sécurité (§7) |
+| 7 | Connexion ADMIN | le menu à quatre entrées, `/admin/cron` en 404, l'inbox liste ses tickets |
+| 8 | ~65 appels rapides sur `/api/v1/schools`, en session | **429** au-delà de 60 par minute |
+| 9 | Console du navigateur | aucune violation CSP |
+| 10 | Résumé du déploiement | fonctions en `lhr1` |
+| 11 | `NEXTAUTH_URL` = l'adresse principale | `GET /api/auth/providers` rend un `callbackUrl` sur cette adresse |
+
+**Portée du MCP Vercel** : les appels avec `teamId` (dont `get_runtime_logs`)
+rendent 403 tant que le propriétaire ne s'est pas reconnecté par `/mcp` en
+accordant la portée de l'équipe `em-normandie1` (`CLAUDE.md`, MCP Vercel).
 
 ---
 
-## 10. Vérifications après le premier déploiement
+## 10. Chantiers ouverts
 
-| # | Contrôle | Attendu | Relevé du 19 octobre 2026 (`app-vc-emn.vercel.app`) |
-|---|---|---|---|
-| 1 | Journaux d'exécution Vercel | **aucune** ligne `[rate-limit] Aucun magasin partagé configuré`, aucune `[next-auth][error][NO_SECRET]` | non lus : `get_runtime_logs` exige `teamId`, refusé en 403 (portée MCP). Prouvé autrement : Upstash sert (n° 5), la connexion marche (n° 7) |
-| 2 | Variables, par le MCP (noms seulement) | `DATABASE_URL` (intégration), `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` ; aucune du §1.3 | ✅ toutes en Production, aucune du §1.3 (plus les `KV_*` d'Upstash, sans effet) |
-| 3 | Sans session : les pages du site et de `/admin` | redirection vers `/admin/login?callbackUrl=…` ; connexion et première connexion en 200 | ✅ 9 pages en 307, 2 en 200 |
-| 4 | Sans session : l'API (v1, `/api/schools`, back-office, IA, comptes) | **401** JSON | ✅ 6 routes en 401 |
-| 5 | 6 tentatives de connexion erronées d'affilée | la 6ᵉ renvoie **429** | ✅ 429 (`retry-after: 900`) ; clé `rl:login:…` dans Upstash |
-| 6 | En-têtes de `/admin/login` | les 6 en-têtes de sécurité (§7) | ✅ les 6 |
-| 7 | Connexion ADMIN, puis `/admin/cron` | « **Pilotage depuis le poste local** » **immédiatement** ; historique des jobs lu en base ; ni « Simuler », ni « Lancer », ni recherche ciblée | ✅ |
-| 8 | `GET /api/admin/pipeline-status` en session | **503**, `code: "BACKEND_LOCAL_ONLY"`, sans attente | ✅ `BACKEND_LOCAL_ONLY` |
-| 9 | `/admin/inbox` | la liste | ✅ (aucun ticket `Pending_Admin`) |
-| 10 | ~~Contribution hors domaine~~ | retirée avec `/contribute` (D2) | — |
-| 11 | ~65 appels rapides sur `/api/v1/schools`, en session | **429** au-delà de 60 par minute | non rejoué (Upstash déjà prouvé au n° 5) |
-| 12 | Console du navigateur | aucune violation CSP | ✅ accueil, `/admin/schools`, `/admin/cron`, `/admin/inbox` |
-| 13 | Résumé du déploiement | fonctions en `lhr1` | ✅ |
-| 14 | `NEXTAUTH_URL` = l'adresse principale | `GET /api/auth/providers` rend un `callbackUrl` sur cette adresse | ✅ `https://app-vc-emn.vercel.app/api/auth/callback/credentials` |
+1. **Base de CI éphémère** (ci-dessous).
+2. **CSP à nonce**, pour retirer `'unsafe-inline'` de `script-src`.
+3. **Vulnérabilités npm hautes** tirées par la CLI Prisma et l'outillage de
+   lint : risque accepté ([`gestion-contenu.md`](../architecture/gestion-contenu.md)
+   §8.3).
+4. **Un JSON mal formé** rend 500 au lieu de 400 sur le CRUD admin et
+   `create-programs` ; rien n'est écrit. Consigné et accepté.
+5. **« Dynamic server usage » sur `/api/schools`** au build : bruit connu
+   (§4) ; le faire taire est un petit changement de code, à décider.
+6. **Avertissements ESLint** : 93 au 22 octobre 2026.
 
 ---
 
-## 11. Ce qui est déjà prêt — à ne pas refaire
-
-- ✅ `dotenv` est une dépendance de production : `npm ci --omit=dev` ne casse
-  pas le démarrage.
-- ✅ Il n'y a aucun mot de passe par défaut, et le seed exige
-  `SEED_ADMIN_PASSWORD`.
-- ✅ La limitation de débit couvre `/api/auth/callback/credentials`,
-  `/api/contribute` et `/api/v1`, et s'appuie sur l'IP de plateforme.
-- ✅ Les en-têtes de sécurité sont posés et vérifiés sur un build de
-  production.
-- ✅ Chaque route admin attend une seule garde : `guardSignedIn`,
-  `guardManager` ou `guardAdmin` (étape 1 du plan gestion-contenu).
-- ✅ Les migrations reconstruisent une base vierge à l'identique du schéma, et
-  `npm run db:migrate` les applique en 443 depuis le poste.
-- ✅ Le site en ligne n'attend aucun backend : depuis l'étape 11 du plan
-  gestion-contenu, `gestion` et `main` n'ont plus aucun code qui le joint
-  (la console et ses routes vivent sur la branche `local`).
-- ✅ Aucun cron ne paie Research : les passes dues partent sur demande, depuis
-  le poste (étape 3).
-- ✅ Le build passe sans base et sans autre variable que `DATABASE_URL`
-  (15 octobre 2026).
-- ✅ Le smoke local est vert contre `npm run dev` (15 octobre 2026) : 5 pages
-  et 15 routes de l'API v1.
-- ✅ La page publique `/api-docs` décrit l'API réelle, et son URL d'exemple
-  vise l'adresse du site (15 octobre 2026).
-
----
-
-## 12. Chantiers ouverts
-
-1. ~~Les exemples de `/api-docs` sont fictifs~~ : **réalignés le 15 octobre
-   2026**, sur décision du propriétaire, et tenus par `test/api-docs.test.ts`
-   (`architecture.md` §7.3). Le titre des fiches ne porte plus deux fois
-   « — EduData France ».
-2. **Décision 10 de l'étape 7** : un JSON mal formé donne 500 au lieu de 400
-   sur le CRUD admin et `create-programs`. Rien n'est écrit dans ce cas.
-   Consigné et accepté.
-3. **CSP à nonce**, pour retirer `'unsafe-inline'` de `script-src`.
-4. **Avertissements ESLint** : 104 au 19 octobre 2026.
-5. **Vulnérabilités npm hautes** tirées par la CLI Prisma : risque accepté,
-   suivi dans [`architecture.md`](../architecture/architecture.md),
-   *Sécurité des dépendances*.
-6. ~~**`preload` de HSTS**~~ : gardé (D23, §7).
-7. **« Dynamic server usage » sur `/api/schools`** au build : bruit connu
-   (§4), la route reste dynamique ; le faire taire est un petit changement de
-   code, à décider.
-8. **CI du nouveau dépôt** : secrets créés le 19 octobre 2026 ; run 2
-   (`gestion`, `522d68e`) vert, migrations relues sur la nouvelle base. Le
-   run 1 (`main`, `ecad4a9`, poussé avant les secrets) reste rouge tant qu'il
-   n'est pas relancé ou qu'un nouveau push n'arrive pas sur `main`.
-
----
-
-## 13. Base de CI éphémère — à faire juste avant le déploiement
+## 11. Base de CI éphémère
 
 > **Pour l'agent qui reprendra ce point.** Cette section est autoportante :
 > elle suppose que vous ne connaissez ni ce dépôt ni l'historique. Lisez-la
@@ -656,12 +365,8 @@ production.
 
 `.github/workflows/ci.yml`, étape **« Prisma — statut des migrations »**,
 exécute `npx prisma migrate status` **contre la base Neon partagée**, celle
-que désignent les secrets `DATABASE_URL` / `DIRECT_URL` du dépôt.
-
-Depuis le 2 septembre 2026, elle ne fait échouer le job que sur les branches
-d'intégration ; depuis le 22 octobre 2026 (étape 12 du plan
-[gestion-contenu](../features/gestion-contenu.md), `devresearch` supprimée),
-il n'en reste qu'une, `main`, avec les PR vers elle :
+que désignent les secrets `DATABASE_URL` / `DIRECT_URL` du dépôt. Elle ne
+fait échouer le job que sur `main` et sur les PR vers `main` :
 
 ```yaml
 continue-on-error: ${{ !(github.ref == 'refs/heads/main'
@@ -682,24 +387,17 @@ retire pas la cause.
    rien à faire dans la validation d'une branche de travail.
 
 Seule la première relève d'une CI de branche. En interrogeant une base
-partagée, l'étape impose la seconde partout.
-
-**Ce que ça a coûté, concrètement.** Le 2 septembre 2026, trois branches
-successives ont buté dessus en une matinée. Une branche qui ajoute une
-migration échouait tant que cette migration n'avait pas été appliquée à la
-base commune — donc **avant même que le code soit relu**. L'ordre imposé est
-absurde : appliquer en base précède la revue.
+partagée, l'étape impose la seconde partout : une branche qui ajoute une
+migration échouerait tant que cette migration n'est pas appliquée à la base
+commune, donc **avant même que le code soit relu**.
 
 ### Ce que personne ne vérifie aujourd'hui
 
 Aucun test, nulle part, ne vérifie que **les migrations s'appliquent proprement
 sur une base vierge**. `migrate status` compare un journal à une base déjà
-migrée ; il ne rejoue jamais l'historique depuis zéro.
-
-Conséquence directe pour le déploiement : une migration cassée — colonne
-inexistante, ordre de dépendances faux, `DROP` qui échoue — ne se découvrirait
-qu'en production. C'est le vrai risque, et il est plus grave que le désagrément
-qui a motivé le palliatif.
+migrée ; il ne rejoue jamais l'historique depuis zéro. Une migration cassée
+(colonne inexistante, ordre de dépendances faux, `DROP` qui échoue) ne se
+découvrirait qu'en production.
 
 ### Ce qu'il faut construire
 
@@ -732,14 +430,16 @@ serait contourner précisément ce qu'on cherche à tester, et le garde-fou du
 workflow fait échouer le job s'il détecte ce motif. Utiliser `migrate deploy`.
 
 **4. Le poste de développement ne peut pas joindre Postgres.** La sortie TCP
-sur le port 5432 y est filtrée (voir [`architecture.md`](../architecture/architecture.md),
-*Intégration continue*). Ce chantier **ne peut pas se tester en local** : il
-s'itère dans la CI. Prévoir des runs à répétition.
+sur le port 5432 y est fermée. Ce chantier **ne peut pas se tester en local** :
+il s'itère dans la CI. Prévoir des runs à répétition.
 
 **5. `@prisma/adapter-neon` ne concerne pas ce point.** L'application se
 connecte en WebSocket via le driver serverless, mais la **CLI** Prisma ouvre
 une connexion PostgreSQL classique. Un conteneur `postgres:` standard lui
 convient parfaitement.
+
+**6. `test/no-ai-backend.test.ts` lit `ci.yml`** : n'y ajouter aucun job
+Python, ni les mots qui en trahiraient un, commentaires compris.
 
 ### Critère d'acceptation
 
@@ -756,7 +456,7 @@ rien. Les deux conditions doivent être vraies :
 ### Et le palliatif, on le garde ?
 
 À trancher au moment de faire le travail. Deux options défendables : conserver
-le `migrate status` contre Neon sur les seules branches d'intégration — il
-répond alors à la question n°2, qui est légitime *là*, avant un déploiement —
-ou le retirer entièrement une fois la base éphémère en place. La première est
-plus prudente.
+le `migrate status` contre Neon sur `main` seulement — il répond alors à la
+question n°2, qui est légitime *là*, avant un déploiement — ou le retirer
+entièrement une fois la base éphémère en place. La première est plus
+prudente.

@@ -1,5 +1,5 @@
 /**
- * seed.ts — Prisma Seed Script (Étape 1.2)
+ * seed.ts — Prisma Seed Script
  * Crée le compte Admin initial d'une base **vierge**.
  * Exécuter via : npx prisma db seed
  *

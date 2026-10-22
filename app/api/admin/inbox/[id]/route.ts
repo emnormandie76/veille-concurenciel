@@ -1,10 +1,10 @@
 /**
- * app/api/admin/inbox/[id]/route.ts — GET /api/admin/inbox/[id] (Étape 3.1)
+ * app/api/admin/inbox/[id]/route.ts — GET /api/admin/inbox/[id]
  *
  * Détail complet d'un ticket ContributionInbox.
  * Inclut les relations école, campus, programme.
  *
- * Référence : task.md §3.1, architecture.md §3.4
+ * Référence : architecture/gestion-contenu.md §4.2, bdd.md §5
  */
 
 import { guardAdmin } from "@/lib/auth";

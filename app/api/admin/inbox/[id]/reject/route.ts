@@ -1,11 +1,11 @@
 /**
- * app/api/admin/inbox/[id]/reject/route.ts — PUT /api/admin/inbox/[id]/reject (Étape 3.1)
+ * app/api/admin/inbox/[id]/reject/route.ts — PUT /api/admin/inbox/[id]/reject
  *
  * Rejette un ticket ContributionInbox.
  * - Passe le status à "Rejected"
  * - Aucune donnée ne rejoint les tables de production (Règle 5)
  *
- * Référence : task.md §3.1, architecture.md §3.4
+ * Référence : architecture/gestion-contenu.md §4.2, bdd.md §5
  */
 
 import { guardAdmin } from "@/lib/auth";

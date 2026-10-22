@@ -14,7 +14,7 @@
  *   rapport Research rangé ;
  * - multi-programme : le ticket n'est clos que si une donnée est écrite,
  *   sinon 422 avec `skipped` ;
- * - capacité : les quatre cas de résolution du campus (architecture.md §6.2) ;
+ * - capacité : les quatre cas de résolution du campus (architecture/gestion-contenu.md §4.2) ;
  * - une exception dans la transaction laisse le ticket `Pending_Admin`.
  *
  * Le faux Prisma n'a pas de rollback réel : `db.writes()` rend les écritures

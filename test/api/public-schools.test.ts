@@ -36,7 +36,7 @@ const INTERNAL = "P1001 postgresql://neondb_owner:motdepasse@ep-interne.neon.tec
 
 function assertSchema() {
   assert.deepEqual(schemaErrors(db.calls), []);
-  // Tables jamais exposées (architecture.md §8.9).
+  // Tables jamais exposées (API-rest.md, « Tables exclues de toute réponse »).
   assert.doesNotMatch(JSON.stringify(db.calls.map((c) => c.args)), /contributions|password_hash|ai_extracted_json/);
 }
 

@@ -1,5 +1,5 @@
 /**
- * app/api-docs/page.tsx — Page de documentation de l'API v1 (Étape 10)
+ * app/api-docs/page.tsx — Page de documentation de l'API v1
  *
  * - Affiche la documentation interactive des 15 endpoints de l'API v1, réservée
  *   aux personnes connectées comme tout le site (plan gestion-contenu, étape 1).
@@ -13,7 +13,7 @@
  * - Contenu dans endpoints.ts, aligné sur les réponses réelles le 15 octobre
  *   2026 et tenu par test/api-docs.test.ts.
  * - Langue : Français.
- * - Référence : task.md §10, implementation_plan.md
+ * - Référence : architecture/API-rest.md
  */
 
 "use client";

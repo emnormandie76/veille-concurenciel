@@ -23,7 +23,7 @@
  * `source_url` du ticket (D12). Après une validation réussie, les fiches sont
  * revalidées (D26).
  *
- * Référence : task.md §3.2-3.3, bdd.md §4 (upserting), architecture.md §5.2
+ * Référence : architecture/gestion-contenu.md §4.2, bdd.md §4 (upserting)
  */
 
 import { guardAdmin } from "@/lib/auth";
@@ -315,7 +315,7 @@ async function writeTicket(ticket: ContributionInbox, rawJson: unknown, stamp: P
 
 // ──────────────────────────────────────────────
 // Program_Discovery — Transaction atomique Campus + Programs (niveau école)
-// Référence : task.md §3.2, architecture.md §5.2
+// Référence : architecture/gestion-contenu.md §4.2
 //
 // Nouvelle logique :
 // 1. Upsert Campus (inchangé)
@@ -462,7 +462,7 @@ async function validateProgramDiscovery(
 
 // ──────────────────────────────────────────────
 // Pricing — Upsert PricingRecord [programId, academic_year]
-// Référence : task.md §3.3, bdd.md §2 (PricingRecord)
+// Référence : bdd.md §2 (PricingRecord)
 // ──────────────────────────────────────────────
 
 async function validatePricing(

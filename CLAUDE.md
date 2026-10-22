@@ -13,10 +13,13 @@ backend FastAPI restent tels quels, réservés à l'admin, sans nouveau
 développement ni recette.
 
 - **Next.js 16 sur Vercel** (offre Hobby) : site, API v1 et back-office de
-  gestion de contenu. Il ne dépend pas du backend Python, sauf trois routes IA.
+  gestion de contenu. Il ne joint aucun backend : depuis l'étape 11, la console
+  IA (`/admin/cron`), ses routes et le backend vivent sur la branche `local`
+  (D100, D101) ; l'inbox reste en ligne.
 - **Base Neon** partagée avec le backend gelé.
 - **Le backend FastAPI (Python)** se lance à la main sur le poste de l'admin,
-  pour l'IA seulement (décision du 14 octobre 2026).
+  pour l'IA seulement (décision du 14 octobre 2026), depuis la branche
+  `local` (étape 11).
 - **En ligne depuis le 19 octobre 2026** : <https://app-vc-emn.vercel.app>,
   sur les comptes de l'école (dépôt GitHub `emnormandie76/veille-concurenciel`,
   Vercel et Neon de l'école ; `Anton1P` ne fait que pousser : les commits
@@ -243,9 +246,21 @@ branche `gestion` :
   (4 en `Session`) ; aucune migration ; contrôle dans une fenêtre Edge
   pilotée (D98) sur `dev`, en lecture seule, un `USER` simulé dans
   l'onglet. Détail : journal du plan ;
-- prochaine : l'étape 11 (la branche `local` ; `gestion` sans console ni
-  backend), dans une nouvelle session, en commençant par le sens de
-  `npm test` ; D15 reste ouverte.
+- étape 11 (séparer l'IA) **faite le 21 octobre, contrôlée et validée le
+  22, sur le poste** (le propriétaire demande le commit et le push sur
+  `gestion`, pas de mise en production : `main` reste à `9f71567`) : la branche `local` créée depuis `e4ba0c5` et poussée
+  sur `origin` (CI verte, aucun déploiement Vercel) ; sur `gestion`, la
+  console (`/admin/cron`, « Monitoring & Cron »), ses cinq routes, le code
+  de `lib/` qu'elles seules employaient, `backend/`, les tests Python,
+  `pytest.ini`, `npm run backend`, `npm run local`,
+  `scripts/start-local.ps1` et le job Python de la CI retirés ; l'inbox
+  reste (bandeau `Pending_AI` gardé tel quel) ; D105 (`npm test` lance les
+  tests TypeScript) ; un test TypeScript remplace la part de
+  `test_contribution_enums.py` qui tient `lib/contribution.ts` contre la
+  base ; `test/no-ai-backend.test.ts` verrouille la séparation ; 56 méthodes
+  sous `app/api/admin` ; aucune migration. Détail : journal du plan ;
+- prochaine : l'étape 12 (le tri des branches, D102), dans une nouvelle
+  session ; D15 reste ouverte.
 
 L'étape en cours se lit dans le journal du plan (§9).
 
@@ -264,7 +279,13 @@ L'étape en cours se lit dans le journal du plan (§9).
   `423631e`) ; la recette de bout en bout qui devait cocher l'étape 9 est
   **abandonnée** par la réorientation ;
 - les règles de dépense (règle 7) restent en vigueur : le code IA est
-  toujours là, et lancer le backend paie toujours.
+  toujours là, et lancer le backend paie toujours ;
+- **depuis l'étape 11 (21 octobre)**, le code IA (le backend, ses tests
+  Python, la console `/admin/cron` et ses routes, `npm run local`,
+  `npm run backend`) vit sur la branche **`local`**, un instantané de
+  `gestion` à la fin de l'étape 10 (`e4ba0c5`) ; `gestion` et `main` n'en
+  gardent que l'inbox. On ne fusionne jamais `gestion` dans `local` (le
+  retrait s'y appliquerait) : un correctif s'y reporte par `cherry-pick`.
 
 ## Règles pour tout agent
 
@@ -289,7 +310,9 @@ L'étape en cours se lit dans le journal du plan (§9).
    propriétaire change une règle, l'attendu du test change avec elle, et le
    journal le dit (plan §0).
 6. **En fin d'étape** :
-   - `npm test`, `npm run test:ts`, `npm run typecheck`, `npm run lint` ;
+   - `npm test`, `npm run test:ts`, `npm run typecheck`, `npm run lint`
+     (sur `gestion`, `npm test` lance les tests TypeScript, D105 ; sur
+     `local`, les tests Python) ;
    - mettre à jour les docs de contexte pour qu'elles décrivent ce que le code
      fait réellement (§8 du plan), à commencer par
      `docs/architecture/gestion-contenu.md` ;
@@ -304,6 +327,9 @@ L'étape en cours se lit dans le journal du plan (§9).
      dernier recours) s'il trouve des tickets `Pending_AI`. Le démarrage écrit aussi dans la base (reprise
      et purge des jobs). Pas de `uvicorn`, `npm run backend` ni
      `npm run local` sans l'accord du propriétaire.
+   - Depuis l'étape 11, le backend et ces commandes n'existent que sur la
+     branche `local` : sur `gestion` et `main`, aucune commande ne peut
+     dépenser (`test/no-ai-backend.test.ts`).
    - Rien de nouveau ne doit créer de ticket `Pending_AI` (plan, piège 6).
 8. **Base de données.** Jamais `prisma db push`, `prisma migrate dev` ni
    `prisma migrate reset`. Jamais de modification d'un `migration.sql` déjà
@@ -332,13 +358,19 @@ L'étape en cours se lit dans le journal du plan (§9).
      `guardSignedIn`, sans identifiant dans la route, l'auteur pris dans la
      session ; aucune opération ne laisse zéro admin actif
      (`lib/account-admin.ts`) ;
-   - tout contenu externe injecté dans un prompt passe par `wrap_source()` ;
-   - `user_text` n'atteint jamais un modèle d'IA ;
+   - tout contenu externe injecté dans un prompt passe par `wrap_source()`
+     (backend, branche `local`) ;
+   - `user_text` n'atteint jamais un modèle d'IA (idem) ;
    - `lib/rate-limit.ts` est la seule limitation de débit.
 10. **Partie IA gelée.** Ne modifier ni `backend/`, ni les routes et écrans IA,
-    sauf ce qu'une étape du plan demande explicitement (plan §6). Les tests
-    Python restent verts : le backend gelé partage la base, et une colonne
-    renommée ou rendue obligatoire le casse.
+    sauf ce qu'une étape du plan demande explicitement (plan §6). Depuis
+    l'étape 11, ils vivent sur la branche `local` (D100, D101) : rien n'y
+    change sans demande, jamais de fusion de `gestion` dans `local`, un
+    correctif s'y reporte par `cherry-pick`. Sur `gestion`, l'inbox reste
+    de l'IA gelée. Le backend de `local` partage la base : une colonne
+    renommée ou rendue obligatoire le casse, et ses tests Python, sur
+    `local`, ne le disent que si on les y lance ; toute colonne ajoutée à
+    `PipelineJob` ou `ContributionInbox` accepte le vide.
 
 ## Modèle
 
@@ -356,15 +388,16 @@ propriétaire le 20 octobre.
   format du dépôt : `feat(auth): …`, `fix(admin): …`.
 - Textes de l'interface en français, avec vouvoiement.
 - Le poste est sous Windows (Git Bash et PowerShell). L'interpréteur du backend
-  est `backend/.venv/Scripts/python`, et les scripts doivent tourner sous
-  Windows.
+  (branche `local`) est `backend/.venv/Scripts/python`, et les scripts
+  doivent tourner sous Windows.
 - **Secrets** : `.env.local`, `.env.development.local` et `backend/.env`
   appartiennent au propriétaire. Ne jamais les lire, les afficher, les modifier
   ni les committer. La liste des variables est dans `.env.example`.
 - Pas de commit ni de push sans demande explicite. Le propriétaire indique la
   branche de travail : aujourd'hui `gestion`, créée depuis `localpython`
-  (`423631e`) le 16 octobre 2026. `localpython` est gardée en l'état (dernier
-  état de la partie IA).
+  (`423631e`) le 16 octobre 2026. `local` (depuis le 21 octobre, `e4ba0c5`)
+  garde la partie IA ; `localpython` est gardée en l'état jusqu'au tri des
+  branches (étape 12).
 - Next.js 16 : lire `node_modules/next/dist/docs/` avant de toucher au front
   (voir le bloc en fin de fichier). `proxy.ts` tient lieu de middleware.
 - Styles : la charte graphique
@@ -389,7 +422,7 @@ Le réseau de l'établissement ne laisse sortir que les ports 80 et 443. Le port
 |---|---|
 | Next.js (Prisma + `@neondatabase/serverless`, `lib/prisma.ts`) | marche, en WebSocket sur 443, sans lire `DB_DRIVER` |
 | Migrations | CLI Prisma bloquée (5432). Avec `DB_DRIVER=neon-ws` dans `.env.development.local` (posée le 14/10/2026), `npm run db:status` et `npm run db:migrate` passent en WebSocket (`scripts/db-migrate.ts`) ; `db:status` vérifié le 14/10/2026 |
-| Backend Python (psycopg2) | avec `DB_DRIVER=neon-ws` dans `backend/.env` (posée le 14/10/2026), passe par le pont local `backend/neon_ws_bridge.py` (`127.0.0.1` → `wss://<hôte>/v2`) ; `get_pool()` vérifié le 14/10/2026. Sans la variable : 5432, donc bloqué |
+| Backend Python (psycopg2), branche `local` | avec `DB_DRIVER=neon-ws` dans `backend/.env` (posée le 14/10/2026), passe par le pont local `backend/neon_ws_bridge.py` (`127.0.0.1` → `wss://<hôte>/v2`) ; `get_pool()` vérifié le 14/10/2026. Sans la variable : 5432, donc bloqué |
 
 ## MCP Neon
 
@@ -485,7 +518,7 @@ code ne passe jamais par le MCP : commits et push par `git`.
 | Commande | Rôle |
 |---|---|
 | `npm run dev` | Next.js sur http://localhost:3000 (back-office : `/admin`) |
-| `npm test` | tests Python (pytest), avec le `python` du `PATH` comme la CI, et non `backend/.venv` (décision du 14/10/2026) ; couvrent le backend gelé |
+| `npm test` | les tests TypeScript, comme `npm run test:ts` (D105, étape 11). Sur la branche `local` : les tests Python (pytest), avec le `python` du `PATH`, et non `backend/.venv` (décision du 14/10/2026) |
 | `npm run test:ts` | tests TypeScript (`node --test`), dont les routes de `test/api/` (banc : `test/helpers/`, requêtes relues contre le schéma Prisma) ; en CI, job `ts-tests` |
 | `npm run typecheck` / `npm run lint` | types / ESLint (les avertissements sont la dette connue) |
 | `npm run build` | `prisma generate` puis `next build` |
@@ -493,7 +526,6 @@ code ne passe jamais par le MCP : commits et push par `git`.
 | `npm run db:status` | état des migrations, en lecture seule : CLI Prisma sans `DB_DRIVER`, WebSocket avec `DB_DRIVER=neon-ws` |
 | `npm run db:migrate` / `db:migrate:dry` | applique les migrations en attente / passe à blanc terminée par `ROLLBACK` (`neon-ws` seulement). Jamais sans l'accord du propriétaire |
 | `npx prisma migrate status` / `deploy` | la CLI Prisma directe : exige le port 5432, fermé sur le réseau de l'établissement |
-| `npm run local` | **IA** : backend FastAPI dans sa propre fenêtre, puis Next.js (`scripts/start-local.ps1`). **Lance le backend : accord du propriétaire requis (règle 7)** |
-| `npm run backend` | **IA** : backend seul, `uvicorn` sur `127.0.0.1:8000`, sans `--reload` ; jamais `--host 0.0.0.0`. Même règle 7 |
+| `npm run local` / `npm run backend` | **branche `local` seulement** (IA, étape 11) : le backend FastAPI dans sa propre fenêtre puis Next.js (`scripts/start-local.ps1`) / le backend seul (`uvicorn` sur `127.0.0.1:8000`, sans `--reload`, jamais `--host 0.0.0.0`). **Lancent le backend : accord du propriétaire requis (règle 7)** |
 
 @AGENTS.md

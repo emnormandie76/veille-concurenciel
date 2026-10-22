@@ -1,7 +1,8 @@
 /**
  * lib/ticket-sources.ts — Les trois sources d'un ticket du pipeline, à l'écran
  *
- * Reflet de backend/pipeline/ticket_sources.py (décisions du propriétaire du
+ * Reflet de backend/pipeline/ticket_sources.py, sur la branche `local` depuis
+ * l'étape 11 du plan gestion-contenu (décisions du propriétaire du
  * 15 octobre 2026, journal du plan backend-local) : le bloc « Sources » d'un
  * ticket `Automated_AI` porte au plus 3 liens, choisis dans cet ordre, sans
  * doublon :
@@ -24,7 +25,8 @@
  *
  * Module pur : la page de l'inbox est un composant client, et ce module entre
  * dans son paquet. `test/fixtures/ticket_sources_cases.json` tient les deux
- * implémentations (test/ticket-sources.test.ts, test/test_ticket_sources.py).
+ * implémentations (test/ticket-sources.test.ts ; test/test_ticket_sources.py,
+ * sur la branche `local`).
  */
 
 import type { ContributionSourceType } from "@/lib/contribution";

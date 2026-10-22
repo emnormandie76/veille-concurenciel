@@ -7,7 +7,9 @@ import { cx } from "./cx";
  * L'élément natif `<progress>` (D8) : valeur et maximum lus par les lecteurs
  * d'écran, sans largeur posée par un `style` en ligne. Plan gestion-contenu,
  * étape 9, lot 5, D86 : les barres de /admin/cron (la progression d'une
- * tâche, les crédits du mois, l'usage d'une clé Tavily).
+ * tâche, les crédits du mois, l'usage d'une clé Tavily). Depuis l'étape 11
+ * (D100), /admin/cron vit sur la branche `local` : aucun écran de cette
+ * branche ne l'emploie, il reste un composant de la charte.
  *
  * Le ton colore la valeur ; il dit un état (charte §1), l'accent une simple
  * avancée. La barre est nommée par l'appelant (`aria-label` ou

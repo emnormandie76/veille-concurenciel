@@ -13,6 +13,12 @@
  * `PipelineJob.started_at` que le backend écrit par `now()` : la fenêtre des
  * passes dues (D40) compare les deux. `@default(now())` donnerait l'heure du
  * poste, que le client Prisma 7 calcule lui-même.
+ *
+ * Étape 11 (D100, D101) : le code qui écrit et lit le journal (les routes de
+ * lancement, lib/research-launches.ts, lib/research-launch-log.ts) vit sur la
+ * branche `local`, avec la console. La table reste au schéma, et la base est
+ * partagée : les listes qu'il tenait contre la migration s'écrivent ici en
+ * clair, telles que `local` les écrit.
  */
 
 import { test } from "node:test";
@@ -20,8 +26,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import { LAUNCH_DETAIL_MAX_LENGTH, LAUNCH_KINDS, LAUNCH_STATUSES } from "../lib/research-launches";
-import { MAX_PASSES_PER_RUN } from "../lib/rotation-status";
+/** `LAUNCH_KINDS`, `LAUNCH_STATUSES` et `LAUNCH_DETAIL_MAX_LENGTH` de lib/research-launches.ts, branche `local`. */
+const LAUNCH_KINDS = ["TARGETED", "DUE_PASSES"];
+const LAUNCH_STATUSES = ["PENDING", "STARTED", "NOT_STARTED", "UNKNOWN"];
+const LAUNCH_DETAIL_MAX_LENGTH = 1000;
+/** `MAX_PASSES_PER_RUN` de lib/rotation-status.ts (et du backend), branche `local` : les passes d'une demande, au plus. */
+const MAX_PASSES_PER_RUN = 5;
 
 const ROOT = process.cwd();
 const MIGRATIONS = path.join(ROOT, "prisma", "migrations");
@@ -69,7 +79,7 @@ test("piège 5 : aucune table existante modifiée, rien vers les tables du backe
   for (const word of ["PipelineJob", "ContributionInbox", "Pending_AI"]) assert.equal(sql.includes(word), false, word);
 });
 
-test("les contraintes tiennent les listes de lib/research-launches.ts", () => {
+test("les contraintes tiennent les listes du journal (lib/research-launches.ts, branche local)", () => {
   assert.deepEqual(checkedValues("ResearchLaunch_kind_check"), [...LAUNCH_KINDS]);
   assert.deepEqual(checkedValues("ResearchLaunch_status_check"), [...LAUNCH_STATUSES]);
   assert.match(statements(), /"status" TEXT NOT NULL DEFAULT 'PENDING'/);

@@ -27,8 +27,10 @@ import path from "node:path";
 import ts from "typescript";
 
 import {
+  ADMIN_ONLY,
   ADMIN_ROOT,
   GUARD_OF,
+  SIGNED_IN,
   adminRouteFiles,
   expectedLevel,
   routeKey,
@@ -230,6 +232,15 @@ test("chaque handler attend la garde de son niveau (test/helpers/access-policy.t
     "Écart entre le code et la table d'accès : mettre à jour la route, " +
       "test/helpers/access-policy.ts et docs/architecture/gestion-contenu.md §4 ensemble."
   );
+});
+
+test("chaque ligne de la table désigne un handler qui existe : aucune règle ne survit à sa route", () => {
+  // Étape 11 (D100) : les routes de la console IA sont parties sur la branche
+  // `local` ; une ligne restée dans la table ne protégerait plus rien.
+  const existing = new Set(
+    adminRouteFiles().flatMap((rel) => analyzeRoute(rel, readRoute(rel)).handlers.map((h) => `${h.method} ${routeKey(rel)}`))
+  );
+  assert.deepEqual([...ADMIN_ONLY, ...SIGNED_IN].filter((key) => !existing.has(key)), []);
 });
 
 /** Fichiers .ts et .tsx sous `dir`, hors node_modules. */

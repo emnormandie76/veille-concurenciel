@@ -8,7 +8,8 @@
  * `Automated_AI` porte au plus 3 liens, les URL citées par les données, puis le
  * domaine officiel (et la page catalogue en Phase 1, première place), puis
  * l'ordre de Tavily. Le pipeline coupe à l'écriture
- * (backend/pipeline/ticket_sources.py) ; lib/ticket-sources.ts en est le reflet,
+ * (backend/pipeline/ticket_sources.py, branche `local`) ; lib/ticket-sources.ts
+ * en est le reflet,
  * qui plafonne à l'écran les tickets écrits avant la coupe. Les deux lisent
  * test/fixtures/ticket_sources_cases.json. Sans React ni serveur.
  */

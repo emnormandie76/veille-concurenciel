@@ -7,7 +7,8 @@
  * avec un statut que plus aucun écran ni aucune requête ne filtrait.
  *
  * Ce fichier est la liste de référence côté TypeScript. Son pendant Python est
- * `backend/constants.py`. Les deux sont tenues ensemble par des contraintes
+ * `backend/constants.py` (branche `local` depuis l'étape 11 du plan
+ * gestion-contenu, D101). Les deux sont tenues ensemble par des contraintes
  * CHECK en base (migration 20260902120000_contribution_enum_guards) : c'est la
  * seule frontière que les deux langages partagent réellement, et c'est donc là
  * qu'une valeur inventée doit être refusée.
@@ -94,7 +95,8 @@ export const STATUS_FAILED: ContributionStatus = "Failed";
  * Marque d'un ticket `Program_Discovery` qui ne porte qu'un rapport Research en
  * attente d'extraction : la Phase 1 l'a rangé en `Failed` après un échec Gemini,
  * et sa prochaine passe pour l'école le reprendra sans repayer Research. Même
- * valeur que `PARKED_REPORT_REASON` dans backend/pipeline/phase1_research.py.
+ * valeur que `PARKED_REPORT_REASON` dans backend/pipeline/phase1_research.py
+ * (branche `local`).
  */
 export const PARKED_RESEARCH_REPORT = "research_report_parked";
 

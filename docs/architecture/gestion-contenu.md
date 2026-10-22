@@ -22,7 +22,10 @@
 > cadre du back-office dans la charte, le preflight, l'ancien CSS supprimé,
 > Inter retirée : un seul monde ; D92 à D97 ; §2.2, §3.2, §6, §7), puis
 > l'étape 10 (le lien « Back-office » dès la connexion, D104, une route en
-> plus ; le type d'une accréditation en français ; §2.2, §3, §4, §7).
+> plus ; le type d'une accréditation en français ; §2.2, §3, §4, §7), puis
+> l'étape 11 (la console IA, ses routes et le backend Python partis sur la
+> branche `local` ; l'inbox reste ; D100, D101, D105 ; §1, §2, §3.2, §4, §5,
+> §7).
 > Cette fiche décrit
 > **ce que le code fait aujourd'hui** ; la cible est dans le plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md). Chaque étape
@@ -40,10 +43,21 @@ consultation, le back-office qui crée, modifie et supprime les données des
 écoles, et l'API v1. Il lit et écrit la base Neon par Prisma
 ([`lib/prisma.ts`](../../lib/prisma.ts), WebSocket sur le port 443).
 
-**Il ne dépend pas du backend Python.** Seules trois routes l'appellent, toutes
-IA : `trigger-research`, `run-due-passes`, `pipeline-status`. Sans
-`FASTAPI_URL`, elles répondent 503 `BACKEND_LOCAL_ONLY` sans appel ; le reste du
-site marche (étape 5 du plan backend-local).
+**Il ne joint aucun backend.** Depuis l'étape 11 du plan (D100, D101), la
+console IA (`/admin/cron`), ses routes (`trigger-research`, `run-due-passes`,
+`pipeline-status`, `pipeline-jobs`, `schools-with-programs`), le backend Python
+et ses tests vivent sur la branche **`local`**, un instantané de `gestion` à
+la fin de l'étape 10 (`e4ba0c5`), lancé sur le poste de l'admin. Sur `gestion`
+et `main`, aucun code ne lit `FASTAPI_URL` ni `INTERNAL_API_TOKEN`, et aucune
+commande ne lance le backend : rien ne peut payer Tavily ni Gemini
+(`test/no-ai-backend.test.ts`). **L'inbox reste en ligne**, avec la
+validation des tickets IA (§4.2) : elle ne lit et n'écrit que la base. On ne
+fusionne jamais `gestion` dans `local` (le retrait s'y appliquerait) : un
+correctif s'y reporte par `cherry-pick`.
+
+Le backend de `local` partage la base : il écrit `ContributionInbox` et
+`PipelineJob`, et les routes de `local` écrivent `ResearchLaunch` ; les trois
+tables restent au schéma, sans migration (§5).
 
 ---
 
@@ -58,7 +72,7 @@ référence ; décision G4) :
 |---|---|---|
 | `USER` | toute personne connectée | consulter le site, `/api-docs` et l'API v1 ; **signaler une information** depuis une fiche (étape 6) et en suivre la suite ; changer son nom affiché et son mot de passe sur « Mon compte » (`/account`). **Ne voit pas `/admin`** |
 | `GESTIONNAIRE` | les anciens `MODERATOR` | en plus : le back-office du contenu (écoles, campus, programmes, tarifs, places, classements, chiffres clés, accréditations, et depuis l'étape 8 les admissions des programmes), créations et suppressions comprises (D19), et **les signalements** (`/admin/reports`, D31) |
-| `ADMIN` | | en plus : les comptes (liste blanche, rôles, remise en première connexion, désactivation), et **seul l'IA** (inbox, `/admin/cron`, routes du backend) |
+| `ADMIN` | | en plus : les comptes (liste blanche, rôles, remise en première connexion, désactivation), et **seul l'IA** : l'inbox (la console `/admin/cron` et ses routes vivent sur la branche `local` depuis l'étape 11, D100) |
 
 Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 (gestionnaire ou admin), `admin`. `hasAccess(role, level)` les juge ;
@@ -77,10 +91,10 @@ Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 | Proxy | [`proxy.ts`](../../proxy.ts) (tient lieu de middleware) | **session exigée sur tout le site** (G6), sauf `/admin/login`, `/admin/first-login`, `POST /api/first-login` et `/api/auth/*` (chemins dans [`lib/roles.ts`](../../lib/roles.ts)). Sans session : une page renvoie vers `/admin/login?callbackUrl=…`, une route `/api/*` répond 401 en JSON. Ne regarde que l'existence d'un jeton valide (contrôle « optimiste », doc Next 16), jamais le rôle ni l'état du compte. Matcher : tout sauf `_next/static`, `_next/image`, `favicon.ico`. Plafonds par [`lib/rate-limit.ts`](../../lib/rate-limit.ts) : connexion **et** première connexion sur un seul compteur (5 POST / 15 min / IP, avant tout ; alterner ne double pas les essais), `/api/v1/*` (60 / min / IP, requêtes connectées seulement, pré-vols `OPTIONS` non comptés). Le plafond du signalement est dans sa route, par compte (ligne suivante) |
 | Signalement | [`app/api/admin/reports/route.ts`](../../app/api/admin/reports/route.ts), [`lib/content-reports.ts`](../../lib/content-reports.ts) | `POST` en `guardSignedIn` : l'auteur est le compte de la session, jamais le corps. **10 envois par heure et par compte** (D35 : l'équipe sort par la même IP), par `checkRateLimit("report:<compte>")` de `lib/rate-limit.ts`, compté une fois le corps lu et avant toute lecture en base ; au-delà, 429 avec `Retry-After`. Le seul plafond hors du proxy, parce que le proxy ne connaît pas le compte |
 | Layout admin | [`app/admin/layout.tsx`](../../app/admin/layout.tsx) | `requirePage("manager")` : un `USER` est renvoyé vers le site (piège 2) |
-| Écrans IA et comptes | `app/admin/inbox/layout.tsx`, `app/admin/cron/page.tsx`, `app/admin/users/page.tsx` | `requirePage("admin")` |
+| Écrans IA et comptes | `app/admin/inbox/layout.tsx`, `app/admin/users/page.tsx` | `requirePage("admin")` (`/admin/cron` : sur la branche `local`, D100) |
 | « Mon compte » | [`app/account/page.tsx`](../../app/account/page.tsx) | `requirePage("signedIn")` : toute session, hors du back-office. Nom affiché et mot de passe, par `PATCH /api/admin/account` et `PATCH /api/admin/account/password`, qui ne prennent aucun identifiant. « Vos signalements » (étape 6, D36) : la page lit en base les signalements **de la session**, et eux seuls |
 | Lien « Back-office » de la barre du site | [`components/layout/SiteShell.tsx`](../../components/layout/SiteShell.tsx), [`BackOfficeLink.tsx`](../../components/layout/BackOfficeLink.tsx), [`back-office-access.ts`](../../components/layout/back-office-access.ts), [`app/api/admin/account/back-office/route.ts`](../../app/api/admin/account/back-office/route.ts) | étape 10, D104 (revient sur D57) : sur toutes les pages du site, pour un gestionnaire ou un admin, jamais pour un `USER`. Une page qui lit la session le dit au gabarit (`showBackOffice`) ; les autres (accueil, fiches en cache, `/api-docs`) laissent la barre demander à `GET /api/admin/account/back-office` (`guardSignedIn`, rôle relu en base, D1), qui ne rend que `{ backOffice: true \| false }`, en `private, no-store`. Le lien ne fait que montrer le chemin : le layout `/admin` contrôle l'accès |
-| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » (étape 6) ; un admin voit aussi l'inbox, le cron et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Mon compte » est au pied du menu, hors de `navFor`. Depuis l'étape 9 (lot 6) : dans la charte, texte seul (D93, plus de champ `icon`), `aria-current="page"` sur l'entrée de l'écran affiché ; sous 1 024 px, replié derrière un bouton « Menu » (D94). `AdminMenu`, sa partie sans état, se rend côté serveur (`test/admin-frame.test.ts`) |
+| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » (étape 6) ; un admin voit aussi l'inbox et « Comptes » (« Monitoring & Cron » est parti avec la console sur la branche `local` à l'étape 11, D100). Le menu ne fait que masquer : le contrôle est côté serveur. « Mon compte » est au pied du menu, hors de `navFor`. Depuis l'étape 9 (lot 6) : dans la charte, texte seul (D93, plus de champ `icon`), `aria-current="page"` sur l'entrée de l'écran affiché ; sous 1 024 px, replié derrière un bouton « Menu » (D94). `AdminMenu`, sa partie sans état, se rend côté serveur (`test/admin-frame.test.ts`) |
 | Déconnexion | `app/admin/SidebarClient.tsx`, [`app/SignOutButton.tsx`](../../app/SignOutButton.tsx) | dans le menu du back-office, et dans la barre du site (le bouton « Se déconnecter » a pris la place du lien « Contribuer » ; « Mon compte » le précède) |
 | Mots de passe | [`lib/password.ts`](../../lib/password.ts) | politique unique (longueurs, borne bcrypt de 72 octets) |
 | Adresses, noms, états | [`lib/accounts.ts`](../../lib/accounts.ts) | module sans dépendance : domaine imposé `WORK_EMAIL_DOMAIN` = `em-normandie.fr` (D5), adresses rangées en minuscules, nom affiché déduit de l'adresse et borné (2 à 80 caractères, D6), états `INVITED`, `ACTIVE`, `DISABLED` |
@@ -124,7 +138,8 @@ supprimer un compte qui figure comme auteur. Depuis l'étape 6, `ContentReport`
 aussi, par `author_id` et `handled_by_id`, en `RESTRICT` (D38) : un compte qui
 a envoyé ou traité un signalement ne se supprime pas non plus. Depuis
 l'étape 7, `ResearchLaunch` aussi, par `triggered_by_id`, en `RESTRICT`
-(D42) : un compte qui a lancé une recherche IA ne se supprime pas.
+(D42) : un compte qui a lancé une recherche IA ne se supprime pas (depuis
+l'étape 11, seule la branche `local` écrit ce journal ; la clé reste).
 
 **Cycle de vie d'un compte** (G5, D4, D21) :
 
@@ -256,7 +271,7 @@ est journalisé (`[cache]`), il n'annule pas l'écriture.
 | `/admin/reports` | `manager` (étape 6, D31) : « Signalements », en attente (les plus anciens d'abord) et fermés (les 100 derniers). Pour chacun : l'école, la cible (« supprimé » si le campus ou le programme n'existe plus, D37), la catégorie, le message, le lien (`sourceHref`), le nom affiché de l'auteur (D39) ; « Ouvrir l'onglet de gestion » (l'onglet de la catégorie), « Traiter » et « Rejeter » (dialogue, réponse facultative pour l'auteur). Fermer un signalement ne date aucune donnée (D32) | non |
 | `/admin/inbox` | `admin` : la zone tampon, tickets du pipeline IA et contributions passées par l'IA, à valider ou rejeter. Dans la charte depuis l'étape 9 (lot 4), le style seulement (règle 10 : requêtes, textes et identifiants gardés, `test/inbox-screen.test.ts`) : `AdminPage`, filtres libellés « Statut » et « Catégorie » (D58, D65), un tableau ; le détail d'un ticket dans un dialogue natif collé à droite, 600 px, fermé par Échap, « Fermer » ou un clic à côté (D76, `Dialog` `placement="side"`) ; un ton de badge par état (D77, `inbox/ticket-tones.ts`) ; ni émoji ni ✓, ✕, ⚠ en tête des textes, les « ✕ » seuls devenus des boutons d'icône nommés (D78) ; un lien d'un ticket cliquable en `http(s)` seulement, sinon du texte (D79, `sourceHref`) ; le bandeau des contributions `Pending_AI` au ton « info » (D80) ; la purge confirmée dans un dialogue, son erreur dans la fenêtre (D67). Le contenu venu de l'IA et du web s'affiche en texte (aucun `dangerouslySetInnerHTML`) | **oui** |
 | `/admin/users` | `admin` : les comptes (« Comptes » dans le menu) : ajouter une adresse à la liste, retirer un invité, changer un rôle, remettre en première connexion (ou réactiver), désactiver (un actif ou un invité, D24), renseigner l'adresse d'un compte ancien. Aucun e-mail envoyé | non |
-| `/admin/cron` | `admin` : pilotage du backend local, passes dues, quotas Tavily, historique des jobs. Depuis l'étape 7, l'historique a une colonne « Lancé par » : le nom affiché du lanceur (D25), ou « non suivi », avec sa raison au survol (D44). Dans la charte depuis l'étape 9 (lot 5), le style seulement (règle 10 : les cinq requêtes, les rafraîchissements et l'identifiant du bloc des contributions gardés, `test/cron-screen.test.ts` ; D45 gardait l'ancien style jusque-là) : `AdminPage` ; les bandeaux de l'état du backend en `Alert`, « non lancé » et le poste local en « info », l'injoignable et les erreurs du démarrage en « danger » (D85) ; un ton par état (D87, `cron/cron-tones.ts`), sans pastille ; les barres en `<progress>` natif (D86, `ProgressBar`) ; l'en-tête des quotas Tavily en bouton natif (D88) ; la phase en `aria-pressed` (D89) ; l'école, le programme et les catégories libellés et reliés (D58, D65) ; le détail d'un job sous sa ligne (D90). D46 posée : « Réservé aux ADMIN », branche morte, retiré, la prop `isAdmin` et ses contrôles gardés (D81) ; « Job #<id> » retiré du message de lancement et des cartes (D82) ; le bloc « Contributions du public » et la ligne des contributions en attente gardés, seuls signaux de ce que le backend gelé paie au démarrage (D83, l'inbox suit). Le lancement réel des passes dues se confirme dans le dialogue de la charte, texte figé à l'ouverture, focus sur « Annuler » (D84) ; la requête ne part que de son bouton. Aucun lien ; le contenu de l'IA (erreurs des jobs, actions) s'affiche en texte | **oui** |
+| `/admin/cron` | **sur la branche `local` seulement** depuis l'étape 11 (D100) : la console du backend local (pilotage, passes dues, quotas Tavily, historique des jobs et sa colonne « Lancé par »), dans la charte depuis l'étape 9 (lot 5). Absente de `gestion` et de `main` : le chemin répond 404, et le menu n'a plus « Monitoring & Cron » | oui |
 
 **Écrans à la charte graphique** (étape 4, §6) : la connexion et la première
 connexion (gabarit `AuthShell`), « Mon compte » (`SiteShell`) et « Comptes »
@@ -265,7 +280,8 @@ signalement (`SiteShell`) et « Signalements » (`AdminPage`, onglets et
 dialogue) ; depuis l'étape 9 (lot 1), tout le site (§3.1) ; depuis le
 lot 2, la liste des écoles, la page des campus et la gestion d'une école,
 sauf quatre onglets (D60), repris au lot 3 ; depuis le lot 4, l'inbox ;
-depuis le lot 5, `/admin/cron` ; depuis le lot 6, le menu latéral et le
+depuis le lot 5, `/admin/cron` (sur la branche `local` depuis l'étape 11) ;
+depuis le lot 6, le menu latéral et le
 cadre du back-office (`app/admin/layout.tsx` : le menu, puis un `main`) :
 **plus aucun écran à l'ancien style**. Le menu est sombre (D92), son entrée
 choisie en `aria-current="page"` ; sous 1 024 px, une barre et un bouton
@@ -281,9 +297,12 @@ l'étape 5 (aucune route ajoutée) ; l'étape 6 ajoute les trois méthodes des
 signalements (§4.1 bis) ; l'étape 7 n'en ajoute aucune (les routes IA
 existantes écrivent et lisent le journal des lancements, §4.2) ; l'étape 8
 ajoute les quatre des admissions (§4.1) ; l'étape 10, celle du lien
-« Back-office » (`account/back-office`, D104). `Gest.` = `guardManager` (gestionnaire ou admin),
+« Back-office » (`account/back-office`, D104) ; l'étape 11 en retire cinq,
+parties avec la console IA sur la branche `local` (D100 : `pipeline-status`,
+`pipeline-jobs`, `trigger-research`, `run-due-passes`,
+`schools-with-programs`). `Gest.` = `guardManager` (gestionnaire ou admin),
 `Admin` = `guardAdmin`, `Session` = `guardSignedIn` (toute session).
-61 méthodes : 39 `Gest.`, 18 `Admin`, 4 `Session`.
+56 méthodes : 38 `Gest.`, 14 `Admin`, 4 `Session`.
 
 La table de référence est [`test/helpers/access-policy.ts`](../../test/helpers/access-policy.ts) :
 `test/api/admin-guards.test.ts` vérifie que chaque handler attend la garde de
@@ -303,7 +322,6 @@ modification se reporte ici.
 | `campuses/[id]` | PUT Gest. · DELETE Gest. (D19) |
 | `schools/[id]/programs` | GET Gest. · POST Gest. |
 | `programs/[id]` | PUT Gest. · DELETE Gest. (D19) |
-| `schools-with-programs` | GET Gest. |
 | `schools/[id]/pricing` · `programs/[id]/pricing` · `pricing/[id]` | GET Gest. · PUT Gest. · DELETE Gest. |
 | `schools/[id]/capacities` · `program-campuses/[id]/capacity` · `capacities/[id]` | GET Gest. · POST Gest. · PUT Gest. · DELETE Gest. |
 | `schools/[id]/rankings` · `programs/[id]/rankings` · `rankings/[id]` | GET Gest. · POST Gest. · PUT Gest. · DELETE Gest. |
@@ -373,42 +391,21 @@ IA ou passent par lui.
 | `inbox/[id]/create-programs` | POST Admin | depuis un ticket `Program_Discovery` (Phase 1) ; provenance `AI` sur les programmes créés, un programme déjà là garde son auteur |
 | `inbox/[id]/attachments` | PUT Admin | rattachement campus collecté par l'IA ; provenance `AI` sur les lignes et sur la note de campus du programme |
 | `inbox/purge` | DELETE Admin | |
-| `trigger-research` · `run-due-passes` | POST Admin | **appellent le backend**. Étape 7 : un lancement réel s'écrit d'abord au journal `ResearchLaunch` (D14, D41), puis son issue (ci-dessous) ; une simulation des passes dues ne s'écrit pas |
-| `pipeline-status` | GET Admin | **appelle le backend** |
-| `pipeline-jobs` | GET Admin | historique, lu en base ; depuis l'étape 7, chaque job porte `triggered_by` : le nom affiché de son lanceur, ou `null` |
 
-**Journal des lancements** (étape 7, [`lib/research-launches.ts`](../../lib/research-launches.ts)
-pour les règles, [`lib/research-launch-log.ts`](../../lib/research-launch-log.ts)
-pour la base). Next.js tient seul `ResearchLaunch` (D14) ; le backend gelé ne
-le connaît pas, et **Next.js n'écrit jamais `PipelineJob`** (piège 5).
-
-- **La trace d'abord** (D41) : la route écrit le lancement « en attente »
-  (`PENDING`) avant l'appel au backend, au nom de la session (jamais du
-  corps), à l'heure de la base. Si cette écriture échoue : 500, **rien ne
-  part**. Après la réponse, l'issue s'y ajoute : `STARTED` (recherche ciblée :
-  200 avec l'id du job ; passes dues : 202 au statut `planned`),
-  `NOT_STARTED` (refus du backend, rapport final sans passe, backend
-  injoignable), `UNKNOWN` (délai dépassé, réponse illisible : la demande a pu
-  partir), avec le code HTTP et le message. Si cette seconde écriture échoue,
-  la demande est partie : la réponse du backend revient telle quelle, l'erreur
-  est journalisée (`[research-launch]`), et le lancement reste en attente,
-  sans job relié. Une ligne `[audit]` dit chaque lancement noté.
-- **Le lanceur d'un job** (lecture de `pipeline-jobs`) : une recherche ciblée
-  par l'id de job que le backend a rendu (lancements `STARTED`) ; une passe
-  due par la **fenêtre** de son lancement (D40) : la réponse 202 ne porte
-  aucun id de job, et les jobs `rotation` naissent après elle, un par un.
-  Chaque lancement de passes dues qui a pu partir (tout sauf `NOT_STARTED`)
-  reçoit les jobs `rotation` nés à partir de son heure et avant le suivant,
-  au plus `max_passes` ; le verrou du backend (409 si une exécution réelle
-  tourne) empêche deux exécutions de se mêler. Un job d'avant le journal, de
-  l'ancien cron, ou lancé hors de l'écran (appel direct au backend avec le
-  jeton, guide de test) n'a pas de lanceur : « non suivi » (D44), jamais une
-  devinette. Un job dont le lancement est resté en attente ou inconnu est
-  aussi « non suivi » ; le lancement se lit en base.
-- **La purge** (D43) : le backend supprime ses jobs terminés (7 jours pour
-  une recherche ciblée Phase 2, 400 pour un passage complet) ; le journal,
-  lui, reste. L'écran ne montre que les 30 derniers jobs encore en base ; un
-  lancement dont le job est purgé se lit en base, pas à l'écran.
+**La console IA et le journal des lancements** (étape 11, D100) : les routes
+qui appelaient le backend (`trigger-research`, `run-due-passes`,
+`pipeline-status`) et celle de l'historique des jobs (`pipeline-jobs`) vivent
+sur la branche `local`, avec `/admin/cron` et le journal des lancements de
+l'étape 7 (`lib/research-launches.ts`, `lib/research-launch-log.ts`, la trace
+d'abord, D41 ; le lanceur d'un job, D40, D44 ; la purge, D43). La table
+`ResearchLaunch` reste au schéma, avec ses contraintes et sa clé `RESTRICT`
+vers `User` (D42, `test/research-launches-migration.test.ts`) ; sur cette
+branche, aucun code ne l'écrit ni ne la lit, et **aucun n'écrit
+`PipelineJob`** (piège 5, même test). L'inbox ne garde de la console que le
+bandeau des contributions `Pending_AI` (`describePendingAi`,
+[`lib/pipeline-history.ts`](../../lib/pipeline-history.ts)), qui dit qu'elles
+attendent le prochain lancement du backend, sur le poste de l'admin (gardé
+tel quel à l'étape 11).
 
 ### 4.3. Lecture du site
 
@@ -452,9 +449,9 @@ sur les écoles » du propriétaire.
 | `ProgramPlacement` | programme | oui | aucun chemin d'écriture (abandonné, gardé) |
 | `ProgramEntry` | programme × année d'entrée × niveau requis × voie | oui (étape 8, D49) | Next.js (onglet « Admissions », étape 8) |
 | `User` | — | — | Next.js (§2.3) |
-| `ContributionInbox` | école, campus, programme (facultatifs) | `urls[]` | Next.js **et** backend Python |
-| `PipelineJob` | école | — | backend Python seulement (Next.js la lit, ne l'écrit jamais : D14) |
-| `ResearchLaunch` | lanceur (`User`) ; un job par son id, sans clé | — | Next.js seulement (`trigger-research`, `run-due-passes`, étape 7) |
+| `ContributionInbox` | école, campus, programme (facultatifs) | `urls[]` | Next.js (l'inbox) **et** le backend Python (branche `local` depuis l'étape 11) |
+| `PipelineJob` | école | — | backend Python seulement, branche `local` ; cette branche ne la lit ni ne l'écrit depuis l'étape 11 (D100 ; jamais écrite par Next.js : D14) |
+| `ResearchLaunch` | lanceur (`User`) ; un job par son id, sans clé | — | les routes de lancement de Next.js (`trigger-research`, `run-due-passes`, étape 7), sur la branche `local` depuis l'étape 11 ; cette branche ne la touche plus |
 | `ContentReport` | école ; campus ou programme facultatif | oui (facultatif) | Next.js seulement (`/api/admin/reports`, étape 6) |
 
 **Provenance** (étape 5, migration `20261019120000_content_provenance`,
@@ -498,9 +495,11 @@ quand (l'heure de la base, `CURRENT_TIMESTAMP`, comme `PipelineJob.started_at`
 que le backend écrit : la fenêtre de D40 compare les deux), l'issue (D41), le
 code HTTP, le message, et l'id du job d'une recherche ciblée, **sans clé vers
 `PipelineJob`** (une clé bloquerait la purge du backend). Contraintes et clé :
-`bdd.md` §4.
+`bdd.md` §4. Depuis l'étape 11, seule la branche `local` écrit ce journal ;
+la table reste au schéma (D101).
 
-Le backend Python **lit** les tables de données (diff de la Phase 2) et
+Le backend Python (branche `local` depuis l'étape 11, D101 ; il partage la
+base) **lit** les tables de données (diff de la Phase 2) et
 **écrit** `ContributionInbox` et `PipelineJob`. Il ne connaît ni
 `ContentReport`, ni `ResearchLaunch`, ni `ProgramEntry`. Ajouter une colonne obligatoire
 à ces deux tables, ou renommer une colonne qu'il lit, casse le backend gelé.
@@ -581,7 +580,9 @@ l'historique de la reprise lot par lot).
   latéral). Le CSS compilé avant et après le lot a été comparé règle à
   règle : aucune règle d'avant perdue ni déplacée, une variable de thème
   (`--color-accent`) et 29 utilitaires ajoutés, tous de l'écran ou de la
-  barre.
+  barre. Depuis l'étape 11 (D100), l'écran et `cron-tones.ts` vivent sur
+  la branche `local` ; `ProgressBar` reste dans `components/ui/`, testé,
+  sans écran qui l'emploie sur cette branche.
 - Étape 9, lot 6 (D92 à D97) : le menu et le cadre du back-office, le
   preflight, la base sur le document, l'ancien CSS supprimé, Inter retirée ;
   `handleToggleProgramCampus`, jamais appelée (avec un `alert()`), retirée
@@ -632,7 +633,9 @@ l'historique de la reprise lot par lot).
 
 ## 7. Tests
 
-`npm run test:ts` (`node --test`), en CI dans le job `ts-tests`.
+`npm run test:ts` (`node --test`), en CI dans le job `ts-tests` ; `npm test`
+lance la même suite depuis l'étape 11 (D105). Les tests Python vivent sur
+la branche `local`, avec le backend (D101).
 
 - **Banc** (`test/helpers/`) : `fake-prisma.ts` (faux client ; garde les
   options d'un `$transaction`), `fake-users.ts` (une table `User` en mémoire,
@@ -641,15 +644,17 @@ l'historique de la reprise lot par lot).
   (sessions simulées : aucune, `USER`, `GESTIONNAIRE`, `ADMIN`, règle et
   messages tirés de `lib/roles.ts` ; un profil inconnu lève), `access-policy.ts`
   (l'accès attendu de chaque route du back-office), `requests.ts`,
-  `fake-backend.ts`, `provenance.ts` (`contentOf` vérifie puis retire la
+  `provenance.ts` (`contentOf` vérifie puis retire la
   provenance d'une écriture, pour que l'attendu d'un test dise le contenu ;
   `installContentCache` remplace `next/cache`, dont `revalidatePath` lève hors
   de Next). `fake-users.ts` sait aussi qu'un compte est auteur : sa
-  suppression lève P2003, comme la clé `RESTRICT`.
+  suppression lève P2003, comme la clé `RESTRICT`. `fake-backend.ts` (le
+  faux backend des routes de la console) est parti sur la branche `local`
+  à l'étape 11.
 - **Accès** (étapes 1 et 2) : `test/auth.test.ts` (la vraie `lib/auth.ts` :
   trois gardes, rôle relu en base, compte supprimé, rôle inconnu, compte non
   actif et version de session (D20), `requirePage`),
-  `test/api/access-matrix.test.ts` (chaque handler × 4 profils, 212 cas),
+  `test/api/access-matrix.test.ts` (chaque handler × 4 profils),
   `test/api/admin-guards.test.ts` (analyse statique des gardes, absence de
   `guardAuth`), `test/proxy.test.ts` (chaque page et route de `app/` refusée
   sans session, hors connexion et NextAuth), `test/admin-pages.test.ts`
@@ -707,19 +712,16 @@ l'historique de la reprise lot par lot).
   la page du formulaire, « Vos signalements », la vue des gestionnaires,
   `?tab=`) ; dans `users.test.ts`, D38 ; le menu et le niveau de l'écran
   dans `admin-pages.test.ts`.
-- **Journal des lancements** (étape 7) : `test/research-launches.test.ts`
-  (`lib/research-launches.ts` : l'issue de chaque réponse, le message borné,
-  la fenêtre des passes dues et sa borne N), `test/research-launches-migration.test.ts`
-  (une table neuve, rien vers `PipelineJob` ; contraintes alignées sur le
-  code, `launched_at` à l'heure de la base, clé `RESTRICT`, `schema.prisma` ;
+- **Journal des lancements** (étape 7) : depuis l'étape 11, sur cette
+  branche, `test/research-launches-migration.test.ts` seul (une table neuve,
+  rien vers `PipelineJob` ; contraintes alignées sur les listes que la
+  branche `local` écrit, écrites en clair depuis que leur code est parti ;
+  `launched_at` à l'heure de la base, clé `RESTRICT`, `schema.prisma` ;
   aucun fichier de `app/` ni de `lib/` n'écrit `PipelineJob`) ; dans
-  `test/api/trigger-research.test.ts` et `run-due-passes.test.ts`, la trace
-  d'abord (écrite avant l'appel, au nom de la session ; rien ne part si elle
-  échoue ; la réponse revient telle quelle si l'issue ne s'écrit pas ; une
-  simulation ne s'écrit pas) ; dans `pipeline-jobs.test.ts`, le lanceur de
-  chaque job (par l'id, par la fenêtre, « non suivi », le nom seul) ; dans
-  `pipeline-history.test.ts`, « non suivi » et la colonne de l'écran ; dans
-  `users.test.ts`, D42.
+  `users.test.ts`, D42. Les tests de la trace d'abord, du lanceur d'un job
+  et de « non suivi » (`research-launches`, `api/trigger-research`,
+  `api/run-due-passes`, `api/pipeline-jobs`, et ceux de l'historique dans
+  `pipeline-history`) vivent sur la branche `local`.
 - **Admissions** (étape 8) : `test/program-entries.test.ts`
   (`lib/program-entries.ts` : listes, libellés, phrase de chaque entrée,
   lecture d'un envoi bornée, note comptée comme Postgres, lien D27, rien de
@@ -745,19 +747,28 @@ l'historique de la reprise lot par lot).
   la purge dans sa fenêtre) ; `silent-pages` (F6) et `ticket-sources` (le
   bloc « Sources ») lisent la page, inchangés ; `test/api/inbox-*`
   inchangés (aucune route ne bouge).
-- **`/admin/cron`** (étape 9, lot 5) : `test/cron-screen.test.ts` (les cinq
-  requêtes inchangées, adresse, méthode, en-tête, cache et corps ; le corps
-  d'une recherche ciblée, les rafraîchissements et `data-testid` gardés ;
-  D81 à D91 : la source du composant principal, et les trois panneaux
-  rendus côté serveur : l'historique et son détail sous la ligne, les
-  passes dues et leur barre nommée, les quotas et leur bouton natif ;
-  `cron-tones.ts` ; ni ✓, ✕, ⚠, ⏱, ni `styled-jsx`, style en ligne, lien ou
-  `dangerouslySetInnerHTML`) ; `pipeline-history.test.ts` voit la colonne
-  « Lancé par » dans le tableau de la charte (l'attendu « ancien style » de
-  D45 change avec le lot) ; `admin-pages`, `backend-state`,
-  `crowdsourcing-status`, `rotation-status` (et `test_rotation_status.py`),
-  `test/api/pipeline-jobs`, `run-due-passes` et `trigger-research`
-  inchangés et verts.
+- **`/admin/cron`** (étape 9, lot 5) : `test/cron-screen.test.ts`, parti
+  avec l'écran sur la branche `local` à l'étape 11 (D100), comme
+  `backend-state`, `crowdsourcing-status`, `rotation-status`,
+  `internal-api`, `trigger-research`, `local-launcher` et
+  `api/pipeline-status`.
+- **Séparation de l'IA** (étape 11, D100, D101, D105) :
+  `test/no-ai-backend.test.ts` (ni `app/admin/cron` ni les cinq routes de
+  la console ; aucun lien ni appel vers elles ; aucun code ne lit
+  `FASTAPI_URL` ni le jeton du backend ; ni `npm run backend`, ni
+  `npm run local`, ni `pytest.ini`, ni `scripts/start-local.ps1`, aucun
+  script npm qui lance Python ; `npm test` = `npm run test:ts` ; la CI sans
+  job Python) ; `test/contribution.test.ts` (la part de
+  `test_contribution_enums.py` qui reste vraie ici : les statuts,
+  catégories et origines de `lib/contribution.ts` contre les contraintes
+  de `ContributionInbox`, posées par la seule migration
+  `20260902120000_inbox_relations_and_enum_guards` ; les catégories
+  publiques incluses dans les autres, sans `Program_Discovery` ; la valeur
+  d'un rapport rangé, écrite en clair) ; dans `api/admin-guards`, chaque
+  ligne de la table d'accès désigne un handler qui existe ;
+  `admin-pages` (plus d'entrée « Monitoring & Cron »), `access-matrix`
+  (56 handlers au moins), `charte` (`SCREENS` sans `/admin/cron`) suivent
+  le retrait.
 - **Cadre et menu du back-office** (étape 9, lot 6) :
   `test/admin-frame.test.ts` (le layout : `requirePage("manager")` d'abord,
   le menu, un `main` qui peut rétrécir, plus d'ancienne classe ; le menu
@@ -788,7 +799,7 @@ l'historique de la reprise lot par lot).
   session ; les quatre pages en cache ne passent plus `showBackOffice`,
   « Mon compte » et le signalement passent ce qu'ils savent). La route
   entre dans `access-policy.ts` (`SIGNED_IN`) : `admin-guards` et
-  `access-matrix` la couvrent (61 handlers) ; `proxy.test.ts` la voit
+  `access-matrix` la couvrent (61 handlers à l'étape 10, 56 depuis l'étape 11) ; `proxy.test.ts` la voit
   refusée sans session.
 - **Le type d'une accréditation** (étape 10) : dans
   `test/manager-screens.test.ts`, les libellés « International », « État »,
@@ -852,7 +863,8 @@ l'historique de la reprise lot par lot).
   le compte n'a pas d'adresse, `APPVC_ADMIN_USERNAME`) sont posées, les pages
   et l'API **connecté** ; lit la base visée, accord du propriétaire.
 
-Les tests Python (`npm test`) couvrent le backend gelé : ils restent verts.
+Les tests Python couvrent le backend gelé : ils vivent avec lui sur la
+branche `local` (D101), où `npm test` les lance toujours.
 
 ---
 

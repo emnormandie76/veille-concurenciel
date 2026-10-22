@@ -35,6 +35,12 @@ Le contenu stocké, présenté pour l'équipe : le doc « Données stockées sur
 À lire pour **répondre à une question** sur la partie IA, pas pour la faire
 évoluer (plan `gestion-contenu.md` §6).
 
+**Depuis l'étape 11 du plan (21 octobre 2026), son code vit sur la branche
+`local`** du dépôt : le backend FastAPI, ses tests Python, la console
+`/admin/cron` et ses routes, `npm run local` (D100, D101). Ces documents la
+décrivent telle qu'elle y est. Sur `gestion` et `main` (la production), il
+n'en reste que l'inbox, où l'admin valide les tickets de l'IA.
+
 | Document | Rôle |
 |---|---|
 | [`architecture/architecture.md`](architecture/architecture.md) | référence technique v2.1 : pipeline Tavily + Gemini, Phases 1 et 2, crowdsourcing, sécurité (§10), outillage (§10 bis) |

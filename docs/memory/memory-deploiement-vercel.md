@@ -10,6 +10,11 @@
 > [`gestion-contenu.md`](../features/gestion-contenu.md)). L'état réel est
 > dans l'encadré « Ce qui est en ligne » ci-dessous ; le reste du mémo garde la
 > procédure et ses raisons.
+> **Mis à jour le 21 octobre 2026** (étape 11 du plan gestion-contenu, D100,
+> D101) : la console IA (`/admin/cron`), ses routes et le backend Python
+> vivent sur la branche `local`, lancée sur le poste ; `gestion` et `main`
+> (la production) ne les ont plus. L'inbox reste en ligne. §0, §1.3, §4,
+> §8.2 et §11 mis à jour.
 > **Qui fait quoi** : la création du projet, les variables, la connexion de la
 > base et le déploiement reviennent au propriétaire (règle 3 de
 > [`CLAUDE.md`](../../CLAUDE.md)). L'agent prépare, guide pas à pas sans
@@ -103,19 +108,21 @@
 ## 0. Ce qui va où
 
 **Seul Next.js va sur Vercel, en offre Hobby.** Le backend FastAPI n'est
-hébergé nulle part : l'admin le lance sur son poste avec `npm run local`
-quand il veut lancer des recherches ou traiter les contributions (décision du
-14 octobre 2026). Koyeb est abandonné : son offre gratuite est fermée aux
+hébergé nulle part : l'admin le lance sur son poste avec `npm run local`,
+**depuis la branche `local`** (étape 11, D100), quand il veut lancer des
+recherches ou traiter les contributions (décision du 14 octobre 2026).
+`gestion` et `main` n'ont ni le backend, ni sa console, ni aucun code qui le
+joint. Koyeb est abandonné : son offre gratuite est fermée aux
 nouveaux comptes depuis le 26 février 2026.
 
 ```
- EN LIGNE — Vercel Hobby                     POSTE DE L'ADMIN — lancé à la main
+ EN LIGNE — Vercel Hobby (main)              POSTE DE L'ADMIN — branche local
 ┌───────────────────────────────────┐       ┌───────────────────────────────────┐
 │ Next.js 16                        │       │ npm run local                     │
 │ • site et API v1, derrière la     │       │ • FastAPI sur 127.0.0.1:8000      │
 │   connexion                       │       │   (pipeline, contributions)       │
 │ • back-office                     │       │ • Next.js dev sur localhost:3000  │
-│ • FASTAPI_URL absente             │       │   (back-office qui pilote)        │
+│ • ni console IA ni backend        │       │   (back-office qui pilote)        │
 └─────────────────┬─────────────────┘       └─────────────────┬─────────────────┘
                   │ WebSocket 443                             │ WebSocket 443
                   ▼                                           ▼ (DB_DRIVER=neon-ws)
@@ -128,11 +135,13 @@ nouveaux comptes depuis le 26 février 2026.
 Le site en ligne et le backend ne se parlent pas : ils partagent la base. Ce
 que cela donne en ligne :
 
-- **`/admin/cron`** affiche tout de suite « Pilotage depuis le poste local »,
-  avec l'historique des jobs lu en base. Aucun lancement n'est possible.
-- **Les routes de relais** (`pipeline-status`, `trigger-research`,
-  `run-due-passes`) répondent 503 `BACKEND_LOCAL_ONLY` sans appel réseau.
-  C'est voulu (étape 5 du plan).
+- **`/admin/cron` n'existe plus en ligne** (404) depuis l'étape 11 : la
+  console vit sur la branche `local`, avec ses routes (`pipeline-status`,
+  `pipeline-jobs`, `trigger-research`, `run-due-passes`,
+  `schools-with-programs`). Jusque-là, elle affichait « Pilotage depuis le
+  poste local » et ses routes de relais répondaient 503 `BACKEND_LOCAL_ONLY`.
+- **L'inbox reste en ligne**, pour l'admin : il y valide les tickets que le
+  backend du poste a écrits en base.
 - **La contribution du public n'existe plus** (D2 du plan gestion-contenu) :
   rien de nouveau n'arrive en `Pending_AI`. Lancer le backend coûte toujours
   de l'argent s'il en reste : le traitement appelle Tavily et Gemma dès le
@@ -174,13 +183,13 @@ le code n'échappe aux quatre listes ci-dessous.**
 
 | Variable | Pourquoi |
 |---|---|
-| `FASTAPI_URL` | Sans elle, le site répond `BACKEND_LOCAL_ONLY`, et c'est voulu. Posée, elle obligerait à exposer un backend sur Internet, protégé par le seul jeton. |
-| `INTERNAL_API_TOKEN` (anciens noms : `FASTAPI_INTERNAL_TOKEN`, `INTERNAL_TOKEN`) | Secret du poste. Sans `FASTAPI_URL`, il ne sert à rien, et il ne doit pas quitter le poste. |
-| `DB_DRIVER`, `NEON_WS_BRIDGE_PORT` | Réglages du réseau de l'établissement. Next.js ne les lit pas ; seuls les scripts de migration et le backend les lisent. **`DB_DRIVER` ne se pose jamais sur Vercel.** |
-| `GEMINI_API_KEY`, `TAVILY_API_KEY*` | Backend seulement : aucune route Next ne les lit. |
+| `FASTAPI_URL` | **Lue par aucun code de `gestion` ni de `main`** depuis l'étape 11 (D101) : seule la branche `local` s'en sert, sur le poste. Posée, elle ne servait qu'à exposer un backend sur Internet. Si elle est sur Vercel, le propriétaire la retire. |
+| `INTERNAL_API_TOKEN` (anciens noms : `FASTAPI_INTERNAL_TOKEN`, `INTERNAL_TOKEN`) | Secret du poste, lu par la seule branche `local` depuis l'étape 11 ; il ne doit pas quitter le poste. |
+| `DB_DRIVER`, `NEON_WS_BRIDGE_PORT` | Réglages du réseau de l'établissement. Next.js ne les lit pas ; seuls les scripts de migration (`DB_DRIVER`) et le backend de la branche `local` les lisent. **`DB_DRIVER` ne se pose jamais sur Vercel.** |
+| `GEMINI_API_KEY`, `TAVILY_API_KEY*` | Backend seulement, branche `local` : aucune route Next ne les lit. |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Le seed ne se joue pas sur la base partagée (§3.3). `SEED_ADMIN_USERNAME` n'est plus lue depuis l'étape 2 du plan gestion-contenu. |
 | `DIRECT_URL`, `SHADOW_DATABASE_URL` | Elles ne servent qu'aux migrations, qui partent du poste (§3). Le build ne se connecte pas (vérifié, §4), et `prisma.config.ts` se replie sur `DATABASE_URL`. **Changement** : la version du 1er septembre exigeait `DIRECT_URL` sur Vercel « pour le build » ; c'était faux. |
-| `CRON_*`, `PIPELINE_JOB_ROTATION_RETENTION_DAYS`, `CROWDSOURCING_*`, `PHASE2_MAX_PROGRAMS` | `backend/.env` seulement. |
+| `CRON_*`, `PIPELINE_JOB_ROTATION_RETENTION_DAYS`, `CROWDSOURCING_*`, `PHASE2_MAX_PROGRAMS` | `backend/.env` seulement, branche `local`. |
 
 ### 1.4. Posées par Vercel, rien à faire
 
@@ -345,8 +354,9 @@ un premier collègue ajouté, passé admin, première connexion faite.
   (`@prisma/engines`, `esbuild`, `prisma`, `unrs-resolver`). Le build passe
   sans eux (vérifié dans le même worktree).
 - **Réglages du projet** : préréglage Next.js, répertoire racine du dépôt,
-  commandes par défaut. Le dossier `backend/` (Python) n'est pas déployé : il
-  n'y a pas de dossier `api/` à la racine, et le préréglage est Next.js.
+  commandes par défaut. Le dossier `backend/` (Python) n'a jamais été
+  déployé (pas de dossier `api/` à la racine, préréglage Next.js) ; depuis
+  l'étape 11, il n'est plus sur `gestion` ni sur `main`.
 - **Node** : régler **24.x** (Settings → Build and Deployment → Node.js
   Version), comme la CI et le poste. `package.json` ne déclare pas d'`engines`.
 - Dans les journaux Vercel, des lignes `injected env (0) from .env.local`
@@ -508,7 +518,9 @@ production.
   Ignored Build Step sur **« Only build production »**. Un build ainsi annulé
   compte quand même dans le quota de déploiements. La branche Neon `dev`
   existe depuis le 15 octobre 2026, mais elle sert aux essais du poste : la
-  relier aux préversions serait une décision à part.
+  relier aux préversions serait une décision à part. **Retenue** (D22). La
+  branche `local` (étape 11) n'est pas construite non plus : son push du
+  21 octobre 2026 n'a créé aucun déploiement, pas même annulé.
 - (B) connecter aussi Preview, avec *Preview Branching* : chaque préversion a
   sa branche Neon, copie isolée de la production. Il faut alors surveiller le
   nombre de branches permis par l'offre gratuite de Neon et leur nettoyage.
@@ -591,8 +603,9 @@ production.
   `guardManager` ou `guardAdmin` (étape 1 du plan gestion-contenu).
 - ✅ Les migrations reconstruisent une base vierge à l'identique du schéma, et
   `npm run db:migrate` les applique en 443 depuis le poste.
-- ✅ Le site en ligne n'attend aucun backend : sans `FASTAPI_URL`, réponse
-  immédiate `BACKEND_LOCAL_ONLY` (étape 5).
+- ✅ Le site en ligne n'attend aucun backend : depuis l'étape 11 du plan
+  gestion-contenu, `gestion` et `main` n'ont plus aucun code qui le joint
+  (la console et ses routes vivent sur la branche `local`).
 - ✅ Aucun cron ne paie Research : les passes dues partent sur demande, depuis
   le poste (étape 3).
 - ✅ Le build passe sans base et sans autre variable que `DATABASE_URL`

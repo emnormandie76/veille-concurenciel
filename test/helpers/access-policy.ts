@@ -11,8 +11,9 @@
  *
  * Règles (plan gestion-contenu, étapes 1 et 2 ; décisions G4, G5, D4, D18,
  * D19, D21) :
- * - `admin` : l'IA (backend, historique des jobs, tous les tickets de
- *   l'inbox : ils viennent du pipeline ou passent par lui) et les comptes
+ * - `admin` : l'IA (tous les tickets de l'inbox : ils viennent du pipeline
+ *   ou passent par lui ; la console et ses routes vivent sur la branche
+ *   `local` depuis l'étape 11, D100) et les comptes
  *   (liste blanche, rôles, remise en première connexion, désactivation,
  *   adresse d'un compte ancien) ;
  * - `signedIn` : ce que chacun fait pour soi, sur « Mon compte » : son nom
@@ -46,11 +47,9 @@ export const GUARD_OF: Record<AccessLevel, string> = {
 
 /** « MÉTHODE chemin sous app/api/admin » réservés à ADMIN. */
 export const ADMIN_ONLY = [
-  // IA : appels au backend et historique des jobs
-  "GET pipeline-status",
-  "GET pipeline-jobs",
-  "POST trigger-research",
-  "POST run-due-passes",
+  // Étape 11 (D100) : les appels au backend et l'historique des jobs
+  // (`pipeline-status`, `pipeline-jobs`, `trigger-research`, `run-due-passes`)
+  // sont partis avec la console IA sur la branche `local`.
   // IA : l'inbox, dont tous les tickets viennent du pipeline ou passent par lui
   "GET inbox",
   "GET inbox/[id]",

@@ -4,7 +4,7 @@
  *     npm run test:ts
  *
  * Plan gestion-contenu, étape 1 (piège 2) : un USER ne voit pas /admin, un
- * gestionnaire ne voit ni l'IA (inbox, cron) ni les comptes. Le contrôle se
+ * gestionnaire ne voit ni l'IA (l'inbox) ni les comptes. Le contrôle se
  * fait côté serveur, par `requirePage` de lib/auth.ts (testée dans
  * test/auth.test.ts), pas seulement en masquant des liens.
  *
@@ -31,7 +31,6 @@ const ADMIN_DIR = path.join(process.cwd(), "app", "admin");
 const CHECKS: Record<string, AccessLevel> = {
   "layout.tsx": "manager",
   "inbox/layout.tsx": "admin",
-  "cron/page.tsx": "admin",
   "users/page.tsx": "admin",
 };
 
@@ -43,7 +42,7 @@ const PAGE_LEVEL: Record<string, AccessLevel> = {
   // Étape 6 (D31) : les signalements, à part de l'inbox.
   "reports/page.tsx": "manager",
   "inbox/page.tsx": "admin",
-  "cron/page.tsx": "admin",
+  // Étape 11 (D100) : /admin/cron, la console IA, vit sur la branche `local`.
   "users/page.tsx": "admin",
 };
 
@@ -96,9 +95,10 @@ test("le menu : un gestionnaire ne voit que les écoles et les signalements ; un
     "/admin/schools",
     "/admin/reports",
     "/admin/inbox",
-    "/admin/cron",
     "/admin/users",
   ]);
+  // Étape 11 (D100) : plus d'entrée « Monitoring & Cron », la console est sur `local`.
+  assert.equal(ADMIN_NAV.some((item) => item.href === "/admin/cron" || /cron|monitoring/i.test(item.label)), false);
 });
 
 test("chaque entrée du menu a le niveau de l'écran qu'elle ouvre", () => {

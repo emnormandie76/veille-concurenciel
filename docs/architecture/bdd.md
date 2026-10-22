@@ -729,15 +729,17 @@ une extraction réussie le supprime.
 - **Next.js n'écrit jamais `PipelineJob`** (D14, piège 5) : la table est au
   backend gelé, qui l'écrit et la purge. Qui a lancé une recherche se lit dans
   `ResearchLaunch`, que seul Next.js écrit (`trigger-research`,
-  `run-due-passes`), **avant** l'appel au backend : si cette écriture échoue,
+  `run-due-passes`, sur la branche `local` depuis l'étape 11 du plan
+  gestion-contenu, D100), **avant** l'appel au backend : si cette écriture échoue,
   rien ne part (D41). Le lanceur vient de la session. Une recherche ciblée se
   relie à son job par l'id que le backend rend ; une passe due par la
   **fenêtre** de son lancement (D40) : les jobs `rotation` créés à partir de
   son heure et avant le lancement suivant qui a pu partir, au plus
   `max_passes`. D'où `launched_at` à l'heure de la base : `@default(now())`
   donnerait l'heure du poste, que le client Prisma 7 calcule lui-même. Listes
-  et règles de référence : `lib/research-launches.ts`, vérifié contre la
-  migration par `test/research-launches-migration.test.ts`, qui vérifie aussi
+  et règles de référence : `lib/research-launches.ts` (branche `local`) ;
+  `test/research-launches-migration.test.ts` tient la migration contre ces
+  listes, écrites en clair sur `gestion` depuis l'étape 11, et vérifie aussi
   qu'aucun fichier de `app/` ni de `lib/` n'écrit `PipelineJob`.
 - **Les admissions d'un programme vivent dans `ProgramEntry`** (étape 8, D16) :
   une ligne par entrée possible (l'année du programme où l'on entre, le

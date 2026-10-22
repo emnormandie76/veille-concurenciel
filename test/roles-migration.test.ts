@@ -8,8 +8,8 @@
  * migration la remplace, sans toucher l'ancienne : elle convertit `MODERATOR`
  * en `GESTIONNAIRE` et met le défaut à `USER`. Ce test lie la dernière
  * contrainte posée sur `User.role`, le défaut du schéma Prisma et
- * `USER_ROLES` de lib/roles.ts, comme test/test_contribution_enums.py le fait
- * pour l'inbox.
+ * `USER_ROLES` de lib/roles.ts, comme test/contribution.test.ts le fait pour
+ * l'inbox (test/test_contribution_enums.py jusqu'à l'étape 11).
  */
 
 import { test } from "node:test";

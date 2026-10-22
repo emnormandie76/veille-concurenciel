@@ -214,7 +214,7 @@ variantes (`cx` ne fusionne pas les classes contradictoires).
 | Badge | `Badge.tsx` | `neutral`, `accent`, `solid` (catégories : rôles) ; `success`, `warning`, `danger` (états) ; `wrap` pour un texte long qui passe à la ligne (le concours d'un programme, étape 9) : hauteur minimale, arrondi d'un contrôle |
 | Dialogue | `Dialog.tsx` : `Dialog`, `DialogFooter` | `<dialog>` natif ouvert par `showModal()` : focus gardé dans le dialogue, page inerte, focus rendu à la fermeture ; Échap et « Fermer » passent par `onClose`, qui peut refuser ; `data-autofocus` désigne le premier champ. Remplace `confirm()`. Un événement `close` du navigateur arrivé quand le dialogue est de nouveau ouvert est ignoré : sous `next dev`, React rejoue les effets, et le dialogue se refermait aussitôt ouvert (corrigé à l'étape 6). Deux options depuis l'étape 9 (lot 4, D76) : `placement="side"`, un panneau collé au bord droit, pleine hauteur, `min(37.5rem, 95vw)`, filet à gauche, sans arrondi (le détail d'un ticket de l'inbox) ; `closeOnBackdrop`, un clic sur le fond voilé, hors du cadre du dialogue, appelle `onClose` (un clic au clavier vise un bouton, jamais le fond) |
 | Message | `Alert.tsx` | `danger` (`role="alert"`), `success` et `info` (`role="status"`) ; texte en encre, teinte portée par le fond et l'icône |
-| Barre de progression | `ProgressBar.tsx` | l'élément natif `<progress>` (étape 9, lot 5, D86) : valeur et maximum, nommée par l'appelant (`aria-label` ou `aria-labelledby`) ; ton de la valeur `accent` (une avancée : la progression d'une tâche), `success`, `warning`, `danger` (un usage : un quota) ; piste en `line`, visible sur `surface` comme sur `surface-2` ; 6 px, sans animation ; les chiffres restent écrits à côté. Jamais de largeur posée par un `style` en ligne |
+| Barre de progression | `ProgressBar.tsx` | l'élément natif `<progress>` (étape 9, lot 5, D86 ; depuis l'étape 11, aucun écran de `gestion` ne l'emploie : `/admin/cron` vit sur la branche `local`) : valeur et maximum, nommée par l'appelant (`aria-label` ou `aria-labelledby`) ; ton de la valeur `accent` (une avancée : la progression d'une tâche), `success`, `warning`, `danger` (un usage : un quota) ; piste en `line`, visible sur `surface` comme sur `surface-2` ; 6 px, sans animation ; les chiffres restent écrits à côté. Jamais de largeur posée par un `style` en ligne |
 | Lien dans un texte | `text-link.ts` : `TEXT_LINK` | souligné, en `accent-strong` |
 
 Rôles et états des comptes : `Utilisateur` neutre, `Gestionnaire` accent,
@@ -264,7 +264,8 @@ ticket n'est cliquable qu'en `http(s)` (D79) ; l'icône de lien externe ne
 suit qu'un texte court (« source ») : à côté d'un intitulé sur plusieurs
 lignes, elle restait centrée à droite du bloc.
 
-Dans `/admin/cron` (lot 5, `app/admin/cron/cron-tones.ts`) : un ton par
+Dans `/admin/cron` (lot 5, `app/admin/cron/cron-tones.ts` ; l'écran vit sur la
+branche `local` depuis l'étape 11, D100) : un ton par
 état (D87) : un job terminé en `success`, en échec en `danger`, en file ou
 en cours en `neutral` (rien à faire) ; les passes dues « sur demande » en
 `neutral`, « plafond à 0 » et « hors plafond » en `warning`, « N

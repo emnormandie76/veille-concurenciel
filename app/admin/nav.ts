@@ -21,7 +21,8 @@ export const ADMIN_NAV: NavItem[] = [
   // Étape 6 (D31) : les signalements, à part de l'inbox, qui reste à l'IA.
   { href: "/admin/reports", label: "Signalements", level: "manager" },
   { href: "/admin/inbox", label: "Validation Inbox", level: "admin" },
-  { href: "/admin/cron", label: "Monitoring & Cron", level: "admin" },
+  // Étape 11 (D100) : « Monitoring & Cron » (/admin/cron) est parti avec la
+  // console IA sur la branche `local`.
   { href: "/admin/users", label: "Comptes", level: "admin" },
 ];
 

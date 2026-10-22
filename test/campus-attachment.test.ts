@@ -9,7 +9,7 @@
  * tout appel qui la vise échoue en `P2021`. Ce qui touche la table est donc
  * prouvé ici, contre un double qui enregistre chaque appel — et sur les
  * IDENTIFIANTS RÉELS de la base, recopiés du dump lecture seule comme
- * `test_program_identity.py` recopie les noms réels.
+ * `test_program_identity.py` (branche `local`) recopie les noms réels.
  *
  * Ce qui EXISTE en base — la résolution des arêtes par `findUnique` sur
  * `programId_campusId` — est prouvé ailleurs, contre la vraie base, dans une
@@ -538,7 +538,8 @@ test("un ticket sans bloc campus_attachments ne produit rien et ne lève pas", a
 
 // ── Les cas partagés avec la suite Python ────────────────────────────────
 //
-// `backend/pipeline/attachment_plan.py` porte ce plan en Python : la Phase 1
+// `backend/pipeline/attachment_plan.py` (branche `local` depuis l'étape 11)
+// porte ce plan en Python : la Phase 1
 // doit savoir si un ticket a quelque chose à écrire avant de le déposer, et
 // elle n'a aucun canal vers cette application. Les deux implémentations lisent
 // `test/fixtures/attachment_plan_cases.json`, où chaque plan attendu est écrit

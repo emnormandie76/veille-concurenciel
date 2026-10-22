@@ -64,7 +64,8 @@
  * chaque `migrate diff`. La ligne `ANY` est absorbée : elle disparaît et ses
  * langues sont versées dans chaque ligne spécifique.
  *
- * `backend/pipeline/campus_attachment.py` applique déjà cette règle fiche par
+ * `backend/pipeline/campus_attachment.py` (branche `local`) applique déjà cette
+ * règle fiche par
  * fiche. Ici elle est rejouée sur TOUT le lot, et confrontée à ce que la table
  * porte déjà : l'invariant est une propriété de la table, pas du lot. Quand la
  * production porte déjà le genre opposé pour la même `(arête, année)`, rien
@@ -99,13 +100,13 @@
 
 import type { Provenance } from "./provenance";
 
-/** Régimes admis. Miroir de `VALID_REGIMES` dans `backend/pipeline/campus_attachment.py`. */
+/** Régimes admis. Miroir de `VALID_REGIMES` dans `backend/pipeline/campus_attachment.py` (branche `local`). */
 export const ATTACHMENT_REGIMES = ["ANY", "INITIAL", "ALTERNANCE"] as const;
 export type AttachmentRegime = (typeof ATTACHMENT_REGIMES)[number];
 
 /** Une affirmation du lot, telle que le ticket la porte. */
 export interface AttachmentClaim {
-  /** Résolus en amont par `backend/pipeline/program_identity.py`. Jamais devinés ici. */
+  /** Résolus en amont par `backend/pipeline/program_identity.py` (branche `local`). Jamais devinés ici. */
   programId: string;
   campusId: string;
   study_year: number;
@@ -233,7 +234,8 @@ function labelOf(claim: AttachmentClaim): Pick<AttachmentConflict, "program" | "
  *
  * Aucun appariement de nom n'est refait ici : `programId` et `campusId` sont
  * exigés. Les rapprocher par leur libellé demanderait de reporter en
- * TypeScript les quatre règles de `backend/pipeline/program_identity.py` — une
+ * TypeScript les quatre règles de `backend/pipeline/program_identity.py`
+ * (branche `local`) — une
  * seconde implémentation de l'appariement, dans le langage qui écrit. Une
  * entrée sans identifiant est refusée, pas devinée.
  */

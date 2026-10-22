@@ -27,7 +27,10 @@ Thumbs.db
 .vscode/
 *.swp
 
-# Python
+# Python. Le backend vit sur la branche `local` depuis l'étape 11 (D101) ;
+# ces lignes et `backend/.env` (plus haut) restent : passer de `local` à une
+# autre branche laisse sur le poste backend/.venv, backend/.env et les
+# caches, qui ne doivent jamais apparaître ni partir dans un commit.
 __pycache__/
 *.pyc
 *.pyo

@@ -208,6 +208,8 @@ test("toutes les méthodes du back-office ont été appelées", () => {
   // de « Mon compte » ; la route du mot de passe d'un tiers a disparu (D4).
   // 56 à l'étape 6 (les trois méthodes des signalements) ; 60 à l'étape 8 :
   // les quatre des admissions (D50) ; 61 à l'étape 10 : la question du lien
-  // « Back-office » (D104).
-  assert.ok(handlerCount >= 61, `seulement ${handlerCount} handlers appelés`);
+  // « Back-office » (D104) ; 56 à l'étape 11 : les cinq de la console IA
+  // (`pipeline-status`, `pipeline-jobs`, `trigger-research`, `run-due-passes`,
+  // `schools-with-programs`) partent sur la branche `local` (D100).
+  assert.ok(handlerCount >= 56, `seulement ${handlerCount} handlers appelés`);
 });

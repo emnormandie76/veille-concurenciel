@@ -10,7 +10,9 @@
  * est refusé partout.
  *
  * Routes : /api/admin/schools, /schools/[id], /schools/[id]/campuses,
- * /schools/[id]/manage, /schools-with-programs, /campuses/[id].
+ * /schools/[id]/manage, /campuses/[id]. `/schools-with-programs`, que seule la
+ * console IA appelait, est partie avec elle sur la branche `local` (étape 11,
+ * D100).
  */
 
 import { before, beforeEach, test } from "node:test";
@@ -37,7 +39,6 @@ before(async () => {
   const campuses = await import("../../app/api/admin/schools/[id]/campuses/route");
   const campus = await import("../../app/api/admin/campuses/[id]/route");
   const manage = await import("../../app/api/admin/schools/[id]/manage/route");
-  const tree = await import("../../app/api/admin/schools-with-programs/route");
   Object.assign(h, {
     listSchools: schools.GET,
     createSchool: schools.POST,
@@ -49,7 +50,6 @@ before(async () => {
     updateCampus: campus.PUT,
     deleteCampus: campus.DELETE,
     manage: manage.GET,
-    schoolsWithPrograms: tree.GET,
   });
 });
 
@@ -365,33 +365,6 @@ test("GET /schools/[id]/manage : 404 ; sinon l'école et ses compteurs", async (
   });
   const entries = db.calls.find((c) => c.model === "programEntry")!.args[0] as { where: unknown };
   assert.deepEqual(entries.where, { program: { schoolId: SCHOOL_ID } });
-  assertSchema();
-});
-
-test("GET /schools-with-programs : écoles ACTIVE, campus et programmes à plat", async () => {
-  db.use({
-    school: {
-      findMany: () => [
-        {
-          ...SCHOOL,
-          campuses: [{ id: CAMPUS.id, name: "Caen", programCampuses: [{ program: { id: "p-1", name: "PGE" } }] }],
-        },
-      ],
-    },
-  });
-
-  const res = await h.schoolsWithPrograms(get(), id(""));
-
-  assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), [
-    {
-      id: SCHOOL_ID,
-      name: "Em Normandie",
-      official_domain: "em-normandie.com",
-      campuses: [{ id: CAMPUS.id, name: "Caen", programs: [{ id: "p-1", name: "PGE" }] }],
-    },
-  ]);
-  assert.deepEqual((db.calls[0].args[0] as { where: object }).where, { status: "ACTIVE" });
   assertSchema();
 });
 

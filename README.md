@@ -4,20 +4,21 @@ Plateforme de collecte, de vérification et de publication de données sur les
 écoles françaises : campus, programmes, tarifs, classements, capacités
 d'accueil, accréditations et statistiques.
 
-Deux exécutions distinctes :
+| | Rôle | Branche |
+|---|---|---|
+| **Next.js 16** (`app/`, `lib/`) | site et back-office du contenu, derrière une connexion obligatoire (rôles `USER`, `GESTIONNAIRE`, `ADMIN`) ; API `/api/v1` réservée aux personnes connectées ; l'inbox, où l'admin valide les tickets de l'IA | `gestion`, `main` (la production) et `local` |
+| **FastAPI** (`backend/`) et sa console (`/admin/cron`) | pipeline IA — recherche Tavily, extraction par la cascade Gemini (Gemma en dernier recours pour les contributions), traitement des contributions ; lancé à la main sur le poste de l'admin, les recherches partent sur demande | **`local` seulement** |
 
-| | Rôle |
-|---|---|
-| **Next.js 16** (`app/`, `lib/`) | site et back-office du contenu, derrière une connexion obligatoire (rôles `USER`, `GESTIONNAIRE`, `ADMIN`) ; API `/api/v1` réservée aux personnes connectées |
-| **FastAPI** (`backend/`) | pipeline IA — recherche Tavily, extraction par la cascade Gemini (Gemma en dernier recours pour les contributions), traitement des contributions ; lancé à la main sur le poste, les recherches partent sur demande |
-
-Les deux partagent une base **PostgreSQL (Neon)** : Prisma côté TypeScript,
-psycopg2 côté Python.
+Ils partagent une base **PostgreSQL (Neon)** : Prisma côté TypeScript,
+psycopg2 côté Python. Cette branche n'a que Next.js : aucun code n'y joint
+le backend, aucune commande ne le lance.
 
 > **Réorientation du 16 octobre 2026.** Le projet devient d'abord un
 > **gestionnaire de contenu** en ligne, derrière une connexion obligatoire, avec
 > trois rôles (utilisateur, gestionnaire, admin). La partie FastAPI (recherche
-> IA) est **gelée** : conservée telle quelle, réservée à l'admin. La
+> IA) est **gelée** : conservée telle quelle, réservée à l'admin ; depuis le
+> 21 octobre (étape 11), elle vit sur la branche `local` (le backend, ses
+> tests et la console), et l'inbox reste en ligne. La
 > contribution du public est abandonnée, remplacée par un formulaire de
 > signalement sans IA (étape 6). Plan : [`docs/features/gestion-contenu.md`](docs/features/gestion-contenu.md) ;
 > index de la documentation : [`docs/README.md`](docs/README.md). Ce README
@@ -30,17 +31,12 @@ psycopg2 côté Python.
 ```bash
 # 1. Dépendances
 npm install
-python -m venv backend/.venv
-backend/.venv/Scripts/activate            # Windows
-# source backend/.venv/bin/activate       # macOS / Linux
-pip install -r backend/requirements-dev.txt
 
 # 2. Configuration
 cp .env.example .env.local                # renseigner les valeurs
-cp .env.example backend/.env              # idem, section FastAPI
 # Réseau où le port 5432 est fermé (seuls 80 et 443 sortent) :
-# DB_DRIVER=neon-ws dans .env.development.local (Node) ET dans backend/.env
-# (Python). Poste local seulement, jamais sur Vercel.
+# DB_DRIVER=neon-ws dans .env.development.local. Poste local seulement,
+# jamais sur Vercel.
 
 # 3. Base de données
 npx prisma generate
@@ -48,8 +44,8 @@ npm run db:status                         # état des migrations (lecture seule)
 npm run db:migrate                        # applique l'historique complet
 npx prisma db seed                        # base vierge seulement : exige SEED_ADMIN_EMAIL et SEED_ADMIN_PASSWORD
 
-# 4. Lancement (Windows)
-npm run local                             # backend (fenêtre à part) puis Next.js
+# 4. Lancement
+npm run dev                               # http://localhost:3000
 ```
 
 Le back-office est sur `/admin`, la connexion sur `/admin/login`.
@@ -76,22 +72,11 @@ Plan gestion-contenu, étape 2 ([`docs/architecture/gestion-contenu.md`](docs/ar
   nom gardé pour l'historique) ; un invité qui ne s'est jamais connecté se
   retire de la liste. Il reste toujours au moins un administrateur actif.
 
-`npm run local` (`scripts/start-local.ps1`) :
-
-1. refuse si le port 8000 est déjà pris : deux backends tiendraient deux
-   comptabilités de crédits Tavily qui s'ignorent ;
-2. ouvre le backend dans **sa propre fenêtre**, sur `127.0.0.1:8000`. Fermer
-   Next.js ne coupe pas une passe en cours. Ctrl+C dans cette fenêtre arrête le
-   backend, et la fenêtre reste ouverte pour qu'on y lise une erreur ;
-3. attend `/health` jusqu'à 60 s et affiche les erreurs de démarrage ;
-4. lance `npm run dev` sur http://localhost:3000, sauf si Next.js tourne déjà.
-
-Pour le backend seul, dans le terminal courant : `npm run backend`. Pour le
-site seul : `npm run dev`.
-
-> **Lancer le backend peut payer.** Le traitement des contributions part dès le
-> démarrage : s'il trouve des tickets `Pending_AI`, il appelle Tavily et la cascade Gemini (Gemma en dernier recours).
-> Regardez l'inbox avant.
+**La partie IA** (le backend FastAPI, la console `/admin/cron`,
+`npm run local`, `npm run backend` et les tests Python) vit sur la branche
+`local`, depuis l'étape 11 du plan : son README dit comment la lancer.
+Lancer le backend peut payer (Tavily, la cascade Gemini) : règle 7 de
+`CLAUDE.md`.
 
 > **Aucun mot de passe par défaut n'existe.** `prisma db seed` échoue tant que
 > `SEED_ADMIN_EMAIL` (une adresse `@em-normandie.fr`) et `SEED_ADMIN_PASSWORD`
@@ -100,10 +85,9 @@ site seul : `npm run dev`.
 
 > **Port 5432 fermé ?** Avec `DB_DRIVER=neon-ws`, tout passe par le proxy
 > WebSocket de Neon (443) : `npm run db:status` et `npm run db:migrate` par
-> `@neondatabase/serverless`, le backend par un pont local
-> (`backend/neon_ws_bridge.py`). Next.js est déjà en WebSocket et ne lit pas
-> la variable. Sans elle, rien ne change : la CLI Prisma et psycopg2 se
-> connectent en 5432. Le premier déploiement d'une base vide exige la CLI
+> `@neondatabase/serverless`. Next.js est déjà en WebSocket et ne lit pas
+> la variable. Sans elle, rien ne change : la CLI Prisma se connecte en
+> 5432. Le premier déploiement d'une base vide exige la CLI
 > Prisma, donc le 5432.
 
 ---
@@ -115,14 +99,11 @@ La liste complète, commentée et classée par exécution, est dans
 
 | Variable | Piège |
 |----------|-------|
-| `INTERNAL_API_TOKEN` | Le même secret a porté trois noms. C'est celui-ci le bon ; `FASTAPI_INTERNAL_TOKEN` et `INTERNAL_TOKEN` restent acceptés mais sont à supprimer. Local seulement, comme `FASTAPI_URL`. |
-| `FASTAPI_URL` | **Local seulement, jamais sur Vercel.** Absente, `/admin/cron` affiche « pilotage depuis le poste local » : historique lu en base, aucun lancement. Il n'y a plus de repli sur `localhost:8000`. Posée sans `INTERNAL_API_TOKEN` : erreur 500 explicite. |
-| `ENVIRONMENT`, `ALLOWED_ORIGINS`, `CRON_RESEARCH_ENABLED`, `CRON_RESEARCH_HOUR`, `CRON_ROTATION_PASSES_PER_NIGHT` | **Supprimées le 14 octobre 2026**, le code ne les lit plus : les poser ne change rien. Le backend n'a plus de production. Il tourne sur le poste et n'écoute que sur `127.0.0.1`, `/docs` reste ouvert et CORS n'accepte que `http://localhost:3000`. Aucun cron ne paie Tavily : les passes dues partent sur demande (`POST /internal/run-due-passes`), sous le plafond `CRON_MONTHLY_CREDIT_CEILING`. Voir `docs/architecture/architecture.md` §5.5 et §10.6. |
-| `CRON_CROWDSOURCING_INTERVAL_MINUTES` | Le traitement des contributions part **dès le démarrage** du backend, puis à cet intervalle. S'il trouve des tickets `Pending_AI`, il appelle Tavily et la cascade Gemini (Gemma en dernier recours) : lancer le backend suffit à payer. |
+| `FASTAPI_URL`, `INTERNAL_API_TOKEN` et les variables du backend (`GEMINI_API_KEY`, `TAVILY_API_KEY*`, `CRON_*`…) | **Plus lues sur cette branche** depuis l'étape 11 : seule la branche `local` s'en sert, sur le poste (son `.env.example`). Sur Vercel, elles n'ont jamais dû être posées ; s'il en reste, le propriétaire les retire (mémo Vercel §1.3). |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Sans magasin partagé, la limitation de débit retombe en mémoire — elle ralentit une attaque mais ne la bloque pas sur une plateforme sans état. Ces noms exacts : `KV_REST_API_*` ne sont pas lus. |
 
-**Déploiement** : seul Next.js va sur Vercel (offre Hobby) ; le backend reste
-sur le poste. **En ligne depuis le 19 octobre 2026** :
+**Déploiement** : seul Next.js va sur Vercel (offre Hobby) ; la partie IA
+reste sur le poste, branche `local`, que Vercel ne construit pas. **En ligne depuis le 19 octobre 2026** :
 <https://app-vc-emn.vercel.app> (projet `app-vc` du Vercel de l'école, base
 Neon de l'école, branche `main`). Variables à poser et à ne jamais poser sur
 Vercel, intégration Neon, Upstash, ordre des opérations et vérifications :
@@ -134,14 +115,12 @@ Vercel, intégration Neon, Upstash, ordre des opérations et vérifications :
 
 | Commande | Effet |
 |----------|-------|
-| `npm run local` | backend FastAPI dans sa propre fenêtre, puis Next.js (`scripts/start-local.ps1`, Windows) |
-| `npm run backend` | backend seul, dans le terminal courant : `uvicorn` sur `127.0.0.1:8000`, sans `--reload` |
 | `npm run dev` | serveur de développement Next.js |
 | `npm run build` / `npm start` | build et exécution de production |
 | `npm run lint` | ESLint (configuration plate, `eslint.config.mjs`) |
 | `npm run lint:fix` | idem, avec correction automatique |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | suite Python (`pytest`), avec le `python` du `PATH` |
+| `npm test` | la suite TypeScript, comme `npm run test:ts` (D105, étape 11 ; les tests Python vivent sur la branche `local`) |
 | `npm run test:ts` | suite TypeScript (`node --test`) : fonctions de `lib/` et routes Next.js |
 | `npm run smoke` | smoke local, **à la main** et avec l'accord du propriétaire : `npm run dev` lancé, il vérifie d'abord le mur sans session (pages renvoyées vers la connexion, API en 401), puis, si `APPVC_ADMIN_PASSWORD` et `APPVC_ADMIN_EMAIL` (ou, tant que le compte n'a pas d'adresse, `APPVC_ADMIN_USERNAME`) sont posées, les pages et les 15 `GET /api/v1/*` connecté (`scripts/smoke-local.ts`). Lecture seule, mais sur la base visée par le poste ; adresse locale seulement |
 | `npm run db:status` | état de l'historique face à la base, en lecture seule : `npx prisma migrate status` sans `DB_DRIVER`, WebSocket (443) avec `DB_DRIVER=neon-ws` |
@@ -181,27 +160,28 @@ obligatoire (exigence de Prisma 7).
 ```bash
 npm run typecheck     # types
 npm run lint          # 0 erreur attendu ; les avertissements sont la dette connue
-npm test              # 722 tests Python (pytest), +25 sous-tests
-npm run test:ts       # 542 tests TypeScript (node --test), dont les routes de test/api/
+npm test              # tests TypeScript (node --test), dont les routes de test/api/
+npm run test:ts       # la même suite
 npm run smoke         # à la main, npm run dev lancé : le mur, puis pages et API v1 connecté
 ```
 
 Les routes Next.js se testent sans base ni serveur : `test/helpers/` remplace
-`@/lib/prisma` par un faux client, `@/lib/auth` par des sessions simulées et
-`fetch` par un faux backend FastAPI. Chaque requête reçue par le faux client
+`@/lib/prisma` par un faux client et `@/lib/auth` par des sessions simulées.
+Chaque requête reçue par le faux client
 est relue contre le vrai schéma Prisma (`test/helpers/prisma-schema.ts`) : un
 champ disparu fait échouer le test, même derrière un `where: any`. Aucun test
-ne sort du processus : les deux suites ont été rejouées sous garde réseau
+ne sort du processus : la suite a été rejouée sous garde réseau
 (connexions et DNS refusés hors de `127.0.0.1`), sans aucune tentative.
 `test/api/admin-guards.test.ts` vérifie que **chaque route admin attend une
 seule garde, celle de son niveau** (`test/helpers/access-policy.ts`), et
 `test/api/access-matrix.test.ts` appelle chaque route admin sans session, en
 `USER`, en `GESTIONNAIRE` et en `ADMIN`, avec la vraie `lib/auth.ts`.
-La CI lance les deux suites (`.github/workflows/ci.yml`).
+La CI lance la suite (`.github/workflows/ci.yml`, job `ts-tests`).
 
-Le test le plus important vérifie une garantie de confidentialité : **le texte
-libre saisi par un contributeur (`user_text`) n'atteint jamais un modèle d'IA.**
-Il est stocké en base et affiché uniquement dans le back-office.
+Sur la branche `local`, le test le plus important vérifie une garantie de
+confidentialité : **le texte libre saisi par un contributeur (`user_text`)
+n'atteint jamais un modèle d'IA** (tests Python du backend). Il est stocké en
+base et affiché uniquement dans le back-office.
 
 `npm run lint` remonte des avertissements (`any`, règles du compilateur React) :
 c'est une dette identifiée et chiffrée, maintenue visible plutôt que masquée.
@@ -227,7 +207,8 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
    `requirePage` : un `USER` ne voit pas `/admin`. `getServerSession` nu ne
    doit pas réapparaître. Détail : [`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-contenu.md) §2 et §4.
 3. **Tout contenu externe injecté dans un prompt passe par `wrap_source()`**
-   (`backend/ai/gemma_client.py`), qui neutralise les balises de délimitation.
+   (`backend/ai/gemma_client.py`, branche `local`), qui neutralise les
+   balises de délimitation.
    Les règles vont dans le `system_prompt`, jamais dans le message utilisateur.
 4. **Next.js ne crée aucun ticket dans l'inbox** : la contribution du public
    (`/api/contribute`) est retirée, et un test garde la porte fermée. Un ticket

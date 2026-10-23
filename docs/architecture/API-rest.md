@@ -17,7 +17,7 @@ si un usage externe apparaît.
 ## Pile technique
 
 - **Framework** : Next.js 16 App Router (Route Handlers `app/api/v1/...`),
-  `next@16.3.8`
+  `next@16.4.2`
 - **Langage** : TypeScript
 - **Accès BDD** : Prisma 7 (`prisma@7.10.0`), en WebSocket
 - **Hébergement** : Vercel, avec le site (<https://app-vc-emn.vercel.app>)

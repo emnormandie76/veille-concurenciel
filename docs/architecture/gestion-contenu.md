@@ -732,7 +732,7 @@ un build de production.
   portent sur le backend, qui vit sur `local`.
 - **Les dépendances** : la CI ne bloque que sur une vulnérabilité
   **critique** (`npm audit --audit-level=critical`). Les hautes restantes
-  (relevé du 14 octobre 2026 : 9 hautes, 0 critique) sont toutes tirées par
+  (relevé du 23 octobre 2026 : 9 hautes, 0 critique) sont toutes tirées par
   la CLI Prisma (`prisma`, `@prisma/config`, `deepmerge-ts`, `mysql2`, un
   pilote que le projet n'emploie pas) ou par l'outillage de lint
   (`micromatch`, `braces`, `fast-glob`, sous `eslint-config-next`) ; aucune
@@ -740,7 +740,10 @@ un build de production.
   est un `npm audit fix --force`, refusé : il redescendrait Prisma en 6, sans
   `@prisma/adapter-neon` 7. À surveiller : `npm ls deepmerge-ts mysql2` ;
   quand une version 7 de Prisma les embarque à jour, `npm update prisma`
-  suffit, toujours sans `--force`.
+  suffit, toujours sans `--force`. Le 23 octobre, un avis critique sur
+  `next` 16.0.0 à 16.4.0 a bloqué la CI : `next` monté en 16.4.2
+  (`eslint-config-next` laissé en 16.3.8), puis les contrôles du §8.4
+  rejoués sur un build de production.
 - **Chantiers ouverts** : la CSP à nonce ; les vulnérabilités ci-dessus ; une
   base de CI éphémère pour le contrôle des migrations
   ([mémo Vercel](../memory/memory-deploiement-vercel.md), « Base de CI

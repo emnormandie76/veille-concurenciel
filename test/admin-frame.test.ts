@@ -114,6 +114,37 @@ test("étape 14 (D109) : « Aide » au pied du menu, avant « Mon compte », hor
   assert.equal(ADMIN_NAV.some((item) => item.href === "/help"), false);
 });
 
+test("D124 : le nom de l'application, dans la colonne et dans la barre de l'écran étroit, mène à l'accueil du site", () => {
+  for (const user of [ADMIN, MANAGER]) {
+    const out = render(user, "/admin/schools");
+    const names = [...out.matchAll(new RegExp(`<a ([^>]*)>${APP_NAME}</a>`, "g"))].map((m) => m[1]);
+    assert.equal(names.length, 2, "deux liens : la barre de l'écran étroit et la colonne");
+    for (const tag of names) {
+      assert.match(tag, /href="\/"/);
+      assert.doesNotMatch(tag, /aria-current/);
+      assert.ok(classesOf(tag).includes("focus-visible:outline-side-ink"), "le focus du menu (D92)");
+    }
+  }
+});
+
+test("D124 : « Voir le site » au pied du menu, avant « Aide », vers l'accueil du site, hors du menu par rôle", () => {
+  for (const user of [ADMIN, MANAGER]) {
+    for (const pathname of ["/admin/schools", "/admin/schools/fe46bddf/manage", "/admin/reports"]) {
+      const out = render(user, pathname);
+      const tag = linkTag(out, "Voir le site");
+      assert.match(tag, /href="\/"/);
+      assert.doesNotMatch(tag, /aria-current/, "le back-office n'est jamais l'accueil du site");
+      assert.ok(out.indexOf(">Voir le site</a>") > out.indexOf("</nav>"), "après la nav du menu par rôle");
+      assert.ok(out.indexOf(">Voir le site</a>") < out.indexOf(">Aide</a>"), "avant « Aide »");
+      assert.equal(navEntries(out).some(([href]) => href === "/"), false, "hors de navFor");
+      for (const name of ["text-side-ink-2", "focus-visible:outline-side-ink"]) {
+        assert.ok(classesOf(tag).includes(name), `une entrée comme les autres : ${name}`);
+      }
+    }
+  }
+  assert.equal(ADMIN_NAV.some((item) => item.href === "/"), false);
+});
+
 test("le menu : aria-current=\"page\" sur la seule entrée qui mène à l'écran affiché, sous-pages comprises", () => {
   const inbox = render(ADMIN, "/admin/inbox");
   assert.equal(inbox.match(/aria-current="page"/g)?.length, 1);
@@ -171,7 +202,8 @@ test("D94 : sous 1 024 px, un bouton « Menu » qui ouvre le menu sous la barre 
   assert.ok(openAside.includes("flex") && !openAside.includes("hidden"), "ouvert : affiché sous la barre");
 
   // La barre ne s'affiche que sous 1 024 px ; le menu ne flotte pas sur le contenu.
-  const bar = closed.match(new RegExp(`<div ([^>]*)><div[^>]*>${APP_NAME}</div><button`));
+  // Le nom y est un lien vers le site depuis D124.
+  const bar = closed.match(new RegExp(`<div ([^>]*)><a[^>]*>${APP_NAME}</a><button`));
   assert.ok(bar && classesOf(bar[1]).includes("lg:hidden"), "la barre");
   assert.doesNotMatch(closed, /\b(fixed|absolute|z-\d+)\b/);
   // Refermé quand la page change : l'ouverture est liée au chemin où elle a eu lieu, sans effet.

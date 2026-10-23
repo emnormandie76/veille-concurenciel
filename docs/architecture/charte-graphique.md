@@ -258,7 +258,10 @@ bouge), `aria-current="page"` ; le focus en `side-ink` (§3) ; sous le nom,
 le rôle en texte `side-ink-2` (D95), les initiales de l'avatar cachées aux
 lecteurs d'écran. Sous 1 024 px, une barre sombre et un bouton « Menu »
 (`aria-expanded`, `aria-controls`) qui ouvre le menu sous elle, dans le
-flux, sans calque (D94).
+flux, sans calque (D94). Le nom de l'application, en haut de la colonne et
+dans la barre, est un lien vers l'accueil du site, souligné au survol, son
+focus en `side-ink` ; « Voir le site », une entrée comme les autres, ouvre
+le pied du menu (D124).
 
 Une carte du gestionnaire dont le titre partage sa ligne avec des boutons
 (accréditation, admission, campus) a un en-tête qui passe à la ligne

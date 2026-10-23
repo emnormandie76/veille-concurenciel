@@ -3,7 +3,7 @@
 > Ce que fait le code de la branche `gestion` et de `main`, la production,
 > qui la suit par avance rapide. Chaque étape du plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md) la tient à
-> jour ; les décisions citées (G1 à G9, D1 à D123) et les pièges y sont
+> jour ; les décisions citées (G1 à G9, D1 à D124) et les pièges y sont
 > expliqués. Point d'entrée pour travailler sur le site : la partie IA, gelée,
 > vit sur la branche `local` (§1).
 
@@ -68,7 +68,7 @@ Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 | « Mon compte » | [`app/account/page.tsx`](../../app/account/page.tsx) | `requirePage("signedIn")` : toute session, hors du back-office. Nom affiché et mot de passe, par `PATCH /api/admin/account` et `PATCH /api/admin/account/password`, qui ne prennent aucun identifiant. « Vos signalements » (D36) : la page lit en base les signalements **de la session**, et eux seuls |
 | Aide | [`app/help/page.tsx`](../../app/help/page.tsx), [`guides.tsx`](../../app/help/guides.tsx) | `requirePage("signedIn")` : toute session ; le guide du rôle relu en base (D1), et lui seul (`guideFor`, D108) ; la page n'est pas en cache |
 | Lien « Back-office » de la barre du site | [`components/layout/SiteShell.tsx`](../../components/layout/SiteShell.tsx), [`BackOfficeLink.tsx`](../../components/layout/BackOfficeLink.tsx), [`back-office-access.ts`](../../components/layout/back-office-access.ts), [`app/api/admin/account/back-office/route.ts`](../../app/api/admin/account/back-office/route.ts) | D104 : sur toutes les pages du site, pour un gestionnaire ou un admin, jamais pour un `USER`. Une page qui lit la session le dit au gabarit (`showBackOffice`) ; les autres (accueil, fiches en cache, `/api-docs`) laissent la barre demander à `GET /api/admin/account/back-office` (`guardSignedIn`, rôle relu en base, D1), qui ne rend que `{ backOffice: true \| false }`, en `private, no-store`. Le lien ne fait que montrer le chemin : le layout `/admin` contrôle l'accès |
-| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » ; un admin voit aussi l'inbox et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Aide » (D109) et « Mon compte » sont au pied du menu, hors de `navFor`. Texte seul (D93), `aria-current="page"` sur l'entrée de l'écran affiché ; sous 1 024 px, replié derrière un bouton « Menu » (D94). `AdminMenu`, sa partie sans état, se rend côté serveur (`test/admin-frame.test.ts`) |
+| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » ; un admin voit aussi l'inbox et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Voir le site » (D124), « Aide » (D109) et « Mon compte » sont au pied du menu, hors de `navFor` ; le nom de l'application, en haut du menu et dans sa barre de l'écran étroit, mène aussi à l'accueil du site (D124). Texte seul (D93), `aria-current="page"` sur l'entrée de l'écran affiché ; sous 1 024 px, replié derrière un bouton « Menu » (D94). `AdminMenu`, sa partie sans état, se rend côté serveur (`test/admin-frame.test.ts`) |
 | Déconnexion | `app/admin/SidebarClient.tsx`, [`app/SignOutButton.tsx`](../../app/SignOutButton.tsx) | dans le menu du back-office, et dans la barre du site, après « Mon compte » |
 | Mots de passe | [`lib/password.ts`](../../lib/password.ts) | politique unique (longueurs, borne bcrypt de 72 octets) |
 | Adresses, noms, états | [`lib/accounts.ts`](../../lib/accounts.ts) | module sans dépendance : domaine imposé `WORK_EMAIL_DOMAIN` = `em-normandie.fr` (D5), adresses rangées en minuscules, nom affiché déduit de l'adresse et borné (2 à 80 caractères, D6), états `INVITED`, `ACTIVE`, `DISABLED` |
@@ -273,8 +273,11 @@ revalidation est journalisé (`[cache]`), il n'annule pas l'écriture.
 **Le cadre du back-office** (`app/admin/layout.tsx` : le menu, puis un
 `main`) : le menu est sombre (D92), son entrée choisie en
 `aria-current="page"` ; sous 1 024 px, une barre et un bouton « Menu » le
-replient (D94) ; le rôle sous le nom, en texte (D95). Le contrôle d'accès du
-layout (`requirePage("manager")`) passe avant tout.
+replient (D94) ; le rôle sous le nom, en texte (D95). **Retour au site**
+(D124) : le nom de l'application, en haut du menu et dans la barre de
+l'écran étroit, est un lien vers l'accueil du site, comme dans la barre du
+site ; « Voir le site » ouvre le pied du menu, avant « Aide ». Le contrôle
+d'accès du layout (`requirePage("manager")`) passe avant tout.
 
 ---
 
@@ -550,7 +553,7 @@ violation sur un build de production.
 ## 7. Tests
 
 `npm test` et `npm run test:ts` lancent la même suite (`node --test`,
-1 243 tests au 23 octobre 2026, D105), en CI dans le job `ts-tests` (§9.4).
+1 246 tests au 23 octobre 2026, D105), en CI dans le job `ts-tests` (§9.4).
 Les tests Python vivent sur la branche `local`, avec le backend (D101).
 
 - **Banc** (`test/helpers/`) : `fake-prisma.ts` (faux client ; garde les
@@ -661,7 +664,9 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   `requirePage("manager")` d'abord, le menu, un `main` qui peut rétrécir ; le
   menu rendu côté serveur par `AdminMenu` : les entrées de `navFor` dans
   l'ordre, `aria-current="page"` sur la seule entrée de l'écran affiché ; D92
-  à D95 ; ni `styled-jsx`, ni `style` en ligne, ni couleur littérale).
+  à D95 ; D124 : le nom, aux deux endroits, et « Voir le site », avant
+  « Aide », mènent à l'accueil du site ; ni `styled-jsx`, ni `style` en
+  ligne, ni couleur littérale).
 - **La barre du site** (D104) : `test/api/account-back-office.test.ts` (la
   route sous la vraie `lib/auth.ts` : 401 sans session et rien de lu ; « non »
   pour un `USER`, « oui » pour un gestionnaire et un admin ; le rôle de la
@@ -677,7 +682,8 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   l'application une fois, en tête, D119 ; le sommaire ;
   chaque libellé cité, `<Ui>…</Ui>`, relu mot pour mot contre le code des
   écrans ; ni fonction disparue, ni commande, ni secret ; le guide de l'admin
-  et la console IA, D114 ; chaque capture sous `public/help/`, à ses
+  et la console IA, D114 ; le guide du gestionnaire dit comment revenir au
+  site, D124 ; chaque capture sous `public/help/`, à ses
   dimensions, avec un texte de remplacement, et chacun ne voit que celles de
   son guide), `test/admin-frame.test.ts` (« Aide » au pied du menu, hors de
   `navFor`), `test/page-titles.test.ts` (les titres fixes, « Aide »

@@ -30,7 +30,7 @@ restent tels quels, réservés à l'admin, sans nouveau développement ni recett
 
 | Document | Rôle |
 |---|---|
-| [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Le code cite ses décisions (G1 à G9, D1 à D123) |
+| [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Le code cite ses décisions (G1 à G9, D1 à D124) |
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** : rôles, gardes, écrans, routes, tables, styles, tests, sécurité (§8), outillage et CI (§9) |
 | [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** : jetons, contrastes, polices, composants, gabarits, accessibilité, mise en œuvre |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
@@ -61,13 +61,16 @@ branche `gestion` :
 - **après la livraison** (23 octobre) : `next` 16.4.2 (un avis critique),
   laissé hors de `local` (D116) ; le plafond de la connexion ne compte plus
   que les échecs (D117) ;
-- **étape 15, faite et validée le 23 octobre**, livraison demandée : des
-  finitions (D118 à D123) : le nom « Veille
+- **étape 15, faite, validée et mise en production le 23 octobre**
+  (`main` = `gestion` = `6d13d91`, avec D117) : des finitions (D118 à
+  D123) : le nom « Veille
   concurrentielle », le JSON mal formé en 400, `/api/schools`,
   `eslint-config-next`, la base de CI éphémère (toutes les migrations sur un
   Postgres jetable à chaque run ; le statut contre la production sur `main`
-  seul), la CSP à nonce (toutes les pages dynamiques) ; à livrer en une fois
-  avec D117 ;
+  seul), la CSP à nonce (toutes les pages dynamiques) ;
+- **après cette livraison** (23 octobre) : D124, le retour au site depuis le
+  back-office (le nom de l'application cliquable, « Voir le site » au pied
+  du menu), fait, livré à la demande du propriétaire ;
 - **ensuite** : D15 (les événements des écoles) reste ouverte, en attente
   de l'équipe.
 

@@ -319,9 +319,10 @@ const MANAGER_GUIDE: HelpGuide = {
         <>
           <P>
             <Ui>Back-office</Ui> apparaît dans la barre du site pour les gestionnaires et les administrateurs. Son menu,
-            à gauche : <Ui>Écoles & Campus</Ui>, <Ui>Signalements</Ui>, puis, au pied, <Ui>Aide</Ui>,{" "}
-            <Ui>Mon compte</Ui> et <Ui>Déconnexion</Ui>. Sur un téléphone ou dans une fenêtre étroite, le menu se
-            replie derrière le bouton <Ui>Menu</Ui>.
+            à gauche : <Ui>Écoles & Campus</Ui>, <Ui>Signalements</Ui>, puis, au pied, <Ui>Voir le site</Ui>,{" "}
+            <Ui>Aide</Ui>, <Ui>Mon compte</Ui> et <Ui>Déconnexion</Ui>. Pour revenir au site :{" "}
+            <Ui>Voir le site</Ui>, ou le nom du site, en haut du menu. Sur un téléphone ou dans une fenêtre étroite,
+            le menu se replie derrière le bouton <Ui>Menu</Ui>.
           </P>
           <P>
             Ce que vous modifiez se voit sur le site dès la visite suivante, signé de votre nom affiché : sous chaque

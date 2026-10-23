@@ -20,6 +20,10 @@ import { navFor } from "./nav";
  *
  * Le menu ne montre que ce que le rôle permet ; le contrôle réel est côté
  * serveur (requirePage) et dans les API (app/admin/nav.ts).
+ *
+ * Retour au site (D124) : le nom de l'application, en haut du menu et dans
+ * la barre de l'écran étroit, mène à l'accueil du site, comme dans la barre
+ * du site ; « Voir le site », au pied du menu, le dit en clair.
  */
 
 interface MenuUser {
@@ -37,6 +41,10 @@ const ENTRY =
 const ENTRY_IDLE = "text-side-ink-2 hover:bg-side-active hover:text-side-ink";
 // L'entrée choisie : un fond, une graisse et un filet à gauche, pas la couleur seule (D92).
 const ENTRY_CURRENT = "bg-side-active font-medium text-side-ink shadow-[inset_3px_0_0_var(--color-side-ink)]";
+// Le nom de l'application, lien vers l'accueil du site (D124).
+const NAME_LINK =
+  "rounded-control font-display font-semibold tracking-tight underline-offset-4 hover:underline " +
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-side-ink";
 
 function MenuLink({ href, current, children }: { href: string; current: boolean; children: ReactNode }) {
   return (
@@ -61,7 +69,9 @@ export function AdminMenu({
   return (
     <>
       <div className="flex h-12 items-center justify-between gap-4 border-b border-side-line bg-side px-4 text-side-ink lg:hidden">
-        <div className="font-display font-semibold tracking-tight">{APP_NAME}</div>
+        <Link href="/" className={NAME_LINK}>
+          {APP_NAME}
+        </Link>
         <button
           type="button"
           aria-expanded={open}
@@ -80,8 +90,10 @@ export function AdminMenu({
           "lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-b-0",
         )}
       >
-        <div className="hidden h-14 shrink-0 items-center border-b border-side-line px-5 font-display font-semibold tracking-tight lg:flex">
-          {APP_NAME}
+        <div className="hidden h-14 shrink-0 items-center border-b border-side-line px-5 lg:flex">
+          <Link href="/" className={NAME_LINK}>
+            {APP_NAME}
+          </Link>
         </div>
         <div className="flex items-center gap-3 border-b border-side-line px-5 py-4">
           <div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-side-active text-xs font-semibold">
@@ -102,7 +114,10 @@ export function AdminMenu({
         </nav>
 
         <div className="flex flex-col gap-1 border-t border-side-line px-3 py-4">
-          {/* Hors du menu par rôle : « Aide » (étape 14, D109) et « Mon compte » sont des pages du site, ouvertes à toute session. */}
+          {/* Hors du menu par rôle : le site (D124), « Aide » (étape 14, D109) et « Mon compte », des pages du site, ouvertes à toute session. */}
+          <MenuLink href="/" current={false}>
+            Voir le site
+          </MenuLink>
           <MenuLink href="/help" current={pathname.startsWith("/help")}>
             Aide
           </MenuLink>

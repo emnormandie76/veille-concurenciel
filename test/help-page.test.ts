@@ -293,3 +293,13 @@ test("D114 : le guide de l'admin dit où vit la console IA et que la lancer paie
   const others = await page("GESTIONNAIRE", "GESTIONNAIRE");
   for (const text of ["Tavily", "Gemini", "branche"]) assert.equal(others.includes(text), false, text);
 });
+
+test("D124 : le guide du gestionnaire dit comment revenir au site depuis le back-office", () => {
+  const manager = guides.HELP_GUIDES.find((guide) => guide.id === "manager");
+  assert.ok(manager);
+  const backOffice = renderToStaticMarkup(manager.sections.find((section) => section.id === "back-office")!.body as ReactElement);
+  // L'entrée du pied du menu, citée comme un libellé (relu contre le code des écrans), et le nom en haut du menu.
+  assert.ok(citedLabels().includes("Voir le site"), "« Voir le site » cité");
+  assert.match(backOffice, /Voir le site/);
+  assert.match(backOffice, /nom du site, en haut du menu/);
+});

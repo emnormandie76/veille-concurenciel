@@ -258,6 +258,8 @@ const SCREENS = [
   // Étape 9, lot 4 (D54) : l'inbox, le style seulement (IA gelée, règle 10 ;
   // test/inbox-screen.test.ts).
   "app/admin/inbox/page.tsx",
+  // Étape 14 (D108) : la page d'aide, sur le gabarit du site.
+  "app/help/page.tsx",
   // Étape 9, lot 5 (D54) : /admin/cron, repris dans la charte, est parti avec
   // la console IA sur la branche `local` à l'étape 11 (D100).
 ];

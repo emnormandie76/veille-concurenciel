@@ -27,6 +27,18 @@ test("le modèle de titre du layout ajoute le nom du site", () => {
   assert.ok(pages.length > 0);
 });
 
+test("les pages du site à titre fixe : « Mon compte », « Signaler une information », « Aide » (étape 14)", () => {
+  const titles: Record<string, string> = {
+    "app/account/page.tsx": "Mon compte",
+    "app/schools/[id]/report/page.tsx": "Signaler une information",
+    "app/help/page.tsx": "Aide",
+  };
+  for (const [page, title] of Object.entries(titles)) {
+    assert.ok(pages.includes(join(...page.split("/"))), page);
+    assert.match(readFileSync(page, "utf8"), new RegExp(`export const metadata: Metadata = \\{ title: "${title}" \\};`), page);
+  }
+});
+
 test("aucune page n'ajoute elle-même le suffixe du modèle", () => {
   const suffix = template![1];
   for (const page of pages) {

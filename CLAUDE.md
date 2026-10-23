@@ -28,13 +28,14 @@ restent tels quels, réservés à l'admin, sans nouveau développement ni recett
 
 | Document | Rôle |
 |---|---|
-| [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Le code cite ses décisions (G1 à G9, D1 à D107) |
+| [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Le code cite ses décisions (G1 à G9, D1 à D115) |
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** : rôles, gardes, écrans, routes, tables, styles, tests, sécurité (§8), outillage et CI (§9) |
 | [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** : jetons, contrastes, polices, composants, gabarits, accessibilité, mise en œuvre |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
 | [docs/architecture/bdd.md](docs/architecture/bdd.md) · [API-rest.md](docs/architecture/API-rest.md) | schéma de la base (16 migrations), migrations et leur lanceur · API v1 (15 routes, session exigée) |
 | [docs/memory/memory-deploiement-vercel.md](docs/memory/memory-deploiement-vercel.md) | la production sur Vercel, la bascule du poste entre les branches Neon (§2.1), livrer une version (§3.2) |
 | [docs/edgecase.md](docs/edgecase.md) | cas limites du site et leurs parades |
+| [docs/guide/](docs/guide/) | les guides Word, un par rôle ; sur le site, « Aide » (`/help`, texte dans `app/help/guides.tsx`) : deux textes à tenir ensemble (D112) |
 
 Les documents de la partie IA (référence technique, plan gelé
 `backend-local.md` et son journal, fiches de test) sont sur la branche
@@ -52,8 +53,11 @@ branche `gestion` :
   lancements de l'IA, admissions, reprise graphique de tous les écrans, deux
   corrections d'interface, l'IA séparée sur la branche `local`, le tri des
   branches, le nettoyage du contexte ;
-- **ensuite** : l'étape 14, le guide utilisateur ; D15 (les événements des
-  écoles) reste ouverte, en attente de l'équipe.
+- **étape 14, la dernière, faite et validée le 23 octobre**, puis mise en
+  production : le guide utilisateur, sur le site (« Aide », `/help`, à
+  chacun le guide de son rôle) et en Word (`docs/guide/`, un par rôle) ;
+- **ensuite** : le chantier est fini ; D15 (les événements des écoles)
+  reste ouverte, en attente de l'équipe.
 
 L'étape en cours se lit dans le journal du plan (§9).
 

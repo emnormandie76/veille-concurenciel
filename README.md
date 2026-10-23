@@ -76,6 +76,24 @@ Détail : [`docs/architecture/gestion-contenu.md`](docs/architecture/gestion-con
 > 5432. Le premier déploiement d'une base vide exige la CLI
 > Prisma, donc le 5432.
 
+### Le guide utilisateur
+
+Un guide par rôle (utilisateur, gestionnaire, administrateur), écrit pour
+des collègues qui ne sont pas développeurs :
+
+- **sur le site** : « Aide » (`/help`), dans la barre et au pied du menu du
+  back-office ; chacun n'y voit que le guide de son rôle, relu en base, avec
+  des captures d'écran (`public/help/`) ;
+- **en Word** : [`docs/guide/`](docs/guide/), `guide-utilisateur.docx`,
+  `guide-gestionnaire.docx` et `guide-administrateur.docx`, un par rôle, à
+  remettre à chacun.
+
+Ce sont deux textes (D112) : un écran qui change se reporte dans la page
+([`app/help/guides.tsx`](app/help/guides.tsx), dont
+`test/help-page.test.ts` relit chaque libellé cité contre le code), dans les
+Word et, au besoin, dans les captures, prises sur la base `dev`, sans adresse
+ni nom de collègue (D111).
+
 ### La partie IA
 
 Le backend FastAPI, la console `/admin/cron`, `npm run local`,
@@ -219,5 +237,6 @@ En-têtes, dépendances et contrôles manuels :
 L'index est [`docs/README.md`](docs/README.md) : le plan
 (`docs/features/gestion-contenu.md`), l'état du code
 (`docs/architecture/gestion-contenu.md`), la charte graphique, la base,
-l'API v1, la production sur Vercel et les cas limites. Les documents de la
-partie IA sont sur la branche `local`.
+l'API v1, la production sur Vercel, les cas limites, et les guides Word, un
+par rôle (`docs/guide/`). Les documents de la partie IA sont sur la branche
+`local`.

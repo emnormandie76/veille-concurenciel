@@ -177,7 +177,13 @@ pas le faire.** Les seize migrations sont appliquées sur `main` et sur `dev`.
    gestion:main` (avance rapide, sans fusion), avec un dernier commit signé au
    nom d'`emnormandie76` (§6), sans quoi Vercel le bloque ;
 4. vérifier : CI verte sur `main`, déploiement de production `READY` (MCP
-   Vercel), puis un coup d'œil en ligne.
+   Vercel), puis un coup d'œil en ligne. Si aucun déploiement de production
+   n'apparaît après quelques minutes (constaté pour `66896db` à l'étape 13 :
+   CI verte, aucun incident chez Vercel, sept minutes d'attente), le créer
+   par le MCP Vercel, **avec l'accord du propriétaire** : `create_deployment`
+   (`gitSource` github `emnormandie76`/`veille-concurenciel`, `ref` `main`,
+   `sha` du commit), puis vérifier qu'il est `READY` et que
+   `app-vc-emn.vercel.app` le sert.
 
 Entre 2 et 3, l'ancien code tourne encore sur le nouveau schéma : une
 migration doit rester compatible avec lui (ajouter d'abord, retirer dans une
@@ -306,8 +312,11 @@ préversion, qui lirait et écrirait la base de production. Réglage retenu
 (D22) : la base n'est reliée qu'à l'environnement **Production**, et Settings
 → Build and Deployment → Ignored Build Step est sur **« Only build
 production »**. Un push sur `gestion` ou sur `local` donne un déploiement
-aussitôt annulé, sans build (il compte quand même dans le quota) ; un commit
-déjà déployé n'en redonne pas.
+aussitôt annulé, sans build (il compte quand même dans le quota). Le même
+commit poussé ensuite sur `main` n'a pas toujours eu sa production : à
+l'étape 12, `0880308` l'a eue dès le push sur `main`, malgré sa préversion
+annulée sur `gestion` ; à l'étape 13, `66896db` n'en a eu aucune, et il a
+fallu la créer (§3.2, point 4). La cause n'est pas connue.
 
 Écarté : relier aussi Preview avec *Preview Branching* (une branche Neon par
 préversion, copie isolée de la production), qui demanderait de surveiller le

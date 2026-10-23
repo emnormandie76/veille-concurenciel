@@ -10,9 +10,10 @@ import { BackOfficeNavLink, SiteNavLink } from "./SiteNavLink";
  * components/layout/SiteShell.tsx — le gabarit des pages du site (charte,
  * étape 4)
  *
- * La barre du site (écoles, API, back-office pour qui y a droit, « Mon
- * compte », déconnexion), puis une colonne de contenu. Toutes les pages du
- * site s'y posent depuis l'étape 9 (lot 1).
+ * La barre du site (écoles, API, back-office pour qui y a droit, aide,
+ * « Mon compte », déconnexion), puis une colonne de contenu. Toutes les pages
+ * du site s'y posent depuis l'étape 9 (lot 1). « Aide » mène à la page d'aide
+ * (étape 14, D109).
  *
  * « Back-office » (étape 10, D104, revient sur D57) : une page qui lit la
  * session (relue en base, `requirePage`, D1) passe `showBackOffice` ; une
@@ -21,7 +22,7 @@ import { BackOfficeNavLink, SiteNavLink } from "./SiteNavLink";
  * n'est qu'une commodité : le layout /admin contrôle l'accès.
  */
 
-export type SiteSection = "schools" | "api" | "account";
+export type SiteSection = "schools" | "api" | "help" | "account";
 
 interface SiteShellProps {
   current?: SiteSection;
@@ -48,6 +49,9 @@ export function SiteShell({ current, showBackOffice, width = "wide", children }:
               API
             </SiteNavLink>
             {showBackOffice === undefined ? <BackOfficeLink /> : showBackOffice && <BackOfficeNavLink />}
+            <SiteNavLink href="/help" current={current === "help"}>
+              Aide
+            </SiteNavLink>
             <SiteNavLink href="/account" current={current === "account"}>
               Mon compte
             </SiteNavLink>

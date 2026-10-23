@@ -3,7 +3,7 @@
 > Ce que fait le code de la branche `gestion` et de `main`, la production,
 > qui la suit par avance rapide. Chaque étape du plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md) la tient à
-> jour ; les décisions citées (G1 à G9, D1 à D107) et les pièges y sont
+> jour ; les décisions citées (G1 à G9, D1 à D115) et les pièges y sont
 > expliqués. Point d'entrée pour travailler sur le site : la partie IA, gelée,
 > vit sur la branche `local` (§1).
 
@@ -43,7 +43,7 @@ référence ; décision G4) :
 
 | Rôle | Qui | Peut |
 |---|---|---|
-| `USER` | toute personne connectée | consulter le site, `/api-docs` et l'API v1 ; **signaler une information** depuis une fiche et en suivre la suite ; changer son nom affiché et son mot de passe sur « Mon compte » (`/account`). **Ne voit pas `/admin`** |
+| `USER` | toute personne connectée | consulter le site, `/api-docs` et l'API v1 ; **signaler une information** depuis une fiche et en suivre la suite ; changer son nom affiché et son mot de passe sur « Mon compte » (`/account`) ; lire **l'aide** (`/help`), le guide de son rôle (D108). **Ne voit pas `/admin`** |
 | `GESTIONNAIRE` | qui tient le contenu à jour | en plus : le back-office du contenu (écoles, campus, programmes, tarifs, places, classements, chiffres clés, accréditations, admissions), créations et suppressions comprises (D19), et **les signalements** (`/admin/reports`, D31) |
 | `ADMIN` | qui gère les accès | en plus : les comptes (liste blanche, rôles, remise en première connexion, désactivation), et **seul l'IA** : l'inbox (la console vit sur la branche `local`, D100) |
 
@@ -66,8 +66,9 @@ Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 | Layout admin | [`app/admin/layout.tsx`](../../app/admin/layout.tsx) | `requirePage("manager")` : un `USER` est renvoyé vers le site (piège 2) |
 | Écrans IA et comptes | `app/admin/inbox/layout.tsx`, `app/admin/users/page.tsx` | `requirePage("admin")` |
 | « Mon compte » | [`app/account/page.tsx`](../../app/account/page.tsx) | `requirePage("signedIn")` : toute session, hors du back-office. Nom affiché et mot de passe, par `PATCH /api/admin/account` et `PATCH /api/admin/account/password`, qui ne prennent aucun identifiant. « Vos signalements » (D36) : la page lit en base les signalements **de la session**, et eux seuls |
+| Aide | [`app/help/page.tsx`](../../app/help/page.tsx), [`guides.tsx`](../../app/help/guides.tsx) | `requirePage("signedIn")` : toute session ; le guide du rôle relu en base (D1), et lui seul (`guideFor`, D108) ; la page n'est pas en cache |
 | Lien « Back-office » de la barre du site | [`components/layout/SiteShell.tsx`](../../components/layout/SiteShell.tsx), [`BackOfficeLink.tsx`](../../components/layout/BackOfficeLink.tsx), [`back-office-access.ts`](../../components/layout/back-office-access.ts), [`app/api/admin/account/back-office/route.ts`](../../app/api/admin/account/back-office/route.ts) | D104 : sur toutes les pages du site, pour un gestionnaire ou un admin, jamais pour un `USER`. Une page qui lit la session le dit au gabarit (`showBackOffice`) ; les autres (accueil, fiches en cache, `/api-docs`) laissent la barre demander à `GET /api/admin/account/back-office` (`guardSignedIn`, rôle relu en base, D1), qui ne rend que `{ backOffice: true \| false }`, en `private, no-store`. Le lien ne fait que montrer le chemin : le layout `/admin` contrôle l'accès |
-| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » ; un admin voit aussi l'inbox et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Mon compte » est au pied du menu, hors de `navFor`. Texte seul (D93), `aria-current="page"` sur l'entrée de l'écran affiché ; sous 1 024 px, replié derrière un bouton « Menu » (D94). `AdminMenu`, sa partie sans état, se rend côté serveur (`test/admin-frame.test.ts`) |
+| Menu | [`app/admin/nav.ts`](../../app/admin/nav.ts), `SidebarClient.tsx` | `navFor(role)` : un gestionnaire voit « Écoles & Campus » et « Signalements » ; un admin voit aussi l'inbox et « Comptes ». Le menu ne fait que masquer : le contrôle est côté serveur. « Aide » (D109) et « Mon compte » sont au pied du menu, hors de `navFor`. Texte seul (D93), `aria-current="page"` sur l'entrée de l'écran affiché ; sous 1 024 px, replié derrière un bouton « Menu » (D94). `AdminMenu`, sa partie sans état, se rend côté serveur (`test/admin-frame.test.ts`) |
 | Déconnexion | `app/admin/SidebarClient.tsx`, [`app/SignOutButton.tsx`](../../app/SignOutButton.tsx) | dans le menu du back-office, et dans la barre du site, après « Mon compte » |
 | Mots de passe | [`lib/password.ts`](../../lib/password.ts) | politique unique (longueurs, borne bcrypt de 72 octets) |
 | Adresses, noms, états | [`lib/accounts.ts`](../../lib/accounts.ts) | module sans dépendance : domaine imposé `WORK_EMAIL_DOMAIN` = `em-normandie.fr` (D5), adresses rangées en minuscules, nom affiché déduit de l'adresse et borné (2 à 80 caractères, D6), états `INVITED`, `ACTIVE`, `DISABLED` |
@@ -144,6 +145,7 @@ Tous les écrans sont dans la charte graphique, chacun dans son gabarit
 | `/api-docs` | documentation de l'API v1 | statique, verrouillée par `test/api-docs.test.ts` |
 | `/schools/[id]/report` | « Signaler une information » : la cible (l'école, un de ses campus ou de ses programmes ; `?program=` la choisit depuis la fiche programme), la catégorie, le message, un lien facultatif | serveur (`requirePage("signedIn")`, Prisma : une école active seulement), formulaire client ; envoi par `POST /api/admin/reports` |
 | `/account` | « Mon compte » : adresse, rôle, nom affiché, mot de passe ; « Vos signalements » (D36) : date, cible, catégorie, état, réponse | serveur (`requirePage("signedIn")`), formulaires client |
+| `/help` | « Aide » (D108) : le guide du rôle de la session, et lui seul (l'utilisateur, le gestionnaire ou l'administrateur) : un sommaire, puis ses sections, coupées de captures d'écran (D111) | serveur (`requirePage("signedIn")`, rôle relu en base, D1), sans cache ; le texte est dans le code (`app/help/guides.tsx`) |
 
 Les pages en cache ISR ne lisent pas la session : le proxy passe avant le
 cache, et le mur tient (plan, piège 4).
@@ -156,12 +158,13 @@ trois colonnes (une seule sur un téléphone) et un panneau d'exemples en clair
 libellé visible (D58). Aucun émoji (D56).
 
 **La barre du site** (`SiteShell`) : Écoles, API, Back-office pour qui y a
-droit, Mon compte, Se déconnecter. Le lien « Back-office » est sur **toutes
+droit, Aide (D109), Mon compte, Se déconnecter. Le lien « Back-office » est sur **toutes
 les pages, dès la connexion**, pour un gestionnaire ou un admin, jamais pour
 un `USER` (D104) :
 
-- « Mon compte » et le formulaire de signalement lisent la session (relue en
-  base, D1) : ils passent `showBackOffice`, et le lien est dans leur HTML ;
+- « Mon compte », l'aide et le formulaire de signalement lisent la session
+  (relue en base, D1) : ils passent `showBackOffice`, et le lien est dans leur
+  HTML ;
 - l'accueil, les deux fiches et `/api-docs` ne la lisent pas (cache ISR, page
   statique) : ils ne passent rien, et la barre pose `BackOfficeLink`, un
   composant client qui demande à `GET /api/admin/account/back-office` (§4.1)
@@ -176,10 +179,12 @@ un `USER` (D104) :
   Coût : une lecture du compte en base par page vue, la même que celle de
   toute garde ; les pages, elles, gardent leur cache.
 
-Limite connue : sur un téléphone (390 px), la barre tient sur une ligne sans
-le lien et sur deux avec ; pour un gestionnaire, au premier chargement de
-l'onglet, le contenu descend donc de 36 px quand la réponse arrive. Sur grand
-écran, les entrées glissent vers la gauche, sans changer de hauteur.
+Sur un téléphone (390 px), depuis l'ajout d'« Aide » (étape 14), la barre
+passe sur deux lignes, avec ou sans « Back-office » : celle d'un `USER`
+gagne une ligne, et le contenu ne descend plus quand le lien d'un
+gestionnaire arrive au premier chargement de l'onglet (relevé du
+23 octobre). Sur grand écran, les entrées glissent vers la gauche, sans
+changer de hauteur.
 
 **Signaler une information** (G8, D33) : les fiches école et programme
 portent un lien « Signaler une information », en bouton secondaire
@@ -213,6 +218,19 @@ concours », texte de `describeEntry`, [`lib/program-entries.ts`](../../lib/prog
 sa note (le concours, les diplômes acceptés) et sa `SourceLine` ; « Aucune
 donnée d'admission disponible. » sinon. L'étiquette du concours
 (`admission_exam`) reste dans l'en-tête (D47).
+
+**L'aide** (étape 14, D108 à D115) : « Aide », dans la barre et au pied du
+menu du back-office (D109), mène à `/help`, où chacun ne lit que le guide de
+son rôle. Le texte, avec les libellés exacts de l'interface, est dans
+[`app/help/guides.tsx`](../../app/help/guides.tsx) ; aucun nom
+d'application, « le site » (D115). Neuf captures d'écran, sous
+`public/help/`, préfixées par le guide qui les montre (D111) : prises sur la
+base `dev`, sans adresse, sans le compte de test ni le nom d'un collègue ;
+servies derrière la connexion, comme tout le site, en `next/image`
+`unoptimized` (l'optimiseur d'images les demanderait sans session, et le
+proxy les lui refuserait). Les trois Word de `docs/guide/` sont un autre
+texte (D112), sur les mêmes captures : un changement d'écran se reporte
+dans la page, dans les Word et, au besoin, dans les captures.
 
 **Cache** (D26, piège 4) : après chaque écriture réussie du contenu, la route
 appelle `revalidateContent()` ([`lib/content-cache.ts`](../../lib/content-cache.ts)),
@@ -508,7 +526,7 @@ build, servie par le site ; aucune violation sur un build de production
 ## 7. Tests
 
 `npm test` et `npm run test:ts` lancent la même suite (`node --test`,
-1 184 tests au 22 octobre 2026, D105), en CI dans le job `ts-tests` (§9.4).
+1 199 tests au 23 octobre 2026, D105), en CI dans le job `ts-tests` (§9.4).
 Les tests Python vivent sur la branche `local`, avec le backend (D101).
 
 - **Banc** (`test/helpers/`) : `fake-prisma.ts` (faux client ; garde les
@@ -618,7 +636,18 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   supprimé : 401 ; la seule clé `backOffice`, en `private, no-store`),
   `test/site-bar.test.ts` (le lien seulement sur un 200 qui dit `true` ; la
   mémoire de l'onglet ; jamais de lien dans le HTML d'une page qui ne lit pas
-  la session ; la barre ne lit pas la session).
+  la session ; la barre ne lit pas la session ; « Aide » avant « Mon
+  compte », D109).
+- **L'aide** (D108 à D115) : `test/help-page.test.ts` (la page sous la vraie
+  `lib/auth.ts` : chacun le guide de son rôle et lui seul, le rôle de la base
+  et non du jeton, un compte non actif renvoyé à la connexion ; le sommaire ;
+  chaque libellé cité, `<Ui>…</Ui>`, relu mot pour mot contre le code des
+  écrans ; ni fonction disparue, ni commande, ni secret ; le guide de l'admin
+  et la console IA, D114 ; chaque capture sous `public/help/`, à ses
+  dimensions, avec un texte de remplacement, et chacun ne voit que celles de
+  son guide), `test/admin-frame.test.ts` (« Aide » au pied du menu, hors de
+  `navFor`), `test/page-titles.test.ts` (les titres fixes, « Aide »
+  compris).
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts` (aucun `catch` muet
   dans l'accueil ni l'inbox ; D75).
@@ -761,7 +790,7 @@ configurations plates). Politique : une base qui passe, la dette visible.
 | `react-hooks/immutability`, `set-state-in-effect`, `purity` | `warn` | règles du compilateur React ; les corriger demande de reprendre les composants un par un |
 | `@typescript-eslint/no-explicit-any` | `warn` | dette chiffrable, donc résorbable |
 
-**0 erreur, 93 avertissements** au 22 octobre 2026.
+**0 erreur, 93 avertissements** au 23 octobre 2026.
 
 ### 9.3. Écrire et lancer les tests
 

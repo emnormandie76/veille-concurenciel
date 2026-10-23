@@ -101,6 +101,18 @@ test("le menu : « School Data Pipeline », le nom, « Mon compte » et « Déco
   assert.match(code(SIDEBAR), /signOut\(\{ callbackUrl: "\/admin\/login" \}\)/);
 });
 
+test("étape 14 (D109) : « Aide » au pied du menu, avant « Mon compte », hors du menu par rôle", () => {
+  for (const user of [ADMIN, MANAGER]) {
+    const out = render(user, "/admin/schools");
+    assert.match(linkTag(out, "Aide"), /href="\/help"/);
+    assert.ok(out.indexOf(">Aide</a>") < out.indexOf(">Mon compte</a>"), "avant « Mon compte »");
+    assert.ok(out.indexOf(">Aide</a>") > out.indexOf("</nav>"), "après la nav du menu par rôle");
+    assert.equal(navEntries(out).some(([href]) => href === "/help"), false, "hors de navFor");
+    assert.ok(classesOf(linkTag(out, "Aide")).includes("focus-visible:outline-side-ink"), "le focus du menu (D92)");
+  }
+  assert.equal(ADMIN_NAV.some((item) => item.href === "/help"), false);
+});
+
 test("le menu : aria-current=\"page\" sur la seule entrée qui mène à l'écran affiché, sous-pages comprises", () => {
   const inbox = render(ADMIN, "/admin/inbox");
   assert.equal(inbox.match(/aria-current="page"/g)?.length, 1);

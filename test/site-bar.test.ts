@@ -154,7 +154,21 @@ test("une page qui ne lit pas la session : la barre demande, et son HTML n'a jam
   assert.doesNotMatch(out, /Back-office/, "rien n'apparaît puis disparaît pour un USER");
   // Le reste de la barre ne change pas.
   assert.match(out, /<nav aria-label="Navigation du site"/);
-  for (const text of ["Écoles", "API", "Mon compte", "Se déconnecter"]) assert.match(out, new RegExp(`>${text}<`), text);
+  for (const text of ["Écoles", "API", "Aide", "Mon compte", "Se déconnecter"]) assert.match(out, new RegExp(`>${text}<`), text);
+});
+
+test("étape 14 (D109) : « Aide » dans la barre, avant « Mon compte », marquée sur la page d'aide", () => {
+  for (const props of [{}, { showBackOffice: true }, { showBackOffice: false }]) {
+    const out = shell(props);
+    const entries = [...out.matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].map((m) => m[2]);
+    const help = entries.indexOf("Aide");
+    assert.ok(help > 0, "« Aide » dans la barre");
+    assert.equal(entries[help + 1], "Mon compte", "juste avant « Mon compte »");
+  }
+  assert.match(shell({}), /<a [^>]*href="\/help"[^>]*>Aide<\/a>/);
+  const onHelp = renderToStaticMarkup(h(SiteShell, { current: "help", showBackOffice: false, children: "contenu" }));
+  assert.equal(onHelp.match(/aria-current="page"/g)?.length, 1);
+  assert.match(onHelp, /<a [^>]*href="\/help"[^>]*aria-current="page"[^>]*>Aide<\/a>|<a [^>]*aria-current="page"[^>]*href="\/help"[^>]*>Aide<\/a>/);
 });
 
 test("BackOfficeLink : composant client, la mémoire de l'onglet par useSyncExternalStore, la question dans un effet", () => {

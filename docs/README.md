@@ -6,13 +6,14 @@ branche `gestion` et `main` (la production, qui la suit par avance rapide).
 
 | Document | Rôle |
 |---|---|
-| [`features/gestion-contenu.md`](features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Les décisions (G1 à G9, D1 à D107) que cite le code y sont expliquées |
+| [`features/gestion-contenu.md`](features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Les décisions (G1 à G9, D1 à D115) que cite le code y sont expliquées |
 | [`architecture/gestion-contenu.md`](architecture/gestion-contenu.md) | **l'état réel du code** : rôles, gardes, écrans, routes, tables, styles, tests, sécurité, outillage et CI |
 | [`architecture/charte-graphique.md`](architecture/charte-graphique.md) | **la charte graphique** : couleurs, contrastes, polices, espacements, composants, gabarits, accessibilité, mise en œuvre |
 | [`architecture/bdd.md`](architecture/bdd.md) | le schéma de la base, les migrations et leur lanceur, le cycle de vie d'un ticket de l'inbox |
 | [`architecture/API-rest.md`](architecture/API-rest.md) | l'API v1 (15 routes) |
 | [`memory/memory-deploiement-vercel.md`](memory/memory-deploiement-vercel.md) | la production sur Vercel : ce qui est en ligne, variables, base et bascule du poste, livrer une version, vérifications, chantiers ouverts |
 | [`edgecase.md`](edgecase.md) | les cas limites du site et leurs parades |
+| [`guide/`](guide/) | **les guides Word**, un par rôle (utilisateur, gestionnaire, administrateur), pour les collègues ; le même guide, sur le site : « Aide » (`/help`) |
 
 Le contenu stocké, présenté pour l'équipe : le doc « Données stockées sur les
 écoles » du propriétaire

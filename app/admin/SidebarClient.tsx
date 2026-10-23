@@ -101,7 +101,10 @@ export function AdminMenu({
         </nav>
 
         <div className="flex flex-col gap-1 border-t border-side-line px-3 py-4">
-          {/* Hors du menu par rôle : « Mon compte » est une page du site, ouverte à toute session. */}
+          {/* Hors du menu par rôle : « Aide » (étape 14, D109) et « Mon compte » sont des pages du site, ouvertes à toute session. */}
+          <MenuLink href="/help" current={pathname.startsWith("/help")}>
+            Aide
+          </MenuLink>
           <MenuLink href="/account" current={pathname.startsWith("/account")}>
             Mon compte
           </MenuLink>

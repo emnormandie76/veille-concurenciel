@@ -19,9 +19,10 @@ import { FIRST_LOGIN_API, FIRST_LOGIN_PATH, LOGIN_PATH, UNAUTHENTICATED_MESSAGE 
 // (lib/auth.ts, décision D1) : dans les gardes des API et dans les écrans du
 // back-office (`requirePage`).
 //
-// Les routes de lecture de l'API (v1, `/api/schools/[id]`) sont en cache d'une
+// `/api/schools/[id]` et `/api/schools/[id]/programs/[pid]` sont en cache d'une
 // heure : le proxy passe avant le cache, le mur tient (plan, piège 4). Les
-// pages ne sont plus en cache depuis la CSP à nonce (D123).
+// pages ne sont plus en cache depuis la CSP à nonce (D123) ; l'API v1, qui lit
+// sa requête, n'en a jamais eu d'effectif (architecture/API-rest.md).
 // ──────────────────────────────────────────────────────────────
 
 // ──────────────────────────────────────────────────────────────

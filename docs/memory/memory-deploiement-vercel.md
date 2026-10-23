@@ -47,7 +47,7 @@ les tickets que le backend du poste a écrits.
 | **Base** | projet Neon `vc-bdd` (`noisy-credit-34683167`), Londres (`aws-eu-west-2`) : `main` (`ep-super-rain-zas6jyy2`) = production, `dev` (`ep-proud-lab-za705j3u`) = essais du poste |
 | **Variables de Production** | `DATABASE_URL` et ses cousines (intégration Neon, Production seule, D22), `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` ; plus les `KV_*` et `REDIS_URL` de l'intégration Upstash, sans effet. Aucune du §1.3 |
 | **Réglages** | région des fonctions `lhr1`, Fluid compute, Node 24.x, « Only build production » |
-| **Secrets Actions** | `DATABASE_URL`, `DIRECT_URL` (sans guillemets), `NEXTAUTH_SECRET` distinct de celui de Vercel |
+| **Secrets Actions** | `DATABASE_URL`, `DIRECT_URL` (sans guillemets) : la branche Neon `main` (`ep-super-rain`), la production ; ils ne servent qu'au statut des migrations sur `main` (§11, D121). `NEXTAUTH_SECRET` distinct de celui de Vercel |
 
 L'ancienne base (`lucky-cell-29057691`, Vercel personnel d'`Anton1P`) et
 l'ancien dépôt (`Anton1P/veille-concurenciel`) restent en sauvegarde figée :
@@ -167,7 +167,8 @@ pas le faire.** Les seize migrations sont appliquées sur `main` et sur `dev`.
 
 ### 3.2. Livrer une version
 
-1. CI verte sur le commit de `gestion` à livrer (MCP GitHub) ;
+1. CI verte sur le commit de `gestion` à livrer (MCP GitHub) ; elle joue
+   toutes les migrations sur une base jetable (§11), sans regarder Neon ;
 2. s'il apporte une migration : `npm run db:status` (lecture seule, permis à
    l'agent), `npm run db:migrate:dry` (applique tout, puis `ROLLBACK`), puis
    `npm run db:migrate` sur `main`, **avec l'accord du propriétaire** (la base
@@ -177,7 +178,10 @@ pas le faire.** Les seize migrations sont appliquées sur `main` et sur `dev`.
    gestion:main` (avance rapide, sans fusion), avec un dernier commit signé au
    nom d'`emnormandie76` (§6), sans quoi Vercel le bloque ;
 4. vérifier : CI verte sur `main`, déploiement de production `READY` (MCP
-   Vercel), puis un coup d'œil en ligne. Si aucun déploiement de production
+   Vercel), puis un coup d'œil en ligne. **Sur `main`, la CI est rouge si
+   une migration du dépôt manque en production** : son étape « statut des
+   migrations (base de production) » interroge la branche Neon `main` (D121,
+   §11) ; d'où le point 2 avant le push. Si aucun déploiement de production
    n'apparaît après quelques minutes (constaté pour `66896db` à l'étape 13 :
    CI verte, aucun incident chez Vercel, sept minutes d'attente), le créer
    par le MCP Vercel, **avec l'accord du propriétaire** : `create_deployment`
@@ -220,8 +224,12 @@ les collègues ajoutés depuis.
   partirait sans client Prisma.
 - **Le build ne lit pas la base** : il passe avec pour seule variable une
   `DATABASE_URL` morte (vérifié dans un `git worktree` jetable, sans aucun
-  `.env*`). Le message « Dynamic server usage » sur `/api/schools` est connu
-  et sans effet : la route reste dynamique.
+  `.env*`).
+- **Aucune page n'est statique** : depuis la CSP à nonce (§7, D123), chaque
+  page se rend à la requête (`await connection()` dans `app/layout.tsx`), et
+  le build les liste toutes en `ƒ (Dynamic)`. Il ne journalise plus « Dynamic
+  server usage » : `/api/schools`, qui lit sa recherche dans l'adresse, n'a
+  plus de `revalidate` (étape 15).
 - **npm 11 n'exécute pas les scripts d'installation non approuvés**
   (`@prisma/engines`, `esbuild`, `prisma`, `unrs-resolver`). Le build passe
   sans eux.
@@ -296,14 +304,24 @@ L'appelant est identifié par `x-vercel-forwarded-for`, un en-tête que Vercel
 
 ## 7. En-têtes de sécurité
 
-Ils sont posés par `next.config.ts` sur `/:path*`, et le mécanisme `headers()`
-de Next fonctionne nativement sur Vercel. Détail :
+**La CSP vient du proxy, à nonce** (étape 15, D123) : `proxy.ts` tire un
+nonce neuf à chaque requête et pose la politique de `lib/csp.ts`
+(`script-src 'self' 'nonce-…' 'strict-dynamic'`, sans `'unsafe-inline'`) sur
+la requête, où Next lit le nonce et le met sur ses propres scripts, et sur la
+réponse, où le navigateur l'applique. Un nonce n'existe qu'au rendu d'une
+requête : aucune page n'est en cache (§4). `'unsafe-eval'` est absent de la
+CSP en production.
+
+**Les cinq autres en-têtes** (`X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy`, `Permissions-Policy`, HSTS) restent fixes, posés par
+`next.config.ts` sur `/:path*` ; le mécanisme `headers()` de Next fonctionne
+nativement sur Vercel. Détail :
 [`gestion-contenu.md`](../architecture/gestion-contenu.md) §8.2.
-`'unsafe-eval'` est absent de la CSP en production. **`preload` de HSTS est
-gardé** (D23) : il engage le domaine pour des mois, mais une adresse en
-`*.vercel.app` n'entre pas dans la liste de préchargement ; la question
-reviendra avec un domaine à soi. Aucune violation CSP en console, sur le site
-comme sur le back-office.
+**`preload` de HSTS est gardé** (D23) : il engage le domaine pour des mois,
+mais une adresse en `*.vercel.app` n'entre pas dans la liste de
+préchargement ; la question reviendra avec un domaine à soi. Aucune violation
+CSP en console, sur le site comme sur le back-office (build de production,
+23 octobre 2026).
 
 ---
 
@@ -338,7 +356,7 @@ la connexion, avec l'accord du propriétaire pour ce qui demande une session :
 | 3 | Sans session : les pages du site et de `/admin` | redirection vers `/admin/login?callbackUrl=…` ; connexion et première connexion en 200 |
 | 4 | Sans session : l'API (v1, `/api/schools`, back-office, comptes) | **401** JSON |
 | 5 | 6 échecs de connexion d'affilée sur une adresse qui n'existe pas | la 6e tentative refusée, « Trop de tentatives de connexion… » (D117) ; clés `fail:login-fail:…` dans Upstash |
-| 6 | En-têtes de `/admin/login` | les six en-têtes de sécurité (§7) |
+| 6 | En-têtes de `/admin/login` | les six en-têtes de sécurité (§7) ; la CSP porte un nonce, neuf à chaque requête, et chaque `<script>` de la page le porte |
 | 7 | Connexion ADMIN | le menu à quatre entrées, `/admin/cron` en 404, l'inbox liste ses tickets |
 | 8 | ~65 appels rapides sur `/api/v1/schools`, en session | **429** au-delà de 60 par minute |
 | 9 | Console du navigateur | aucune violation CSP |
@@ -351,123 +369,127 @@ accordant la portée de l'équipe `em-normandie1` (`CLAUDE.md`, MCP Vercel).
 
 ---
 
-## 10. Chantiers ouverts
+## 10. Dette connue, risque accepté
 
-1. **Base de CI éphémère** (ci-dessous).
-2. **CSP à nonce**, pour retirer `'unsafe-inline'` de `script-src`.
-3. **Vulnérabilités npm hautes** tirées par la CLI Prisma et l'outillage de
-   lint : risque accepté ([`gestion-contenu.md`](../architecture/gestion-contenu.md)
-   §8.3).
-4. **Un JSON mal formé** rend 500 au lieu de 400 sur le CRUD admin et
-   `create-programs` ; rien n'est écrit. Consigné et accepté.
-5. **« Dynamic server usage » sur `/api/schools`** au build : bruit connu
-   (§4) ; le faire taire est un petit changement de code, à décider.
-6. **Avertissements ESLint** : 93 au 22 octobre 2026.
+Les autres chantiers de ce mémo sont faits (étape 15) : la base de CI
+éphémère (§11), la CSP à nonce (§7), le JSON mal formé en 400, `/api/schools`
+sans « Dynamic server usage » (§4). Restent, risque accepté par le
+propriétaire (D118) :
+
+1. **Vulnérabilités npm hautes** tirées par la CLI Prisma et l'outillage de
+   lint ; aucune n'est servie au navigateur
+   ([`gestion-contenu.md`](../architecture/gestion-contenu.md) §8.3).
+2. **Avertissements ESLint** : 81 dans le code du dépôt au 23 octobre 2026
+   (93 sur le poste, avec des scripts locaux ignorés par Git ; fiche
+   d'architecture, §9.2).
 
 ---
 
 ## 11. Base de CI éphémère
 
-> **Pour l'agent qui reprendra ce point.** Cette section est autoportante :
-> elle suppose que vous ne connaissez ni ce dépôt ni l'historique. Lisez-la
-> entièrement avant de toucher au workflow.
+> En place depuis l'étape 15 (23 octobre 2026). Cette section dit ce que fait
+> [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml), pourquoi, et
+> les pièges à connaître avant d'y toucher. `test/ci-workflow.test.ts` relit
+> le workflow.
 
-### L'état actuel, et pourquoi il est provisoire
+### Ce qui est en place
 
-`.github/workflows/ci.yml`, étape **« Prisma — statut des migrations »**,
-exécute `npx prisma migrate status` **contre la base Neon partagée**, celle
-que désignent les secrets `DATABASE_URL` / `DIRECT_URL` du dépôt. Elle ne
-fait échouer le job que sur `main` et sur les PR vers `main` :
+Le job `validate` a un **service Postgres jetable** (`postgres:18`, la
+version majeure de Neon), créé pour le run et détruit après, prêt avant les
+étapes (`pg_isready`). Les variables `DATABASE_URL` **et** `DIRECT_URL` du
+job visent ce conteneur (`postgresql://ci:ci@127.0.0.1:5432/ci`). Sur
+**toutes les branches** :
 
-```yaml
-continue-on-error: ${{ !(github.ref == 'refs/heads/main'
-                      || github.base_ref == 'main') }}
-```
+1. **« Prisma — migrations sur une base vierge (base jetable) »** :
+   `prisma migrate deploy` rejoue tout l'historique depuis une base vide.
+   Une migration cassée (colonne inexistante, ordre de dépendances faux,
+   `DROP` qui échoue) fait échouer le job avant toute relecture, sans
+   toucher à Neon ;
+2. **« Prisma — statut des migrations (base jetable) »** :
+   `prisma migrate status`, sur cette même base, doit dire « à jour ».
 
-**C'est un palliatif assumé, pas une solution.** Il déplace le symptôme, il ne
-retire pas la cause.
+**Le statut contre Neon est gardé sur `main` seul** (D121), et sur les PR
+vers `main` : l'étape **« Prisma — statut des migrations (base de
+production) »** reçoit, dans cette étape seule, les secrets `DATABASE_URL`
+et `DIRECT_URL` du dépôt, qui visent la branche Neon `main`
+(`ep-super-rain`), la production. Avant une mise en production, elle dit si
+la base de production a toutes les migrations du dépôt : tant qu'une manque,
+la CI de `main` est rouge (§3.2). Ailleurs, l'étape ne tourne pas : une
+branche n'attend pas la production.
 
-### La cause
+### Pourquoi
 
 `prisma migrate status` répond à deux questions que rien ne distingue :
 
-1. *« Ces migrations sont-elles cohérentes et applicables ? »* — une propriété
-   du **code**, vraie ou fausse sur n'importe quelle branche, indépendamment
-   de toute base.
-2. *« Cette base-là est-elle à jour ? »* — un **état de déploiement**, qui n'a
-   rien à faire dans la validation d'une branche de travail.
+1. *« Ces migrations sont-elles cohérentes et applicables ? »* : une
+   propriété du **code**, vraie ou fausse sur n'importe quelle branche ;
+2. *« Cette base-là est-elle à jour ? »* : un **état de déploiement**.
 
-Seule la première relève d'une CI de branche. En interrogeant une base
-partagée, l'étape impose la seconde partout : une branche qui ajoute une
-migration échouerait tant que cette migration n'est pas appliquée à la base
-commune, donc **avant même que le code soit relu**.
+Jusqu'à l'étape 15, une seule étape interrogeait la base Neon des secrets
+(la production, nommée à tort « base de dev » dans le workflow) et ne
+bloquait que sur `main` : une branche qui ajoutait une migration aurait
+échoué tant que la migration n'était pas appliquée à la base commune, et
+personne ne vérifiait qu'une migration s'applique sur une base vierge. La
+base jetable répond à la question n° 1, partout ; le statut contre Neon
+répond à la n° 2, là où elle est légitime, avant un déploiement.
 
-### Ce que personne ne vérifie aujourd'hui
+### Les critères d'acceptation, vus le 23 octobre 2026
 
-Aucun test, nulle part, ne vérifie que **les migrations s'appliquent proprement
-sur une base vierge**. `migrate status` compare un journal à une base déjà
-migrée ; il ne rejoue jamais l'historique depuis zéro. Une migration cassée
-(colonne inexistante, ordre de dépendances faux, `DROP` qui échoue) ne se
-découvrirait qu'en production.
+Un job vert ne prouve rien s'il ne peut pas échouer. Les essais ont eu lieu
+sur une branche jetable, `ci-essai` (D122), supprimée ensuite sur le poste et
+sur `origin` :
 
-### Ce qu'il faut construire
+| Run | Commit | Ce qu'il apporte | Résultat |
+|---|---|---|---|
+| 47 | `d0a4c47` | le workflow, sans migration nouvelle | vert : 16 migrations appliquées sur Postgres 18.6, statut « à jour », l'étape de production sautée |
+| 48 | `01fa43e` | une migration volontairement cassée (`ALTER TABLE "School" DROP COLUMN` d'une colonne qui n'existe pas) | **rouge** à « migrations sur une base vierge » (erreur 42703) |
+| 49 | `c5df946` | une migration **valide et inédite** (une table d'essai), au-dessus de l'étape 15 | vert : 17 migrations appliquées sur la base jetable, statut « à jour », l'étape de production sautée |
 
-Un **service Postgres éphémère** dans le job `validate` : un conteneur jetable,
-créé pour le run, détruit après. On y joue `prisma migrate deploy` depuis une
-base vide. Ça teste la question n°1 seule, sur toutes les branches, sans état
-partagé et sans ordre imposé.
+- **Critère 1**, une branche qui ajoute une migration inédite obtient une CI
+  verte sans que personne n'ait touché à la base Neon : le run 49. Le run 47
+  n'apportait aucune migration ; le run 49 a été ajouté pour voir ce critère
+  tel quel.
+- **Critère 2**, une migration délibérément cassée fait échouer le job : le
+  run 48.
 
 ### Les pièges propres à ce dépôt
 
-**1. `DIRECT_URL` gagne sur `DATABASE_URL`.** [`prisma.config.ts`](../../prisma.config.ts)
-choisit la variable de migration ainsi :
+**1. `DIRECT_URL` gagne sur `DATABASE_URL`.**
+[`prisma.config.ts`](../../prisma.config.ts) choisit la variable de
+migration ainsi :
 
 ```ts
 const MIGRATION_URL_VAR = process.env.DIRECT_URL ? "DIRECT_URL" : "DATABASE_URL";
 ```
 
-Le job définit **les deux** depuis les secrets. Un agent qui ne surchargerait
-que `DATABASE_URL` pour pointer le conteneur verrait ses migrations partir
-quand même vers Neon, sans le moindre avertissement. **Surcharger `DIRECT_URL`
-est obligatoire** — c'est elle qui est lue.
+Un job qui ne pointerait que `DATABASE_URL` vers le conteneur, en laissant
+`DIRECT_URL` sur les secrets, enverrait ses migrations vers Neon (la
+production), sans le moindre avertissement. Les deux sont posées sur le
+conteneur pour tout le job ; les secrets n'entrent que dans l'étape de
+production.
 
-**2. `schema.prisma` ne porte pas d'URL.** Son bloc `datasource db` n'a qu'un
-`provider = "postgresql"` ; l'URL vient entièrement de `prisma.config.ts`, qui
-charge `.env.local` puis `.env` avant de résoudre. En CI ces fichiers n'existent
-pas, donc seules les variables d'environnement du job comptent.
+**2. `schema.prisma` ne porte pas d'URL.** Son bloc `datasource db` n'a
+qu'un `provider = "postgresql"` ; l'URL vient entièrement de
+`prisma.config.ts`, qui charge `.env.local` puis `.env` avant de résoudre.
+En CI ces fichiers n'existent pas : seules les variables du job comptent.
 
-**3. Ne jamais utiliser `prisma db push` pour préparer la base de CI.** Ce
-serait contourner précisément ce qu'on cherche à tester, et le garde-fou du
-workflow fait échouer le job s'il détecte ce motif. Utiliser `migrate deploy`.
+**3. Jamais `prisma db push` pour préparer la base de CI.** Ce serait
+contourner ce qu'on teste, et le garde-fou du workflow fait échouer le job
+s'il trouve ce motif. On joue `migrate deploy`.
 
-**4. Le poste de développement ne peut pas joindre Postgres.** La sortie TCP
-sur le port 5432 y est fermée. Ce chantier **ne peut pas se tester en local** :
-il s'itère dans la CI. Prévoir des runs à répétition.
+**4. Le poste ne joint pas Postgres.** La sortie sur le port 5432 y est
+fermée : le workflow ne se teste qu'en poussant, sur une branche d'essai
+jetable (D122), jamais sur `gestion`, où la migration d'essai resterait dans
+l'historique.
 
 **5. `@prisma/adapter-neon` ne concerne pas ce point.** L'application se
-connecte en WebSocket via le driver serverless, mais la **CLI** Prisma ouvre
-une connexion PostgreSQL classique. Un conteneur `postgres:` standard lui
-convient parfaitement.
+connecte en WebSocket par le pilote serverless, mais la **CLI** Prisma ouvre
+une connexion PostgreSQL classique : un conteneur `postgres:` standard lui
+convient.
 
 **6. `test/no-ai-backend.test.ts` lit `ci.yml`** : n'y ajouter aucun job
 Python, ni les mots qui en trahiraient un, commentaires compris.
 
-### Critère d'acceptation
-
-Ne pas se contenter d'un job vert — un test qui ne peut pas échouer ne vaut
-rien. Les deux conditions doivent être vraies :
-
-1. Une branche ajoutant une migration **inédite** obtient une CI verte **sans
-   que personne n'ait touché à la base Neon partagée**.
-2. Une migration **délibérément cassée** (par exemple un `ALTER TABLE` sur une
-   colonne inexistante), poussée sur une branche de test, **fait échouer le
-   job**. Vérifier ce second point explicitement, puis retirer la migration
-   fautive.
-
-### Et le palliatif, on le garde ?
-
-À trancher au moment de faire le travail. Deux options défendables : conserver
-le `migrate status` contre Neon sur `main` seulement — il répond alors à la
-question n°2, qui est légitime *là*, avant un déploiement — ou le retirer
-entièrement une fois la base éphémère en place. La première est plus
-prudente.
+**7. Le job `ts-tests` n'a pas de base** : il reçoit une `DATABASE_URL`
+factice, que `prisma generate` exige sans se connecter ; aucun test ne touche
+une base (fiche d'architecture, §9.4).

@@ -1,7 +1,7 @@
 # Documentation — index
 
-Le projet est un **gestionnaire de contenu** en ligne sur les écoles
-françaises, derrière une connexion obligatoire. Ces documents décrivent la
+Le projet, **Veille concurrentielle**, est un **gestionnaire de contenu** en
+ligne sur les écoles françaises, derrière une connexion obligatoire. Ces documents décrivent la
 branche `gestion` et `main` (la production, qui la suit par avance rapide).
 
 | Document | Rôle |
@@ -11,7 +11,7 @@ branche `gestion` et `main` (la production, qui la suit par avance rapide).
 | [`architecture/charte-graphique.md`](architecture/charte-graphique.md) | **la charte graphique** : couleurs, contrastes, polices, espacements, composants, gabarits, accessibilité, mise en œuvre |
 | [`architecture/bdd.md`](architecture/bdd.md) | le schéma de la base, les migrations et leur lanceur, le cycle de vie d'un ticket de l'inbox |
 | [`architecture/API-rest.md`](architecture/API-rest.md) | l'API v1 (15 routes) |
-| [`memory/memory-deploiement-vercel.md`](memory/memory-deploiement-vercel.md) | la production sur Vercel : ce qui est en ligne, variables, base et bascule du poste, livrer une version, vérifications, chantiers ouverts |
+| [`memory/memory-deploiement-vercel.md`](memory/memory-deploiement-vercel.md) | la production sur Vercel : ce qui est en ligne, variables, base et bascule du poste, livrer une version, en-têtes et CSP à nonce, vérifications, dette connue, la base de CI éphémère |
 | [`edgecase.md`](edgecase.md) | les cas limites du site et leurs parades |
 | [`guide/`](guide/) | **les guides Word**, un par rôle (utilisateur, gestionnaire, administrateur), pour les collègues ; le même guide, sur le site : « Aide » (`/help`) |
 

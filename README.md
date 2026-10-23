@@ -1,10 +1,13 @@
-# Veille Concurrentiel — gestionnaire de contenu de l'enseignement supérieur
+# Veille concurrentielle — gestionnaire de contenu de l'enseignement supérieur
 
-Le gestionnaire de contenu des données sur les écoles françaises : campus,
-programmes, tarifs, classements, capacités d'accueil, accréditations,
-statistiques et admissions. Des collègues de l'équipe (adresses
-`@em-normandie.fr`) consultent les données, des gestionnaires les tiennent à
-jour, des admins gèrent les accès. En ligne : <https://app-vc-emn.vercel.app>.
+**Veille concurrentielle** est le gestionnaire de contenu des données sur les
+écoles françaises : campus, programmes, tarifs, classements, capacités
+d'accueil, accréditations, statistiques et admissions. Des collègues de
+l'équipe (adresses `@em-normandie.fr`) consultent les données, des
+gestionnaires les tiennent à jour, des admins gèrent les accès. En ligne :
+<https://app-vc-emn.vercel.app>. Le nom ne s'écrit qu'une fois, dans
+[`lib/app-name.ts`](lib/app-name.ts) ; le dépôt garde le sien
+(`veille-concurenciel`).
 
 | | Rôle | Branche |
 |---|---|---|
@@ -223,7 +226,14 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
    compte et 20 par IP sur 15 minutes, une réussite ne comptant jamais ;
    signalement dans sa route, par compte (10 par heure), l'équipe partageant
    l'IP de l'école.
-5. **Sur la branche `local`**, deux garanties du backend : tout contenu
+5. **La CSP est à nonce** : `proxy.ts` tire un nonce neuf à chaque requête
+   et pose la politique de `lib/csp.ts`, dont `script-src` n'a pas
+   `'unsafe-inline'` ; Next met le nonce sur ses scripts. Un nonce n'existe
+   qu'au rendu d'une requête : **toutes les pages sont dynamiques**
+   (`await connection()` dans `app/layout.tsx`). Une page rendue statique ou
+   mise en cache servirait des scripts au nonce périmé, que le navigateur
+   bloquerait (`test/csp.test.ts`).
+6. **Sur la branche `local`**, deux garanties du backend : tout contenu
    externe injecté dans un prompt passe par `wrap_source()`
    (`backend/ai/gemma_client.py`), qui neutralise les balises de délimitation,
    et les règles vont dans le `system_prompt`, jamais dans le message

@@ -9,8 +9,9 @@
 > Word (`docs/guide/`), un par rôle ; le propriétaire en a demandé la mise en
 > production le même jour (`435102b`, avec `next` 16.4.2 après un avis
 > critique). Le même jour, après la livraison : le plafond de la connexion ne compte plus
-> que les échecs (D117), puis **l'étape 15, des finitions (D118), en cours**,
-> à livrer en une fois avec D117. Reste ensuite D15 (les événements des
+> que les échecs (D117), puis **l'étape 15, des finitions (D118), faite et
+> validée le 23 octobre**, livrée en une fois avec D117 à la demande du
+> propriétaire. Reste ensuite D15 (les événements des
 > écoles), en attente de l'équipe. Le détail de chaque étape est au §5, son
 > histoire au journal (§9).
 > **Branche de travail :** `gestion`, créée le 16 octobre 2026 (G2) ; la
@@ -292,10 +293,13 @@ est dans [`architecture/gestion-contenu.md`](../architecture/gestion-contenu.md)
    seulement en masquant des liens.
 3. **Le rôle copié dans le jeton y vivrait 8 h** : il est relu en base à
    chaque requête (D1).
-4. **Pages publiques en cache ISR d'une heure** (`revalidate = 3600`). Le
-   proxy passe avant le cache, donc le mur de connexion tient ; l'affichage
-   « modifié par » serait en retard d'autant, d'où la revalidation à chaque
-   écriture (D26).
+4. **Le cache d'une heure** (`revalidate = 3600`). Le proxy passe avant le
+   cache, donc le mur de connexion tient ; l'affichage « modifié par » serait
+   en retard d'autant, d'où la revalidation à chaque écriture (D26). Depuis
+   la CSP à nonce (D123), aucune page n'est en cache ; seules
+   `/api/schools/[id]` et `/api/schools/[id]/programs/[pid]` le restent,
+   revalidées de même. Une page remise en cache ou rendue statique verrait
+   ses scripts bloqués : un nonce n'existe qu'au rendu d'une requête.
 5. **Le backend gelé partage la base.** Il écrit `PipelineJob` et
    `ContributionInbox`, et lit les tables de données (diff de la Phase 2).
    Renommer ou supprimer une colonne qu'il lit le casse sans bruit : ses
@@ -318,9 +322,12 @@ est dans [`architecture/gestion-contenu.md`](../architecture/gestion-contenu.md)
     lot 6, tout est dans la charte et le preflight est actif (D96, D97). La CSP
     (`style-src 'self' 'unsafe-inline'`) ne bloque pas : Tailwind produit un
     fichier CSS statique au build.
-11. **CI.** `prisma migrate status` bloque sur `main` et sur les PR vers `main`,
-    pas sur `gestion` ni sur `local`. Le déclencheur `pull_request` ne vise
-    que `main`.
+11. **CI.** Depuis l'étape 15, sur `gestion` et `main`, les migrations se
+    jouent à chaque run sur un Postgres jetable ; le statut contre la
+    production (les secrets Neon visent la branche `main`) ne tourne que sur
+    `main` et les PR vers `main` (D121), et y bloque tant qu'une migration
+    manque en production. La branche `local` garde l'ancien workflow. Le
+    déclencheur `pull_request` ne vise que `main`.
 
 ---
 
@@ -793,12 +800,12 @@ points nés de l'étape 14. Livrée en une fois avec D117.
 
 - [x] `eslint-config-next` aligné sur `next` (16.4.2). *Fait le 23 octobre :
   lint inchangé, 0 erreur et 93 avertissements.*
-- [ ] Le nom de l'application, « Veille concurrentielle », partout à
+- [x] Le nom de l'application, « Veille concurrentielle », partout à
   l'écran (D119) ; le guide le nomme en tête, sur la page et dans les Word ;
-  les captures qui montrent l'ancien nom refaites. *En cours : le code
-  (`lib/app-name.ts`, seul endroit où le nom s'écrit), la page d'aide et la
-  capture de connexion faits ; restent les quatre autres captures de
-  l'utilisateur et les trois Word (journal).*
+  les captures qui montrent l'ancien nom refaites. *Fait le 23 octobre : le
+  code (`lib/app-name.ts`, seul endroit où le nom s'écrit), la page d'aide,
+  les cinq captures de l'utilisateur (dimensions inchangées) et les trois
+  Word (en-tête de page et introduction), relus en PDF (journal).*
 - [x] Un JSON mal formé rend 400, sans rien écrire, sur les 14 routes du
   CRUD et sur les deux de l'inbox (D120). *Fait le 23 octobre :
   `readFormBody` (`lib/request-body.ts`) ; plus aucune route ne lit son
@@ -806,19 +813,22 @@ points nés de l'étape 14. Livrée en une fois avec D117.
 - [x] `/api/schools` : plus de « Dynamic server usage » au build (la route
   lit sa recherche dans l'adresse : elle est dynamique, sans `revalidate`).
   *Fait le 23 octobre : le build ne le journalise plus.*
-- [ ] La base de CI éphémère (mémo Vercel §11) : à chaque run, les
+- [x] La base de CI éphémère (mémo Vercel §11) : à chaque run, les
   migrations jouées sur un Postgres vierge ; le contrôle contre Neon gardé
   sur `main` seul (D121) ; les essais sur une branche jetable (D122), une
   migration cassée vue en échec. *Fait le 23 octobre : runs 47 (vert, 16
-  migrations sur Postgres 18.6) et 48 (rouge sur la migration cassée) ;
-  `ci-essai` supprimée.*
-- [ ] La CSP à nonce, en dernier (D123) : `'unsafe-inline'` retiré de
+  migrations sur Postgres 18.6), 48 (rouge sur la migration cassée) et 49
+  (vert, une migration inédite et valide, Neon non touché) ; `ci-essai`
+  supprimée.*
+- [x] La CSP à nonce, en dernier (D123) : `'unsafe-inline'` retiré de
   `script-src` ; toutes les pages dynamiques ; aucune violation CSP dans
-  Edge, sur le site et le back-office. *En cours : le code et ses tests
-  faits ; vue dans Edge sans session (connexion, première connexion) ; reste
-  le contrôle en session.*
+  Edge, sur le site et le back-office. *Fait le 23 octobre : le code et ses
+  tests ; vue dans Edge sur un build de production, sans session puis en
+  session (le propriétaire connecté), 38 pages à 1 440 et 390 px : chaque
+  `<script>` porte le nonce, pages hydratées, aucune violation ni exception
+  (journal).*
 - [ ] La livraison : D117 et l'étape 15 ensemble, à la demande du
-  propriétaire.
+  propriétaire. *Demandée le 23 octobre, l'étape validée (journal).*
 
 **Docs :** mémo Vercel (§4, §7, §10, §11), fiche d'architecture (routes,
 en-têtes, CI), README, `CLAUDE.md`.
@@ -897,3 +907,5 @@ décisions mot pour mot, contrôles), est dans l'historique Git :
 | 2026-10-23 | après 14 | **Deux décisions du propriétaire après la livraison** : D116 (pas de report de `next` 16.4.2 sur `local`) ; D117 (le plafond de la connexion ne compte plus que les échecs ; une série de questions à cocher, les recommandations retenues). **Tests d'abord, vus en échec** : `test/rate-limit.test.ts` (+5 : les compteurs d'échecs, lus sans ajout, la fenêtre depuis le premier échec, l'effacement, Upstash `GET`, `INCR` et `EXPIRE NX`, `DEL`, le repli mémoire, `resetMemoryStore`) ; `test/login-attempts.test.ts` (8 tests, un fichier nouveau : les seuils, le compte bloqué depuis toute IP, la casse, l'IP bloquée, la réussite qui efface, les 15 minutes, l'IP des en-têtes, la page qui dit le blocage sans embarquer les compteurs) ; `test/sign-in.test.ts` (+6) ; `test/api/first-login.test.ts` (+4 ; le magasin vidé entre deux tests) ; `test/proxy.test.ts` : **six tests retirés avec la règle** (la 6e tentative de connexion en 429 ; varier `x-forwarded-for` ; la première connexion plafonnée ; le plafond partagé en alternant ; seul le POST de la première connexion compté ; seul le POST de connexion compté), remplacés par deux (le proxy laisse passer chaque envoi sans compter ; `proxy.ts` sans plafond de connexion). **Code** : `lib/rate-limit.ts` (les compteurs d'échecs), `lib/login-attempts.ts` (nouveau), `lib/sign-in.ts` (`authorizeCredentials`), la route NextAuth (l'IP des en-têtes), `app/api/first-login/route.ts` (429 avant le hachage, l'échec noté, la réussite qui efface), `proxy.ts` (le plafond de la connexion retiré), `lib/roles.ts` (l'erreur et le message du blocage, que lit la page, composant client), la page de connexion, le smoke local ; le guide, sur la page et dans les Word de l'utilisateur et de l'administrateur. 1 218 tests TypeScript, typecheck propre, lint 0 erreur (93 avertissements), `npm run build` vert. **À l'exécution**, sur un build local (base `dev`, adresses inexistantes, IP de documentation) : cinq échecs `CredentialsSignin`, puis `TooManyAttempts`, aussi depuis une autre IP ; une autre adresse de la même IP passe ; la première connexion : cinq 403, puis 429 avec `Retry-After: 900` et le message. | Non vu à l'exécution : une connexion réussie (pas de compte de test sans le propriétaire) ; les tests la couvrent. Le build journalise « Dynamic server usage » pour `/api/schools` (`request.url`, une route déjà dynamique) : sans lien avec D117, non examiné. Un commit, à la demande du propriétaire ; ni push ni mise en production demandés. |
 | 2026-10-23 | 15 | **L'étape 15 ajoutée au plan.** Le propriétaire demande, après la livraison de l'étape 14, une étape de finitions, livrée en une fois avec D117 (D118) : il retient la base de CI éphémère, la CSP à nonce, `/api/schools`, le JSON mal formé, le nom de l'application (« Veille concurrentielle », D119) et `eslint-config-next` ; il écarte la dette (avertissements ESLint, vulnérabilités hautes de l'outillage). Deux séries de questions à cocher, les recommandations retenues : D119 à D123. **Relevé** : un `npm run build` sur `d477729` donne cinq pages statiques (`/`, `/_not-found`, `/admin/login`, `/admin/first-login`, `/api-docs`), que la CSP à nonce rendra dynamiques ; « Dynamic server usage » vient de `revalidate = 3600` sur une route qui lit `request.url` ; trois tests attestent le 500 du JSON mal formé (« décision 10 : consigné, non corrigé ») ; cinq captures du guide (celles de l'utilisateur) montrent l'ancien nom. | D117 reste commité, ni poussé ni en production : il part avec l'étape 15. |
 | 2026-10-23 | 15 | **Réalisation, première partie ; un commit d'étape en cours**, à la demande du propriétaire, qui passe la main à un agent neuf (rien de poussé). **Tests d'abord, vus en échec** pour chaque point : `test/app-name.test.ts` (6, nouveau), `admin-frame`, `page-titles` et `help-page` (+1) pour le nom ; les trois tests du JSON mal formé passés de 500 à 400 (« décision 10 : consigné, non corrigé » : la règle change avec D120), deux de l'inbox, deux dans `request-body` (dont « aucune route ne lit `request.json()` », vu en échec sur l'ancienne route) ; `public-schools` (+1) ; `test/ci-workflow.test.ts` (5, nouveau) ; `test/csp.test.ts` (6, nouveau), `proxy` (+2), `reports-pages` (les fiches sans cache : l'attendu change avec D123). **Code** : `lib/app-name.ts` (le nom, importé par la barre, le menu, la connexion, les onglets, la doc de l'API et l'aide ; `package.json` devient `veille-concurrentielle`) ; `readFormBody` et le type `FormBody` (`lib/request-body.ts`, un seul `any` assumé, celui que rendait `request.json()`) dans les 16 routes ; `/api/schools` sans `revalidate` ; `lib/csp.ts`, `proxy.ts` (un nonce par requête, la CSP sur la requête qui passe et sur toute réponse), `next.config.ts` (plus de CSP), `app/layout.tsx` (`await connection()` : toutes les pages dynamiques), les deux fiches sans `revalidate` ; `lib/content-cache.ts` ne revalide plus que `/api/schools` (les fiches n'ont plus de cache : leur revalidation ne servait plus) ; `ci.yml` (un service `postgres:18`, `DATABASE_URL` et `DIRECT_URL` du job sur lui, `migrate deploy` puis `migrate status` sur la base vierge, le statut contre Neon sur `main` seul, avec les secrets dans cette étape seule). 1 243 tests TypeScript, typecheck propre, lint 0 erreur (93 avertissements), `npm run build` vert : aucune page statique, plus de « Dynamic server usage ». **CI** (D122) : `ci-essai` (`d0a4c47`, puis `01fa43e`) ; run 47 vert (16 migrations appliquées sur Postgres 18.6 à `127.0.0.1`, statut « à jour », l'étape Neon sautée) ; run 48 rouge à « migrations sur une base vierge », erreur 42703 sur la migration cassée ; la branche supprimée sur `origin` et sur le poste. **Edge** (build de production, base `dev`, contexte isolé sans session) : connexion et première connexion à 1 440 et 390 px, chaque `<script>` porte le nonce de sa réponse, un nonce neuf à chaque requête, l'hydratation faite (`next` 16.4.2 dans la page), aucune violation CSP ni exception, aucun débordement ; la capture de connexion refaite (440 × 470). | **Surprise** : les secrets `DATABASE_URL` et `DIRECT_URL` de la CI visent `ep-super-rain`, la branche Neon `main`, la production (journal du run 46) ; l'étape s'appelait à tort « base de dev ». Le heredoc de l'outil Bash avale un `\` sur deux : un `\b` devenu caractère de contrôle faisait passer un test à tort, vu et corrigé. **Reste** : le contrôle en session (le propriétaire se connecte dans Edge ; les quatre autres captures de l'utilisateur, celles qui montrent la barre ; le site et le back-office à 1 440 et 390 px, sans violation CSP) ; les trois Word (le nom en tête ; les captures de l'utilisateur) ; la doc (mémo Vercel §4, §7, §10, §11 ; fiche d'architecture, en-têtes, CI, routes, cache ; README ; `CLAUDE.md`) ; la validation, le commit, puis la livraison avec D117. |
+| 2026-10-23 | 15 | **Réalisation, seconde partie**, par un agent neuf, sur le poste (modèle `claude-opus-5-5` ; l'agent ne voit pas son niveau d'effort, signalé en ouverture). **Point de départ vérifié** : `gestion` = `3cc5c37` au-dessus de `d477729`, ni l'un ni l'autre poussés ; `origin/gestion` = `main` = `origin/main` = `435102b` ; `local` = `8fafe56` ; trois branches ; arbre propre ; 1 243 tests verts. **Le critère 1 de la base de CI** (mémo Vercel §11 : une migration inédite donne une CI verte sans toucher Neon) **n'avait pas été vu** : le run 47 n'apportait aucune migration. Choix du propriétaire (questions à cocher, recommandation retenue) : un run de plus sur `ci-essai`. Commit d'essai `c5df946`, construit par la plomberie Git (aucune branche locale, la copie de travail intacte), au-dessus de `3cc5c37`, avec une migration valide (`CREATE TABLE "CiEssai"`) ; **run 49 vert** : « 17 migrations found », la migration d'essai appliquée sur `127.0.0.1:5432/ci`, statut « up to date », l'étape de production sautée ; `ci-essai` supprimée sur `origin`. **Contrôle en session**, avec l'accord du propriétaire : `npm run build` (tout en `ƒ`, `next-env.d.ts` remis), `npm run db:status` (le poste vise `dev`, `ep-proud-lab`, 16 migrations), `npm run start`, une fenêtre Edge pilotée (profil temporaire, port 9333), le propriétaire connecté lui-même : **la première connexion réussie vue à l'exécution sous D117** (build local, base `dev`). Les quatre captures de l'utilisateur refaites (`user-accueil`, `user-fiche-ecole`, `user-fiche-programme`, `user-signalement`), le lien « Back-office » retiré du DOM avant la prise : dimensions inchangées (`CAPTURES` intact), seule la barre change. **38 pages vues** à 1 440 et 390 px : l'accueil et sa recherche, la fiche école et ses onglets, la fiche programme, le signalement, l'Aide, « Mon compte », `/api-docs` (un point d'accès choisi, l'onglet Python, « Copier », un `fetch` de `/api/v1/schools` en 200) ; « Gestion des Écoles », les huit onglets de « Gérer le contenu », « Signalements », « Comptes », la Validation Inbox. Partout `next` 16.4.2 dans la page, chaque `<script>` porte le nonce, aucune violation CSP, aucune exception, aucun débordement ; le nom tient sur une ligne dans la barre et dans le menu. Lecture seule. Le serveur arrêté par son numéro de processus, la fenêtre fermée, le profil supprimé. **Word** : `build.js` (hors dépôt) relancé ; face aux Word du dépôt, seuls changent l'en-tête de page, la ligne d'introduction et les propriétés (le nom), et les images ; relus en PDF (4, 3 et 2 pages), copiés sous `docs/guide/`. **Doc** : mémo Vercel (§0 les secrets de la CI, §3.2, §4, §7, §9, §10 devenu « Dette connue », §11 réécrit : ce qui est en place et les runs 47 à 49), fiche d'architecture (§2.2, §3.1 le cache et le nom, §4.1 les corps de requête, §4.2, §4.3, §6, §7, §8.2 la CSP à nonce, §8.3, §8.4, §9.2, §9.4), charte (la barre), README (le nom ; la CSP en sécurité), `CLAUDE.md`, index, `.env.example` (le nom), ce plan (statut, pièges 4 et 11, cases). **Code**, des commentaires seulement : quatre que D123 rendait faux (`proxy.ts` : l'API v1 n'a jamais eu de cache effectif ; `app/api-docs/page.tsx`, « statique » deux fois ; `SiteShell.tsx`, « les fiches en cache »). 1 243 tests TypeScript, typecheck propre, lint 0 erreur, `npm run build` vert. | **Écart, signalé puis tranché** : le critère 1, donné pour vu, ne l'était pas (run 49). **Surprise** : la CI compte 81 avertissements ESLint, le poste 93 : les 12 autres viennent de scripts de `tmp/`, ignoré par Git mais lu par ESLint ; les docs disent désormais 81 (93 sur le poste). `/api-docs` n'a pas de bouton qui appelle l'API : ses gestes et un `fetch` de l'exemple ont été joués. **Hors périmètre, signalé** : sur le formulaire de signalement, « : ils la vérifient » passe à la ligne avant le deux-points (une espace simple là où irait une insécable), déjà sur la capture de l'étape 14. **Reste** : la validation du propriétaire, le commit, puis la livraison avec D117. |
+| 2026-10-23 | 15 | **Validation.** Le propriétaire valide l'étape (question à cocher, recommandation retenue) et demande le commit, le push et la mise en production, D117 compris : un commit `feat(finitions)` qui complète l'étape, `3cc5c37` et `d477729` gardés tels quels ; aucune migration nouvelle (la branche Neon `main` a les seize). | La mise en production se vérifie après le push (CI de `gestion`, puis de `main` avec le statut de production ; déploiement `READY` ; en ligne, la CSP à nonce, le nom et une vraie connexion du propriétaire). |

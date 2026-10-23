@@ -61,7 +61,7 @@ Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 | Session | [`lib/auth.ts`](../../lib/auth.ts), `getSession()` | lit le jeton, puis **relit le compte en base par son id** à chaque appel (D1) : nom affiché, adresse et rôle viennent de la base. `null` sans session, sur un cookie illisible, si le compte n'existe plus, s'il **n'est pas actif** (invité après une remise à zéro, désactivé) ou si la version de session du jeton n'est pas celle du compte (jeton d'avant une remise à zéro : D20). Un rôle inconnu en base ne vaut que `USER`. Une panne de la base remonte (500), elle ne se déguise pas en refus |
 | Gardes des API | `lib/auth.ts` | `guardSignedIn()` : 401 sans session. `guardManager()` : 401, puis 403 pour un `USER`. `guardAdmin()` : 401, puis 403 hors `ADMIN`. Chaque handler de `app/api/admin/**` en attend **une seule** (piège 1) |
 | Gardes des écrans | `lib/auth.ts`, `requirePage(level)` | rend la session, ou redirige : vers la connexion sans session, vers `/` pour un `USER`, vers `/admin/schools` pour un gestionnaire sur un écran `admin` |
-| Proxy | [`proxy.ts`](../../proxy.ts) (tient lieu de middleware) | **session exigée sur tout le site** (G6), sauf `/admin/login`, `/admin/first-login`, `POST /api/first-login` et `/api/auth/*` (chemins dans [`lib/roles.ts`](../../lib/roles.ts)). Sans session : une page renvoie vers `/admin/login?callbackUrl=…`, une route `/api/*` répond 401 en JSON. Ne regarde que l'existence d'un jeton valide (contrôle « optimiste », doc Next 16), jamais le rôle ni l'état du compte. Matcher : tout sauf `_next/static`, `_next/image`, `favicon.ico`. Plafonds de débit : §8.1 |
+| Proxy | [`proxy.ts`](../../proxy.ts) (tient lieu de middleware) | **session exigée sur tout le site** (G6), sauf `/admin/login`, `/admin/first-login`, `POST /api/first-login` et `/api/auth/*` (chemins dans [`lib/roles.ts`](../../lib/roles.ts)). Sans session : une page renvoie vers `/admin/login?callbackUrl=…`, une route `/api/*` répond 401 en JSON. Ne regarde que l'existence d'un jeton valide (contrôle « optimiste », doc Next 16), jamais le rôle ni l'état du compte. Pose aussi la **CSP à nonce** sur chaque requête qui passe et sur chaque réponse (D123, §8.2). Matcher : tout sauf `_next/static`, `_next/image`, `favicon.ico`. Plafonds de débit : §8.1 |
 | Signalement | [`app/api/admin/reports/route.ts`](../../app/api/admin/reports/route.ts), [`lib/content-reports.ts`](../../lib/content-reports.ts) | `POST` en `guardSignedIn` : l'auteur est le compte de la session, jamais le corps. **10 envois par heure et par compte** (D35 : l'équipe sort par la même IP), par `checkRateLimit("report:<compte>")` de `lib/rate-limit.ts`, compté une fois le corps lu et avant toute lecture en base ; au-delà, 429 avec `Retry-After`. Hors du proxy, comme le plafond de la connexion (D117), parce que le proxy ne connaît pas le compte |
 | Layout admin | [`app/admin/layout.tsx`](../../app/admin/layout.tsx) | `requirePage("manager")` : un `USER` est renvoyé vers le site (piège 2) |
 | Écrans IA et comptes | `app/admin/inbox/layout.tsx`, `app/admin/users/page.tsx` | `requirePage("admin")` |
@@ -140,15 +140,26 @@ Tous les écrans sont dans la charte graphique, chacun dans son gabarit
 | Chemin | Rôle | Données |
 |---|---|---|
 | `/` ([`app/page.tsx`](../../app/page.tsx)) | liste et recherche des écoles | client : `fetch('/api/schools')`, écoles `ACTIVE` seulement, erreurs par [`lib/public-schools.ts`](../../lib/public-schools.ts) ; les programmes de chaque école par `programs_count`, comme sa fiche (D75) |
-| `/schools/[id]` | fiche école (campus, programmes, chiffres clés, accréditations) | serveur, Prisma, ISR 1 h ; une école non `ACTIVE` rend 404 |
-| `/schools/[id]/programs/[pid]` | fiche programme (admissions, tarifs, places, classements, rattachements) | serveur, Prisma, ISR 1 h |
-| `/api-docs` | documentation de l'API v1 | statique, verrouillée par `test/api-docs.test.ts` |
+| `/schools/[id]` | fiche école (campus, programmes, chiffres clés, accréditations) | serveur, Prisma, rendue à chaque visite (D123) ; une école non `ACTIVE` rend 404 |
+| `/schools/[id]/programs/[pid]` | fiche programme (admissions, tarifs, places, classements, rattachements) | serveur, Prisma, rendue à chaque visite (D123) |
+| `/api-docs` | documentation de l'API v1 | client, sans lecture en base ; verrouillée par `test/api-docs.test.ts` |
 | `/schools/[id]/report` | « Signaler une information » : la cible (l'école, un de ses campus ou de ses programmes ; `?program=` la choisit depuis la fiche programme), la catégorie, le message, un lien facultatif | serveur (`requirePage("signedIn")`, Prisma : une école active seulement), formulaire client ; envoi par `POST /api/admin/reports` |
 | `/account` | « Mon compte » : adresse, rôle, nom affiché, mot de passe ; « Vos signalements » (D36) : date, cible, catégorie, état, réponse | serveur (`requirePage("signedIn")`), formulaires client |
 | `/help` | « Aide » (D108) : le guide du rôle de la session, et lui seul (l'utilisateur, le gestionnaire ou l'administrateur) : un sommaire, puis ses sections, coupées de captures d'écran (D111) | serveur (`requirePage("signedIn")`, rôle relu en base, D1), sans cache ; le texte est dans le code (`app/help/guides.tsx`) |
 
-Les pages en cache ISR ne lisent pas la session : le proxy passe avant le
-cache, et le mur tient (plan, piège 4).
+**Aucune page n'est en cache** : depuis la CSP à nonce (D123, §8.2), toutes
+se rendent à chaque requête (`await connection()` dans
+[`app/layout.tsx`](../../app/layout.tsx)), et le build les liste toutes en
+`ƒ (Dynamic)`. Deux routes de lecture gardent un cache d'une heure (§4.3) :
+le proxy passe avant lui, et le mur tient (plan, piège 4).
+
+**Le nom de l'application**, « Veille concurrentielle » (D119), ne s'écrit
+qu'une fois, dans [`lib/app-name.ts`](../../lib/app-name.ts) : la barre du
+site, la connexion, le menu du back-office, le titre des onglets, `/api-docs`
+et l'aide l'importent (`test/app-name.test.ts`). Il remplace les deux noms
+qu'avait l'écran (« EduData France », « School Data Pipeline », D115). Le
+changer : cette ligne, puis les captures et les Word du guide, qui le
+montrent.
 
 Toutes les pages du site sont sur le gabarit `SiteShell`. La fiche école a
 trois onglets (Programmes, Statistiques, Accréditations), au modèle ARIA de la
@@ -165,8 +176,8 @@ un `USER` (D104) :
 - « Mon compte », l'aide et le formulaire de signalement lisent la session
   (relue en base, D1) : ils passent `showBackOffice`, et le lien est dans leur
   HTML ;
-- l'accueil, les deux fiches et `/api-docs` ne la lisent pas (cache ISR, page
-  statique) : ils ne passent rien, et la barre pose `BackOfficeLink`, un
+- l'accueil, les deux fiches et `/api-docs` ne la lisent pas : ils ne
+  passent rien, et la barre pose `BackOfficeLink`, un
   composant client qui demande à `GET /api/admin/account/back-office` (§4.1)
   si le compte a accès au back-office. Le HTML du serveur n'a jamais le lien :
   rien n'apparaît puis disparaît pour un `USER` ; pour un gestionnaire, le
@@ -177,7 +188,7 @@ un `USER` (D104) :
   le fait partir à la page suivante. Dans le doute (session finie, erreur,
   réseau), pas de lien. Une déconnexion recharge la page et vide la mémoire.
   Coût : une lecture du compte en base par page vue, la même que celle de
-  toute garde ; les pages, elles, gardent leur cache.
+  toute garde.
 
 Sur un téléphone (390 px), depuis l'ajout d'« Aide » (étape 14), la barre
 passe sur deux lignes, avec ou sans « Back-office » : celle d'un `USER`
@@ -189,7 +200,7 @@ changer de hauteur.
 **Signaler une information** (G8, D33) : les fiches école et programme
 portent un lien « Signaler une information », en bouton secondaire
 (`buttonClasses`), vers `/schools/[id]/report` (depuis une fiche programme :
-`?program=<id>`). Les fiches ne lisent pas la session et gardent leur cache.
+`?program=<id>`). Les fiches ne lisent pas la session.
 Aucune IA : le signalement va dans `ContentReport`, jamais dans l'inbox (D13,
 piège 6). L'auteur suit la suite donnée sur « Mon compte » (D36) ; aucun
 e-mail.
@@ -222,22 +233,28 @@ donnée d'admission disponible. » sinon. L'étiquette du concours
 **L'aide** (étape 14, D108 à D115) : « Aide », dans la barre et au pied du
 menu du back-office (D109), mène à `/help`, où chacun ne lit que le guide de
 son rôle. Le texte, avec les libellés exacts de l'interface, est dans
-[`app/help/guides.tsx`](../../app/help/guides.tsx) ; aucun nom
-d'application, « le site » (D115). Neuf captures d'écran, sous
+[`app/help/guides.tsx`](../../app/help/guides.tsx) ; la page nomme
+l'application une fois, en tête (« Le guide de Veille concurrentielle pour
+votre rôle », D119), puis le texte dit « le site ». Neuf captures d'écran, sous
 `public/help/`, préfixées par le guide qui les montre (D111) : prises sur la
 base `dev`, sans adresse, sans le compte de test ni le nom d'un collègue ;
 servies derrière la connexion, comme tout le site, en `next/image`
 `unoptimized` (l'optimiseur d'images les demanderait sans session, et le
-proxy les lui refuserait). Les trois Word de `docs/guide/` sont un autre
-texte (D112), sur les mêmes captures : un changement d'écran se reporte
+proxy les lui refuserait). Les captures montrent le nom de l'application
+(refaites à l'étape 15). Les trois Word de `docs/guide/` sont un autre texte
+(D112), sur les mêmes captures, et nomment l'application en tête (l'en-tête
+de page et la ligne d'introduction, D119) : un changement d'écran se reporte
 dans la page, dans les Word et, au besoin, dans les captures.
 
-**Cache** (D26, piège 4) : après chaque écriture réussie du contenu, la route
-appelle `revalidateContent()` ([`lib/content-cache.ts`](../../lib/content-cache.ts)),
-qui invalide `/schools` et `/api/schools` en `layout` : toutes les fiches
-école et programme et les trois routes de l'accueil se régénèrent à la visite
-suivante, au lieu d'attendre l'heure de l'ISR. Un échec de la revalidation
-est journalisé (`[cache]`), il n'annule pas l'écriture.
+**Cache** (D26, piège 4) : seules `/api/schools/[id]` et
+`/api/schools/[id]/programs/[pid]` sont encore en cache d'une heure
+(`revalidate = 3600`) ; les fiches ne le sont plus depuis la CSP à nonce
+(D123), et la liste `/api/schools`, qui lit sa recherche dans l'adresse, est
+dynamique. Après chaque écriture réussie du contenu, la route appelle
+`revalidateContent()` ([`lib/content-cache.ts`](../../lib/content-cache.ts)),
+qui invalide `/api/schools` en `layout` : les deux routes en cache se
+régénèrent à la visite suivante, au lieu d'attendre l'heure. Un échec de la
+revalidation est journalisé (`[cache]`), il n'annule pas l'écriture.
 
 ### 3.2. Back-office
 
@@ -306,11 +323,16 @@ Les routes `users/[id]/role`, `reset`, `disable` et `email` passent par
 ne laisse zéro admin actif. Toutes écrivent une ligne `[audit]` dans le
 journal.
 
-Corps de requête : [`lib/request-body.ts`](../../lib/request-body.ts). Une
-valeur numérique fournie mais illisible rend 400 en nommant le champ, avant
-toute écriture (`readOptionalNumbers`) : une faute de frappe n'efface pas une
-valeur. Défaut connu et accepté : un JSON mal formé rend 500 sur le CRUD admin
-et `create-programs`, sans rien écrire.
+Corps de requête : [`lib/request-body.ts`](../../lib/request-body.ts). **Un
+corps absent, illisible (JSON mal formé) ou qui n'est pas un objet rend 400,
+avant toute lecture en base et sans rien écrire** (D120) : les 14 routes du
+CRUD et deux de l'inbox (`create-programs`, la purge) le lisent par
+`readFormBody`, qui rend le corps sans type, comme le faisait
+`request.json()` ; les autres par `readJsonObject` (la validation d'un
+ticket : `readOptionalJsonObject`, §4.2). Aucune route ne lit plus son corps
+par `request.json()` (`test/request-body.test.ts`). Une valeur numérique
+fournie mais illisible rend 400 en nommant le champ, avant toute écriture
+(`readOptionalNumbers`) : une faute de frappe n'efface pas une valeur.
 
 **Provenance des écritures** (D10, D11) : chaque `POST`, `PUT` et `upsert` du
 contenu ajoute `...provenance(session.user.id, "MANUAL")`
@@ -354,9 +376,9 @@ IA ou passent par lui (statuts, catégories et charges d'un ticket :
 | `inbox` · `inbox/[id]` | GET Admin | liste et détail des tickets ; sources plafonnées par [`lib/ticket-sources.ts`](../../lib/ticket-sources.ts) : trois liens au plus, sans doublon (un `www.` de tête ne distingue pas deux adresses) |
 | `inbox/[id]/validate` | PUT Admin | **écrit les données** (`Campus`, `Program`, `ProgramCampus`, `PricingRecord`, `RankingRecord`, `CapacityRecord`, `SchoolStatsRecord`, `AccreditationRecord`) dans une transaction, avec la provenance `AI` et l'admin qui valide pour auteur (D11), et le `source_url` des tickets Chiffres clés et Accréditations (D12). Un campus ou un programme déjà là n'est daté que si la validation lui écrit un champ (`stampUpdate`) |
 | `inbox/[id]/reject` | PUT Admin | |
-| `inbox/[id]/create-programs` | POST Admin | depuis un ticket `Program_Discovery` ; provenance `AI` sur les programmes créés, un programme déjà là garde son auteur |
+| `inbox/[id]/create-programs` | POST Admin | depuis un ticket `Program_Discovery` ; provenance `AI` sur les programmes créés, un programme déjà là garde son auteur ; corps illisible → 400, rien d'écrit (D120) |
 | `inbox/[id]/attachments` | PUT Admin | rattachement campus collecté par l'IA ; provenance `AI` sur les lignes et sur la note de campus du programme |
-| `inbox/purge` | DELETE Admin | supprime les tickets `Validated` et/ou `Rejected`, après confirmation ; les autres restent |
+| `inbox/purge` | DELETE Admin | supprime les tickets `Validated` et/ou `Rejected`, après confirmation ; les autres restent ; corps illisible → 400, rien de supprimé (D120) |
 
 **Valider un ticket** (`validate`) :
 
@@ -404,12 +426,14 @@ sur cette branche, aucun code ne l'écrit ni ne la lit, et **aucun n'écrit
 ### 4.3. Lecture du site
 
 Session exigée par le proxy (401 en JSON sans session) ; les routes elles-mêmes
-ne lisent pas la session, ce qui garde leur cache ISR. Erreurs au format
-`{ "error": "…" }`.
+ne lisent pas la session. Erreurs au format `{ "error": "…" }`.
 
-- `app/api/schools/*` : 3 routes GET, ISR 1 h, utilisées par l'accueil ;
-  écoles `ACTIVE` seulement. La liste rend pour chaque école
-  `programs_count`, tous ses programmes avec ou sans campus (D75).
+- `app/api/schools/*` : 3 routes GET, pour l'accueil ; écoles `ACTIVE`
+  seulement. La liste, qui lit sa recherche et sa page dans l'adresse, est
+  dynamique, sans `revalidate` (étape 15) ; les deux routes de détail sont en
+  cache d'une heure, revalidées à chaque écriture du contenu (§3.1). La liste
+  rend pour chaque école `programs_count`, tous ses programmes avec ou sans
+  campus (D75).
 - `app/api/v1/*` : 15 routes GET, plafonnées à 60 requêtes par minute et par
   IP ; de la provenance, la date seule (`updated_at`, D25). Le détail d'un
   programme et la comparaison portent ses admissions (`entries`, D53).
@@ -516,17 +540,17 @@ charte. `components/ui/ProgressBar.tsx` reste dans la charte, testé, sans
 écran qui l'emploie sur cette branche (la console qui s'en sert vit sur
 `local`).
 
-La CSP posée par [`next.config.ts`](../../next.config.ts) a
-`style-src 'self' 'unsafe-inline'` : Tailwind produit une feuille statique au
-build, servie par le site ; aucune violation sur un build de production
-(§8.2).
+La CSP ([`lib/csp.ts`](../../lib/csp.ts), §8.2) garde
+`style-src 'self' 'unsafe-inline'` (D123 ne porte que sur les scripts) :
+Tailwind produit une feuille statique au build, servie par le site ; aucune
+violation sur un build de production.
 
 ---
 
 ## 7. Tests
 
 `npm test` et `npm run test:ts` lancent la même suite (`node --test`,
-1 218 tests au 23 octobre 2026, D105), en CI dans le job `ts-tests` (§9.4).
+1 243 tests au 23 octobre 2026, D105), en CI dans le job `ts-tests` (§9.4).
 Les tests Python vivent sur la branche `local`, avec le backend (D101).
 
 - **Banc** (`test/helpers/`) : `fake-prisma.ts` (faux client ; garde les
@@ -548,7 +572,9 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   statique des gardes ; chaque ligne de la table d'accès désigne un handler
   qui existe), `test/proxy.test.ts` (chaque page et route de `app/` refusée
   sans session, hors connexion et NextAuth ; la première connexion libre ; le
-  proxy ne compte plus la connexion, D117), `test/admin-pages.test.ts` (`requirePage` de
+  proxy ne compte plus la connexion, D117 ; D123 : chaque réponse porte une
+  CSP à nonce, neuf à chaque requête, et la requête qui passe emporte la même),
+  `test/admin-pages.test.ts` (`requirePage` de
   chaque écran, menu par rôle), `test/callback-url.test.ts`,
   `test/roles-migration.test.ts` (contrainte, défaut, `lib/roles.ts`),
   `test/no-public-tickets.test.ts` (piège 6).
@@ -564,10 +590,13 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   transaction sérialisable, D3, D4, D21, D24, D38, D42),
   `test/api/account.test.ts` (« Mon compte »), `test/password.test.ts`.
 - **Contenu** : `test/api/admin-schools`, `admin-programs`, `admin-records`
-  (cas nominaux en `GESTIONNAIRE`, `USER` refusé, 400, 404), `public-schools`,
+  (cas nominaux en `GESTIONNAIRE`, `USER` refusé, 400, 404 ; un JSON mal
+  formé → 400 sans écriture, D120), `public-schools` (la liste dynamique, sans
+  `revalidate` ; les routes de détail en cache d'une heure),
   `v1` (les 15 routes : forme, CORS, `OPTIONS`, 404, erreur Prisma → 500 sans
-  le message interne, bornes de pagination), `inbox-*` (en `ADMIN`),
-  `test/request-body.test.ts`.
+  le message interne, bornes de pagination), `inbox-*` (en `ADMIN` ; D120 sur
+  `create-programs` et la purge), `test/request-body.test.ts` (`readFormBody` ;
+  aucune route ne lit son corps par `request.json()`, D120).
 - **Provenance** : `test/provenance.test.ts` (`lib/provenance.ts` : origines,
   lien source contrôlé et protégé, texte et date en français, nom de
   l'auteur), `test/provenance-migration.test.ts` (la migration, additive, ses
@@ -594,7 +623,8 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   (les trois méthodes : auteur et traitant de la session, cible de l'école,
   école active, plafond par compte après la lecture du corps, rien dans
   l'inbox, 409 sur un signalement fermé), `test/reports-pages.test.ts` (les
-  liens des fiches, en bouton secondaire, la page du formulaire, « Vos
+  liens des fiches, en bouton secondaire ; les fiches ne lisent pas la session
+  et ne sont plus en cache, D123 ; la page du formulaire, « Vos
   signalements », la vue des gestionnaires, `?tab=`).
 - **Journal des lancements** : `test/research-launches-migration.test.ts`
   (une table neuve, rien vers `PipelineJob` ; contraintes alignées sur les
@@ -643,7 +673,8 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   compte », D109).
 - **L'aide** (D108 à D115) : `test/help-page.test.ts` (la page sous la vraie
   `lib/auth.ts` : chacun le guide de son rôle et lui seul, le rôle de la base
-  et non du jeton, un compte non actif renvoyé à la connexion ; le sommaire ;
+  et non du jeton, un compte non actif renvoyé à la connexion ; le nom de
+  l'application une fois, en tête, D119 ; le sommaire ;
   chaque libellé cité, `<Ui>…</Ui>`, relu mot pour mot contre le code des
   écrans ; ni fonction disparue, ni commande, ni secret ; le guide de l'admin
   et la console IA, D114 ; chaque capture sous `public/help/`, à ses
@@ -651,6 +682,24 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   son guide), `test/admin-frame.test.ts` (« Aide » au pied du menu, hors de
   `navFor`), `test/page-titles.test.ts` (les titres fixes, « Aide »
   compris).
+- **Le nom de l'application** (D119) : `test/app-name.test.ts` (« Veille
+  concurrentielle », écrit dans `lib/app-name.ts` seul et importé par les
+  écrans ; les anciens noms disparus du code et de la configuration ; la
+  barre, la connexion, le titre des onglets et le nom du site des aperçus),
+  `test/admin-frame.test.ts` (le menu), `test/page-titles.test.ts`.
+- **La CSP à nonce** (D123) : `test/csp.test.ts` (`script-src` sans
+  `'unsafe-inline'`, le nonce et `'strict-dynamic'` ; `'unsafe-eval'` en
+  développement seulement ; le reste de la politique inchangé, `style-src`
+  compris ; `createNonce`, au moins 128 bits d'aléa, neuf à chaque appel ;
+  `next.config.ts` sans CSP, ses cinq autres en-têtes gardés ; le layout
+  racine attend la requête, aucune page en cache), `test/proxy.test.ts`.
+- **La CI** (mémo Vercel §11) : `test/ci-workflow.test.ts` (le service
+  `postgres:18` du job `validate` ; `DATABASE_URL` et `DIRECT_URL` du job sur
+  la base jetable, jamais un secret ; les migrations sur la base vierge puis
+  leur statut, sur toutes les branches, sans échec toléré ; le statut contre
+  Neon sur `main` et les PR vers `main` seulement, avec les secrets dans cette
+  étape seule, D121 ; aucune étape ne migre la base des secrets). Qu'une
+  migration cassée fasse vraiment échouer le job ne se voit qu'en CI (§9.4).
 - **Verrous** : `test/api-docs.test.ts` (`/api-docs` = réponses réelles),
   `test/page-titles.test.ts`, `test/silent-pages.test.ts` (aucun `catch` muet
   dans l'accueil ni l'inbox ; D75).
@@ -709,22 +758,41 @@ connaître avant de contribuer sont dans le README, « Sécurité ».
 
 ### 8.2. En-têtes
 
-Posés par [`next.config.ts`](../../next.config.ts) sur `/:path*` :
+**La CSP, à nonce, vient du proxy** (étape 15, D123) :
+[`proxy.ts`](../../proxy.ts) tire un nonce neuf à chaque requête
+(`createNonce`, un UUID v4 en base64, 122 bits d'aléa) et pose la politique
+de [`lib/csp.ts`](../../lib/csp.ts) à deux endroits : sur la **requête** qui
+poursuit sa route, où Next lit le nonce au rendu et le pose sur ses propres
+scripts (doc Next 16, guide « Content Security Policy ») ; sur **toute
+réponse** du proxy (pages, API, redirections, 401, 429), où le navigateur
+l'applique.
+
+| Directive | Valeur |
+|---|---|
+| `script-src` | `'self' 'nonce-<nonce>' 'strict-dynamic'` ; `'unsafe-eval'` en développement seulement (le rafraîchissement à chaud de `next dev`) |
+| le reste | `default-src 'self'` · `style-src 'self' 'unsafe-inline'` · `img-src 'self' data: blob:` · `font-src 'self' data:` · `connect-src 'self'` · `object-src 'none'` · `base-uri 'self'` · `form-action 'self'` · `frame-ancestors 'none'` · `upgrade-insecure-requests` (inchangé depuis l'étape 3) |
+
+Seul un script qui porte le nonce s'exécute, et ceux qu'il charge
+(`'strict-dynamic'`) : une balise `<script>` injectée dans une page ne
+s'exécuterait plus. **Un nonce n'existe qu'au rendu d'une requête** : toutes
+les pages sont dynamiques (`await connection()` dans le layout racine), aucune
+n'est en cache (§3.1). Les fichiers statiques de Next (`_next/static`,
+`_next/image`), hors du matcher, n'ont pas de CSP : ce ne sont pas des
+documents. Vu le 23 octobre 2026 sur un build de production (base `dev`),
+sans session puis en session, sur le site et le back-office, à 1 440 et
+390 px : chaque `<script>` porte le nonce de sa réponse, un nonce neuf à
+chaque requête, les pages hydratées, aucune violation ni exception.
+
+**Les cinq autres en-têtes** restent fixes, posés par
+[`next.config.ts`](../../next.config.ts) sur `/:path*` :
 
 | En-tête | Valeur |
 |---|---|
-| `Content-Security-Policy` | `default-src 'self'` · `script-src 'self' 'unsafe-inline'` · `style-src 'self' 'unsafe-inline'` · `img-src 'self' data: blob:` · `font-src 'self' data:` · `connect-src 'self'` · `object-src 'none'` · `base-uri 'self'` · `form-action 'self'` · `frame-ancestors 'none'` · `upgrade-insecure-requests` |
-| `X-Frame-Options` | `DENY` (doublon volontaire, navigateurs anciens) |
+| `X-Frame-Options` | `DENY` (doublon volontaire de `frame-ancestors`, navigateurs anciens) |
 | `X-Content-Type-Options` | `nosniff` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), interest-cohort=()` |
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` (D23 : `preload` gardé ; il engage le domaine pour des mois) |
-
-**`'unsafe-inline'` reste sur `script-src`** : Next.js injecte l'amorçage
-d'hydratation en ligne. Le retirer impose une CSP à nonce générée dans
-`proxy.ts` (chantier ouvert, §8.3). `'unsafe-eval'` n'est ajouté qu'en
-développement. Aucune violation n'a été relevée, en développement comme sur
-un build de production.
 
 ### 8.3. Le reste
 
@@ -748,13 +816,12 @@ un build de production.
   `@prisma/adapter-neon` 7. À surveiller : `npm ls deepmerge-ts mysql2` ;
   quand une version 7 de Prisma les embarque à jour, `npm update prisma`
   suffit, toujours sans `--force`. Le 23 octobre, un avis critique sur
-  `next` 16.0.0 à 16.4.0 a bloqué la CI : `next` monté en 16.4.2
-  (`eslint-config-next` laissé en 16.3.8), puis les contrôles du §8.4
-  rejoués sur un build de production.
-- **Chantiers ouverts** : la CSP à nonce ; les vulnérabilités ci-dessus ; une
-  base de CI éphémère pour le contrôle des migrations
-  ([mémo Vercel](../memory/memory-deploiement-vercel.md), « Base de CI
-  éphémère »).
+  `next` 16.0.0 à 16.4.0 a bloqué la CI : `next` monté en 16.4.2, puis les
+  contrôles du §8.4 rejoués sur un build de production ; `eslint-config-next`
+  l'a rejoint en 16.4.2 à l'étape 15.
+- **Dette acceptée** (D118) : les vulnérabilités ci-dessus et les
+  avertissements ESLint (§9.2) ; [mémo Vercel](../memory/memory-deploiement-vercel.md)
+  §10.
 
 ### 8.4. Contrôles d'exécution non automatisés
 
@@ -769,7 +836,7 @@ avec l'accord du propriétaire :
 | 2 | connexion réelle | la session s'ouvre ; le back-office répond selon le rôle |
 | 3 | 6 échecs de connexion sur une même adresse (jeton CSRF, puis identifiants) | les 5 premiers rendent `CredentialsSignin`, le 6e `TooManyAttempts`, aussi depuis une autre IP ; une autre adresse passe (D117) |
 | 4 | une route `/api/admin/*` sans session | 401, avant toute lecture en base |
-| 5 | en-têtes sur `/admin/login` | les six du §8.2 |
+| 5 | en-têtes sur `/admin/login` | les six du §8.2 ; la CSP à nonce, un nonce neuf à chaque requête, porté par chaque `<script>` de la page |
 | 6 | ~65 appels rapides sur `/api/v1/schools?limit=1` | 429 au-delà de 60 par minute |
 | 7 | console du navigateur sur le site et le back-office | aucune violation CSP |
 
@@ -801,7 +868,10 @@ configurations plates). Politique : une base qui passe, la dette visible.
 | `react-hooks/immutability`, `set-state-in-effect`, `purity` | `warn` | règles du compilateur React ; les corriger demande de reprendre les composants un par un |
 | `@typescript-eslint/no-explicit-any` | `warn` | dette chiffrable, donc résorbable |
 
-**0 erreur, 93 avertissements** au 23 octobre 2026.
+**0 erreur, 81 avertissements** dans le code du dépôt au 23 octobre 2026
+(la CI). Sur le poste, `npm run lint` en compte 93 : les 12 autres viennent
+de scripts de `tmp/`, un dossier ignoré par Git qu'ESLint lit quand même
+(il n'est pas dans les `ignores` d'`eslint.config.mjs`).
 
 ### 9.3. Écrire et lancer les tests
 
@@ -849,15 +919,28 @@ et sur les PR vers `main`, deux jobs, Node 24 comme le poste :
 
 | Job | Étapes |
 |---|---|
-| `validate` | `npm ci` · **`prisma generate`** · `tsc` · ESLint · `prisma validate` · `prisma migrate status` · garde-fou « pas de synchro du schéma hors migration » · `npm audit --audit-level=critical` |
+| `validate` | service `postgres:18` jetable · `npm ci` · **`prisma generate`** · `tsc` · ESLint · `prisma validate` · **`prisma migrate deploy` puis `prisma migrate status` sur la base jetable** · `prisma migrate status` contre la production (`main` et PR vers `main` seulement) · garde-fou « pas de synchro du schéma hors migration » · `npm audit --audit-level=critical` |
 | `ts-tests` | `npm ci` · `prisma generate` · `npm run test:ts` |
 
 - **`prisma generate` précède `tsc`** : `npm ci` ne génère pas le client, et
   sans lui `tsc` tombe en cascade d'erreurs sur tous les callbacks Prisma.
-- **`prisma migrate status`** interroge la base partagée (secrets
-  `DATABASE_URL`, `DIRECT_URL`) et ne fait échouer le job que sur `main` et
-  sur les PR vers `main` : ailleurs, il affiche son verdict. C'est un
-  palliatif ; le correctif est une base éphémère (§8.3).
+- **La base de CI éphémère** (étape 15) : le job `validate` a un service
+  Postgres 18 (la version majeure de Neon), créé pour le run et détruit
+  après. `DATABASE_URL` **et** `DIRECT_URL` du job le visent :
+  `prisma.config.ts` préfère `DIRECT_URL` pour migrer, et la laisser sur les
+  secrets enverrait les migrations vers Neon. Sur toutes les branches,
+  `migrate deploy` rejoue tout l'historique sur la base vierge (une migration
+  cassée fait échouer le job), puis `migrate status` doit dire « à jour ».
+  Prouvé le 23 octobre 2026 sur une branche jetable (D122) : une migration
+  cassée en échec (run 48), une migration inédite et valide en vert, Neon non
+  touché (run 49). Détail et pièges : [mémo Vercel](../memory/memory-deploiement-vercel.md)
+  §11.
+- **Le statut contre la production** (D121) : sur `main` et les PR vers
+  `main` seulement, l'étape « Prisma — statut des migrations (base de
+  production) » reçoit, dans cette étape seule, les secrets `DATABASE_URL`
+  et `DIRECT_URL`, qui visent la branche Neon `main` (`ep-super-rain`) ; elle
+  fait échouer la CI de `main` tant qu'une migration du dépôt manque en
+  production. Ailleurs, elle ne tourne pas.
 - **Le garde-fou** cherche le motif en classes de caractères
   (`prisma[[:space:]]+db[[:space:]]+push`) : écrit en littéral, il se
   trouverait lui-même dans `ci.yml` et échouerait toujours. **Ne jamais le

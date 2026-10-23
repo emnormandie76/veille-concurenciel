@@ -8,8 +8,9 @@
  *   D57) ; exemples de code en clair, onglets de la charte (D59) ; libellé
  *   visible de la recherche (D58) ; émojis des catégories retirés (D56).
  * - Étape 10 (D104, revient sur D57) : la barre demande elle-même
- *   « Back-office » ; la page reste statique.
- * - Entièrement statique et sans requêtes à la base de données Neon.
+ *   « Back-office » ; la page ne lit pas la session.
+ * - Sans requête à la base de données Neon ; rendue à chaque visite, comme
+ *   toutes les pages, depuis la CSP à nonce (étape 15, D123).
  * - Contenu dans endpoints.ts, aligné sur les réponses réelles le 15 octobre
  *   2026 et tenu par test/api-docs.test.ts.
  * - Langue : Français.
@@ -101,7 +102,7 @@ export default function ApiDocsPage() {
   }, [filteredEndpoints, selectedEndpointId]);
 
   // L'adresse du site qui sert la page : en ligne, le domaine public ; en
-  // local, localhost. Vide pendant le rendu serveur (page statique), puis lue
+  // local, localhost. Vide pendant le rendu serveur, puis lue
   // dans le navigateur, sans écart d'hydratation.
   const origin = useSyncExternalStore(subscribeToNothing, readOrigin, () => "");
 

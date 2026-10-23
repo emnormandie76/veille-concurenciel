@@ -1,6 +1,8 @@
-# Veille Concurrentiel (dépôt appVC)
+# Veille concurrentielle (dépôt appVC)
 
-**Gestionnaire de contenu** des données sur les écoles françaises : campus,
+**Veille concurrentielle** (le nom à l'écran, écrit une seule fois dans
+`lib/app-name.ts`, D119) est le **gestionnaire de contenu** des données sur
+les écoles françaises : campus,
 programmes, tarifs, classements, capacités d'accueil, accréditations,
 statistiques et admissions. Des collègues de l'équipe (e-mails
 `@em-normandie.fr`) consultent les données, des gestionnaires les tiennent à
@@ -59,10 +61,13 @@ branche `gestion` :
 - **après la livraison** (23 octobre) : `next` 16.4.2 (un avis critique),
   laissé hors de `local` (D116) ; le plafond de la connexion ne compte plus
   que les échecs (D117) ;
-- **étape 15, en cours** : des finitions (D118 à D123) : le nom « Veille
+- **étape 15, faite et validée le 23 octobre**, livraison demandée : des
+  finitions (D118 à D123) : le nom « Veille
   concurrentielle », le JSON mal formé en 400, `/api/schools`,
-  `eslint-config-next`, la base de CI éphémère, la CSP à nonce ; livrée en
-  une fois avec D117 ;
+  `eslint-config-next`, la base de CI éphémère (toutes les migrations sur un
+  Postgres jetable à chaque run ; le statut contre la production sur `main`
+  seul), la CSP à nonce (toutes les pages dynamiques) ; à livrer en une fois
+  avec D117 ;
 - **ensuite** : D15 (les événements des écoles) reste ouverte, en attente
   de l'équipe.
 

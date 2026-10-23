@@ -18,7 +18,7 @@ import { BackOfficeNavLink, SiteNavLink } from "./SiteNavLink";
  *
  * « Back-office » (étape 10, D104, revient sur D57) : une page qui lit la
  * session (relue en base, `requirePage`, D1) passe `showBackOffice` ; une
- * page qui ne la lit pas (l'accueil, les fiches en cache, /api-docs) ne le
+ * page qui ne la lit pas (l'accueil, les fiches, /api-docs) ne le
  * passe pas, et la barre le demande elle-même (`BackOfficeLink`). Le lien
  * n'est qu'une commodité : le layout /admin contrôle l'accès.
  */

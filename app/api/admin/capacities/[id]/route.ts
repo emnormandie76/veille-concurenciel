@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
 import { revalidateContent } from "@/lib/content-cache";
 import { provenance, readSourceUrl } from "@/lib/provenance";
+import { invalidBody } from "@/lib/account-admin";
+import { readFormBody } from "@/lib/request-body";
 
 export async function PUT(
   request: Request,
@@ -14,7 +16,8 @@ export async function PUT(
   const { id } = await params;
 
   try {
-    const body = await request.json();
+    const body = await readFormBody(request);
+    if (!body) return invalidBody();
     const { spots_available, academic_year, source_url } = body;
 
     const existingRecord = await prisma.capacityRecord.findUnique({

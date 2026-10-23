@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { SiteShell } from "@/components/layout/SiteShell";
 import { Card } from "@/components/ui/Card";
 import { TEXT_LINK } from "@/components/ui/text-link";
+import { APP_NAME } from "@/lib/app-name";
 import { requirePage } from "@/lib/auth";
 import { ROLE_LABELS, hasAccess } from "@/lib/roles";
 import { guideFor } from "./guides";
@@ -27,7 +28,7 @@ export default async function HelpPage() {
         <div className="flex flex-col gap-2">
           <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">Aide</h1>
           <p className="max-w-[70ch] text-sm leading-relaxed text-ink-2">
-            Le guide de votre rôle : <strong className="font-medium text-ink">{ROLE_LABELS[user.role]}</strong>.
+            Le guide de {APP_NAME} pour votre rôle : <strong className="font-medium text-ink">{ROLE_LABELS[user.role]}</strong>.
           </p>
         </div>
 

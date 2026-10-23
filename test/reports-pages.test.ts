@@ -116,7 +116,7 @@ test("fiche programme : le lien choisit le programme d'avance", async () => {
   assert.match(reportLink(out), /href="\/schools\/school-1\/report\?program=program-1"/);
 });
 
-test("les fiches ne lisent pas la session et gardent leur cache d'une heure", () => {
+test("les fiches ne lisent pas la session ; elles ne sont plus en cache (D123)", () => {
   // Étape 9, lot 1 : l'attendu change avec la règle (G7). Jusque-là, les
   // fiches n'importaient rien de `@/components/` (l'ancien style, D33) ;
   // désormais dans la charte, elles posent le gabarit du site sans le lien
@@ -134,7 +134,10 @@ test("les fiches ne lisent pas la session et gardent leur cache d'une heure", ()
   for (const file of ["app/schools/[id]/SchoolDetailClient.tsx", "app/schools/[id]/programs/[pid]/page.tsx"]) {
     assert.match(read(file), /<SiteShell>/, `${file} : gabarit dont la barre demande « Back-office » (D104)`);
   }
-  for (const file of ["app/schools/[id]/page.tsx", "app/schools/[id]/programs/[pid]/page.tsx"]) assert.match(read(file), /export const revalidate = 3600;/, file);
+  // Étape 15 (D123) : l'attendu change avec la règle. Une page en cache porterait
+  // le nonce d'une autre requête : les fiches se rendent à chaque visite
+  // (test/csp.test.ts).
+  for (const file of ["app/schools/[id]/page.tsx", "app/schools/[id]/programs/[pid]/page.tsx"]) assert.doesNotMatch(read(file), /export const revalidate\b/, file);
 });
 
 // ─── La page du formulaire ──────────────────────────────────────────────────

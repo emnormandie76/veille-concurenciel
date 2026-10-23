@@ -28,7 +28,7 @@ restent tels quels, réservés à l'admin, sans nouveau développement ni recett
 
 | Document | Rôle |
 |---|---|
-| [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Le code cite ses décisions (G1 à G9, D1 à D117) |
+| [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Le code cite ses décisions (G1 à G9, D1 à D123) |
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** : rôles, gardes, écrans, routes, tables, styles, tests, sécurité (§8), outillage et CI (§9) |
 | [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** : jetons, contrastes, polices, composants, gabarits, accessibilité, mise en œuvre |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
@@ -59,8 +59,12 @@ branche `gestion` :
 - **après la livraison** (23 octobre) : `next` 16.4.2 (un avis critique),
   laissé hors de `local` (D116) ; le plafond de la connexion ne compte plus
   que les échecs (D117) ;
-- **ensuite** : le chantier est fini ; D15 (les événements des écoles)
-  reste ouverte, en attente de l'équipe.
+- **étape 15, en cours** : des finitions (D118 à D123) : le nom « Veille
+  concurrentielle », le JSON mal formé en 400, `/api/schools`,
+  `eslint-config-next`, la base de CI éphémère, la CSP à nonce ; livrée en
+  une fois avec D117 ;
+- **ensuite** : D15 (les événements des écoles) reste ouverte, en attente
+  de l'équipe.
 
 L'étape en cours se lit dans le journal du plan (§9).
 

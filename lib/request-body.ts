@@ -69,6 +69,25 @@ export async function readJsonObject(request: Request): Promise<Record<string, u
   return read.ok ? read.body : null;
 }
 
+/**
+ * Le corps d'un formulaire du back-office (plan gestion-contenu, D120). Les
+ * 14 routes du CRUD et deux de l'inbox le relisent champ par champ, comme
+ * lorsqu'elles le lisaient par `request.json()`, qui le rendait sans type :
+ * D120 ne change que le refus d'un corps illisible, pas leur lecture.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- le type que rendait request.json(), voir ci-dessus
+export type FormBody = Record<string, any>;
+
+/**
+ * `readJsonObject` pour ces routes : `null` sur un corps absent, illisible ou
+ * qui n'est pas un objet, et la route répond 400 (`invalidBody`) avant toute
+ * lecture en base. Jusqu'au 23 octobre 2026, l'erreur de syntaxe tombait dans
+ * leur 500 générique (décision 10 du plan backend-local).
+ */
+export async function readFormBody(request: Request): Promise<FormBody | null> {
+  return readJsonObject(request);
+}
+
 /** Le corps de l'admin s'il porte au moins une clé, sinon `null` (« tel quel »). */
 export function adminCorrections(body: Record<string, unknown> | null): Record<string, unknown> | null {
   return body && Object.keys(body).length > 0 ? body : null;

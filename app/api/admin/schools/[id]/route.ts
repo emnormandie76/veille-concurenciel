@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { revalidateContent } from "@/lib/content-cache";
 import { AUTHOR_SELECT, forManager, provenance } from "@/lib/provenance";
+import { invalidBody } from "@/lib/account-admin";
+import { readFormBody } from "@/lib/request-body";
 
 export async function GET(
   request: Request,
@@ -41,7 +43,8 @@ export async function PUT(
   const { id } = await params;
 
   try {
-    const body = await request.json();
+    const body = await readFormBody(request);
+    if (!body) return invalidBody();
     const { name, official_domain, status } = body;
 
     if (!name && !official_domain && !status) {

@@ -21,6 +21,8 @@
  * admissions (`entries`), avec leur lien source et leur date.
  */
 
+import { APP_NAME } from "@/lib/app-name";
+
 export interface EndpointParam {
   name: string;
   /** `path` : segment `[id]` du chemin ; `query` : paramètre de requête. */
@@ -215,7 +217,7 @@ export const endpoints: Endpoint[] = [
     path: "",
     title: "Authentification, limites et erreurs",
     description:
-      "L'API v1 d'EduData France est en lecture seule et réservée aux personnes connectées : elle lit la session du site. " +
+      `L'API v1 de ${APP_NAME} est en lecture seule et réservée aux personnes connectées : elle lit la session du site. ` +
       "Depuis ce navigateur, une fois connecté, les appels passent ; sans session, la réponse est 401. " +
       "Les exemples curl et Python ne passent donc pas tels quels, et un autre site ne peut pas l'appeler : des clés d'API pourront s'ajouter si un usage externe apparaît. " +
       "Seules les écoles actives sont exposées ; les identifiants sont des UUID. " +

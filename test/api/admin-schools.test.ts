@@ -368,17 +368,21 @@ test("GET /schools/[id]/manage : 404 ; sinon l'école et ses compteurs", async (
   assertSchema();
 });
 
-// ── JSON mal formé : décision 10 du journal ──────────────────────────
+// ── JSON mal formé : D120 ────────────────────────────────────────────
 
-test("JSON mal formé : 500 au lieu de 400 (décision 10 : consigné, non corrigé), rien d'écrit", async () => {
-  // Défaut connu et accepté le 14 octobre 2026 : ces routes lisent le corps par
-  // `request.json()` dans leur try, et l'erreur de syntaxe tombe dans le 500
-  // générique. Aucune donnée n'est en jeu ; le back-office envoie toujours du
-  // JSON valide. Si la décision change, ce test passe à 400.
+test("D120 : un JSON mal formé, ou qui n'est pas un objet, rend 400 ; rien d'écrit", async () => {
+  // Jusqu'au 23 octobre 2026, ces routes lisaient le corps par
+  // `request.json()` dans leur try : l'erreur de syntaxe tombait dans le 500
+  // générique (décision 10 du plan backend-local : consigné, non corrigé). Le
+  // propriétaire a changé la règle (plan gestion-contenu, D120) : 400, par
+  // `readJsonObject`, comme les routes des comptes.
   for (const name of ["createSchool", "updateSchool", "createCampus", "updateCampus"]) {
-    db.use({ school: { findUnique: () => SCHOOL }, campus: { findUnique: () => CAMPUS } });
-    const res = await quietly(() => h[name](body("{pas du json", "PUT"), id(SCHOOL_ID)));
-    assert.equal(res.status, 500, name);
-    assert.deepEqual(db.writes(), [], name);
+    for (const raw of ["{pas du json", "[]", "null", "42"]) {
+      db.use({ school: { findUnique: () => SCHOOL }, campus: { findUnique: () => CAMPUS } });
+      const res = await quietly(() => h[name](body(raw, "PUT"), id(SCHOOL_ID)));
+      assert.equal(res.status, 400, `${name} ${raw}`);
+      assert.deepEqual(await res.json(), { error: "Corps de requête JSON invalide." }, name);
+      assert.deepEqual(db.writes(), [], name);
+    }
   }
 });

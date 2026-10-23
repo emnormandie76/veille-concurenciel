@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { guardManager } from "@/lib/auth";
 import { revalidateContent } from "@/lib/content-cache";
 import { AUTHOR_SELECT, forManager, provenance, readSourceUrl } from "@/lib/provenance";
-import { invalidNumbersMessage, readOptionalNumbers } from "@/lib/request-body";
+import { invalidNumbersMessage, readFormBody, readOptionalNumbers } from "@/lib/request-body";
+import { invalidBody } from "@/lib/account-admin";
 
 export async function GET(
   request: Request,
@@ -77,7 +78,8 @@ export async function PUT(
   const { id } = await params;
 
   try {
-    const body = await request.json();
+    const body = await readFormBody(request);
+    if (!body) return invalidBody();
     const { academic_year } = body;
 
     const yearNum = parseInt(academic_year);

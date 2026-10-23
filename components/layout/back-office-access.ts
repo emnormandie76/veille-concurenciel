@@ -2,7 +2,8 @@
  * components/layout/back-office-access.ts — Le lien « Back-office » des pages qui ne lisent pas la session
  *
  * Plan gestion-contenu, étape 10, D104 (revient sur D57) : l'accueil, les
- * deux fiches (cache ISR) et /api-docs ne lisent pas la session. Leur barre
+ * deux fiches et /api-docs ne lisent pas la session (ils étaient alors en
+ * cache ; ils se rendent à chaque visite depuis D123). Leur barre
  * demande à `GET /api/admin/account/back-office` si le compte a accès au
  * back-office (rôle relu en base, D1), et ne montre le lien que sur un
  * « oui » ; dans le doute (session finie, erreur, réseau), pas de lien.

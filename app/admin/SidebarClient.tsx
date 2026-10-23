@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { cx } from "@/components/ui/cx";
+import { APP_NAME } from "@/lib/app-name";
 import { ROLE_LABELS, type UserRole } from "@/lib/roles";
 import { navFor } from "./nav";
 
@@ -60,7 +61,7 @@ export function AdminMenu({
   return (
     <>
       <div className="flex h-12 items-center justify-between gap-4 border-b border-side-line bg-side px-4 text-side-ink lg:hidden">
-        <div className="font-display font-semibold tracking-tight">School Data Pipeline</div>
+        <div className="font-display font-semibold tracking-tight">{APP_NAME}</div>
         <button
           type="button"
           aria-expanded={open}
@@ -80,7 +81,7 @@ export function AdminMenu({
         )}
       >
         <div className="hidden h-14 shrink-0 items-center border-b border-side-line px-5 font-display font-semibold tracking-tight lg:flex">
-          School Data Pipeline
+          {APP_NAME}
         </div>
         <div className="flex items-center gap-3 border-b border-side-line px-5 py-4">
           <div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-side-active text-xs font-semibold">

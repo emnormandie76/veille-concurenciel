@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { guardAdmin } from "@/lib/auth";
 import { revalidateContent } from "@/lib/content-cache";
 import { provenance } from "@/lib/provenance";
+import { invalidBody } from "@/lib/account-admin";
+import { readFormBody } from "@/lib/request-body";
 
 /**
  * POST /api/admin/inbox/[id]/create-programs
@@ -39,7 +41,8 @@ export async function POST(
       );
     }
 
-    const body = await request.json();
+    const body = await readFormBody(request);
+    if (!body) return invalidBody();
     const programNames: string[] = body.programNames;
 
     if (!Array.isArray(programNames) || programNames.length === 0) {

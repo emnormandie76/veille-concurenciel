@@ -106,10 +106,8 @@ function assertProvenance(data: Record<string, unknown>) {
 }
 
 function assertRevalidated() {
-  assert.deepEqual(revalidations, [
-    ["/schools", "layout"],
-    ["/api/schools", "layout"],
-  ]);
+  // Étape 15 (D123) : les fiches ne sont plus en cache, seules les routes de l'API le sont.
+  assert.deepEqual(revalidations, [["/api/schools", "layout"]]);
 }
 
 /** Aucune trace de l'auteur au-delà de son nom. */

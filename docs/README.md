@@ -6,7 +6,7 @@ branche `gestion` et `main` (la production, qui la suit par avance rapide).
 
 | Document | Rôle |
 |---|---|
-| [`features/gestion-contenu.md`](features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Les décisions (G1 à G9, D1 à D117) que cite le code y sont expliquées |
+| [`features/gestion-contenu.md`](features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Les décisions (G1 à G9, D1 à D123) que cite le code y sont expliquées |
 | [`architecture/gestion-contenu.md`](architecture/gestion-contenu.md) | **l'état réel du code** : rôles, gardes, écrans, routes, tables, styles, tests, sécurité, outillage et CI |
 | [`architecture/charte-graphique.md`](architecture/charte-graphique.md) | **la charte graphique** : couleurs, contrastes, polices, espacements, composants, gabarits, accessibilité, mise en œuvre |
 | [`architecture/bdd.md`](architecture/bdd.md) | le schéma de la base, les migrations et leur lanceur, le cycle de vie d'un ticket de l'inbox |

@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { revalidateContent } from "@/lib/content-cache";
 import { provenance } from "@/lib/provenance";
+import { invalidBody } from "@/lib/account-admin";
+import { readFormBody } from "@/lib/request-body";
 
 export async function GET() {
   const { error } = await guardManager();
@@ -29,7 +31,8 @@ export async function POST(request: Request) {
   if (error) return error;
 
   try {
-    const body = await request.json();
+    const body = await readFormBody(request);
+    if (!body) return invalidBody();
     const { name, official_domain } = body;
 
     // Contrôle après nettoyage : jusqu'au 14 octobre 2026, un nom fait d'espaces

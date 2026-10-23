@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { TEXT_LINK } from "@/components/ui/text-link";
 import { safeCallbackPath } from "@/lib/callback-url";
+import { APP_NAME } from "@/lib/app-name";
 import { FIRST_LOGIN_PATH, LOGIN_BLOCKED, LOGIN_BLOCKED_MESSAGE } from "@/lib/roles";
 
 /**
@@ -76,7 +77,7 @@ function LoginForm() {
 
   return (
     <AuthShell
-      title="School Data Pipeline"
+      title={APP_NAME}
       subtitle="Connectez-vous pour accéder au site"
       footer={
         <>

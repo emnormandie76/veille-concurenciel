@@ -106,6 +106,16 @@ test("purge : corps sans statuts → 400", async () => {
   }
 });
 
+test("D120 : purge, un JSON mal formé, ou qui n'est pas un objet → 400, rien de supprimé", async () => {
+  for (const raw of ["{pas du json", "[]", "null", "42"]) {
+    db.use({ contributionInbox: { deleteMany: () => ({ count: 0 }) } });
+    const res = await quietly(() => purge(json(raw, "DELETE")));
+    assert.equal(res.status, 400, raw);
+    assert.deepEqual(await res.json(), { error: "Corps de requête JSON invalide." }, raw);
+    assert.deepEqual(db.writes(), [], raw);
+  }
+});
+
 test("purge : Validated et Rejected, et rien d'autre", async () => {
   db.use({ contributionInbox: { deleteMany: () => ({ count: 7 }) } });
 
@@ -243,6 +253,16 @@ test("création de programmes : aucun nom → 400, rien d'écrit", async () => {
     withMultiTicket();
     assert.equal((await createPrograms(json(body), ctx())).status, 400);
     assert.deepEqual(db.writes(), []);
+  }
+});
+
+test("D120 : création de programmes, un JSON mal formé, ou qui n'est pas un objet → 400, rien d'écrit", async () => {
+  for (const raw of ["{pas du json", "[]", "null", "42"]) {
+    withMultiTicket();
+    const res = await quietly(() => createPrograms(json(raw), ctx()));
+    assert.equal(res.status, 400, raw);
+    assert.deepEqual(await res.json(), { error: "Corps de requête JSON invalide." }, raw);
+    assert.deepEqual(db.writes(), [], raw);
   }
 });
 

@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { revalidateContent } from "@/lib/content-cache";
 import { provenance } from "@/lib/provenance";
+import { invalidBody } from "@/lib/account-admin";
+import { readFormBody } from "@/lib/request-body";
 
 export async function PUT(
   request: Request,
@@ -14,7 +16,8 @@ export async function PUT(
   const { id } = await params;
 
   try {
-    const body = await request.json();
+    const body = await readFormBody(request);
+    if (!body) return invalidBody();
     const { name, city } = body;
 
     if (!name && city === undefined) {

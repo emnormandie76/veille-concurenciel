@@ -11,10 +11,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   adminCorrections,
   invalidNumbersMessage,
+  readFormBody,
   readJsonObject,
   readOptionalJsonObject,
   readOptionalNumbers,
@@ -56,6 +59,23 @@ test("readJsonObject (routes des comptes) : un objet JSON, sinon null, corps abs
   assert.deepEqual(await readJsonObject(request("{}")), {});
   for (const body of [undefined, "", "   ", "{pas du json", "null", "[]", "42", '"texte"']) {
     assert.equal(await readJsonObject(request(body)), null, String(body));
+  }
+});
+
+test("readFormBody (D120) : comme readJsonObject, un objet JSON, sinon null", async () => {
+  assert.deepEqual(await readFormBody(request('{"name":"ESSEC"}')), { name: "ESSEC" });
+  for (const body of [undefined, "", "{pas du json", "[]", "null", "42", '"texte"']) {
+    assert.equal(await readFormBody(request(body)), null, String(body));
+  }
+});
+
+test("D120 : aucune route ne lit plus son corps par request.json(), qui rendait 500 sur un JSON mal formé", () => {
+  const routes = (readdirSync("app/api", { recursive: true }) as string[])
+    .filter((file) => /(^|[\\/])route\.ts$/.test(file))
+    .map((file) => join("app/api", file));
+  assert.ok(routes.length > 50);
+  for (const route of routes) {
+    assert.doesNotMatch(readFileSync(route, "utf8"), /\b(request|req)\.json\(\)/, route);
   }
 });
 

@@ -2,6 +2,8 @@ import { guardAdmin } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { TERMINAL_CONTRIBUTION_STATUSES } from "@/lib/contribution";
+import { invalidBody } from "@/lib/account-admin";
+import { readFormBody } from "@/lib/request-body";
 
 // Seuls les statuts terminaux sont purgeables. La liste vit désormais dans
 // lib/contribution.ts, avec les autres énumérations de la zone tampon.
@@ -12,7 +14,8 @@ export async function DELETE(request: Request) {
     if (error) return error;
 
     try {
-        const body = await request.json();
+        const body = await readFormBody(request);
+        if (!body) return invalidBody();
         const { statuses } = body;
 
         if (!statuses || !Array.isArray(statuses) || statuses.length === 0) {

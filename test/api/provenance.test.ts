@@ -684,11 +684,8 @@ for (const s of SCENARIOS) {
 
     assert.deepEqual(
       revalidations,
-      [
-        ["/schools", "layout"],
-        ["/api/schools", "layout"],
-      ],
-      "les fiches et les routes de l'accueil sont revalidées une fois"
+      [["/api/schools", "layout"]],
+      "les routes de l'API sont revalidées une fois ; les fiches, sans cache depuis D123, ne le sont plus"
     );
   });
 }

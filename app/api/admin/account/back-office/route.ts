@@ -1,8 +1,8 @@
 /**
  * GET /api/admin/account/back-office — Le lien « Back-office » de la barre du site (D104)
  *
- * Plan gestion-contenu, étape 10 : l'accueil, les deux fiches (cache ISR) et
- * /api-docs ne lisent pas la session ; leur barre demande ici si le compte
+ * Plan gestion-contenu, étape 10 : l'accueil, les deux fiches et /api-docs
+ * ne lisent pas la session (ils étaient alors en cache) ; leur barre demande ici si le compte
  * de la session a accès au back-office, pour ne montrer le lien qu'à un
  * gestionnaire ou un admin (components/layout/BackOfficeLink.tsx). Le rôle
  * est celui de la base, relu par la garde (D1), jamais celui du jeton.

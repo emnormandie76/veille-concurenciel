@@ -1,5 +1,5 @@
 {
-  "name": "school-data-pipeline",
+  "name": "veille-concurrentielle",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -24,7 +24,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/ws": "^8.18.1",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.3.8",
+    "eslint-config-next": "^16.4.2",
     "tailwindcss": "^4.3.3",
     "ts-node": "^10.9.2",
     "tsx": "^4.22.3"

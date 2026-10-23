@@ -31,6 +31,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { installFakePrisma } from "./helpers/fake-prisma";
 import { schemaErrors } from "./helpers/prisma-schema";
+import { APP_NAME } from "../lib/app-name";
 import { USER_ROLES } from "../lib/roles";
 
 const PAGE = "app/help/page.tsx";
@@ -146,6 +147,15 @@ test("un gestionnaire ne voit que le guide du gestionnaire, un admin que celui d
   const admin = await page("ADMIN", "ADMIN");
   assert.deepEqual(shownGuides(admin), ["admin"]);
   for (const text of ['id="user-', 'id="manager-']) assert.equal(admin.includes(text), false, text);
+});
+
+test("D119 : la page nomme l'application une fois, en tête ; le guide dit « le site »", async () => {
+  for (const role of ["USER", "GESTIONNAIRE", "ADMIN"]) {
+    // Après la barre, qui porte aussi le nom (test/app-name.test.ts).
+    const body = (await page(role, role)).split("<h1")[1];
+    assert.equal(body.split(APP_NAME).length - 1, 1, role);
+    assert.match(body, new RegExp(`Le guide de ${APP_NAME} pour votre rôle : <strong[^>]*>`), role);
+  }
 });
 
 test("D1 : le rôle de la base compte, jamais celui du jeton", async () => {

@@ -2,12 +2,12 @@
  * app/schools/[id]/programs/[pid]/page.tsx — Détail programme public
  *
  * - Tarifs par année + total, classements, capacité par campus
- * - ISR 1h
+ * - Rendue à chaque visite : plus de cache d'une heure depuis la CSP à nonce
+ *   (étape 15, D123 ; app/layout.tsx)
  * - Vérification école ACTIVE + appartenance programme (schoolId)
  * - Plan gestion-contenu, étape 5 : sous chaque donnée (le programme, chaque
  *   tarif, classement et capacité), son lien source et « Modifié par … le … »
  *   (SourceLine). L'auteur n'est lu que par son nom (AUTHOR_SELECT, D25).
- *   Le cache d'une heure est levé à chaque écriture (lib/content-cache.ts).
  * - Étape 6 : un lien « Signaler une information » vers le formulaire, le
  *   programme choisi d'avance.
  * - Étape 8 (D16, D51) : une section « Admissions », une ligne par entrée
@@ -37,8 +37,6 @@ import SourceLine from "../../../SourceLine";
 import { PinIcon } from "../../../icons";
 import { ENTRY_ORDER_BY, describeEntry } from "@/lib/program-entries";
 import { AUTHOR_SELECT, describeProvenance, sourceHref } from "@/lib/provenance";
-
-export const revalidate = 3600; // ISR 1h — Étape 8.3
 
 interface Props {
   params: Promise<{ id: string; pid: string }>;
@@ -91,7 +89,7 @@ export async function generateMetadata({ params }: Props) {
   const program = await getProgram(id, pid);
   if (!program) return { title: "Programme introuvable" };
   return {
-    // « — EduData France » vient du modèle de titre d'app/layout.tsx.
+    // « — » et le nom de l'application viennent du modèle de titre d'app/layout.tsx.
     title: `${program.name} — ${program.school.name}`,
     description: `Tarifs, classements et capacité du programme ${program.name} à ${program.school.name}`,
   };

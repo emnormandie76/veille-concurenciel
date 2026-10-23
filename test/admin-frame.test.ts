@@ -28,6 +28,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { AdminMenu } from "../app/admin/SidebarClient";
+import { APP_NAME } from "../lib/app-name";
 import { ADMIN_NAV } from "../app/admin/nav";
 import type { UserRole } from "../lib/roles";
 
@@ -89,10 +90,10 @@ test("le menu : les entrées de navFor, dans l'ordre, avec leurs textes et leurs
   ]);
 });
 
-test("le menu : « School Data Pipeline », le nom, « Mon compte » et « Déconnexion » gardés ; aucun titre", () => {
+test("le menu : le nom de l'application (D119), celui de la personne, « Mon compte » et « Déconnexion » gardés ; aucun titre", () => {
   const out = render(ADMIN, "/admin/schools");
   // Deux fois : la barre de l'écran étroit et la colonne de l'écran large (une seule visible à la fois).
-  assert.equal(out.match(/>School Data Pipeline</g)?.length, 2);
+  assert.equal(out.split(`>${APP_NAME}<`).length - 1, 2);
   assert.match(out, />Goat</);
   assert.match(linkTag(out, "Mon compte"), /href="\/account"/);
   assert.match(out, /<button type="button" class="[^"]*">Déconnexion<\/button>/);
@@ -170,7 +171,7 @@ test("D94 : sous 1 024 px, un bouton « Menu » qui ouvre le menu sous la barre 
   assert.ok(openAside.includes("flex") && !openAside.includes("hidden"), "ouvert : affiché sous la barre");
 
   // La barre ne s'affiche que sous 1 024 px ; le menu ne flotte pas sur le contenu.
-  const bar = closed.match(/<div ([^>]*)><div[^>]*>School Data Pipeline<\/div><button/);
+  const bar = closed.match(new RegExp(`<div ([^>]*)><div[^>]*>${APP_NAME}</div><button`));
   assert.ok(bar && classesOf(bar[1]).includes("lg:hidden"), "la barre");
   assert.doesNotMatch(closed, /\b(fixed|absolute|z-\d+)\b/);
   // Refermé quand la page change : l'ouverture est liée au chemin où elle a eu lieu, sans effet.

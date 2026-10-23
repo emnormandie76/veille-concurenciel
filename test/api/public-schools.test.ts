@@ -10,6 +10,7 @@
 
 import { before, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { installFakePrisma } from "../helpers/fake-prisma";
 import { schemaErrors } from "../helpers/prisma-schema";
@@ -69,6 +70,19 @@ test("GET /api/schools : chaque école dit son nombre de programmes, avec ou san
 });
 
 // ── /api/schools/[id] ────────────────────────────────────────────────
+
+test("GET /api/schools : dynamique, sans revalidate (étape 15) ; les fiches de l'API, elles, en cache d'une heure", () => {
+  // La liste lit sa recherche et sa page dans l'adresse (`request.url`) : elle
+  // ne peut pas être prérendue. Avec `revalidate`, le build essayait, et
+  // journalisait « Dynamic server usage » avant de la laisser dynamique.
+  const read = (file: string) => readFileSync(file, "utf8");
+  const list = read("app/api/schools/route.ts");
+  assert.match(list, /request\.url/);
+  assert.doesNotMatch(list, /export const (revalidate|dynamic)\b/);
+  for (const file of ["app/api/schools/[id]/route.ts", "app/api/schools/[id]/programs/[pid]/route.ts"]) {
+    assert.match(read(file), /^export const revalidate = 3600;/m, file);
+  }
+});
 
 test("GET /api/schools/[id] : absente ou non ACTIVE → 404", async () => {
   for (const school of [null, { ...SCHOOL, status: "INACTIVE" }, { ...SCHOOL, status: "DRAFT" }]) {

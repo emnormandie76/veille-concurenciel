@@ -2,7 +2,7 @@
  * app/page.tsx — Page d'accueil publique
  *
  * - Liste des écoles ACTIVE avec recherche en temps réel
- * - ISR 1h (export revalidate)
+ * - Rendue à chaque visite, comme toute page (CSP à nonce, étape 15, D123)
  * - Données depuis /api/schools côté client (recherche dynamique)
  * - Un échec de l'API s'affiche avec « Réessayer » : il ne passe plus pour
  *   « aucune école » (défaut F6, lib/public-schools.ts)

@@ -10,14 +10,15 @@
  * - `programs_count` : tous les programmes de l'école, avec ou sans campus,
  *   ceux de sa fiche (plan gestion-contenu, D75 : l'accueil les comptait à
  *   travers les campus, 51 pour 46)
- * - Cache ISR 1h
+ * - Dynamique : la recherche et la page se lisent dans l'adresse (`request.url`),
+ *   la liste ne peut pas être prérendue. Le `revalidate = 3600` d'avant (étape 8.3
+ *   du plan backend-local) faisait essayer le build, qui journalisait « Dynamic
+ *   server usage » ; retiré à l'étape 15 (plan gestion-contenu)
  * - Référence : architecture/gestion-contenu.md §4.3
  */
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-export const revalidate = 3600; // ISR 1h — Étape 8.3
 
 export async function GET(request: Request) {
   try {

@@ -9,7 +9,7 @@
  * - « Mon compte » et le formulaire de signalement lisent la session (relue
  *   en base, D1) : ils disent au gabarit ce qu'ils savent, et le lien est
  *   là d'emblée, sans appel ;
- * - l'accueil, les deux fiches (cache ISR) et /api-docs ne la lisent pas :
+ * - l'accueil, les deux fiches et /api-docs ne la lisent pas :
  *   la barre le demande elle-même à `GET /api/admin/account/back-office`
  *   (test/api/account-back-office.test.ts), par `BackOfficeLink`. Le HTML
  *   rendu côté serveur ne l'a jamais : rien n'apparaît puis disparaît pour

@@ -14,11 +14,32 @@ jobs:
     name: Lint, Types & Migrations
     runs-on: ubuntu-latest
 
+    # ─── Base de CI éphémère (plan gestion-contenu, étape 15) ────────────
+    # Un Postgres jetable, créé pour le run et détruit après : les
+    # migrations s'y jouent depuis une base vierge, sur toutes les branches,
+    # sans rien partager (mémo Vercel §11). Même version majeure que Neon.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
-      # Variables requises par Prisma & Next.js pour le build de validation
-      # À configurer dans Settings > Secrets and variables > Actions sur GitHub
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      # La base jetable, pour tout le job. DIRECT_URL aussi : prisma.config.ts
+      # la préfère à DATABASE_URL pour migrer (mémo Vercel §11, piège 1) ;
+      # laissée sur Neon, elle y enverrait les migrations. Les secrets Neon ne
+      # servent qu'à l'étape du statut de la production, sur main.
+      DATABASE_URL: "postgresql://ci:ci@127.0.0.1:5432/ci"
+      DIRECT_URL: "postgresql://ci:ci@127.0.0.1:5432/ci"
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
       NEXTAUTH_URL: "http://localhost:3000"
 
@@ -57,24 +78,30 @@ jobs:
       - name: Prisma — validation du schéma
         run: npx prisma validate
 
-      - name: Prisma — statut des migrations (base de dev)
-        # Bloque uniquement sur la branche de production (main) et sur les PR
-        # vers main. Ailleurs l'etape s'execute et affiche son verdict, mais
-        # ne fait pas echouer le job.
-        #
-        # Pourquoi : cette etape interroge la base Neon PARTAGEE. Une branche
-        # qui ajoute une migration echouait donc tant que cette migration
-        # n'avait pas ete appliquee a la base commune — c'est-a-dire avant
-        # meme que le code soit relu. Trois branches ont bute dessus le
-        # 2 septembre 2026. Le constat est deplace la ou il est actionnable :
-        # a l'integration, quand appliquer la migration est bien l'etape
-        # suivante.
-        #
-        # Ce n'est qu'un palliatif. Le correctif de fond est un service
-        # Postgres ephemere dans le job — voir
-        # docs/memory/memory-deploiement-vercel.md, "Base de CI ephemere".
+      # ─── Migrations : sur une base vierge, toutes les branches ───────────
+      # Rejoue tout l'historique sur la base jetable : une migration cassée
+      # (colonne inexistante, ordre faux, DROP qui échoue) fait échouer le
+      # job avant toute relecture, sans toucher à Neon. Puis le statut, sur
+      # cette base : il doit dire « à jour ».
+      - name: Prisma — migrations sur une base vierge (base jetable)
+        run: npx prisma migrate deploy
+
+      - name: Prisma — statut des migrations (base jetable)
         run: npx prisma migrate status
-        continue-on-error: ${{ !(github.ref == 'refs/heads/main' || github.base_ref == 'main') }}
+
+      - name: Prisma — statut des migrations (base de production)
+        # Sur main et les PR vers main seulement (D121) : avant une mise en
+        # production, dit si la base Neon des secrets, la production (branche
+        # Neon main, ep-super-rain), a toutes les migrations du dépôt. Une
+        # migration nouvelle s'y applique depuis le poste, avant le push sur
+        # main (mémo Vercel §3.1) ; tant qu'elle manque, cette CI est rouge.
+        # Ailleurs, l'étape ne tourne pas : une branche n'attend pas la
+        # production.
+        if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npx prisma migrate status
 
       # ─── Garde-fou : interdire la synchro de schema sans migration ───────
       - name: Sécurité — détecter une synchro de schema hors migration

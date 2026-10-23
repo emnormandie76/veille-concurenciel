@@ -3,7 +3,7 @@
 > Ce que fait le code de la branche `gestion` et de `main`, la production,
 > qui la suit par avance rapide. Chaque étape du plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md) la tient à
-> jour ; les décisions citées (G1 à G9, D1 à D117) et les pièges y sont
+> jour ; les décisions citées (G1 à G9, D1 à D123) et les pièges y sont
 > expliqués. Point d'entrée pour travailler sur le site : la partie IA, gelée,
 > vit sur la branche `local` (§1).
 

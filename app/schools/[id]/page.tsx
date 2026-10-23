@@ -3,14 +3,14 @@
  *
  * - Infos école, campus, programmes, stats, accréditations
  * - Navigation par onglets (Campus/Programmes, Stats, Accréditations)
- * - ISR 1h (revalidate)
+ * - Rendue à chaque visite : plus de cache d'une heure depuis la CSP à nonce
+ *   (étape 15, D123 ; app/layout.tsx)
  * - Filtre école ACTIVE obligatoire
  * - Plan gestion-contenu, étape 5 : l'école, ses chiffres clés et ses
  *   accréditations portent leur lien source et « Modifié par … le … »,
  *   préparés ici (`forDisplay`) : le navigateur reçoit le texte et le lien
  *   vérifié, jamais l'identifiant ni la relation de l'auteur (D25). Campus et
- *   programmes sont lus champ par champ, pour la même raison. Le cache d'une
- *   heure est levé à chaque écriture (lib/content-cache.ts).
+ *   programmes sont lus champ par champ, pour la même raison.
  * - Étape 9 (lot 1) : la fiche passe à la charte dans SchoolDetailClient,
  *   qui pose le gabarit du site ; cette page ne lit toujours pas la session.
  * - Référence : architecture/gestion-contenu.md §3.1
@@ -21,14 +21,12 @@ import Link from "next/link";
 import SchoolDetailClient from "./SchoolDetailClient";
 import { AUTHOR_SELECT, forDisplay } from "@/lib/provenance";
 
-export const revalidate = 3600; // ISR 1h — Étape 8.3
-
 interface Props {
   params: Promise<{ id: string }>;
 }
 
 async function getSchool(id: string) {
-  // En SSR/ISR, on appelle directement Prisma (pas de fetch HTTP local)
+  // Rendu serveur : on appelle directement Prisma (pas de fetch HTTP local)
   // On importe dynamiquement pour rester compatible avec le runtime Node.js
   const { prisma } = await import("@/lib/prisma");
 
@@ -92,7 +90,7 @@ export async function generateMetadata({ params }: Props) {
   const school = await getSchool(id);
   if (!school) return { title: "École introuvable" };
   return {
-    // « — EduData France » vient du modèle de titre d'app/layout.tsx.
+    // « — » et le nom de l'application viennent du modèle de titre d'app/layout.tsx.
     title: school.name,
     description: `Programmes, tarifs, classements et accréditations de ${school.name}`,
   };

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Sans_Condensed } from "next/font/google";
+import { connection } from "next/server";
+import { APP_NAME } from "@/lib/app-name";
 import "./globals.css";
 
 // La charte (app/charte.css) : Plex Sans pour le texte (un seul fichier, variable),
@@ -28,24 +30,30 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "EduData France — Données de l'enseignement supérieur",
-    template: "%s — EduData France",
+    default: APP_NAME,
+    template: `%s — ${APP_NAME}`,
   },
   description:
     "Plateforme de centralisation des données de l'enseignement supérieur français : grilles tarifaires, classements, accréditations et places disponibles.",
   keywords: ["école", "formation", "enseignement supérieur", "tarifs", "classement", "france"],
   openGraph: {
-    siteName: "EduData France",
+    siteName: APP_NAME,
     locale: "fr_FR",
     type: "website",
   },
 };
 
-export default function RootLayout({
+// Toutes les pages sont dynamiques (étape 15, D123) : la CSP porte un nonce
+// neuf à chaque requête (proxy.ts, lib/csp.ts), que Next pose sur ses scripts
+// au rendu. Une page prérendue ou en cache porterait le nonce d'une autre
+// requête, ou aucun, et ses scripts seraient bloqués. Attendre la requête ici
+// vaut pour chaque page de l'application.
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  await connection();
   return (
     <html lang="fr" className={`${plexSans.variable} ${plexCondensed.variable} ${plexMono.variable}`}>
       <body>{children}</body>

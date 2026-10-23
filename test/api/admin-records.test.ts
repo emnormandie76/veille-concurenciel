@@ -441,10 +441,11 @@ test("DELETE /schools/[id]/stats/[recordId] : 404 ; ligne d'une autre école →
   assert.deepEqual(db.writes()[0].args, [{ where: { id: STATS.id } }]);
 });
 
-// ── JSON mal formé : décision 10 du journal ──────────────────────────
+// ── JSON mal formé : D120 ────────────────────────────────────────────
 
-test("JSON mal formé : 500 au lieu de 400 (décision 10 : consigné, non corrigé), rien d'écrit", async () => {
-  // Défaut connu et accepté le 14 octobre 2026 (voir admin-schools.test.ts).
+test("D120 : un JSON mal formé, ou qui n'est pas un objet, rend 400 ; rien d'écrit", async () => {
+  // Le 500 de la décision 10 (plan backend-local), corrigé le 23 octobre 2026
+  // (voir admin-schools.test.ts).
   for (const name of [
     "upsertPricing",
     "createRanking",
@@ -453,9 +454,12 @@ test("JSON mal formé : 500 au lieu de 400 (décision 10 : consigné, non corrig
     "updateAccreditation",
     "upsertStats",
   ]) {
-    db.use({});
-    const res = await quietly(() => h[name](body("{pas du json", "PUT"), id("x")));
-    assert.equal(res.status, 500, name);
-    assert.deepEqual(db.calls, [], name);
+    for (const raw of ["{pas du json", "[]", "null", "42"]) {
+      db.use({});
+      const res = await quietly(() => h[name](body(raw, "PUT"), id("x")));
+      assert.equal(res.status, 400, `${name} ${raw}`);
+      assert.deepEqual(await res.json(), { error: "Corps de requête JSON invalide." }, name);
+      assert.deepEqual(db.calls, [], name);
+    }
   }
 });

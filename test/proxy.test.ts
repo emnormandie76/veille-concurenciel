@@ -260,3 +260,35 @@ test("/api/v1 : les appels sans session ne consomment pas le quota de l'IP", asy
   }
   assert.ok(passes(await proxy(request("/api/v1/schools", { ip, cookie: validCookie }), EVENT)));
 });
+
+// ── D123 : la CSP à nonce ────────────────────────────────────────────
+
+const cspOf = (res: Response | undefined) => res?.headers.get("content-security-policy") ?? "";
+const scriptSrc = (csp: string) => csp.split("; ").find((d) => d.startsWith("script-src ")) ?? "";
+
+test("D123 : chaque réponse du proxy porte une CSP à nonce, un nonce neuf à chaque requête", async () => {
+  const responses = [
+    await proxy(request("/admin/login"), EVENT), // libre
+    await proxy(request("/", { cookie: validCookie }), EVENT), // en session
+    await proxy(request("/schools/x"), EVENT), // renvoyée vers la connexion
+    await proxy(request("/api/admin/schools"), EVENT), // 401
+    await proxy(request("/admin/login"), EVENT), // la même, une autre fois
+  ];
+  const nonces = responses.map((res) => scriptSrc(cspOf(res)).match(/'nonce-([^']+)'/)?.[1]);
+  for (const nonce of nonces) assert.ok(nonce && nonce.length >= 24, String(nonce));
+  assert.equal(new Set(nonces).size, nonces.length);
+  for (const res of responses) {
+    assert.match(scriptSrc(cspOf(res)), /'strict-dynamic'/);
+    assert.doesNotMatch(scriptSrc(cspOf(res)), /'unsafe-inline'/);
+    assert.match(cspOf(res), /frame-ancestors 'none'/);
+  }
+});
+
+test("D123 : une requête qui passe emporte la même CSP, où Next lit le nonce pour ses scripts", async () => {
+  for (const res of [await proxy(request("/admin/login"), EVENT), await proxy(request("/help", { cookie: validCookie }), EVENT)]) {
+    assert.ok(passes(res));
+    assert.ok(cspOf(res));
+    assert.equal(res!.headers.get("x-middleware-request-content-security-policy"), cspOf(res));
+    assert.match(res!.headers.get("x-middleware-override-headers") ?? "", /content-security-policy/);
+  }
+});

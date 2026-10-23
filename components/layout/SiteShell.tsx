@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import SignOutButton from "@/app/SignOutButton";
 import { buttonClasses } from "@/components/ui/Button";
 import { cx } from "@/components/ui/cx";
+import { APP_NAME } from "@/lib/app-name";
 import BackOfficeLink from "./BackOfficeLink";
 import { BackOfficeNavLink, SiteNavLink } from "./SiteNavLink";
 
@@ -39,7 +40,7 @@ export function SiteShell({ current, showBackOffice, width = "wide", children }:
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-2.5">
           <Link href="/" className="font-display text-lg font-semibold tracking-tight text-ink">
-            EduData France
+            {APP_NAME}
           </Link>
           <nav aria-label="Navigation du site" className="flex flex-wrap items-center gap-1">
             <SiteNavLink href="/" current={current === "schools"}>

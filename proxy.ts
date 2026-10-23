@@ -1,5 +1,6 @@
 import { getToken } from "next-auth/jwt";
 import { NextResponse, type NextRequest } from "next/server";
+import { contentSecurityPolicy, createNonce } from "@/lib/csp";
 import { checkRateLimit, clientIp } from "@/lib/rate-limit";
 import { FIRST_LOGIN_API, FIRST_LOGIN_PATH, LOGIN_PATH, UNAUTHENTICATED_MESSAGE } from "@/lib/roles";
 
@@ -18,9 +19,26 @@ import { FIRST_LOGIN_API, FIRST_LOGIN_PATH, LOGIN_PATH, UNAUTHENTICATED_MESSAGE 
 // (lib/auth.ts, décision D1) : dans les gardes des API et dans les écrans du
 // back-office (`requirePage`).
 //
-// Les pages publiques et les API de lecture sont en cache ISR d'une heure : le
-// proxy passe avant le cache, le mur tient (plan, piège 4).
+// Les routes de lecture de l'API (v1, `/api/schools/[id]`) sont en cache d'une
+// heure : le proxy passe avant le cache, le mur tient (plan, piège 4). Les
+// pages ne sont plus en cache depuis la CSP à nonce (D123).
 // ──────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────
+// CSP à nonce (plan gestion-contenu, étape 15, D123)
+//
+// Un nonce neuf à chaque requête, dans la CSP de lib/csp.ts : posée sur la
+// requête qui passe, Next y lit le nonce et le met sur ses propres scripts ;
+// posée sur toute réponse du proxy, le navigateur n'exécute que ceux-là.
+// Les fichiers statiques de Next, hors du matcher, n'en ont pas besoin.
+// ──────────────────────────────────────────────────────────────
+
+/** La requête poursuit sa route, avec la CSP de cette requête dans ses en-têtes. */
+function pass(req: NextRequest, csp: string): NextResponse {
+  const headers = new Headers(req.headers);
+  headers.set("Content-Security-Policy", csp);
+  return NextResponse.next({ request: { headers } });
+}
 
 // ──────────────────────────────────────────────────────────────
 // Limitation de débit
@@ -90,18 +108,26 @@ function refuse(req: NextRequest): NextResponse {
 }
 
 export default async function proxy(req: NextRequest) {
+  const csp = contentSecurityPolicy(createNonce());
+  const response = await guard(req, csp);
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
+}
+
+/** Le mur de connexion, puis le plafond de l'API v1. */
+async function guard(req: NextRequest, csp: string): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
 
   // 1. La connexion, la première connexion et NextAuth : libres. Leurs échecs
   //    se comptent plus loin, là où l'issue se connaît (D117).
-  if (isPublicPath(pathname)) return NextResponse.next();
+  if (isPublicPath(pathname)) return pass(req, csp);
 
   // 2. Tout le reste : session obligatoire.
   if (!(await hasSession(req))) return refuse(req);
 
   // 3. API v1 : plafonnée, par IP. Les pré-vols CORS ne consomment pas de quota.
   if (pathname.startsWith("/api/v1")) {
-    if (req.method === "OPTIONS") return NextResponse.next();
+    if (req.method === "OPTIONS") return pass(req, csp);
     const ip = clientIp(req.headers);
     if (!(await checkRateLimit(`v1:${ip}`, V1_LIMIT, V1_WINDOW_MS))) {
       return tooManyRequests(
@@ -111,7 +137,7 @@ export default async function proxy(req: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return pass(req, csp);
 }
 
 // Matcher : tout, sauf les fichiers statiques de Next et l'icône. Une page ou

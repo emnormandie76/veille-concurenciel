@@ -189,8 +189,10 @@ const USER_GUIDE: HelpGuide = {
             choisit votre mot de passe.
           </P>
           <Note>
-            Le site limite les connexions à cinq essais par quart d'heure depuis un même réseau, réussis ou non. Au-delà,
-            il refuse la connexion, même avec le bon mot de passe : patientez quelques minutes avant de réessayer.
+            Une connexion réussie ne compte jamais ; les échecs, si. Après cinq échecs sur une même adresse, le site
+            bloque la connexion de cette adresse pendant un quart d'heure, même avec le bon mot de passe (vingt échecs
+            depuis un même réseau, toutes adresses confondues, le bloquent aussi). La page dit alors{" "}
+            <Ui>Trop de tentatives de connexion. Réessayez dans quelques minutes.</Ui> : patientez avant de réessayer.
           </Note>
         </>
       ),
@@ -550,6 +552,10 @@ const ADMIN_GUIDE: HelpGuide = {
             Un compte désactivé ou remis en première connexion perd aussitôt le back-office, «&nbsp;Mon compte&nbsp;» et toute
             écriture. La simple lecture du site peut lui rester jusqu'à huit heures, le temps que sa session expire.
           </Note>
+          <P>
+            Un collègue bloqué après cinq échecs de connexion attend un quart d'heure : rien, dans le back-office, ne lève
+            le blocage plus tôt, pas même la remise en première connexion.
+          </P>
         </>
       ),
     },

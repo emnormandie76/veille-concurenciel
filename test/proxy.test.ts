@@ -15,13 +15,13 @@
  * `POST /api/first-login`) s'ajoute délibérément aux entrées libres. Sa route
  * n'est pas sous `/api/auth/*`, où tout devient public d'office.
  *
- * Il plafonne aussi la connexion et la première connexion, tentatives
- * confondues (5 / 15 min / IP), et l'API v1 (60 / min / IP, pour les requêtes
- * connectées).
+ * Il plafonne aussi l'API v1 (60 / min / IP, pour les requêtes connectées).
+ * La connexion et la première connexion ne le sont plus ici : seuls leurs
+ * échecs comptent, ce que le proxy ne voit pas (D117, lib/login-attempts.ts).
  *
  * Le matcher se teste avec `unstable_doesMiddlewareMatch` de
  * `next/experimental/testing/server`. La documentation de Next 16 cite
- * `unstable_doesProxyMatch`, que la version installée (16.3.8) n'exporte pas.
+ * `unstable_doesProxyMatch`, que la version installée (16.4.2) n'exporte pas.
  *
  * Sans Upstash, `lib/rate-limit.ts` compte en mémoire : chaque test prend sa
  * propre IP. La session est lue par next-auth dans un vrai jeton chiffré avec
@@ -211,95 +211,30 @@ test("avec une session valide, quel que soit le rôle du jeton, la requête pass
   }
 });
 
-// ── Connexion : 5 tentatives par IP et par 15 minutes ────────────────
+// ── Connexion : le proxy ne compte plus (D117) ───────────────────────
+//
+// Jusqu'au 23 octobre 2026, le proxy plafonnait la connexion et la première
+// connexion à 5 envois par IP et par 15 minutes, réussites comprises :
+// l'équipe sortant par une seule IP, la sixième connexion de l'école était
+// refusée. D117 (le propriétaire) : seuls les échecs comptent, par compte et
+// par IP. Le proxy ne voit pas l'issue d'une connexion : le plafond vit dans
+// lib/login-attempts.ts (test/login-attempts.test.ts, test/sign-in.test.ts,
+// test/api/first-login.test.ts). Les six tests de l'ancien plafond sont
+// retirés avec la règle (le journal du plan les nomme).
 
-test("la 6ᵉ tentative de connexion en 15 minutes → 429, avec Retry-After", async () => {
-  const results: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    const res = await proxy(
-      request("/api/auth/callback/credentials", { method: "POST", ip: "203.0.113.10" }),
-      EVENT
-    );
-    results.push(passes(res) ? 200 : (res as Response).status);
-  }
-
-  assert.deepEqual(results, [200, 200, 200, 200, 200, 429]);
-  const blocked = await proxy(
-    request("/api/auth/callback/credentials", { method: "POST", ip: "203.0.113.10" }),
-    EVENT
-  );
-  assert.equal(blocked?.status, 429);
-  assert.equal(blocked?.headers.get("Retry-After"), "900");
-  assert.match((await blocked!.json()).error, /Trop de tentatives/);
-});
-
-test("varier x-forwarded-for ne contourne pas le plafond quand la plateforme donne l'IP", async () => {
-  const statuses: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    const res = await proxy(
-      request("/api/auth/callback/credentials", {
-        method: "POST",
-        ip: "203.0.113.11",
-        headers: { "x-forwarded-for": `192.0.2.${i}` },
-      }),
-      EVENT
-    );
-    statuses.push(passes(res) ? 200 : (res as Response).status);
-  }
-  assert.equal(statuses[5], 429);
-});
-
-test("la première connexion est plafonnée comme la connexion : la 6ᵉ tentative en 15 minutes → 429", async () => {
-  const results: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    const res = await proxy(request("/api/first-login", { method: "POST", ip: "203.0.113.20" }), EVENT);
-    results.push(passes(res) ? 200 : (res as Response).status);
-  }
-  assert.deepEqual(results, [200, 200, 200, 200, 200, 429]);
-  const blocked = await proxy(request("/api/first-login", { method: "POST", ip: "203.0.113.20" }), EVENT);
-  assert.equal(blocked?.headers.get("Retry-After"), "900");
-  assert.match((await blocked!.json()).error, /Trop de tentatives/);
-});
-
-test("connexion et première connexion partagent leur plafond : alterner ne double pas les essais", async () => {
-  const ip = "203.0.113.21";
-  const statuses: number[] = [];
-  for (const path of [
-    "/api/auth/callback/credentials",
-    "/api/first-login",
-    "/api/auth/callback/credentials",
-    "/api/first-login",
-    "/api/auth/callback/credentials",
-    "/api/first-login",
-    "/api/auth/callback/credentials",
-  ]) {
-    const res = await proxy(request(path, { method: "POST", ip }), EVENT);
-    statuses.push(passes(res) ? 200 : (res as Response).status);
-  }
-  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 429, 429]);
-});
-
-test("seul le POST de la première connexion est compté", async () => {
+test("D117 : le proxy laisse passer chaque envoi de connexion et de première connexion, sans compter", async () => {
   for (let i = 0; i < 10; i++) {
-    assert.ok(passes(await proxy(request("/api/first-login", { ip: "203.0.113.22" }), EVENT)));
-    assert.ok(passes(await proxy(request("/admin/first-login", { ip: "203.0.113.22" }), EVENT)));
+    const login = await proxy(request("/api/auth/callback/credentials", { method: "POST", ip: "203.0.113.10" }), EVENT);
+    assert.ok(passes(login), `connexion n° ${i + 1} : statut ${login?.status}`);
+    const first = await proxy(request("/api/first-login", { method: "POST", ip: "203.0.113.10" }), EVENT);
+    assert.ok(passes(first), `première connexion n° ${i + 1} : statut ${first?.status}`);
   }
-  assert.ok(passes(await proxy(request("/api/first-login", { method: "POST", ip: "203.0.113.22" }), EVENT)));
 });
 
-test("seul le POST de connexion est compté ; une autre IP a son propre seau", async () => {
-  for (let i = 0; i < 10; i++) {
-    const res = await proxy(request("/api/auth/callback/credentials", { ip: "203.0.113.12" }), EVENT);
-    assert.ok(passes(res));
-  }
-  for (let i = 0; i < 5; i++) {
-    await proxy(request("/api/auth/callback/credentials", { method: "POST", ip: "203.0.113.13" }), EVENT);
-  }
-  const other = await proxy(
-    request("/api/auth/callback/credentials", { method: "POST", ip: "203.0.113.14" }),
-    EVENT
-  );
-  assert.ok(passes(other));
+test("D117 : proxy.ts ne plafonne plus la connexion ; seule l'API v1 l'est encore", () => {
+  const source = fs.readFileSync("proxy.ts", "utf8").replace(/\/\*[\s\S]*?\*\/|^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(source, /login:|LOGIN_LIMIT|PASSWORD_ENTRIES|callback\/credentials/);
+  assert.equal(source.match(/checkRateLimit\(/g)?.length, 1, "un seul appel : l'API v1");
 });
 
 // ── API v1 : le plafond reste ────────────────────────────────────────

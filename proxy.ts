@@ -41,17 +41,10 @@ function tooManyRequests(message: string, retryAfterSeconds: number): NextRespon
   });
 }
 
-// Chemin sur lequel NextAuth vérifie les identifiants.
-const CREDENTIALS_CALLBACK = "/api/auth/callback/credentials";
-
-// Les deux portes d'entrée par mot de passe : la connexion et la première
-// connexion. Elles partagent un seul plafond, pour qu'alterner de l'une à
-// l'autre ne double pas les essais.
-const PASSWORD_ENTRIES = new Set([CREDENTIALS_CALLBACK, FIRST_LOGIN_API]);
-
-// ~5 tentatives de connexion par IP et par tranche de 15 minutes.
-const LOGIN_LIMIT = 5;
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+// La connexion et la première connexion ne se plafonnent plus ici (D117) :
+// seuls leurs échecs comptent, par compte et par IP, et le proxy ne voit pas
+// l'issue d'une connexion. Le plafond vit dans lib/login-attempts.ts, que la
+// connexion (lib/sign-in.ts) et la première connexion consultent.
 
 // API de lecture : sans plafond, un seul client aspire la base entière et
 // sature le palier gratuit Neon. 60 requêtes/minute laisse largement la place
@@ -96,37 +89,17 @@ function refuse(req: NextRequest): NextResponse {
   return NextResponse.redirect(signIn);
 }
 
-/**
- * IMPORTANT — la limitation de débit de la connexion passe avant tout : le
- * POST des identifiants arrive sans session, et NextAuth (ou la route de
- * première connexion) le traite ensuite.
- */
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1. Connexion et première connexion : plafonner la force brute, sur un seul
-  //    compteur. Seul le POST est compté, c'est lui qui porte la soumission.
-  if (PASSWORD_ENTRIES.has(pathname)) {
-    if (req.method === "POST") {
-      const ip = clientIp(req.headers);
-      if (!(await checkRateLimit(`login:${ip}`, LOGIN_LIMIT, LOGIN_WINDOW_MS))) {
-        console.warn(`[auth] plafond de tentatives de connexion atteint pour ip=${ip}`);
-        return tooManyRequests(
-          "Trop de tentatives de connexion. Réessayez dans quelques minutes.",
-          LOGIN_WINDOW_MS / 1000
-        );
-      }
-    }
-    return NextResponse.next();
-  }
-
-  // 2. La connexion, la première connexion et NextAuth : libres.
+  // 1. La connexion, la première connexion et NextAuth : libres. Leurs échecs
+  //    se comptent plus loin, là où l'issue se connaît (D117).
   if (isPublicPath(pathname)) return NextResponse.next();
 
-  // 3. Tout le reste : session obligatoire.
+  // 2. Tout le reste : session obligatoire.
   if (!(await hasSession(req))) return refuse(req);
 
-  // 4. API v1 : plafonnée, par IP. Les pré-vols CORS ne consomment pas de quota.
+  // 3. API v1 : plafonnée, par IP. Les pré-vols CORS ne consomment pas de quota.
   if (pathname.startsWith("/api/v1")) {
     if (req.method === "OPTIONS") return NextResponse.next();
     const ip = clientIp(req.headers);

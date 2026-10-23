@@ -47,19 +47,23 @@ export function clientIp(headers: Headers): string {
 // Magasin mémoire (repli)
 // ──────────────────────────────────────────────
 
-const memoryStore = new Map<string, { count: number; resetTime: number }>();
+type MemoryRecord = { count: number; resetTime: number };
+
+const memoryStore = new Map<string, MemoryRecord>();
+/** Les compteurs d'échecs (D117), à part des quotas : leurs clés ne se mêlent pas. */
+const failureStore = new Map<string, MemoryRecord>();
 let memoryWarningIssued = false;
 
 /** Purge les fenêtres expirées : sans cela chaque clé vue reste en mémoire. */
-function sweepExpired(now: number): void {
-  for (const [key, record] of memoryStore) {
-    if (now > record.resetTime) memoryStore.delete(key);
+function sweepExpired(store: Map<string, MemoryRecord>, now: number): void {
+  for (const [key, record] of store) {
+    if (now > record.resetTime) store.delete(key);
   }
 }
 
 function checkInMemory(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
-  if (memoryStore.size > 5000) sweepExpired(now);
+  if (memoryStore.size > 5000) sweepExpired(memoryStore, now);
 
   const record = memoryStore.get(key);
   if (!record || now > record.resetTime) {
@@ -153,6 +157,12 @@ export async function checkRateLimit(
   const shared = await checkUpstash(key, limit, windowMs);
   if (shared !== null) return shared;
 
+  warnMemoryFallback();
+  return checkInMemory(key, limit, windowMs);
+}
+
+/** Le repli mémoire se signale une fois, quand aucun magasin partagé n'est configuré. */
+function warnMemoryFallback(): void {
   if (!upstashConfig() && !memoryWarningIssued) {
     memoryWarningIssued = true;
     console.warn(
@@ -161,8 +171,105 @@ export async function checkRateLimit(
         "chaque instance et ne tient pas sur une plateforme sans état."
     );
   }
+}
 
-  return checkInMemory(key, limit, windowMs);
+// ──────────────────────────────────────────────
+// Compteurs d'échecs (plan gestion-contenu, D117)
+// ──────────────────────────────────────────────
+//
+// Un quota (`checkRateLimit`) compte chaque requête. Un compteur d'échecs ne
+// compte que ce que l'appelant note (`recordFailure`), se lit sans rien
+// ajouter (`failureCount`) et s'efface (`clearFailures`) : la connexion ne
+// compte que ses échecs (lib/login-attempts.ts). Sa fenêtre court depuis le
+// premier échec noté : la clé expire `windowMs` après sa création, un échec
+// suivant ne la prolonge pas (EXPIRE NX). Même magasin partagé, même repli
+// mémoire que les quotas.
+
+/**
+ * Envoie des commandes à Upstash en un aller-retour.
+ *
+ * @returns le résultat de chaque commande, ou null si le magasin n'est pas
+ *          configuré ou répond mal (l'appelant retombe alors sur la mémoire)
+ */
+async function upstashPipeline(commands: string[][]): Promise<unknown[] | null> {
+  const cfg = upstashConfig();
+  if (!cfg) return null;
+  try {
+    const res = await fetch(`${cfg.url}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(commands),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.error(`[rate-limit] Upstash a répondu ${res.status}`);
+      return null;
+    }
+    const payload = (await res.json()) as Array<{ result?: unknown; error?: string }>;
+    if (!Array.isArray(payload) || payload.length !== commands.length || payload.some((entry) => entry?.error)) {
+      console.error("[rate-limit] réponse Upstash inattendue");
+      return null;
+    }
+    return payload.map((entry) => entry.result);
+  } catch (error) {
+    console.error("[rate-limit] Upstash injoignable:", error);
+    return null;
+  }
+}
+
+/** Le compteur d'échecs de `key` en mémoire, s'il court encore. */
+function liveFailures(key: string, now: number): MemoryRecord | null {
+  const record = failureStore.get(key);
+  if (!record) return null;
+  if (now > record.resetTime) {
+    failureStore.delete(key);
+    return null;
+  }
+  return record;
+}
+
+/** Les échecs notés pour `key` dans sa fenêtre en cours, sans en ajouter. */
+export async function failureCount(key: string): Promise<number> {
+  const shared = await upstashPipeline([["GET", `fail:${key}`]]);
+  if (shared !== null) {
+    const count = Number(shared[0] ?? 0);
+    return Number.isFinite(count) ? count : 0;
+  }
+  warnMemoryFallback();
+  return liveFailures(key, Date.now())?.count ?? 0;
+}
+
+/** Note un échec pour `key` ; le premier ouvre une fenêtre de `windowMs`. */
+export async function recordFailure(key: string, windowMs: number): Promise<void> {
+  const redisKey = `fail:${key}`;
+  const shared = await upstashPipeline([
+    ["INCR", redisKey],
+    ["EXPIRE", redisKey, String(Math.ceil(windowMs / 1000)), "NX"],
+  ]);
+  if (shared !== null) return;
+
+  warnMemoryFallback();
+  const now = Date.now();
+  if (failureStore.size > 5000) sweepExpired(failureStore, now);
+  const record = liveFailures(key, now);
+  if (record) record.count += 1;
+  else failureStore.set(key, { count: 1, resetTime: now + windowMs });
+}
+
+/** Efface les échecs de `key` (une connexion réussie). */
+export async function clearFailures(key: string): Promise<void> {
+  const shared = await upstashPipeline([["DEL", `fail:${key}`]]);
+  if (shared !== null) return;
+  failureStore.delete(key);
+}
+
+/** Vide le magasin mémoire, quotas et échecs : pour les tests, qui partagent un processus. Sans effet sur Upstash. */
+export function resetMemoryStore(): void {
+  memoryStore.clear();
+  failureStore.clear();
 }
 
 /** Indique si un magasin partagé est actif (diagnostic / page de statut). */

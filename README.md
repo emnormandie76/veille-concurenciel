@@ -218,8 +218,11 @@ Voir [`eslint.config.mjs`](eslint.config.mjs) pour le détail des arbitrages.
    backend. Le formulaire de signalement écrit dans sa propre table,
    `ContentReport`, sans IA.
 4. **`lib/rate-limit.ts` est l'implémentation unique** de la limitation de débit :
-   connexion et API v1 dans le proxy, par IP ; signalement dans sa route, par
-   compte (10 par heure), l'équipe partageant l'IP de l'école.
+   API v1 dans le proxy, par IP ; les **échecs** de la connexion et de la
+   première connexion, dans leur code (`lib/login-attempts.ts`, D117), 5 par
+   compte et 20 par IP sur 15 minutes, une réussite ne comptant jamais ;
+   signalement dans sa route, par compte (10 par heure), l'équipe partageant
+   l'IP de l'école.
 5. **Sur la branche `local`**, deux garanties du backend : tout contenu
    externe injecté dans un prompt passe par `wrap_source()`
    (`backend/ai/gemma_client.py`), qui neutralise les balises de délimitation,

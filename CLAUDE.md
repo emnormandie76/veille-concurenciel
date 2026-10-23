@@ -28,7 +28,7 @@ restent tels quels, réservés à l'admin, sans nouveau développement ni recett
 
 | Document | Rôle |
 |---|---|
-| [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Le code cite ses décisions (G1 à G9, D1 à D115) |
+| [docs/features/gestion-contenu.md](docs/features/gestion-contenu.md) | **le plan** : décisions (§2), pièges (§4), étapes (§5), journal (§9). Le code cite ses décisions (G1 à G9, D1 à D117) |
 | [docs/architecture/gestion-contenu.md](docs/architecture/gestion-contenu.md) | **l'état réel du code** : rôles, gardes, écrans, routes, tables, styles, tests, sécurité (§8), outillage et CI (§9) |
 | [docs/architecture/charte-graphique.md](docs/architecture/charte-graphique.md) | **la charte graphique** : jetons, contrastes, polices, composants, gabarits, accessibilité, mise en œuvre |
 | [README.md](README.md) | démarrage, variables, commandes, points de sécurité |
@@ -56,6 +56,9 @@ branche `gestion` :
 - **étape 14, la dernière, faite et validée le 23 octobre**, puis mise en
   production : le guide utilisateur, sur le site (« Aide », `/help`, à
   chacun le guide de son rôle) et en Word (`docs/guide/`, un par rôle) ;
+- **après la livraison** (23 octobre) : `next` 16.4.2 (un avis critique),
+  laissé hors de `local` (D116) ; le plafond de la connexion ne compte plus
+  que les échecs (D117) ;
 - **ensuite** : le chantier est fini ; D15 (les événements des écoles)
   reste ouverte, en attente de l'équipe.
 
@@ -126,8 +129,9 @@ de dépense (règle 7) restent en vigueur : lancer le backend paie toujours.
      connexion, la première connexion (`/admin/first-login`,
      `POST /api/first-login`) et `/api/auth/*` ; toute route posée sous
      `/api/auth/` devient publique d'office ; le proxy ne regarde que la
-     session, jamais le rôle ; connexion et première connexion partagent un
-     seul plafond ;
+     session, jamais le rôle ; connexion et première connexion partagent
+     leurs compteurs d'échecs (`lib/login-attempts.ts`, D117 : 5 par compte,
+     20 par IP, 15 minutes ; une réussite ne compte jamais) ;
    - chaque route admin attend une seule garde de `lib/auth.ts` :
      `guardSignedIn` (toute session), `guardManager` (gestionnaire ou admin)
      ou `guardAdmin` ; le niveau de chaque route est dans

@@ -60,6 +60,15 @@ export const FIRST_LOGIN_PATH = "/admin/first-login";
 export const FIRST_LOGIN_API = "/api/first-login";
 
 /**
+ * Le refus du plafond d'échecs de la connexion (D117, lib/login-attempts.ts) :
+ * l'erreur que NextAuth rend à la page de connexion, et le message affiché.
+ * Ici, sans dépendance, pour que la page (un composant client) les lise sans
+ * embarquer le magasin des compteurs.
+ */
+export const LOGIN_BLOCKED = "TooManyAttempts";
+export const LOGIN_BLOCKED_MESSAGE = "Trop de tentatives de connexion. Réessayez dans quelques minutes.";
+
+/**
  * Où renvoyer une personne connectée qui n'a pas le rôle d'une page : le site
  * pour un USER (il ne voit pas le back-office), les écoles pour les autres.
  */

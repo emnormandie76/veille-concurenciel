@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { TEXT_LINK } from "@/components/ui/text-link";
 import { safeCallbackPath } from "@/lib/callback-url";
-import { FIRST_LOGIN_PATH } from "@/lib/roles";
+import { FIRST_LOGIN_PATH, LOGIN_BLOCKED, LOGIN_BLOCKED_MESSAGE } from "@/lib/roles";
 
 /**
  * /admin/login — la connexion (plan gestion-contenu, étapes 1 et 2)
@@ -39,6 +39,8 @@ function LoginForm() {
     const urlError = searchParams.get("error");
     if (urlError === "CredentialsSignin") {
       setError("Identifiants incorrects. Veuillez réessayer.");
+    } else if (urlError === LOGIN_BLOCKED) {
+      setError(LOGIN_BLOCKED_MESSAGE);
     } else if (urlError) {
       setError("Une erreur d'authentification est survenue.");
     }
@@ -57,7 +59,8 @@ function LoginForm() {
       });
 
       if (result?.error) {
-        setError("Adresse e-mail ou mot de passe incorrect.");
+        // D117 : le plafond d'échecs se dit ; tout autre refus reste silencieux.
+        setError(result.error === LOGIN_BLOCKED ? LOGIN_BLOCKED_MESSAGE : "Adresse e-mail ou mot de passe incorrect.");
         setLoading(false);
       } else {
         // Connexion réussie : retour à la page demandée (posée par le proxy),

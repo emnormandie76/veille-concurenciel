@@ -23,8 +23,8 @@
  *
  * Les règles sont dans scripts/lib/smoke-checks.ts, testé en CI.
  *
- * Lecture seule : des GET, et un POST de connexion (compté dans le plafond de
- * 5 tentatives par 15 minutes). Ni écriture ni appel payant (aucune de ces
+ * Lecture seule : des GET, et un POST de connexion (un échec compterait dans le
+ * plafond de la connexion, D117 ; une réussite, non). Ni écriture ni appel payant (aucune de ces
  * pages ne joint le backend). Mais `npm run dev` lit la base des fichiers
  * `.env*` du poste : à lancer avec l'accord du propriétaire. Pas en CI, faute
  * de base. Toute adresse non locale est refusée.
@@ -48,6 +48,7 @@ import {
   type SmokeIds,
   type SmokeVerdict,
 } from "./lib/smoke-checks";
+import { LOGIN_BLOCKED } from "../lib/roles";
 
 // La première compilation d'une page par `next dev` peut prendre longtemps.
 const TIMEOUT_MS = 120_000;
@@ -120,9 +121,10 @@ async function signIn(base: URL, login: string, password: string): Promise<strin
   });
   const cookie = cookieHeader([...csrf.setCookies, ...answer.setCookies]);
   if (!/session-token=/.test(cookie)) {
+    // D117 : le plafond ne compte que les échecs ; NextAuth rend alors son erreur dans l'adresse de retour.
     throw new Error(
-      answer.status === 429
-        ? "connexion refusée : plafond de tentatives atteint, réessayer dans 15 minutes."
+      answer.text.includes(LOGIN_BLOCKED)
+        ? "connexion refusée : plafond d'échecs atteint (5 sur ce compte, ou 20 sur cette IP), réessayer dans 15 minutes."
         : "connexion refusée : identifiants APPVC_ADMIN_* incorrects ?"
     );
   }

@@ -3,7 +3,7 @@
 > Ce que fait le code de la branche `gestion` et de `main`, la production,
 > qui la suit par avance rapide. Chaque étape du plan
 > [`features/gestion-contenu.md`](../features/gestion-contenu.md) la tient à
-> jour ; les décisions citées (G1 à G9, D1 à D115) et les pièges y sont
+> jour ; les décisions citées (G1 à G9, D1 à D117) et les pièges y sont
 > expliqués. Point d'entrée pour travailler sur le site : la partie IA, gelée,
 > vit sur la branche `local` (§1).
 
@@ -57,12 +57,12 @@ Trois niveaux d'accès (`AccessLevel`) : `signedIn` (toute session), `manager`
 |---|---|---|
 | Connexion | [`app/api/auth/[...nextauth]/route.ts`](../../app/api/auth/[...nextauth]/route.ts), [`lib/sign-in.ts`](../../lib/sign-in.ts) | NextAuth v4, `CredentialsProvider` (champ `login`) : l'**adresse** de travail et le mot de passe (bcrypt) contre `User`. L'ancien identifiant (`username`) ne vaut que pour un compte qui n'a pas encore d'adresse (D3) ; seul un compte **actif** se connecte. Pas d'auto-inscription. Session **JWT de 8 h**. Le rôle est copié dans le jeton **à titre indicatif** (D1) ; la **version de session** du compte aussi, et elle, compte (D20) |
 | Page de connexion | `app/(admin-auth)/admin/login/` | hors du layout admin (groupe de routes), pour éviter la boucle de redirection ; ouverte sans session. Après la connexion, revient au `callbackUrl` posé par le proxy s'il désigne un chemin du site ([`lib/callback-url.ts`](../../lib/callback-url.ts), pas de redirection ouverte, ni vers la connexion ni vers la première connexion), sinon `/admin/schools`. Renvoie vers la première connexion |
-| Première connexion | `app/(admin-auth)/admin/first-login/`, [`app/api/first-login/route.ts`](../../app/api/first-login/route.ts) | G5 : la personne saisit l'adresse que l'admin a mise sur la liste, son nom affiché (prérempli depuis `prenom.nom@…`, D6) et son mot de passe ([`lib/password.ts`](../../lib/password.ts)) ; le compte passe d'invité à actif, puis la page la connecte. La route ne fait qu'une mise à jour visant l'adresse **dans l'état invité** : une adresse hors liste ne crée rien, et un compte actif ou désactivé reçoit le même refus (403). Ouverte sans session, **hors de `/api/auth/*`** exprès |
+| Première connexion | `app/(admin-auth)/admin/first-login/`, [`app/api/first-login/route.ts`](../../app/api/first-login/route.ts) | G5 : la personne saisit l'adresse que l'admin a mise sur la liste, son nom affiché (prérempli depuis `prenom.nom@…`, D6) et son mot de passe ([`lib/password.ts`](../../lib/password.ts)) ; le compte passe d'invité à actif, puis la page la connecte. La route ne fait qu'une mise à jour visant l'adresse **dans l'état invité** : une adresse hors liste ne crée rien, et un compte actif ou désactivé reçoit le même refus (403). Ouverte sans session, **hors de `/api/auth/*`** exprès ; elle partage les compteurs d'échecs de la connexion (D117, §8.1) |
 | Session | [`lib/auth.ts`](../../lib/auth.ts), `getSession()` | lit le jeton, puis **relit le compte en base par son id** à chaque appel (D1) : nom affiché, adresse et rôle viennent de la base. `null` sans session, sur un cookie illisible, si le compte n'existe plus, s'il **n'est pas actif** (invité après une remise à zéro, désactivé) ou si la version de session du jeton n'est pas celle du compte (jeton d'avant une remise à zéro : D20). Un rôle inconnu en base ne vaut que `USER`. Une panne de la base remonte (500), elle ne se déguise pas en refus |
 | Gardes des API | `lib/auth.ts` | `guardSignedIn()` : 401 sans session. `guardManager()` : 401, puis 403 pour un `USER`. `guardAdmin()` : 401, puis 403 hors `ADMIN`. Chaque handler de `app/api/admin/**` en attend **une seule** (piège 1) |
 | Gardes des écrans | `lib/auth.ts`, `requirePage(level)` | rend la session, ou redirige : vers la connexion sans session, vers `/` pour un `USER`, vers `/admin/schools` pour un gestionnaire sur un écran `admin` |
 | Proxy | [`proxy.ts`](../../proxy.ts) (tient lieu de middleware) | **session exigée sur tout le site** (G6), sauf `/admin/login`, `/admin/first-login`, `POST /api/first-login` et `/api/auth/*` (chemins dans [`lib/roles.ts`](../../lib/roles.ts)). Sans session : une page renvoie vers `/admin/login?callbackUrl=…`, une route `/api/*` répond 401 en JSON. Ne regarde que l'existence d'un jeton valide (contrôle « optimiste », doc Next 16), jamais le rôle ni l'état du compte. Matcher : tout sauf `_next/static`, `_next/image`, `favicon.ico`. Plafonds de débit : §8.1 |
-| Signalement | [`app/api/admin/reports/route.ts`](../../app/api/admin/reports/route.ts), [`lib/content-reports.ts`](../../lib/content-reports.ts) | `POST` en `guardSignedIn` : l'auteur est le compte de la session, jamais le corps. **10 envois par heure et par compte** (D35 : l'équipe sort par la même IP), par `checkRateLimit("report:<compte>")` de `lib/rate-limit.ts`, compté une fois le corps lu et avant toute lecture en base ; au-delà, 429 avec `Retry-After`. Le seul plafond hors du proxy, parce que le proxy ne connaît pas le compte |
+| Signalement | [`app/api/admin/reports/route.ts`](../../app/api/admin/reports/route.ts), [`lib/content-reports.ts`](../../lib/content-reports.ts) | `POST` en `guardSignedIn` : l'auteur est le compte de la session, jamais le corps. **10 envois par heure et par compte** (D35 : l'équipe sort par la même IP), par `checkRateLimit("report:<compte>")` de `lib/rate-limit.ts`, compté une fois le corps lu et avant toute lecture en base ; au-delà, 429 avec `Retry-After`. Hors du proxy, comme le plafond de la connexion (D117), parce que le proxy ne connaît pas le compte |
 | Layout admin | [`app/admin/layout.tsx`](../../app/admin/layout.tsx) | `requirePage("manager")` : un `USER` est renvoyé vers le site (piège 2) |
 | Écrans IA et comptes | `app/admin/inbox/layout.tsx`, `app/admin/users/page.tsx` | `requirePage("admin")` |
 | « Mon compte » | [`app/account/page.tsx`](../../app/account/page.tsx) | `requirePage("signedIn")` : toute session, hors du back-office. Nom affiché et mot de passe, par `PATCH /api/admin/account` et `PATCH /api/admin/account/password`, qui ne prennent aucun identifiant. « Vos signalements » (D36) : la page lit en base les signalements **de la session**, et eux seuls |
@@ -414,8 +414,8 @@ ne lisent pas la session, ce qui garde leur cache ISR. Erreurs au format
   IP ; de la provenance, la date seule (`updated_at`, D25). Le détail d'un
   programme et la comparaison portent ses admissions (`entries`, D53).
   Référence : [`API-rest.md`](API-rest.md).
-- `app/api/first-login` : POST, **sans session** (proxy), au plafond de la
-  connexion ; la seule route hors de `/api/auth/*` ouverte sans session (§2.2).
+- `app/api/first-login` : POST, **sans session** (proxy), aux compteurs
+  d'échecs de la connexion (D117) ; la seule route hors de `/api/auth/*` ouverte sans session (§2.2).
 
 Aucun fichier de `app/` ni de `lib/` ne crée de ticket `ContributionInbox`
 (`test/no-public-tickets.test.ts`, piège 6) : seul le backend de `local` en
@@ -526,7 +526,7 @@ build, servie par le site ; aucune violation sur un build de production
 ## 7. Tests
 
 `npm test` et `npm run test:ts` lancent la même suite (`node --test`,
-1 199 tests au 23 octobre 2026, D105), en CI dans le job `ts-tests` (§9.4).
+1 218 tests au 23 octobre 2026, D105), en CI dans le job `ts-tests` (§9.4).
 Les tests Python vivent sur la branche `local`, avec le backend (D101).
 
 - **Banc** (`test/helpers/`) : `fake-prisma.ts` (faux client ; garde les
@@ -547,17 +547,20 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   (chaque handler × 4 profils), `test/api/admin-guards.test.ts` (analyse
   statique des gardes ; chaque ligne de la table d'accès désigne un handler
   qui existe), `test/proxy.test.ts` (chaque page et route de `app/` refusée
-  sans session, hors connexion et NextAuth ; la première connexion libre et
-  plafonnée avec la connexion), `test/admin-pages.test.ts` (`requirePage` de
+  sans session, hors connexion et NextAuth ; la première connexion libre ; le
+  proxy ne compte plus la connexion, D117), `test/admin-pages.test.ts` (`requirePage` de
   chaque écran, menu par rôle), `test/callback-url.test.ts`,
   `test/roles-migration.test.ts` (contrainte, défaut, `lib/roles.ts`),
   `test/no-public-tickets.test.ts` (piège 6).
 - **Comptes** : `test/accounts.test.ts` (domaine, adresses, nom affiché,
   états), `test/accounts-migration.test.ts` (la migration, additive, et
   `schema.prisma`), `test/sign-in.test.ts` (connexion par l'adresse, D3,
-  invité et désactivé refusés, version de session dans le jeton),
+  invité et désactivé refusés, version de session dans le jeton ; D117 : seuls
+  les échecs comptent, refus avant la base, la route NextAuth passe l'IP),
+  `test/login-attempts.test.ts` (D117 : les seuils, le compte, l'IP, la
+  réussite qui efface, les 15 minutes, la page de connexion),
   `test/api/first-login.test.ts` (une adresse hors liste ne crée rien, seul un
-  invité passe), `test/api/users.test.ts` (liste blanche, rôles, dernier admin,
+  invité passe ; D117 : l'échec compté, 429 avant le hachage), `test/api/users.test.ts` (liste blanche, rôles, dernier admin,
   transaction sérialisable, D3, D4, D21, D24, D38, D42),
   `test/api/account.test.ts` (« Mon compte »), `test/password.test.ts`.
 - **Contenu** : `test/api/admin-schools`, `admin-programs`, `admin-records`
@@ -662,7 +665,8 @@ Les tests Python vivent sur la branche `local`, avec le backend (D101).
   du §6 ci-dessus).
 - **Outillage** : `test/migration-plan.test.ts` (le lanceur de migrations,
   [`bdd.md`](bdd.md) §4), `test/smoke-checks.test.ts` (les règles du smoke,
-  §9.3), `test/rate-limit.test.ts` (Upstash simulé, repli mémoire),
+  §9.3), `test/rate-limit.test.ts` (Upstash simulé, repli mémoire,
+  compteurs d'échecs),
   `test/utils.test.ts`, `test/prisma-schema.test.ts`.
 
 `npm run smoke` (§9.3) se joue à la main, contre `npm run dev` : d'abord **le
@@ -682,7 +686,7 @@ connaître avant de contribuer sont dans le README, « Sécurité ».
 
 | Portée | Plafond | Où |
 |---|---|---|
-| connexion **et** première connexion (POST), un seul compteur | 5 / 15 min / IP, avant tout ; alterner ne double pas les essais | `proxy.ts` |
+| les **échecs** de la connexion et de la première connexion, compteurs partagés (D117) | 5 par compte et 20 par IP, sur 15 min depuis le premier échec ; une réussite ne compte pas et efface les échecs de son compte ; refus avant toute lecture en base et avant bcrypt | [`lib/login-attempts.ts`](../../lib/login-attempts.ts), appelé par `authorize` (`lib/sign-in.ts`) et par `app/api/first-login` |
 | `/api/v1/*` | 60 / min / IP, requêtes connectées seulement, pré-vols `OPTIONS` non comptés | `proxy.ts` |
 | envoi d'un signalement | 10 / heure / compte (D35) | sa route (§2.2) |
 
@@ -694,11 +698,14 @@ connaître avant de contribuer sont dans le README, « Sécurité ».
   ralentit une attaque sans la bloquer (chaque démarrage à froid repart d'un
   compteur vide), avec un avertissement au premier usage. Les noms comptent :
   `KV_REST_API_*`, ceux de l'ancien Vercel KV, ne sont pas lus.
-- **`withAuth` de next-auth court-circuite tout chemin `/api/auth`** : c'est
-  pourquoi `proxy.ts` plafonne la connexion **avant** de déléguer à `withAuth`.
-  Une montée de `next-auth` qui changerait ce comportement ferait disparaître
-  le plafond sans qu'aucun test le voie : relire `proxy.ts` (contrôles du
-  §8.4).
+- **La connexion se plafonne dans `authorize`** (D117) : le proxy ne voit pas
+  l'issue d'une connexion. NextAuth passe à `authorize` les en-têtes de la
+  requête (l'IP, `ipFromHeaders`) et rend l'erreur qu'il lève à la page
+  (`TooManyAttempts`). Une montée de `next-auth` qui changerait l'un ou
+  l'autre ferait taire le plafond ou son message : rejouer le n° 3 du §8.4.
+  Les compteurs d'échecs s'effacent d'eux-mêmes 15 minutes après le premier
+  échec (`EXPIRE NX`) ; rien ne les efface plus tôt, sinon une connexion
+  réussie.
 
 ### 8.2. En-têtes
 
@@ -760,14 +767,15 @@ avec l'accord du propriétaire :
 |---|---|---|
 | 1 | une page du back-office sans session | 307 vers `/admin/login?callbackUrl=…` |
 | 2 | connexion réelle | la session s'ouvre ; le back-office répond selon le rôle |
-| 3 | 6 POST de connexion | les 5 premiers passent, le 6e rend 429 |
+| 3 | 6 échecs de connexion sur une même adresse (jeton CSRF, puis identifiants) | les 5 premiers rendent `CredentialsSignin`, le 6e `TooManyAttempts`, aussi depuis une autre IP ; une autre adresse passe (D117) |
 | 4 | une route `/api/admin/*` sans session | 401, avant toute lecture en base |
 | 5 | en-têtes sur `/admin/login` | les six du §8.2 |
 | 6 | ~65 appels rapides sur `/api/v1/schools?limit=1` | 429 au-delà de 60 par minute |
 | 7 | console du navigateur sur le site et le back-office | aucune violation CSP |
 
-Isoler les compteurs : passer chaque contrôle avec un `x-real-ip` distinct,
-sinon la connexion du n°2 consomme un essai du n°3. En développement, le
+Isoler les compteurs : passer chaque contrôle avec un `x-real-ip` distinct
+et, pour le n°3, une adresse qui n'existe pas (une connexion réussie ne
+compte pas, D117). En développement, le
 compteur est en mémoire : les n°3 et n°6 restent valables sur une instance.
 `/admin` n'est pas une page (404) : le n°1 se mène sur `/admin/schools`.
 

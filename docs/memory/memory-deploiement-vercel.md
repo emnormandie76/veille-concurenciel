@@ -67,7 +67,7 @@ aux quatre listes ci-dessous.**
 | Variable | Qui la lit | Valeur | Piège |
 |---|---|---|---|
 | `DATABASE_URL` | `lib/prisma.ts` à l'exécution (une erreur au chargement si elle manque) ; `prisma.config.ts` au build (`prisma generate` exige la variable, sans se connecter) | URL **poolée** (hôte en `-pooler`) | **Injectée par l'intégration Neon (§2) : ne pas la saisir à la main.** |
-| `NEXTAUTH_SECRET` | `app/api/auth/[...nextauth]/route.ts` et `proxy.ts` (`withAuth`) | une valeur à soi : `openssl rand -base64 32` | Le nom compte : la route passe `NEXTAUTH_SECRET` explicitement (le repli `AUTH_SECRET` de next-auth ne vaut que pour le proxy). Absente, next-auth refuse de fonctionner (`NO_SECRET`) et plus personne ne se connecte. La changer déconnecte toutes les sessions. |
+| `NEXTAUTH_SECRET` | `app/api/auth/[...nextauth]/route.ts` et `proxy.ts` (`getToken`) | une valeur à soi : `openssl rand -base64 32` | Le nom compte : la route passe `NEXTAUTH_SECRET` explicitement (le repli `AUTH_SECRET` de next-auth ne vaut que pour le proxy). Absente, next-auth refuse de fonctionner (`NO_SECRET`) et plus personne ne se connecte. La changer déconnecte toutes les sessions. |
 | `NEXTAUTH_URL` | next-auth, implicitement (absente du code) | l'adresse principale, sans barre finale | **Environnement Production seulement.** Posée, elle fixe l'adresse des redirections de connexion. En Preview, la laisser absente : next-auth déduit l'origine de la requête (la plateforme pose `VERCEL`), alors qu'une valeur de production y renverrait la connexion vers la production. |
 
 ### 1.2. Fortement recommandées
@@ -243,7 +243,7 @@ zéro.
 
 | Plafond | Ce qu'il devient sans Upstash |
 |---|---|
-| 5 tentatives de connexion ou de première connexion / 15 min / IP | contournable en provoquant des démarrages à froid |
+| 5 échecs de connexion par compte, 20 par IP / 15 min (D117 ; connexion et première connexion) | contournable en provoquant des démarrages à froid |
 | 60 appels `/api/v1` / min / IP | idem, et la base peut être aspirée |
 | 10 signalements / heure / compte | idem |
 
@@ -252,8 +252,10 @@ zéro.
 `KV_REST_API_TOKEN`, `KV_REST_API_READ_ONLY_TOKEN`, `KV_URL` et `REDIS_URL`,
 que `lib/rate-limit.ts` **ne lit pas**. Les valeurs ont donc été recopiées à
 la main sous `UPSTASH_REDIS_REST_URL` et `UPSTASH_REDIS_REST_TOKEN`, sans
-toucher au code. Vérifié en ligne : la 6e tentative de connexion rend 429, et
-la clé `rl:login:<ip>:<fenêtre>` apparaît dans le Data Browser d'Upstash.
+toucher au code. Vérifié en ligne le 19 octobre, avec l'ancien plafond : la
+6e tentative de connexion rendait 429, et sa clé apparaissait dans le Data
+Browser d'Upstash. Depuis D117, ce sont les clés `fail:login-fail:account:…`
+et `fail:login-fail:ip:…`, qui n'apparaissent qu'après un échec.
 
 **Sans les deux variables**, le repli mémoire s'applique et
 `[rate-limit] Aucun magasin partagé configuré (UPSTASH_REDIS_REST_URL /
@@ -335,7 +337,7 @@ la connexion, avec l'accord du propriétaire pour ce qui demande une session :
 | 2 | Variables, par le MCP (noms seulement) | celles du §0, aucune du §1.3 |
 | 3 | Sans session : les pages du site et de `/admin` | redirection vers `/admin/login?callbackUrl=…` ; connexion et première connexion en 200 |
 | 4 | Sans session : l'API (v1, `/api/schools`, back-office, comptes) | **401** JSON |
-| 5 | 6 tentatives de connexion erronées d'affilée | la 6e renvoie **429** ; clé `rl:login:…` dans Upstash |
+| 5 | 6 échecs de connexion d'affilée sur une adresse qui n'existe pas | la 6e tentative refusée, « Trop de tentatives de connexion… » (D117) ; clés `fail:login-fail:…` dans Upstash |
 | 6 | En-têtes de `/admin/login` | les six en-têtes de sécurité (§7) |
 | 7 | Connexion ADMIN | le menu à quatre entrées, `/admin/cron` en 404, l'inbox liste ses tickets |
 | 8 | ~65 appels rapides sur `/api/v1/schools`, en session | **429** au-delà de 60 par minute |

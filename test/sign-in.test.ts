@@ -17,9 +17,12 @@
  * faible pour les empreintes de test.
  */
 
-import { afterEach, before, test } from "node:test";
+import { afterEach, before, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import bcrypt from "bcryptjs";
+import { LOGIN_BLOCKED } from "../lib/login-attempts";
+import { resetMemoryStore } from "../lib/rate-limit";
 
 import { installFakePrisma } from "./helpers/fake-prisma";
 import { schemaErrors } from "./helpers/prisma-schema";
@@ -30,6 +33,13 @@ const db = installFakePrisma();
 afterEach(() => {
   assert.deepEqual(schemaErrors(db.calls), []);
 });
+
+// Le plafond (D117) compte en mémoire, faute d'Upstash : chaque test repart d'un magasin vide.
+beforeEach(() => {
+  resetMemoryStore();
+});
+// Le repli mémoire se signale une fois : ce n'est pas l'objet de ces tests.
+mock.method(console, "warn", () => {});
 
 let signIn: typeof import("../lib/sign-in");
 
@@ -147,4 +157,67 @@ test("D20 : la version de session passe du compte au jeton, puis à la session",
     role: "GESTIONNAIRE",
     sessionVersion: 3,
   });
+});
+
+// ── D117 : le plafond ne compte que les échecs ─────────────────────────
+//
+// `authorizeCredentials` est ce que la route NextAuth appelle : le plafond
+// (lib/login-attempts.ts) autour de `verifyCredentials`. 5 échecs par compte,
+// 20 par IP ; un compte ou une IP bloqués sont refusés avant toute lecture en
+// base, par une erreur que la page de connexion reconnaît.
+
+/** Le refus d'un compte ou d'une IP bloqués. */
+const isBlocked = (error: unknown) => error instanceof Error && error.message === LOGIN_BLOCKED;
+
+test("D117 : une connexion réussie ne compte jamais ; dix d'affilée, d'une même IP, passent toutes", async () => {
+  table(ACTIVE);
+  for (let i = 0; i < 10; i++) {
+    const account = await signIn.authorizeCredentials("jean.dupont@em-normandie.fr", PASSWORD, "203.0.113.30");
+    assert.equal(account?.id, "u-jean", `connexion n° ${i + 1}`);
+  }
+});
+
+test("D117 : 5 échecs sur un compte, et même le bon mot de passe est refusé, sans lire la base", async () => {
+  table(ACTIVE);
+  for (let i = 0; i < 5; i++) {
+    assert.equal(await signIn.authorizeCredentials("jean.dupont@em-normandie.fr", "pas-le-bon", "203.0.113.31"), null);
+  }
+  db.calls.length = 0;
+  await assert.rejects(signIn.authorizeCredentials("jean.dupont@em-normandie.fr", PASSWORD, "198.51.100.31"), isBlocked);
+  assert.deepEqual(db.calls, [], "refusé avant la base et avant bcrypt");
+  // Un collègue, sur le même réseau, n'est pas bloqué.
+  table(ACTIVE, userRow({ id: "u-camille", email: "camille.martin@em-normandie.fr", password_hash: HASH, status: "ACTIVE" }));
+  assert.equal((await signIn.authorizeCredentials("camille.martin@em-normandie.fr", PASSWORD, "203.0.113.31"))?.id, "u-camille");
+});
+
+test("D117 : une réussite efface les échecs de son compte", async () => {
+  table(ACTIVE);
+  for (let i = 0; i < 4; i++) await signIn.authorizeCredentials("jean.dupont@em-normandie.fr", "pas-le-bon", "203.0.113.32");
+  assert.equal((await signIn.authorizeCredentials("jean.dupont@em-normandie.fr", PASSWORD, "203.0.113.32"))?.id, "u-jean");
+  for (let i = 0; i < 4; i++) await signIn.authorizeCredentials("jean.dupont@em-normandie.fr", "pas-le-bon", "203.0.113.32");
+  assert.equal((await signIn.authorizeCredentials("jean.dupont@em-normandie.fr", PASSWORD, "203.0.113.32"))?.id, "u-jean");
+});
+
+test("D117 : 20 échecs d'une IP, sur des adresses diverses, bloquent l'IP pour toute adresse", async () => {
+  table(ACTIVE);
+  for (let i = 0; i < 20; i++) {
+    assert.equal(await signIn.authorizeCredentials(`inconnu${i}@em-normandie.fr`, PASSWORD, "203.0.113.33"), null);
+  }
+  await assert.rejects(signIn.authorizeCredentials("jean.dupont@em-normandie.fr", PASSWORD, "203.0.113.33"), isBlocked);
+  assert.equal((await signIn.authorizeCredentials("jean.dupont@em-normandie.fr", PASSWORD, "203.0.113.34"))?.id, "u-jean");
+});
+
+test("D117 : un identifiant vide n'est ni lu ni compté", async () => {
+  table(ACTIVE);
+  for (let i = 0; i < 25; i++) assert.equal(await signIn.authorizeCredentials("  ", PASSWORD, "203.0.113.35"), null);
+  assert.equal((await signIn.authorizeCredentials("jean.dupont@em-normandie.fr", PASSWORD, "203.0.113.35"))?.id, "u-jean");
+});
+
+test("D117 : la route NextAuth appelle authorizeCredentials avec l'IP de la requête", () => {
+  const route = readFileSync("app/api/auth/[...nextauth]/route.ts", "utf8").replace(/\r/g, "");
+  assert.match(
+    route,
+    /authorize: \(credentials, req\) =>\s*authorizeCredentials\(credentials\?\.login, credentials\?\.password, ipFromHeaders\(req\?\.headers\)\)/,
+  );
+  assert.doesNotMatch(route, /verifyCredentials/, "plus d'appel sans plafond");
 });

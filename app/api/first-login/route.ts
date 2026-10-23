@@ -13,8 +13,11 @@
  *   Un compte actif ou désactivé reçoit le même refus qu'une adresse inconnue,
  *   et deux premières connexions concurrentes ne peuvent pas l'emporter toutes
  *   les deux.
- * - Ouverte sans session (proxy.ts), hors de /api/auth/* exprès ; le proxy la
- *   plafonne avec la connexion, tentatives confondues (5 / 15 min / IP).
+ * - Ouverte sans session (proxy.ts), hors de /api/auth/* exprès. Elle partage
+ *   les compteurs d'échecs de la connexion (D117, lib/login-attempts.ts) : une
+ *   adresse sans invitation compte un échec, une réussite efface ceux de
+ *   l'adresse, et une adresse ou une IP bloquées reçoivent 429 avant le
+ *   hachage. Une saisie refusée avant la base (400) ne compte pas.
  *
  * Risque résiduel accepté (G5) : sans preuve de possession de l'adresse,
  * quelqu'un qui connaît l'adresse d'un invité peut choisir le mot de passe
@@ -27,6 +30,14 @@ import { prisma } from "@/lib/prisma";
 import { validateDisplayName, validateWorkEmail } from "@/lib/accounts";
 import { validatePassword } from "@/lib/password";
 import { invalidBody } from "@/lib/account-admin";
+import {
+  LOGIN_BLOCK_MS,
+  LOGIN_BLOCKED_MESSAGE,
+  clearLoginFailures,
+  loginBlocked,
+  recordLoginFailure,
+} from "@/lib/login-attempts";
+import { clientIp } from "@/lib/rate-limit";
 import { readJsonObject } from "@/lib/request-body";
 
 /** Un seul refus, que l'adresse soit inconnue, déjà active ou désactivée. */
@@ -46,6 +57,15 @@ export async function POST(request: Request) {
   const name = validateDisplayName(body.displayName);
   if (name.error !== null) return NextResponse.json({ error: name.error }, { status: 400 });
 
+  // D117 : une adresse ou une IP bloquées sont refusées avant le hachage et la base.
+  const ip = clientIp(request.headers);
+  if (await loginBlocked(email.email, ip)) {
+    return NextResponse.json(
+      { error: LOGIN_BLOCKED_MESSAGE },
+      { status: 429, headers: { "Retry-After": String(LOGIN_BLOCK_MS / 1000) } },
+    );
+  }
+
   try {
     // Haché avant toute lecture : la réponse prend le même temps, invitation ou non.
     const password_hash = await bcrypt.hash(body.password as string, 12);
@@ -60,8 +80,10 @@ export async function POST(request: Request) {
       },
     });
     if (count === 0) {
+      await recordLoginFailure(email.email, ip);
       return NextResponse.json({ error: NO_INVITATION_MESSAGE }, { status: 403 });
     }
+    await clearLoginFailures(email.email);
 
     console.log("[audit] première connexion : un invité a choisi son mot de passe");
     return NextResponse.json({ message: "Votre mot de passe est enregistré. Vous pouvez vous connecter." });

@@ -24,7 +24,9 @@ import { FIRST_LOGIN_API, LOGIN_PATH } from "@/lib/roles";
  * la page la connecte par NextAuth.
  *
  * Ouverte sans session (proxy.ts), hors du layout admin comme la connexion ; la
- * route est plafonnée avec la connexion (5 tentatives / 15 min / IP).
+ * route partage le plafond d'échecs de la connexion (D117 : 5 par adresse,
+ * 20 par IP, 15 minutes) et répond 429 au-delà, avec un message que la page
+ * affiche tel quel.
  */
 function FirstLoginForm() {
   const router = useRouter();

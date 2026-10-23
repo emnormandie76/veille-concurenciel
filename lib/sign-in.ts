@@ -10,8 +10,11 @@
  * - D20 : la version de session du compte est copiée dans le jeton ;
  *   lib/auth.ts la compare à celle de la base à chaque requête.
  *
+ * - D117 : le plafond ne compte que les échecs, par compte et par IP
+ *   (`authorizeCredentials`, lib/login-attempts.ts).
+ *
  * La route NextAuth (app/api/auth/[...nextauth]/route.ts) ne fait que brancher
- * `verifyCredentials` et `authCallbacks` : la logique se teste ici, sans
+ * `authorizeCredentials` et `authCallbacks` : la logique se teste ici, sans
  * charger NextAuth (test/sign-in.test.ts).
  */
 
@@ -20,6 +23,7 @@ import type { Session, User } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { prisma } from "@/lib/prisma";
 import { displayNameOf, normalizeEmail } from "@/lib/accounts";
+import { LOGIN_BLOCKED, clearLoginFailures, loginBlocked, recordLoginFailure } from "@/lib/login-attempts";
 import { isUserRole, type UserRole } from "@/lib/roles";
 
 /** Ce que NextAuth reçoit d'une connexion réussie. */
@@ -59,6 +63,24 @@ export async function verifyCredentials(login: unknown, password: unknown): Prom
     role: isUserRole(account.role) ? account.role : "USER",
     sessionVersion: account.session_version,
   };
+}
+
+/**
+ * La connexion sous plafond (D117), ce que la route NextAuth appelle. Un
+ * compte ou une IP bloqués sont refusés avant toute lecture en base, par une
+ * erreur `LOGIN_BLOCKED` que la page de connexion reconnaît ; un refus compte
+ * un échec, une réussite efface ceux du compte (lib/login-attempts.ts). Un
+ * identifiant vide n'est ni lu ni compté.
+ */
+export async function authorizeCredentials(login: unknown, password: unknown, ip: string): Promise<SignedInAccount | null> {
+  const identifier = typeof login === "string" ? login.trim() : "";
+  if (identifier === "") return null;
+  if (await loginBlocked(identifier, ip)) throw new Error(LOGIN_BLOCKED);
+
+  const account = await verifyCredentials(identifier, password);
+  if (account) await clearLoginFailures(identifier);
+  else await recordLoginFailure(identifier, ip);
+  return account;
 }
 
 /**

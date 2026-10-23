@@ -13,7 +13,15 @@
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { checkRateLimit, clientIp, isSharedStoreConfigured } from "../lib/rate-limit";
+import {
+  checkRateLimit,
+  clearFailures,
+  clientIp,
+  failureCount,
+  isSharedStoreConfigured,
+  recordFailure,
+  resetMemoryStore,
+} from "../lib/rate-limit";
 
 const UPSTASH = { url: "https://upstash.invalid/", token: "jeton-de-test" };
 
@@ -176,4 +184,77 @@ test("une seule des deux variables Upstash : pas de magasin partagé, aucun appe
   assert.equal(isSharedStoreConfigured(), false);
   assert.equal(await checkRateLimit("test:moitie", 3, 60_000), true);
   assert.deepEqual(fetchCalls, []);
+});
+
+// ── Compteurs d'échecs (D117 : la connexion ne compte que ses échecs) ─
+
+test("compteur d'échecs, en mémoire : zéro d'abord, chaque échec noté compte, l'effacement repart de zéro", async () => {
+  assert.equal(await failureCount("test:echecs"), 0);
+  for (let i = 0; i < 3; i++) await recordFailure("test:echecs", 60_000);
+  assert.equal(await failureCount("test:echecs"), 3);
+  assert.equal(await failureCount("test:echecs-autre"), 0, "un compteur par clé");
+  await clearFailures("test:echecs");
+  assert.equal(await failureCount("test:echecs"), 0);
+  assert.deepEqual(fetchCalls, []);
+});
+
+test("compteur d'échecs : la fenêtre court depuis le premier échec, un échec suivant ne la prolonge pas", async () => {
+  mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
+
+  await recordFailure("test:echecs-fenetre", 20_000);
+  mock.timers.tick(15_000);
+  await recordFailure("test:echecs-fenetre", 20_000);
+  assert.equal(await failureCount("test:echecs-fenetre"), 2);
+  mock.timers.tick(5_001);
+  assert.equal(await failureCount("test:echecs-fenetre"), 0);
+});
+
+test("resetMemoryStore vide le magasin mémoire (les tests partagent un processus)", async () => {
+  await recordFailure("test:echecs-vidage", 60_000);
+  assert.equal(await checkRateLimit("test:quota-vidage", 1, 60_000), true);
+  assert.equal(await checkRateLimit("test:quota-vidage", 1, 60_000), false);
+  resetMemoryStore();
+  assert.equal(await failureCount("test:echecs-vidage"), 0);
+  assert.equal(await checkRateLimit("test:quota-vidage", 1, 60_000), true);
+});
+
+test("compteur d'échecs, avec Upstash : GET pour lire, INCR puis EXPIRE NX pour noter, DEL pour effacer", async () => {
+  useUpstash();
+  const bodies = () => fetchCalls.map(({ url, init }) => [url, JSON.parse(String(init.body))]);
+
+  upstashReply = async () => new Response(JSON.stringify([{ result: "4" }]), { status: 200 });
+  assert.equal(await failureCount("login-fail:ip:203.0.113.7"), 4);
+  upstashReply = async () => new Response(JSON.stringify([{ result: null }]), { status: 200 });
+  assert.equal(await failureCount("login-fail:ip:203.0.113.8"), 0);
+  upstashReply = async () => new Response(JSON.stringify([{ result: 1 }, { result: 1 }]), { status: 200 });
+  await recordFailure("login-fail:ip:203.0.113.7", 900_000);
+  upstashReply = async () => new Response(JSON.stringify([{ result: 1 }]), { status: 200 });
+  await clearFailures("login-fail:account:jean.dupont@em-normandie.fr");
+
+  assert.deepEqual(bodies(), [
+    ["https://upstash.invalid/pipeline", [["GET", "fail:login-fail:ip:203.0.113.7"]]],
+    ["https://upstash.invalid/pipeline", [["GET", "fail:login-fail:ip:203.0.113.8"]]],
+    [
+      "https://upstash.invalid/pipeline",
+      [
+        ["INCR", "fail:login-fail:ip:203.0.113.7"],
+        ["EXPIRE", "fail:login-fail:ip:203.0.113.7", "900", "NX"],
+      ],
+    ],
+    ["https://upstash.invalid/pipeline", [["DEL", "fail:login-fail:account:jean.dupont@em-normandie.fr"]]],
+  ]);
+  for (const { init } of fetchCalls) assert.equal(new Headers(init.headers).get("Authorization"), "Bearer jeton-de-test");
+  assert.deepEqual(logged.error, []);
+});
+
+test("compteur d'échecs : Upstash en panne, repli mémoire, et c'est journalisé", async () => {
+  useUpstash();
+  upstashReply = async () => new Response("indisponible", { status: 503 });
+
+  await recordFailure("test:echecs-panne", 60_000);
+  await recordFailure("test:echecs-panne", 60_000);
+  assert.equal(await failureCount("test:echecs-panne"), 2);
+  await clearFailures("test:echecs-panne");
+  assert.equal(await failureCount("test:echecs-panne"), 0);
+  assert.ok(logged.error.some((line) => line.includes("Upstash a répondu 503")));
 });
